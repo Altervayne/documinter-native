@@ -56,10 +56,10 @@ const KEYWORDS_DECL = [
 
 // ── Logical / comparison operators (keywords in WLangage) ────────────────────
 const KEYWORDS_LOGIC = [
-  'ET', 'OU', 'NON', 'OUX',   // AND, OR, NOT, XOR
-  'EN',                         // type cast:  valeur EN entier
-  'DANS',                       // membership: valeur DANS tableau
-  'PAS',                        // step (also appears in POUR loop)
+  '_ET_', 'ET', '_OU_', 'OU', 'NON', 'OUX',   // AND, OR, NOT, XOR
+  'EN',                                      // type cast:  valeur EN entier
+  'DANS',                                    // membership: valeur DANS tableau
+  'PAS',                                     // step (also appears in POUR loop)
 ]
 
 // ── Boolean / null / empty literals ──────────────────────────────────────────
