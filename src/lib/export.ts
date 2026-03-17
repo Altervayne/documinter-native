@@ -1,0 +1,340 @@
+import type { DocMeta, Section, Block } from '../types'
+import { esc } from './helpers'
+import { highlight } from './highlight'
+
+export interface ExportOptions {
+  theme: 'light' | 'dark'
+  accent: string
+}
+
+const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
+
+function slugify(str: string): string {
+  return (str || 'doc').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function exportBlock(b: Block): string {
+  if (b.type === 'p')       return `<p>${esc(b.text)}</p>`
+  if (b.type === 'h3')      return `<h3>${esc(b.text)}</h3>`
+  if (b.type === 'h4')      return `<h4>${esc(b.text)}</h4>`
+  if (b.type === 'callout') return `<div class="callout ${b.style ?? 'info'}">${esc(b.text)}</div>`
+  if (b.type === 'code') {
+    const highlighted = highlight(b.code ?? '', b.lang ?? 'windev')
+    return `<pre><code>${highlighted}</code></pre>`
+  }
+  if (b.type === 'list')
+    return `<ul>${(b.items ?? []).map(i => `<li>${esc(i)}</li>`).join('')}</ul>`
+  if (b.type === 'table') {
+    const th = (b.headers ?? []).map(h => `<th>${esc(h)}</th>`).join('')
+    const td = (b.rows ?? []).map(r =>
+      `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`
+    ).join('')
+    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${td}</tbody></table></div>`
+  }
+  return ''
+}
+
+interface Colors {
+  bodyBg: string; cardBg: string; cardShadow: string
+  text: string; textMuted: string; textH: string; textP: string
+  border: string
+  sidebarBg: string; navLink: string; navHover: string
+  preBg: string; preBorder: string; preText: string
+  inlineCodeBg: string; inlineCodeText: string; inlineCodeBorder: string
+  thBg: string; tdHover: string
+  calloutInfoBg: string; calloutInfoBorder: string
+  calloutValidBg: string; calloutValidBorder: string
+  calloutWarnBg: string; calloutWarnBorder: string
+  calloutDangerBg: string; calloutDangerBorder: string
+  tokKw: string; tokStr: string; tokCmt: string; tokNum: string
+  tokFn: string; tokOp: string; tokType: string
+  btnBg: string; btnBorder: string; btnText: string
+  scrollTrack: string; scrollThumb: string
+}
+
+function getColors(theme: 'light' | 'dark'): Colors {
+  if (theme === 'dark') {
+    return {
+      bodyBg: '#0d1117', cardBg: '#161b22',
+      cardShadow: '0 4px 24px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.3)',
+      text: '#e6edf3', textMuted: '#8b949e', textH: '#e6edf3', textP: '#c9d1d9',
+      border: '#30363d',
+      sidebarBg: '#0d1117', navLink: '#8b949e', navHover: '#e6edf3',
+      preBg: '#0d1117', preBorder: '#21262d', preText: '#c9d1d9',
+      inlineCodeBg: 'rgba(56,139,253,0.1)', inlineCodeText: '#79c0ff', inlineCodeBorder: 'rgba(56,139,253,0.25)',
+      thBg: '#0d1117', tdHover: '#1c2128',
+      calloutInfoBg: '#051d40', calloutInfoBorder: '#388bfd',
+      calloutValidBg: '#031a12', calloutValidBorder: '#3fb950',
+      calloutWarnBg: '#2a1700', calloutWarnBorder: '#d29922',
+      calloutDangerBg: '#1f0a0a', calloutDangerBorder: '#f85149',
+      tokKw: '#ff7b72', tokStr: '#a5d6ff', tokCmt: '#8b949e', tokNum: '#f0883e',
+      tokFn: '#d2a8ff', tokOp: '#8b949e', tokType: '#76e3ea',
+      btnBg: '#21262d', btnBorder: '#30363d', btnText: '#8b949e',
+      scrollTrack: '#0d1117', scrollThumb: '#30363d',
+    }
+  }
+  return {
+    bodyBg: '#eef1f5', cardBg: '#ffffff',
+    cardShadow: '0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)',
+    text: '#1a1a2e', textMuted: '#6b7280', textH: '#111827', textP: '#374151',
+    border: '#e5e7eb',
+    sidebarBg: '#ffffff', navLink: '#6b7280', navHover: '#111827',
+    preBg: '#f8fafc', preBorder: '#e2e8f0', preText: '#334155',
+    inlineCodeBg: '#eff6ff', inlineCodeText: '#2563eb', inlineCodeBorder: '#dbeafe',
+    thBg: '#f9fafb', tdHover: '#f9fafb',
+    calloutInfoBg: '#eff6ff', calloutInfoBorder: '#2563eb',
+    calloutValidBg: '#f0fdf4', calloutValidBorder: '#16a34a',
+    calloutWarnBg: '#fffbeb', calloutWarnBorder: '#d97706',
+    calloutDangerBg: '#fff1f2', calloutDangerBorder: '#e11d48',
+    tokKw: '#0550C0', tokStr: '#A31515', tokCmt: '#008000', tokNum: '#098658',
+    tokFn: '#7c3aed', tokOp: '#6b7280', tokType: '#0891b2',
+    btnBg: '#ffffff', btnBorder: '#e5e7eb', btnText: '#9ca3af',
+    scrollTrack: '#eef1f5', scrollThumb: '#d1d5db',
+  }
+}
+
+function buildStyles(accent: string, c: Colors): string {
+  return `
+        /* Reset */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: ${c.bodyBg};
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            line-height: 1.75;
+            color: ${c.text};
+            display: flex;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed; top: 0; left: 0;
+            width: 260px; height: 100vh;
+            background: ${c.sidebarBg};
+            border-right: 1px solid ${c.border};
+            overflow-y: auto;
+            padding: 1.5rem 0 2rem;
+            z-index: 100;
+        }
+        .sidebar-brand {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.08em;
+            color: ${accent};
+            padding: 0 1.25rem 1rem;
+            border-bottom: 1px solid ${c.border};
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+        .nav-link {
+            display: block;
+            padding: 0.4rem 1.25rem;
+            text-decoration: none;
+            color: ${c.navLink};
+            font-size: 0.82rem;
+            border-left: 2px solid transparent;
+            transition: color .15s, border-color .15s;
+        }
+        .nav-link:hover { color: ${c.navHover}; }
+        .nav-link.active { color: ${accent}; border-left-color: ${accent}; }
+
+        /* Main area */
+        .main {
+            margin-left: 260px;
+            width: 100%;
+            padding: 2.5rem 2rem 6rem;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        /* Document card */
+        .doc-card {
+            width: 100%;
+            max-width: 860px;
+            background: ${c.cardBg};
+            border-radius: 2px;
+            border-top: 4px solid ${accent};
+            box-shadow: ${c.cardShadow};
+        }
+
+        /* Document content */
+        .doc-render {
+            padding: 3rem 3.5rem 6rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 15px;
+            line-height: 1.75;
+            color: ${c.text};
+        }
+
+        /* Page header */
+        .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid ${c.border}; }
+        .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${accent}; margin-bottom: 0.4rem; }
+        .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: ${c.textH}; }
+        .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${c.textMuted}; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+        /* Sections */
+        .doc-render .doc-section   { margin-bottom: 3.5rem; scroll-margin-top: 1.5rem; }
+        .doc-render h2             { font-size: 1.2rem; font-weight: 600; color: ${c.textH}; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid ${c.border}; border-left: 3px solid ${accent}; padding-left: 0.75rem; }
+        .doc-render h3             { font-size: 0.95rem; font-weight: 600; color: ${c.textH}; margin: 1.75rem 0 0.6rem; }
+        .doc-render h4             { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: ${c.textMuted}; margin: 1.25rem 0 0.4rem; }
+        .doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: ${c.textP}; }
+        .doc-render hr             { border: none; border-top: 1px solid ${c.border}; margin: 3rem 0; }
+
+        /* Inline code */
+        .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: ${c.inlineCodeBg}; color: ${c.inlineCodeText}; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid ${c.inlineCodeBorder}; }
+
+        /* Code block */
+        .doc-render pre            { background: ${c.preBg}; border: 1px solid ${c.preBorder}; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; }
+        .doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: ${c.preText}; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
+
+        /* Callouts */
+        .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${c.textP}; }
+        .doc-render .callout.info    { background: ${c.calloutInfoBg}; border-color: ${c.calloutInfoBorder}; }
+        .doc-render .callout.valid   { background: ${c.calloutValidBg}; border-color: ${c.calloutValidBorder}; }
+        .doc-render .callout.warning { background: ${c.calloutWarnBg}; border-color: ${c.calloutWarnBorder}; }
+        .doc-render .callout.danger  { background: ${c.calloutDangerBg}; border-color: ${c.calloutDangerBorder}; }
+
+        /* Table */
+        .doc-render .table-wrap    { overflow-x: auto; margin: 1.25rem 0; border-radius: 6px; border: 1px solid ${c.border}; }
+        .doc-render table          { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .doc-render th             { background: ${c.thBg}; padding: 0.6rem 1rem; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: ${c.textMuted}; border-bottom: 1px solid ${c.border}; }
+        .doc-render td             { padding: 0.6rem 1rem; border-bottom: 1px solid ${c.border}; vertical-align: top; color: ${c.textP}; }
+        .doc-render tbody tr:last-child td { border-bottom: none; }
+        .doc-render tbody tr:hover td { background: ${c.tdHover}; }
+
+        /* Lists */
+        .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
+        .doc-render li             { margin-bottom: 0.3rem; color: ${c.textP}; }
+        .doc-render li::marker     { color: ${c.inlineCodeText}; }
+
+        /* Syntax tokens */
+        .tok-kw   { color: ${c.tokKw}; font-weight: 600; }
+        .tok-str  { color: ${c.tokStr}; }
+        .tok-cmt  { color: ${c.tokCmt}; font-style: italic; }
+        .tok-num  { color: ${c.tokNum}; }
+        .tok-fn   { color: ${c.tokFn}; }
+        .tok-op   { color: ${c.tokOp}; }
+        .tok-type { color: ${c.tokType}; }
+
+        /* Back to top */
+        #toTopBtn {
+            position: fixed; bottom: 1.5rem; right: 1.5rem;
+            width: 34px; height: 34px;
+            background: ${c.btnBg}; border: 1px solid ${c.btnBorder};
+            border-radius: 8px; color: ${c.btnText}; cursor: pointer;
+            font-size: 0.9rem; display: flex; align-items: center; justify-content: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity .2s, color .2s, border-color .2s; z-index: 200;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        #toTopBtn.visible { opacity: 1; pointer-events: auto; }
+        #toTopBtn:hover { color: ${accent}; border-color: ${accent}; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: ${c.scrollTrack}; }
+        ::-webkit-scrollbar-thumb { background: ${c.scrollThumb}; border-radius: 3px; }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; padding: 1.5rem 1rem; }
+        }
+  `
+}
+
+export function generateExportHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): string {
+  const { theme, accent } = opts
+  const c = getColors(theme)
+  const styles = buildStyles(accent, c)
+
+  const navLinks = sections.map((s, i) =>
+    `        <a href="#section-${s.id}" class="nav-link">${i + 1}. ${esc(s.title)}</a>`
+  ).join('\n')
+
+  const sectionsHTML = sections.map((sec, si) => {
+    const blocksHTML = sec.blocks.map(b => '            ' + exportBlock(b)).join('\n')
+    return `
+        <div class="doc-section" id="section-${sec.id}">
+            <h2>${si + 1}. ${esc(sec.title)}</h2>
+${blocksHTML}
+        </div>${si < sections.length - 1 ? '\n        <hr>' : ''}`
+  }).join('\n')
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${esc(meta.title) || 'Documentation'}</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>${styles}    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <span class="sidebar-brand">${esc(meta.module) || 'Documentation'}</span>
+    <nav>
+${navLinks}
+    </nav>
+</aside>
+
+<main class="main">
+    <div class="doc-card">
+        <div class="doc-render">
+            <div class="page-header">
+                ${meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''}
+                <h1>${esc(meta.title) || 'Documentation'}</h1>
+                <div class="page-meta">
+                    ${meta.env    ? `<span>${esc(meta.env)}</span>` : ''}
+                    ${meta.date   ? `<span>Updated: ${esc(meta.date)}</span>` : ''}
+                    ${meta.author ? `<span>Author: ${esc(meta.author)}</span>` : ''}
+                </div>
+            </div>
+            ${sectionsHTML}
+        </div>
+    </div>
+</main>
+
+<button onclick="scrollToTop()" id="toTopBtn" title="Back to top">↑</button>
+<script>
+    const btn = document.getElementById('toTopBtn');
+    window.addEventListener('scroll', () => { btn.classList.toggle('visible', window.scrollY > 100); });
+    function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    const secs  = document.querySelectorAll('.doc-section');
+    const links = document.querySelectorAll('.nav-link');
+    secs.forEach(s => {
+        new IntersectionObserver(entries => {
+            entries.forEach(en => {
+                if (en.isIntersecting) {
+                    links.forEach(l => l.classList.remove('active'));
+                    const a = document.querySelector('.nav-link[href="#' + en.target.id + '"]');
+                    if (a) a.classList.add('active');
+                }
+            });
+        }, { rootMargin: '-30% 0px -60% 0px' }).observe(s);
+    });
+    links.forEach(l => {
+        l.addEventListener('click', e => {
+            e.preventDefault();
+            const t = document.querySelector(l.getAttribute('href'));
+            if (t) t.scrollIntoView({ behavior: 'smooth' });
+        });
+    });
+<\/script>
+</body>
+</html>`
+}
+
+export function downloadHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): void {
+  const html = generateExportHTML(meta, sections, opts)
+  const slug = slugify(meta.title)
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+  a.download = slug + '.html'
+  a.click()
+  URL.revokeObjectURL(a.href)
+}

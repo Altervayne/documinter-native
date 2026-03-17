@@ -1,0 +1,203 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Light-theme document styles for the WYSIWYG preview area.
+   Applied inside .doc-render.  NOT a CSS Module — imported as a side-effect.
+   These styles also appear inlined in the HTML export (see lib/export.ts).
+───────────────────────────────────────────────────────────────────────────── */
+
+.doc-render {
+  padding: 3rem 3.5rem 6rem;
+  width: 100%;
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #1a1a2e;
+}
+
+/* Page header */
+.doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e5e7eb; }
+.doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #2563eb; margin-bottom: 0.4rem; }
+.doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: #111827; }
+.doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #6b7280; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+/* Section */
+.doc-render .doc-section   { margin-bottom: 3.5rem; }
+.doc-render h2             { font-size: 1.2rem; font-weight: 600; color: #111827; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; border-left: 3px solid var(--color-accent); padding-left: 0.75rem; }
+.doc-render h3             { font-size: 0.95rem; font-weight: 600; color: #111827; margin: 1.75rem 0 0.6rem; }
+.doc-render h4             { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; margin: 1.25rem 0 0.4rem; }
+.doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: #374151; }
+.doc-render hr             { border: none; border-top: 1px solid #e5e7eb; margin: 3rem 0; }
+
+/* Inline code */
+.doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: #eff6ff; color: #2563eb; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid #dbeafe; }
+
+/* Code block */
+.doc-render pre            { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; cursor: text; }
+.doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
+/* Editable code (click-to-edit mode) — reset inline-code styles */
+.doc-render pre [contenteditable] { display: block; padding: 1rem 1.25rem; background: none !important; border: none; box-shadow: none !important; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre; font-family: 'JetBrains Mono', monospace; }
+
+/* Callouts */
+.doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: #374151; }
+.doc-render .callout.info    { background: #eff6ff; border-color: #2563eb; }
+.doc-render .callout.valid   { background: #f0fdf4; border-color: #16a34a; }
+.doc-render .callout.warning { background: #fffbeb; border-color: #d97706; }
+.doc-render .callout.danger  { background: #fff1f2; border-color: #e11d48; }
+
+/* Table */
+.doc-render .table-wrap    { overflow-x: auto; margin: 1.25rem 0; border-radius: 6px; border: 1px solid #e5e7eb; }
+.doc-render table          { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.doc-render th             { background: #f9fafb; padding: 0.6rem 1rem; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+.doc-render td             { padding: 0.6rem 1rem; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+.doc-render tbody tr:last-child td { border-bottom: none; }
+
+/* Lists */
+.doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
+.doc-render li             { margin-bottom: 0.3rem; color: #374151; }
+.doc-render li::marker     { color: #2563eb; }
+
+/* Contenteditable hover/focus */
+.doc-render [contenteditable] { outline: none; border-radius: 3px; transition: background 0.1s, box-shadow 0.1s; }
+.doc-render [contenteditable]:hover { background: rgba(37,99,235,0.04); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+.doc-render [contenteditable]:focus { background: rgba(37,99,235,0.06); box-shadow: 0 0 0 2px rgba(37,99,235,0.3); }
+
+/* Syntax token colors — WinDev IDE convention:
+   keywords=blue, strings=dark-red, comments=green, types=teal */
+.tok-kw   { color: #0550C0; font-weight: 600; }
+.tok-str  { color: #A31515; }
+.tok-cmt  { color: #008000; font-style: italic; }
+.tok-num  { color: #098658; }
+.tok-fn   { color: #7c3aed; }
+.tok-op   { color: #6b7280; }
+.tok-type { color: #0891b2; }
+
+/* Block — flex row with left drag handle, mirroring sections */
+.blk-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.blk-drag-handle {
+  width: 1.5rem;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+  color: #9ca3af;
+  user-select: none;
+}
+.blk-drag-handle:active { cursor: grabbing; }
+.blk-drag-handle:hover { color: #374151; }
+.blk-wrap:hover .blk-drag-handle { opacity: 1; }
+
+.blk-content { flex: 1; min-width: 0; position: relative; }
+
+/* Delete button inside .blk-content, revealed on blk-wrap hover */
+.blk-delete {
+  position: absolute; top: 0; right: 0;
+  display: none; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  color: #9ca3af; padding: 3px; border-radius: 5px;
+  transition: color 0.1s, background 0.1s; z-index: 5;
+}
+.blk-wrap:hover .blk-delete { display: flex; }
+.blk-delete:hover { color: #e11d48; background: rgba(225,29,72,0.08); }
+
+/* Section — flex row with a dedicated drag handle in the padding gutter */
+.sec-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-left: -2rem;
+}
+
+.sec-drag-handle {
+  width: 2rem;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding-top: 0.65rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+  color: #9ca3af;
+  user-select: none;
+}
+.sec-drag-handle:active { cursor: grabbing; }
+.sec-drag-handle:hover { color: #374151; }
+.sec-wrap:hover .sec-drag-handle { opacity: 1; }
+
+.doc-section { flex: 1; min-width: 0; position: relative; }
+
+/* Delete button inside .doc-section, revealed on sec-wrap hover */
+.sec-delete {
+  position: absolute; top: 0.15rem; right: 0;
+  display: none; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  color: #9ca3af; padding: 4px; border-radius: 6px;
+  transition: color 0.1s, background 0.1s; z-index: 5;
+}
+.sec-wrap:hover .sec-delete { display: flex; }
+.sec-delete:hover { color: #e11d48; background: rgba(225,29,72,0.08); }
+
+
+/* Inline utility buttons inside WYSIWYG (add row, etc.) */
+.wysiwyg-util-row {
+  display: flex; gap: 4px; margin-top: 4px;
+}
+.wysiwyg-util-row button {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.7rem; padding: 0.18rem 0.5rem;
+  border-radius: 6px; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #374151; cursor: pointer;
+  transition: background 0.1s;
+}
+.wysiwyg-util-row button:hover  { background: #f3f4f6; }
+.wysiwyg-util-row button.danger { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
+.wysiwyg-util-row button.danger:hover { background: #ffe4e6; }
+
+/* Lang picker pills */
+.lang-picker { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+.lang-picker span { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #9ca3af; margin-right: 4px; }
+.lang-picker button {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem; padding: 0.08rem 0.35rem;
+  border-radius: 3px; cursor: pointer;
+  border: 1px solid transparent; background: transparent;
+  color: #6b7280; transition: color 0.1s, border-color 0.1s;
+}
+.lang-picker button:hover  { color: #111827; }
+.lang-picker button.active { color: #2563eb; border-color: #2563eb; font-weight: 700; }
+
+/* Inline add-block row — appears at bottom of each section on hover */
+.inline-add-row {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 0 0.1rem;
+  opacity: 0; transition: opacity 0.15s;
+}
+.sec-wrap:hover .inline-add-row,
+.inline-add-row:focus-within { opacity: 1; }
+
+.wysiwyg-add-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.75rem; height: 1.75rem;
+  border-radius: 8px; cursor: pointer;
+  border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.wysiwyg-add-btn:hover { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+
+/* Empty states */
+.wysiwyg-empty {
+  text-align: center; padding: 5rem 2rem; color: #9ca3af;
+}
+.wysiwyg-empty strong {
+  display: block; font-size: 1.1rem; color: #6b7280; margin-bottom: 0.5rem;
+}
+.section-empty {
+  font-size: 0.8rem; color: #bbb; font-style: italic;
+  padding: 0.4rem 0 0.2rem; margin: 0;
+}
