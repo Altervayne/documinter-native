@@ -15,20 +15,20 @@
 
 /* Page header */
 .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e5e7eb; }
-.doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #2563eb; margin-bottom: 0.4rem; }
+.doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--doc-accent, var(--color-accent)); margin-bottom: 0.4rem; }
 .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: #111827; }
 .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #6b7280; display: flex; gap: 1.5rem; flex-wrap: wrap; }
 
 /* Section */
 .doc-render .doc-section   { margin-bottom: 3.5rem; }
-.doc-render h2             { font-size: 1.2rem; font-weight: 600; color: #111827; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; border-left: 3px solid var(--color-accent); padding-left: 0.75rem; }
+.doc-render h2             { font-size: 1.2rem; font-weight: 600; color: #111827; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb; border-left: 3px solid var(--doc-accent, var(--color-accent)); padding-left: 0.75rem; }
 .doc-render h3             { font-size: 0.95rem; font-weight: 600; color: #111827; margin: 1.75rem 0 0.6rem; }
 .doc-render h4             { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; margin: 1.25rem 0 0.4rem; }
 .doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: #374151; }
 .doc-render hr             { border: none; border-top: 1px solid #e5e7eb; margin: 3rem 0; }
 
 /* Inline code */
-.doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: #eff6ff; color: #2563eb; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid #dbeafe; }
+.doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, #fff); color: var(--doc-accent, var(--color-accent)); padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--doc-accent, var(--color-accent)) 28%, #fff); }
 
 /* Code block */
 .doc-render pre            { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; cursor: text; }
@@ -53,12 +53,12 @@
 /* Lists */
 .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
 .doc-render li             { margin-bottom: 0.3rem; color: #374151; }
-.doc-render li::marker     { color: #2563eb; }
+.doc-render li::marker     { color: var(--doc-accent, var(--color-accent)); }
 
 /* Contenteditable hover/focus */
 .doc-render [contenteditable] { outline: none; border-radius: 3px; transition: background 0.1s, box-shadow 0.1s; }
-.doc-render [contenteditable]:hover { background: rgba(37,99,235,0.04); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
-.doc-render [contenteditable]:focus { background: rgba(37,99,235,0.06); box-shadow: 0 0 0 2px rgba(37,99,235,0.3); }
+.doc-render [contenteditable]:hover { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 5%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 14%, transparent); }
+.doc-render [contenteditable]:focus { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 8%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 32%, transparent); }
 
 /* Syntax token colors — WinDev IDE convention:
    keywords=blue, strings=dark-red, comments=green, types=teal */
@@ -170,7 +170,7 @@
   color: #6b7280; transition: color 0.1s, border-color 0.1s;
 }
 .lang-picker button:hover  { color: #111827; }
-.lang-picker button.active { color: #2563eb; border-color: #2563eb; font-weight: 700; }
+.lang-picker button.active { color: var(--doc-accent, var(--color-accent)); border-color: var(--doc-accent, var(--color-accent)); font-weight: 700; }
 
 /* Inline add-block row — appears at bottom of each section on hover */
 .inline-add-row {
@@ -188,7 +188,7 @@
   border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.wysiwyg-add-btn:hover { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+.wysiwyg-add-btn:hover { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, #fff); color: var(--doc-accent, var(--color-accent)); border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 30%, #fff); }
 
 /* Empty states */
 .wysiwyg-empty {
@@ -201,3 +201,72 @@
   font-size: 0.8rem; color: #bbb; font-style: italic;
   padding: 0.4rem 0 0.2rem; margin: 0;
 }
+
+/* ── Dark document (paper) mode ─────────────────────────────────────────────
+   Applied by adding the .doc-dark class to the card container.
+   These overrides mirror the dark theme in lib/export.ts getColors('dark').
+──────────────────────────────────────────────────────────────────────────── */
+.doc-dark .doc-render             { color: #e6edf3; }
+.doc-dark .doc-render h1          { color: #e6edf3; }
+.doc-dark .doc-render h2          { color: #e6edf3; border-bottom-color: #30363d; }
+.doc-dark .doc-render h3          { color: #e6edf3; }
+.doc-dark .doc-render h4          { color: #8b949e; }
+.doc-dark .doc-render p           { color: #c9d1d9; }
+.doc-dark .doc-render .page-header { border-bottom-color: #30363d; }
+.doc-dark .doc-render .page-meta  { color: #8b949e; }
+.doc-dark .doc-render hr          { border-top-color: #30363d; }
+
+/* Inline code */
+.doc-dark .doc-render code        { background: rgba(56,139,253,0.12); color: #79c0ff; border-color: rgba(56,139,253,0.28); }
+
+/* Code block */
+.doc-dark .doc-render pre         { background: #0d1117; border-color: #21262d; }
+.doc-dark .doc-render pre code    { color: #c9d1d9; }
+.doc-dark .doc-render pre [contenteditable] { color: #c9d1d9; }
+
+/* Callouts */
+.doc-dark .doc-render .callout          { color: #c9d1d9; }
+.doc-dark .doc-render .callout.info     { background: #051d40; border-color: #388bfd; }
+.doc-dark .doc-render .callout.valid    { background: #031a12; border-color: #3fb950; }
+.doc-dark .doc-render .callout.warning  { background: #2a1700; border-color: #d29922; }
+.doc-dark .doc-render .callout.danger   { background: #1f0a0a; border-color: #f85149; }
+
+/* Table */
+.doc-dark .doc-render .table-wrap { border-color: #30363d; }
+.doc-dark .doc-render th          { background: #0d1117; color: #8b949e; border-bottom-color: #30363d; }
+.doc-dark .doc-render td          { border-bottom-color: #30363d; color: #c9d1d9; }
+.doc-dark .doc-render tbody tr:hover td { background: #1c2128; }
+
+/* Lists */
+.doc-dark .doc-render li          { color: #c9d1d9; }
+.doc-dark .doc-render li::marker  { color: #79c0ff; }
+
+/* Syntax tokens */
+.doc-dark .tok-kw   { color: #ff7b72; }
+.doc-dark .tok-str  { color: #a5d6ff; }
+.doc-dark .tok-cmt  { color: #8b949e; }
+.doc-dark .tok-num  { color: #f0883e; }
+.doc-dark .tok-fn   { color: #d2a8ff; }
+.doc-dark .tok-op   { color: #8b949e; }
+.doc-dark .tok-type { color: #76e3ea; }
+
+/* Contenteditable in dark doc */
+.doc-dark .doc-render [contenteditable]:hover { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 8%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent); }
+.doc-dark .doc-render [contenteditable]:focus  { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 36%, transparent); }
+
+/* Wysiwyg buttons inside dark doc */
+.doc-dark .wysiwyg-add-btn        { border-color: #30363d; background: #1c2128; color: #8b949e; }
+.doc-dark .wysiwyg-add-btn:hover  { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 15%, #1c2128); color: var(--doc-accent, var(--color-accent)); border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 40%, #30363d); }
+.doc-dark .lang-picker button     { color: #8b949e; }
+.doc-dark .lang-picker button:hover { color: #e6edf3; }
+.doc-dark .lang-picker button.active { color: var(--doc-accent, var(--color-accent)); border-color: var(--doc-accent, var(--color-accent)); }
+.doc-dark .blk-drag-handle        { color: #484f58; }
+.doc-dark .blk-drag-handle:hover  { color: #8b949e; }
+.doc-dark .sec-drag-handle        { color: #484f58; }
+.doc-dark .sec-drag-handle:hover  { color: #8b949e; }
+.doc-dark .blk-delete             { color: #484f58; }
+.doc-dark .sec-delete             { color: #484f58; }
+.doc-dark .wysiwyg-util-row button { background: #1c2128; border-color: #30363d; color: #c9d1d9; }
+.doc-dark .wysiwyg-util-row button:hover { background: #21262d; }
+.doc-dark .wysiwyg-util-row button.danger { background: #1f0a0a; border-color: #f8514960; color: #f85149; }
+.doc-dark .section-empty          { color: #484f58; }

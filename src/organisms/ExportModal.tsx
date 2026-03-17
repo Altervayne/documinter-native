@@ -17,13 +17,15 @@ const ACCENT_PRESETS = [
 interface ExportModalProps {
   meta: DocMeta
   sections: Section[]
+  defaultTheme:  'light' | 'dark'
+  defaultAccent: string
   onClose: () => void
   onToast: (msg: string) => void
 }
 
-export function ExportModal({ meta, sections, onClose, onToast }: ExportModalProps) {
-  const [theme, setTheme]   = useState<'light' | 'dark'>('light')
-  const [accent, setAccent] = useState('#f97316')
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, onClose, onToast }: ExportModalProps) {
+  const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
+  const [accent, setAccent] = useState(defaultAccent)
 
   const opts: ExportOptions = { theme, accent }
 

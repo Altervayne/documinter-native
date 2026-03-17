@@ -2,20 +2,40 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg:      #0f0d0b;
-  --color-raised:  #171410;
-  --color-el:      #1f1b16;
-  --color-border:  #2e271e;
-  --color-accent:  #f97316;
+  /* ── Dark theme defaults (mint) ────────────────────────────────────────── */
+  --color-bg:      #0a0f0d;
+  --color-raised:  #111a17;
+  --color-el:      #182420;
+  --color-border:  #243830;
+  --color-accent:  #2dcea8;
+  --color-text:    #dff0eb;
+  --color-muted:   #5c7a6d;
+  --color-canvas:  #0d1a15;
+
+  /* ── Semantic colors (dark) ─────────────────────────────────────────────── */
   --color-green:   #86efac;
   --color-yellow:  #fcd34d;
   --color-red:     #f87171;
-  --color-text:    #f9f4ee;
-  --color-muted:   #857568;
-  --color-canvas:  #eef1f5;
 
+  /* ── Typography ─────────────────────────────────────────────────────────── */
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'Inter', sans-serif;
+}
+
+/* ── Light theme overrides ──────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  --color-bg:      #f2faf6;
+  --color-raised:  #ffffff;
+  --color-el:      #e6f5ee;
+  --color-border:  #c0ddd1;
+  --color-accent:  #0c9a76;
+  --color-text:    #152b21;
+  --color-muted:   #587a6c;
+  --color-canvas:  #e2f0ea;
+
+  --color-green:   #166534;
+  --color-yellow:  #92400e;
+  --color-red:     #b91c1c;
 }
 
 @layer base {

@@ -6,8 +6,10 @@ import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, Po
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 interface WysiwygAreaProps {
-  meta:     DocMeta
-  sections: Section[]
+  meta:       DocMeta
+  sections:   Section[]
+  docTheme:   'light' | 'dark'
+  docAccent:  string
   onUpdateMeta:  (patch: Partial<DocMeta>) => void
   onUpdateTitle: (secId: number, title: string) => void
   onUpdateBlock: (secId: number, blkId: number, patch: Partial<Block>) => void
@@ -24,7 +26,7 @@ interface WysiwygAreaProps {
 }
 
 export function WysiwygArea({
-  meta, sections,
+  meta, sections, docTheme, docAccent,
   onUpdateMeta, onUpdateTitle, onUpdateBlock,
   onAddBlock, onRemoveSec, onRemoveBlk,
   onAddListItem, onRemoveLastItem,
@@ -43,7 +45,14 @@ export function WysiwygArea({
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ background: 'var(--color-canvas)' }}>
-      <div className="max-w-215 mx-auto my-8 bg-white shadow-lg rounded-sm border-t-4 border-accent">
+      <div
+        className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
+        style={{
+          background: docTheme === 'dark' ? '#161b22' : '#ffffff',
+          borderTopColor: docAccent,
+          '--doc-accent': docAccent,
+        } as React.CSSProperties}
+      >
       <div className="doc-render">
         {/* Page header */}
         <div className="page-header">
@@ -87,7 +96,7 @@ export function WysiwygArea({
         {sections.length === 0 && (
           <div className="wysiwyg-empty">
             <strong>Nothing here yet.</strong>
-            Click <code style={{ background: '#eff6ff', color: '#2563eb', padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ Section</code> in the left panel to get started.
+            Click <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, ${docTheme === 'dark' ? '#161b22' : '#fff'})`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ Section</code> in the left panel to get started.
           </div>
         )}
 

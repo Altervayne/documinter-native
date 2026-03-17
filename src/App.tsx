@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import type { Block, BlockType, DocMeta, DocState, Section } from './types'
 import { mkBlock, mkSection, resetCounters } from './lib/state'
@@ -32,6 +32,20 @@ export default function App() {
   const [sections, setSections] = useState<Section[]>(() => [mkSection()])
   const [meta, setMeta]         = useState<DocMeta>(EMPTY_META)
   const [panelOpen, setPanelOpen] = useState(true)
+
+  // Theme
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('documint-theme') as 'dark' | 'light') ?? 'dark'
+  )
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('documint-theme', theme)
+  }, [theme])
+  const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [])
+
+  // Document appearance (independent of app theme)
+  const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
+  const [docAccent, setDocAccent] = useState('#2dcea8')
 
   // Toast + undo
   const [toast, setToast]         = useState('')
@@ -237,13 +251,21 @@ export default function App() {
       <Topbar
         meta={meta}
         sections={sections}
+        theme={theme}
+        docTheme={docTheme}
+        docAccent={docAccent}
         onLoad={handleLoad}
         onToast={msg => showToast(msg)}
+        onToggleTheme={toggleTheme}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Panel
           open={panelOpen}
+          docTheme={docTheme}
+          docAccent={docAccent}
+          onDocThemeChange={setDocTheme}
+          onDocAccentChange={setDocAccent}
           onToggle={() => setPanelOpen(o => !o)}
           sections={sections}
           onAddSection={addSection}
@@ -262,6 +284,8 @@ export default function App() {
         <WysiwygArea
           meta={meta}
           sections={sections}
+          docTheme={docTheme}
+          docAccent={docAccent}
           onUpdateMeta={handleMetaChange}
           onUpdateTitle={updateSecTitle}
           onUpdateBlock={updateBlock}

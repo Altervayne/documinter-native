@@ -4,16 +4,20 @@ import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
 import { downloadJSON, loadJSONFile } from '../lib/saveload'
 import type { DocState } from '../types'
-import { Upload, Save, Download } from 'lucide-react'
+import { Upload, Save, Download, Sun, Moon } from 'lucide-react'
 
 interface TopbarProps {
   meta: DocMeta
   sections: Section[]
+  theme: 'dark' | 'light'
+  docTheme: 'light' | 'dark'
+  docAccent: string
   onLoad: (state: DocState) => void
   onToast: (msg: string) => void
+  onToggleTheme: () => void
 }
 
-export function Topbar({ meta, sections, onLoad, onToast }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onToast, onToggleTheme }: TopbarProps) {
   const [exportOpen, setExportOpen] = useState(false)
 
   function handleDownloadJSON() {
@@ -46,6 +50,9 @@ export function Topbar({ meta, sections, onLoad, onToast }: TopbarProps) {
           <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />Load</Button>
           <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />Save</Button>
           <div className="w-px h-5 bg-border mx-1" />
+          <Button variant="ghost" size="icon" onClick={onToggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </Button>
           <Button variant="primary" onClick={() => setExportOpen(true)}><Download size={14} />Export</Button>
         </div>
       </header>
@@ -54,6 +61,8 @@ export function Topbar({ meta, sections, onLoad, onToast }: TopbarProps) {
         <ExportModal
           meta={meta}
           sections={sections}
+          defaultTheme={docTheme}
+          defaultAccent={docAccent}
           onClose={() => setExportOpen(false)}
           onToast={onToast}
         />
