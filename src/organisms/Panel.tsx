@@ -54,15 +54,15 @@ export function Panel({
   if (!open) {
     return (
       <aside
-        className="w-10 shrink-0 bg-raised border-r border-border border-t-2 border-t-accent/30 flex flex-col items-center pt-3 h-full overflow-hidden"
+        className="w-10 shrink-0 bg-raised border-r border-border border-t-2 border-t-accent/30 flex flex-col items-center pt-2 h-full overflow-hidden"
         style={{ transition: 'width 0.2s ease' }}
       >
         <button
           onClick={onToggle}
           title="Open panel"
-          className="text-muted hover:text-accent p-2 rounded hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+          className="text-muted hover:text-accent p-2.5 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
         >
-          <PanelLeftOpen size={16} />
+          <PanelLeftOpen size={20} />
         </button>
       </aside>
     )
@@ -73,13 +73,16 @@ export function Panel({
       className="w-80 shrink-0 bg-raised border-r border-border border-t-2 border-t-accent/30 flex flex-col h-full overflow-hidden"
       style={{ transition: 'width 0.2s ease' }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Structure</span>
-        <div className="flex items-center gap-2">
-          <Button variant="primary" size="sm" onClick={onAddSection}><Plus size={13} />Section</Button>
-          <Button variant="ghost" size="sm" onClick={onToggle} title="Collapse panel"><PanelLeftClose size={14} /></Button>
-        </div>
+      {/* Menu header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
+        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Menu</span>
+        <button
+          onClick={onToggle}
+          title="Collapse panel"
+          className="text-muted hover:text-accent p-2 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+        >
+          <PanelLeftClose size={20} />
+        </button>
       </div>
 
       {/* Appearance */}
@@ -141,6 +144,12 @@ export function Panel({
           <ColorPicker value={docAccent} onChange={onDocAccentChange} />
         )}
         </div>}
+      </div>
+
+      {/* Structure header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Structure</span>
+        <Button variant="primary" size="sm" onClick={onAddSection}><Plus size={13} />Section</Button>
       </div>
 
       {/* Scrollable list */}

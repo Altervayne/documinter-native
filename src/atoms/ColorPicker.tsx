@@ -178,37 +178,78 @@ interface ColorPickerProps {
 export function ColorPicker({ value, onChange }: ColorPickerProps) {
   const [mode, setMode] = useState<ColorMode>('hex')
 
-  const rgb     = hexToRgb(value) ?? [249, 115, 22]
-  const [r, g, b] = rgb
-  const [h, s, v] = rgbToHsv(r, g, b)
-  const [hl, sl, l] = rgbToHsl(r, g, b)
-  const [c, m, y, k] = rgbToCmyk(r, g, b)
-  const pureHue = rgbToHex(...hsvToRgb(h, 100, 100))
+  // ── Internal RGB state ───────────────────────────────────────────────────────
+  // Source of truth. Avoids the prop→hex→derive feedback loop that causes
+  // degenerate color conversions (e.g. hsl(*, *, 100%) always → [0,0,100]).
+  const emittedHex = useRef(value)
+  const [rgb, setRgb] = useState<[number, number, number]>(() => hexToRgb(value) ?? [249, 115, 22])
 
-  // SV square refs
+  const [r, g, b]          = rgb
+  const [, hsvS, hsvV] = rgbToHsv(r, g, b)
+  const [,, hslL]          = rgbToHsl(r, g, b)
+  const [c, m, y, k]       = rgbToCmyk(r, g, b)
+
+  // ── Sticky refs ──────────────────────────────────────────────────────────────
+  // Preserve hue/saturation through degenerate colors (black, white, gray).
+  // Only updated explicitly in onChange handlers and on external value changes —
+  // never from derived RGB round-trips, which introduce rounding drift.
+  const sHsvH  = useRef(rgbToHsv(r, g, b)[0])
+  const sHslH  = useRef(rgbToHsl(r, g, b)[0])
+  const sHslS  = useRef(rgbToHsl(r, g, b)[1])
+  const sCmykC = useRef(c)
+  const sCmykM = useRef(m)
+  const sCmykY = useRef(y)
+
+  // Only sync from external prop changes, not our own emissions.
+  // Also update sticky refs from the new external color.
+  useEffect(() => {
+    if (value !== emittedHex.current) {
+      const parsed = hexToRgb(value)
+      if (parsed) {
+        setRgb(parsed)
+        const [nh, ns, nv] = rgbToHsv(...parsed)
+        const [nlh, nls, nll] = rgbToHsl(...parsed)
+        const [nc, nm, ny, nk] = rgbToCmyk(...parsed)
+        if (ns > 0 && nv > 0) sHsvH.current = nh
+        if (nll > 0 && nll < 100) { sHslH.current = nlh; if (nls > 0) sHslS.current = nls }
+        if (nk < 100) { sCmykC.current = nc; sCmykM.current = nm; sCmykY.current = ny }
+      }
+    }
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pureHue = rgbToHex(...hsvToRgb(sHsvH.current, 100, 100))
+
+  function emit(newRgb: [number, number, number]) {
+    const hex = rgbToHex(...newRgb)
+    emittedHex.current = hex
+    setRgb(newRgb)
+    onChange(hex)
+  }
+
+  // ── SV square & hue bar ──────────────────────────────────────────────────────
   const svRef  = useRef<HTMLDivElement>(null)
   const hueRef = useRef<HTMLDivElement>(null)
 
-  // Hex input local state
-  const [hexRaw, setHexRaw] = useState(value.replace('#', ''))
-  useEffect(() => { setHexRaw(value.replace('#', '')) }, [value])
-
   function pickSV(e: React.PointerEvent<HTMLDivElement>) {
-    const el = svRef.current
-    if (!el) return
+    const el = svRef.current; if (!el) return
     const rect = el.getBoundingClientRect()
     const ns = Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left)  / rect.width))  * 100)
     const nv = Math.round(Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height)) * 100)
-    onChange(rgbToHex(...hsvToRgb(h, ns, nv)))
+    emit(hsvToRgb(sHsvH.current, ns, nv))
   }
 
   function pickHue(e: React.PointerEvent<HTMLDivElement>) {
-    const el = hueRef.current
-    if (!el) return
+    const el = hueRef.current; if (!el) return
     const rect = el.getBoundingClientRect()
     const nh = Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 360)
-    onChange(rgbToHex(...hsvToRgb(nh, s, v)))
+    sHsvH.current = nh
+    emit(hsvToRgb(nh, hsvS, hsvV))
   }
+
+  // ── Hex input ────────────────────────────────────────────────────────────────
+  const currentHex = rgbToHex(r, g, b)
+  const [hexRaw, setHexRaw] = useState(currentHex.replace('#', ''))
+  useEffect(() => { setHexRaw(currentHex.replace('#', '')) }, [currentHex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col gap-2.5 select-none">
@@ -226,11 +267,11 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       >
         <div
           className="absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white pointer-events-none"
-          style={{ left: `${s}%`, top: `${100 - v}%`, boxShadow: '0 0 0 1px rgba(0,0,0,0.35)' }}
+          style={{ left: `${hsvS}%`, top: `${100 - hsvV}%`, boxShadow: '0 0 0 1px rgba(0,0,0,0.35)' }}
         />
       </div>
 
-      {/* ── Hue slider ────────────────────────────────────────────────────── */}
+      {/* ── Hue bar ───────────────────────────────────────────────────────── */}
       <div
         ref={hueRef}
         className="relative w-full h-3 rounded-full cursor-pointer touch-none"
@@ -240,7 +281,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       >
         <div
           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 border-white pointer-events-none"
-          style={{ left: `${(h / 360) * 100}%`, background: pureHue, boxShadow: '0 0 0 1px rgba(0,0,0,0.35)' }}
+          style={{ left: `${(sHsvH.current / 360) * 100}%`, background: pureHue, boxShadow: '0 0 0 1px rgba(0,0,0,0.35)' }}
         />
       </div>
 
@@ -263,7 +304,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
 
         {mode === 'hex' && (
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md border border-border/60 shrink-0" style={{ background: value }} />
+            <div className="w-7 h-7 rounded-md border border-border/60 shrink-0" style={{ background: currentHex }} />
             <div className="flex items-center flex-1 bg-bg border border-border rounded-lg px-2.5 py-1.5 gap-1">
               <span className="text-xs text-muted font-mono">#</span>
               <input
@@ -272,7 +313,10 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
                 onChange={e => {
                   const cleaned = e.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 6)
                   setHexRaw(cleaned)
-                  if (cleaned.length === 6) onChange('#' + cleaned)
+                  if (cleaned.length === 6) {
+                    const parsed = hexToRgb('#' + cleaned)
+                    if (parsed) emit(parsed)
+                  }
                 }}
                 maxLength={6}
                 spellCheck={false}
@@ -287,44 +331,44 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
           <>
             <ChannelRow label="R" labelColor="#e55" value={r} min={0} max={255}
               gradient={`linear-gradient(to right, rgb(0,${g},${b}), rgb(255,${g},${b}))`}
-              onChange={v => onChange(rgbToHex(v, g, b))} />
+              onChange={v => emit([v, g, b])} />
             <ChannelRow label="G" labelColor="#5a5" value={g} min={0} max={255}
               gradient={`linear-gradient(to right, rgb(${r},0,${b}), rgb(${r},255,${b}))`}
-              onChange={v => onChange(rgbToHex(r, v, b))} />
+              onChange={v => emit([r, v, b])} />
             <ChannelRow label="B" labelColor="#59f" value={b} min={0} max={255}
               gradient={`linear-gradient(to right, rgb(${r},${g},0), rgb(${r},${g},255))`}
-              onChange={v => onChange(rgbToHex(r, g, v))} />
+              onChange={v => emit([r, g, v])} />
           </>
         )}
 
         {mode === 'hsl' && (
           <>
-            <ChannelRow label="H" labelColor="#aaa" value={hl} min={0} max={360}
+            <ChannelRow label="H" labelColor="#aaa" value={sHslH.current} min={0} max={360}
               gradient="linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)"
-              onChange={v => onChange(rgbToHex(...hslToRgb(v, sl, l)))} />
-            <ChannelRow label="S" labelColor="#aaa" value={sl} min={0} max={100}
-              gradient={`linear-gradient(to right, hsl(${hl},0%,${l}%), hsl(${hl},100%,${l}%))`}
-              onChange={v => onChange(rgbToHex(...hslToRgb(hl, v, l)))} />
-            <ChannelRow label="L" labelColor="#aaa" value={l} min={0} max={100}
-              gradient={`linear-gradient(to right, hsl(${hl},${sl}%,0%), hsl(${hl},${sl}%,50%), hsl(${hl},${sl}%,100%))`}
-              onChange={v => onChange(rgbToHex(...hslToRgb(hl, sl, v)))} />
+              onChange={v => { sHslH.current = v; emit(hslToRgb(v, sHslS.current, hslL)) }} />
+            <ChannelRow label="S" labelColor="#aaa" value={sHslS.current} min={0} max={100}
+              gradient={`linear-gradient(to right, hsl(${sHslH.current},0%,${hslL}%), hsl(${sHslH.current},100%,${hslL}%))`}
+              onChange={v => { sHslS.current = v; emit(hslToRgb(sHslH.current, v, hslL)) }} />
+            <ChannelRow label="L" labelColor="#aaa" value={hslL} min={0} max={100}
+              gradient={`linear-gradient(to right, hsl(${sHslH.current},${sHslS.current}%,0%), hsl(${sHslH.current},${sHslS.current}%,50%), hsl(${sHslH.current},${sHslS.current}%,100%))`}
+              onChange={v => emit(hslToRgb(sHslH.current, sHslS.current, v))} />
           </>
         )}
 
         {mode === 'cmyk' && (
           <>
             <ChannelRow label="C" labelColor="#22c8d8" value={c} min={0} max={100}
-              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(0,m,y,k))}, ${rgbToHex(...cmykToRgb(100,m,y,k))})`}
-              onChange={v => onChange(rgbToHex(...cmykToRgb(v, m, y, k)))} />
+              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(0,sCmykM.current,sCmykY.current,k))}, ${rgbToHex(...cmykToRgb(100,sCmykM.current,sCmykY.current,k))})`}
+              onChange={v => { sCmykC.current = v; emit(cmykToRgb(v, sCmykM.current, sCmykY.current, k)) }} />
             <ChannelRow label="M" labelColor="#e840a0" value={m} min={0} max={100}
-              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(c,0,y,k))}, ${rgbToHex(...cmykToRgb(c,100,y,k))})`}
-              onChange={v => onChange(rgbToHex(...cmykToRgb(c, v, y, k)))} />
+              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(sCmykC.current,0,sCmykY.current,k))}, ${rgbToHex(...cmykToRgb(sCmykC.current,100,sCmykY.current,k))})`}
+              onChange={v => { sCmykM.current = v; emit(cmykToRgb(sCmykC.current, v, sCmykY.current, k)) }} />
             <ChannelRow label="Y" labelColor="#c8b800" value={y} min={0} max={100}
-              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(c,m,0,k))}, ${rgbToHex(...cmykToRgb(c,m,100,k))})`}
-              onChange={v => onChange(rgbToHex(...cmykToRgb(c, m, v, k)))} />
+              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(sCmykC.current,sCmykM.current,0,k))}, ${rgbToHex(...cmykToRgb(sCmykC.current,sCmykM.current,100,k))})`}
+              onChange={v => { sCmykY.current = v; emit(cmykToRgb(sCmykC.current, sCmykM.current, v, k)) }} />
             <ChannelRow label="K" labelColor="#888" value={k} min={0} max={100}
-              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(c,m,y,0))}, ${rgbToHex(...cmykToRgb(c,m,y,100))})`}
-              onChange={v => onChange(rgbToHex(...cmykToRgb(c, m, y, v)))} />
+              gradient={`linear-gradient(to right, ${rgbToHex(...cmykToRgb(sCmykC.current,sCmykM.current,sCmykY.current,0))}, ${rgbToHex(...cmykToRgb(sCmykC.current,sCmykM.current,sCmykY.current,100))})`}
+              onChange={v => emit(cmykToRgb(sCmykC.current, sCmykM.current, sCmykY.current, v))} />
           </>
         )}
 
