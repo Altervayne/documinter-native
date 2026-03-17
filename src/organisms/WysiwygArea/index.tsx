@@ -4,6 +4,7 @@ import { ContentEditable } from '../../atoms/ContentEditable'
 import { WysiwygSection } from './WysiwygSection'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useLang } from '../../lib/LangContext'
 
 interface WysiwygAreaProps {
   meta:       DocMeta
@@ -33,6 +34,7 @@ export function WysiwygArea({
   onAddTableRow, onRemoveLastRow, onAddTableCol,
   onReorderSections, onReorderBlocks,
 }: WysiwygAreaProps) {
+  const { t } = useLang()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   function handleDragEnd(event: DragEndEvent) {
@@ -59,33 +61,37 @@ export function WysiwygArea({
           <ContentEditable
             tag="div"
             className="page-module"
-            content={meta.module || 'COL_Module'}
+            content={meta.module || t.placeholderModule}
             onBlur={v => onUpdateMeta({ module: v.trim() })}
           />
           <ContentEditable
             tag="h1"
-            content={meta.title || 'Documentation'}
+            content={meta.title || t.placeholderTitle}
             onBlur={v => onUpdateMeta({ title: v.trim() })}
           />
           <div className="page-meta">
             <ContentEditable
               tag="span"
-              content={meta.env || 'Environment'}
+              content={meta.env || t.placeholderEnv}
               onBlur={v => onUpdateMeta({ env: v.trim() })}
             />
             <ContentEditable
               tag="span"
-              content={meta.date ? `Updated: ${meta.date}` : 'Date'}
+              content={meta.date ? `${t.prefixUpdated} ${meta.date}` : t.placeholderDate}
               onBlur={v => {
-                const stripped = v.replace(/^Updated:\s*/i, '').trim()
+                const stripped = v.startsWith(t.prefixUpdated)
+                  ? v.slice(t.prefixUpdated.length).trim()
+                  : v.replace(/^[^:]+:\s*/, '').trim() || v.trim()
                 onUpdateMeta({ date: stripped })
               }}
             />
             <ContentEditable
               tag="span"
-              content={meta.author ? `Author: ${meta.author}` : 'Author'}
+              content={meta.author ? `${t.prefixAuthor} ${meta.author}` : t.placeholderAuthor}
               onBlur={v => {
-                const stripped = v.replace(/^Author:\s*/i, '').trim()
+                const stripped = v.startsWith(t.prefixAuthor)
+                  ? v.slice(t.prefixAuthor.length).trim()
+                  : v.replace(/^[^:]+:\s*/, '').trim() || v.trim()
                 onUpdateMeta({ author: stripped })
               }}
             />
@@ -95,8 +101,8 @@ export function WysiwygArea({
         {/* Empty state */}
         {sections.length === 0 && (
           <div className="wysiwyg-empty">
-            <strong>Nothing here yet.</strong>
-            Click <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, ${docTheme === 'dark' ? '#161b22' : '#fff'})`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ Section</code> in the left panel to get started.
+            <strong>{t.nothingYet}</strong>
+            <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, ${docTheme === 'dark' ? '#161b22' : '#fff'})`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ {t.addSection}</code> {t.nothingYetHint}
           </div>
         )}
 

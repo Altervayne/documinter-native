@@ -10,7 +10,7 @@ export function downloadJSON(meta: DocMeta, sections: Section[]): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = slugify(meta.title) + '.documint.json'
+  a.download = slugify(meta.title) + '.documinter.json'
   a.click()
   URL.revokeObjectURL(url)
 }

@@ -7,6 +7,7 @@ import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, Po
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, GripVertical, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useLang } from '../../lib/LangContext'
 
 interface WysiwygSectionProps {
   section:    Section
@@ -24,14 +25,14 @@ interface WysiwygSectionProps {
   onReorderBlocks: (oldIdx: number, newIdx: number) => void
 }
 
-const BLOCK_BUTTONS: { type: BlockType; icon: LucideIcon; label: string }[] = [
-  { type: 'p',       icon: AlignLeft, label: 'Paragraph' },
-  { type: 'h3',      icon: Heading3,  label: 'Heading 3' },
-  { type: 'h4',      icon: Heading4,  label: 'Heading 4' },
-  { type: 'callout', icon: Info,      label: 'Callout'   },
-  { type: 'code',    icon: Code2,     label: 'Code block'},
-  { type: 'list',    icon: List,      label: 'List'      },
-  { type: 'table',   icon: Table,     label: 'Table'     },
+const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
+  { type: 'p',       icon: AlignLeft },
+  { type: 'h3',      icon: Heading3  },
+  { type: 'h4',      icon: Heading4  },
+  { type: 'callout', icon: Info      },
+  { type: 'code',    icon: Code2     },
+  { type: 'list',    icon: List      },
+  { type: 'table',   icon: Table     },
 ]
 
 export function WysiwygSection({
@@ -42,6 +43,7 @@ export function WysiwygSection({
   onAddTableRow, onRemoveLastRow, onAddTableCol,
   onReorderBlocks,
 }: WysiwygSectionProps) {
+  const { t } = useLang()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
@@ -66,7 +68,7 @@ export function WysiwygSection({
     <div ref={setNodeRef} style={style} className="sec-wrap" {...attributes}>
 
       {/* Drag handle — lives in the left padding gutter, full-height easy target */}
-      <div {...listeners} className="sec-drag-handle" title="Drag to reorder section">
+      <div {...listeners} className="sec-drag-handle" title={t.dragSection}>
         <GripVertical size={16} />
       </div>
 
@@ -74,7 +76,7 @@ export function WysiwygSection({
       <div className="doc-section">
 
         {/* Delete — appears top-right on hover */}
-        <button className="sec-delete" onClick={onRemoveSec} title="Delete section">
+        <button className="sec-delete" onClick={onRemoveSec} title={t.deleteSection}>
           <Trash2 size={14} />
         </button>
 
@@ -85,7 +87,7 @@ export function WysiwygSection({
         />
 
         {section.blocks.length === 0 && (
-          <p className="section-empty">No blocks yet — add one below ↓</p>
+          <p className="section-empty">{t.noBlocks}</p>
         )}
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -109,17 +111,23 @@ export function WysiwygSection({
 
         {/* Inline add block row */}
         <div className="inline-add-row">
-          <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>add</span>
-          {BLOCK_BUTTONS.map(({ type, icon: Icon, label }) => (
-            <button
-              key={type}
-              title={label}
-              className="wysiwyg-add-btn"
-              onClick={() => onAddBlock(type)}
-            >
-              <Icon size={13} />
-            </button>
-          ))}
+          <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.add}</span>
+          {BLOCK_ICONS.map(({ type, icon: Icon }) => {
+            const labels: Record<BlockType, string> = {
+              p: t.blockParagraph, h3: t.blockH3, h4: t.blockH4,
+              callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
+            }
+            return (
+              <button
+                key={type}
+                title={labels[type]}
+                className="wysiwyg-add-btn"
+                onClick={() => onAddBlock(type)}
+              >
+                <Icon size={13} />
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

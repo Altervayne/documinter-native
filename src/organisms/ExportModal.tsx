@@ -4,6 +4,8 @@ import { Button } from '../atoms/Button'
 import { ColorPicker } from '../atoms/ColorPicker'
 import type { DocMeta, Section } from '../types'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
+import type { Lang } from '../lib/i18n'
+import { useLang } from '../lib/LangContext'
 
 const ACCENT_PRESETS = [
   '#f97316', // orange
@@ -19,26 +21,28 @@ interface ExportModalProps {
   sections: Section[]
   defaultTheme:  'light' | 'dark'
   defaultAccent: string
+  lang: Lang
   onClose: () => void
   onToast: (msg: string) => void
 }
 
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, onClose, onToast }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang, onClose, onToast }: ExportModalProps) {
   const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
   const [accent, setAccent] = useState(defaultAccent)
+  const { t } = useLang()
 
-  const opts: ExportOptions = { theme, accent }
+  const opts: ExportOptions = { theme, accent, lang }
 
   function handleDownload() {
     downloadHTML(meta, sections, opts)
-    onToast('Downloaded!')
+    onToast(t.downloaded)
     onClose()
   }
 
   function handleCopy() {
     const html = generateExportHTML(meta, sections, opts)
     navigator.clipboard.writeText(html).then(() => {
-      onToast('HTML copied!')
+      onToast(t.htmlCopied)
       onClose()
     })
   }
@@ -58,7 +62,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, onClo
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-text">Export options</span>
+          <span className="text-sm font-semibold text-text">{t.exportOptions}</span>
           <button
             onClick={onClose}
             className="text-muted hover:text-text transition-colors rounded p-0.5"
@@ -69,19 +73,19 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, onClo
 
         {/* Theme */}
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-xs text-muted uppercase tracking-wider">Theme</span>
+          <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.theme}</span>
           <div className="flex gap-2">
-            {(['light', 'dark'] as const).map(t => (
+            {(['light', 'dark'] as const).map(th => (
               <button
-                key={t}
-                onClick={() => setTheme(t)}
+                key={th}
+                onClick={() => setTheme(th)}
                 className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors capitalize
-                  ${theme === t
+                  ${theme === th
                     ? 'bg-accent/10 border-accent/50 text-accent'
                     : 'border-border text-muted hover:text-text'
                   }`}
               >
-                {t}
+                {th === 'light' ? t.light : t.dark}
               </button>
             ))}
           </div>
@@ -115,10 +119,10 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, onClo
         {/* Actions */}
         <div className="flex gap-2 pt-1">
           <Button variant="ghost" className="flex-1" onClick={handleCopy}>
-            <Copy size={13} />Copy HTML
+            <Copy size={13} />{t.copyHtml}
           </Button>
           <Button variant="primary" className="flex-1" onClick={handleDownload}>
-            <Download size={13} />Download
+            <Download size={13} />{t.download}
           </Button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { highlight, LANG_LABELS } from '../../lib/highlight'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Trash2 } from 'lucide-react'
+import { useLang } from '../../lib/LangContext'
 
 interface WysiwygBlockProps {
   secId: number
@@ -27,6 +28,7 @@ export function WysiwygBlock({
   onAddListItem, onRemoveLastItem,
   onAddTableRow, onRemoveLastRow, onAddTableCol,
 }: WysiwygBlockProps) {
+  const { t } = useLang()
   const [codeEditing, setCodeEditing] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
@@ -105,7 +107,7 @@ export function WysiwygBlock({
           </pre>
         ) : (
           <pre
-            title="Click to edit"
+            title={t.clickToEdit}
             onClick={() => setCodeEditing(true)}
             style={{ cursor: 'text' }}
           >
@@ -132,8 +134,8 @@ export function WysiwygBlock({
           ))}
         </ul>
         <div className="wysiwyg-util-row">
-          <button onClick={onAddListItem}>+ Item</button>
-          <button className="danger" onClick={onRemoveLastItem}>− Last</button>
+          <button onClick={onAddListItem}>{t.addItem}</button>
+          <button className="danger" onClick={onRemoveLastItem}>{t.removeLast}</button>
         </div>
       </>
     )
@@ -181,9 +183,9 @@ export function WysiwygBlock({
           </table>
         </div>
         <div className="wysiwyg-util-row">
-          <button onClick={onAddTableRow}>+ Row</button>
-          <button onClick={onAddTableCol}>+ Col</button>
-          <button className="danger" onClick={onRemoveLastRow}>− Row</button>
+          <button onClick={onAddTableRow}>{t.addRow}</button>
+          <button onClick={onAddTableCol}>{t.addCol}</button>
+          <button className="danger" onClick={onRemoveLastRow}>{t.removeRow}</button>
         </div>
       </>
     )
@@ -191,11 +193,11 @@ export function WysiwygBlock({
 
   return (
     <div ref={setNodeRef} style={style} className="blk-wrap" {...attributes}>
-      <div {...listeners} className="blk-drag-handle" title="Drag to reorder">
+      <div {...listeners} className="blk-drag-handle" title={t.dragToReorder}>
         <GripVertical size={14} />
       </div>
       <div className="blk-content">
-        <button className="blk-delete" onClick={onRemove} title="Delete block">
+        <button className="blk-delete" onClick={onRemove} title={t.deleteBlock}>
           <Trash2 size={13} />
         </button>
         {inner}

@@ -5,6 +5,8 @@ import { ExportModal } from './ExportModal'
 import { downloadJSON, loadJSONFile } from '../lib/saveload'
 import type { DocState } from '../types'
 import { Upload, Save, Download, Sun, Moon } from 'lucide-react'
+import { LogoColor, LogoMono } from '../atoms/Logo'
+import { useLang } from '../lib/LangContext'
 
 interface TopbarProps {
   meta: DocMeta
@@ -19,16 +21,17 @@ interface TopbarProps {
 
 export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onToast, onToggleTheme }: TopbarProps) {
   const [exportOpen, setExportOpen] = useState(false)
+  const { t, lang, setLang } = useLang()
 
   function handleDownloadJSON() {
     downloadJSON(meta, sections)
-    onToast('JSON saved!')
+    onToast(t.jsonSaved)
   }
 
   function handleLoadJSON() {
     loadJSONFile(state => {
       onLoad(state)
-      onToast('Document loaded!')
+      onToast(t.docLoaded)
     })
   }
 
@@ -36,24 +39,40 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onT
     <>
       <header className="h-12 shrink-0 flex items-center justify-between gap-4 px-5 bg-raised border-b border-border z-200">
         {/* Brand */}
-        <span className="font-mono text-sm text-accent font-bold tracking-tight shrink-0 select-none">
-          // documint
-        </span>
+        <div className="flex items-center gap-2 shrink-0 select-none">
+          {theme === 'dark'
+            ? <LogoColor className="h-7 w-auto" />
+            : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
+          }
+          <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
+        </div>
 
         {/* Doc title breadcrumb */}
         <span className="font-mono text-xs text-muted/70 truncate flex-1 text-center select-none">
-          {meta.title || 'Untitled document'}
+          {meta.title || t.untitledDoc}
         </span>
 
         {/* Actions */}
         <div className="flex gap-2 items-center shrink-0">
-          <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />Load</Button>
-          <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />Save</Button>
+          <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />{t.load}</Button>
+          <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />{t.save}</Button>
           <div className="w-px h-5 bg-border mx-1" />
-          <Button variant="ghost" size="icon" onClick={onToggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+          <Button variant="ghost" size="icon" onClick={onToggleTheme} title={theme === 'dark' ? t.toLightMode : t.toDarkMode}>
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </Button>
-          <Button variant="primary" onClick={() => setExportOpen(true)}><Download size={14} />Export</Button>
+          <div className="flex gap-0.5">
+            {(['en', 'fr'] as const).map(l => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                className={`px-2 py-1 rounded-md text-xs font-mono font-semibold uppercase transition-colors border
+                  ${lang === l ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <Button variant="primary" onClick={() => setExportOpen(true)}><Download size={14} />{t.export}</Button>
         </div>
       </header>
 
@@ -63,6 +82,7 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onT
           sections={sections}
           defaultTheme={docTheme}
           defaultAccent={docAccent}
+          lang={lang}
           onClose={() => setExportOpen(false)}
           onToast={onToast}
         />

@@ -5,6 +5,7 @@ import { highlight } from './highlight'
 export interface ExportOptions {
   theme: 'light' | 'dark'
   accent: string
+  lang?: 'en' | 'fr'
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
@@ -239,6 +240,26 @@ function buildStyles(accent: string, c: Colors): string {
         ::-webkit-scrollbar-track { background: ${c.scrollTrack}; }
         ::-webkit-scrollbar-thumb { background: ${c.scrollThumb}; border-radius: 3px; }
 
+        /* Watermark footer */
+        .doc-footer {
+            padding: 1rem 3.5rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.4rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: ${c.textMuted};
+            opacity: 0.35;
+            border-top: 1px solid ${c.border};
+            letter-spacing: 0.04em;
+        }
+        .doc-footer svg {
+            height: 1.2rem;
+            width: auto;
+            flex-shrink: 0;
+        }
+
         @media (max-width: 768px) {
             .sidebar { display: none; }
             .main { margin-left: 0; padding: 1.5rem 1rem; }
@@ -246,8 +267,14 @@ function buildStyles(accent: string, c: Colors): string {
   `
 }
 
+const STRINGS = {
+  en: { updated: 'Updated:', author: 'Author:', fallback: 'Documentation', madeWith: 'Made with Documinter' },
+  fr: { updated: 'Mis à jour :', author: 'Auteur :', fallback: 'Documentation', madeWith: 'Fait avec Documinter' },
+}
+
 export function generateExportHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): string {
-  const { theme, accent } = opts
+  const { theme, accent, lang = 'en' } = opts
+  const s = STRINGS[lang]
   const c = getColors(theme)
   const styles = buildStyles(accent, c)
 
@@ -265,18 +292,18 @@ ${blocksHTML}
   }).join('\n')
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${esc(meta.title) || 'Documentation'}</title>
+    <title>${esc(meta.title) || s.fallback}</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>${styles}    </style>
 </head>
 <body>
 
 <aside class="sidebar">
-    <span class="sidebar-brand">${esc(meta.module) || 'Documentation'}</span>
+    <span class="sidebar-brand">${esc(meta.module) || s.fallback}</span>
     <nav>
 ${navLinks}
     </nav>
@@ -287,15 +314,16 @@ ${navLinks}
         <div class="doc-render">
             <div class="page-header">
                 ${meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''}
-                <h1>${esc(meta.title) || 'Documentation'}</h1>
+                <h1>${esc(meta.title) || s.fallback}</h1>
                 <div class="page-meta">
                     ${meta.env    ? `<span>${esc(meta.env)}</span>` : ''}
-                    ${meta.date   ? `<span>Updated: ${esc(meta.date)}</span>` : ''}
-                    ${meta.author ? `<span>Author: ${esc(meta.author)}</span>` : ''}
+                    ${meta.date   ? `<span>${s.updated} ${esc(meta.date)}</span>` : ''}
+                    ${meta.author ? `<span>${s.author} ${esc(meta.author)}</span>` : ''}
                 </div>
             </div>
             ${sectionsHTML}
         </div>
+        <div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${s.madeWith}</div>
     </div>
 </main>
 

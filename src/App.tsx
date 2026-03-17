@@ -6,6 +6,8 @@ import { Topbar } from './organisms/Topbar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { Toast } from './atoms/Toast'
+import { LangProvider } from './lib/LangContext'
+import { translations, type Lang } from './lib/i18n'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
 
@@ -35,13 +37,20 @@ export default function App() {
 
   // Theme
   const [theme, setTheme] = useState<'dark' | 'light'>(
-    () => (localStorage.getItem('documint-theme') as 'dark' | 'light') ?? 'dark'
+    () => (localStorage.getItem('documinter-theme') as 'dark' | 'light') ?? 'dark'
   )
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    localStorage.setItem('documint-theme', theme)
+    localStorage.setItem('documinter-theme', theme)
   }, [theme])
   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [])
+
+  // Language
+  const [lang, setLang] = useState<Lang>(
+    () => (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
+  )
+  useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
+  const t = translations[lang]
 
   // Document appearance (independent of app theme)
   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
@@ -112,8 +121,8 @@ export default function App() {
       if (!section) return s
       const entry: UndoEntry = { type: 'section', section, sectionIndex: idx }
       setUndoEntry(entry)
-      showToast('Section deleted', {
-        label: 'Undo',
+      showToast(t.sectionDeleted, {
+        label: t.undo,
         onClick: () => {
           setSections(cur => {
             const next = [...cur]
@@ -125,7 +134,7 @@ export default function App() {
       })
       return s.filter(sec => sec.id !== secId)
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   // ── Block mutations ───────────────────────────────────────────────────────
   function mutateSec(secId: number, fn: (sec: Section) => Section) {
@@ -134,14 +143,14 @@ export default function App() {
 
   const addBlock = useCallback((secId: number, type: BlockType) => {
     mutateSec(secId, sec => ({ ...sec, blocks: [...sec.blocks, mkBlock(type)] }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const updateBlock = useCallback((secId: number, blkId: number, patch: Partial<Block>) => {
     mutateSec(secId, sec => ({
       ...sec,
       blocks: sec.blocks.map(b => b.id === blkId ? { ...b, ...patch } : b),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const removeBlk = useCallback((secId: number, blkId: number) => {
     setSections(s => s.map(sec => {
@@ -151,8 +160,8 @@ export default function App() {
       if (!block) return sec
       const entry: UndoEntry = { type: 'block', secId, block, blockIndex: idx }
       setUndoEntry(entry)
-      showToast('Block deleted', {
-        label: 'Undo',
+      showToast(t.blockDeleted, {
+        label: t.undo,
         onClick: () => {
           setSections(cur => cur.map(s2 => {
             if (s2.id !== secId) return s2
@@ -165,25 +174,25 @@ export default function App() {
       })
       return { ...sec, blocks: sec.blocks.filter(b => b.id !== blkId) }
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   const moveBlkUp = useCallback((secId: number, blkId: number) => {
     mutateSec(secId, sec => {
       const i = sec.blocks.findIndex(b => b.id === blkId)
       return { ...sec, blocks: moveItem(sec.blocks, i, i - 1) }
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const moveBlkDown = useCallback((secId: number, blkId: number) => {
     mutateSec(secId, sec => {
       const i = sec.blocks.findIndex(b => b.id === blkId)
       return { ...sec, blocks: moveItem(sec.blocks, i, i + 1) }
     })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const reorderBlocks = useCallback((secId: number, oldIdx: number, newIdx: number) => {
     mutateSec(secId, sec => ({ ...sec, blocks: arrayMove(sec.blocks, oldIdx, newIdx) }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── List helpers ──────────────────────────────────────────────────────────
   const addListItem = useCallback((secId: number, blkId: number) => {
@@ -191,11 +200,11 @@ export default function App() {
       ...sec,
       blocks: sec.blocks.map(b =>
         b.id === blkId && b.type === 'list'
-          ? { ...b, items: [...(b.items ?? []), 'New item'] }
+          ? { ...b, items: [...(b.items ?? []), t.newItem] }
           : b
       ),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   const removeLastItem = useCallback((secId: number, blkId: number) => {
     mutateSec(secId, sec => ({
@@ -206,7 +215,7 @@ export default function App() {
           : b
       ),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Table helpers ─────────────────────────────────────────────────────────
   const addTableRow = useCallback((secId: number, blkId: number) => {
@@ -218,7 +227,7 @@ export default function App() {
           : b
       ),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const removeLastRow = useCallback((secId: number, blkId: number) => {
     mutateSec(secId, sec => ({
@@ -229,7 +238,7 @@ export default function App() {
           : b
       ),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const addTableCol = useCallback((secId: number, blkId: number) => {
     mutateSec(secId, sec => ({
@@ -238,16 +247,16 @@ export default function App() {
         b.id === blkId && b.type === 'table'
           ? {
               ...b,
-              headers: [...(b.headers ?? []), 'Column'],
+              headers: [...(b.headers ?? []), t.newColumn],
               rows: (b.rows ?? []).map(r => [...r, '']),
             }
           : b
       ),
     }))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   return (
-    <>
+    <LangProvider lang={lang} setLang={setLang}>
       <Topbar
         meta={meta}
         sections={sections}
@@ -303,6 +312,6 @@ export default function App() {
       </div>
 
       <Toast message={toast} action={toastAction} onDone={clearToast} />
-    </>
+    </LangProvider>
   )
 }

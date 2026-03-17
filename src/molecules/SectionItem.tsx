@@ -8,6 +8,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { GripVertical, ArrowUp, ArrowDown, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
+import { useLang } from '../lib/LangContext'
 
 interface SectionItemProps {
   section:    Section
@@ -28,6 +29,7 @@ export function SectionItem({
   onToggle, onMoveUp, onMoveDown, onRemove,
   onAddBlock, onMoveBlkUp, onMoveBlkDown, onRemoveBlk, onReorderBlocks,
 }: SectionItemProps) {
+  const { t } = useLang()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
 
@@ -53,7 +55,7 @@ export function SectionItem({
           {...listeners}
           className="text-muted/25 group-hover:text-muted/60 cursor-grab shrink-0 transition-colors"
           onClick={e => e.stopPropagation()}
-          title="Drag to reorder"
+          title={t.dragToReorder}
         >
           <GripVertical size={14} />
         </span>
@@ -69,9 +71,9 @@ export function SectionItem({
           className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           onClick={e => e.stopPropagation()}
         >
-          <Button variant="ghost" size="icon" onClick={onMoveUp}   title="Move up"><ArrowUp size={13} /></Button>
-          <Button variant="ghost" size="icon" onClick={onMoveDown} title="Move down"><ArrowDown size={13} /></Button>
-          <Button variant="danger" size="icon" onClick={onRemove}  title="Delete"><Trash2 size={13} /></Button>
+          <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
+          <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
+          <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteSection}><Trash2 size={13} /></Button>
         </div>
 
         {/* Expand chevron */}

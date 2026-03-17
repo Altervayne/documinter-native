@@ -6,6 +6,7 @@ import { SectionItem } from '../molecules/SectionItem'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, PanelLeftClose, PanelLeftOpen, Palette, ChevronDown } from 'lucide-react'
+import { useLang } from '../lib/LangContext'
 
 const ACCENT_PRESETS = ['#f97316', '#2563eb', '#16a34a', '#7c3aed', '#e11d48', '#0891b2', '#2dcea8']
 
@@ -38,6 +39,7 @@ export function Panel({
   onAddBlock, onMoveBlkUp, onMoveBlkDown, onRemoveBlk,
   onReorderSections, onReorderBlocks,
 }: PanelProps) {
+  const { t } = useLang()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [pickerOpen, setPickerOpen] = useState(false)
   const [appearanceOpen, setAppearanceOpen] = useState(true)
@@ -59,7 +61,7 @@ export function Panel({
       >
         <button
           onClick={onToggle}
-          title="Open panel"
+          title={t.openPanel}
           className="text-muted hover:text-accent p-2.5 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
         >
           <PanelLeftOpen size={20} />
@@ -75,10 +77,10 @@ export function Panel({
     >
       {/* Menu header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
-        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Menu</span>
+        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">{t.menu}</span>
         <button
           onClick={onToggle}
-          title="Collapse panel"
+          title={t.collapsePanel}
           className="text-muted hover:text-accent p-2 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
         >
           <PanelLeftClose size={20} />
@@ -91,23 +93,23 @@ export function Panel({
           onClick={() => { setAppearanceOpen(o => !o); if (appearanceOpen) setPickerOpen(false) }}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/5 transition-colors cursor-pointer"
         >
-          <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Appearance</span>
+          <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">{t.appearance}</span>
           <ChevronDown size={13} className={`text-muted transition-transform duration-200 ${appearanceOpen ? '' : '-rotate-90'}`} />
         </button>
 
         {appearanceOpen && <div className="px-4 pb-3 flex flex-col gap-3">
         {/* Doc theme toggle */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">Document</span>
+          <span className="text-xs text-muted">{t.document}</span>
           <div className="flex gap-1">
-            {(['light', 'dark'] as const).map(t => (
+            {(['light', 'dark'] as const).map(th => (
               <button
-                key={t}
-                onClick={() => onDocThemeChange(t)}
+                key={th}
+                onClick={() => onDocThemeChange(th)}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors border
-                  ${docTheme === t ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
+                  ${docTheme === th ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
               >
-                {t}
+                {th === 'light' ? t.light : t.dark}
               </button>
             ))}
           </div>
@@ -115,7 +117,7 @@ export function Panel({
 
         {/* Accent presets + custom swatch */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted">Accent</span>
+          <span className="text-xs text-muted">{t.accent}</span>
           <div className="flex items-center gap-1.5">
             {ACCENT_PRESETS.map(color => (
               <button
@@ -128,7 +130,7 @@ export function Panel({
               />
             ))}
             <button
-              title="Custom color"
+              title={t.customColor}
               onClick={() => setPickerOpen(o => !o)}
               className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all
                 ${isCustomAccent ? 'border-white/70 scale-110' : 'border-border opacity-50 hover:opacity-90 hover:scale-105'}`}
@@ -148,8 +150,8 @@ export function Panel({
 
       {/* Structure header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">Structure</span>
-        <Button variant="primary" size="sm" onClick={onAddSection}><Plus size={13} />Section</Button>
+        <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">{t.structure}</span>
+        <Button variant="primary" size="sm" onClick={onAddSection}><Plus size={13} />{t.addSection}</Button>
       </div>
 
       {/* Scrollable list */}
@@ -158,8 +160,8 @@ export function Panel({
           <div className="flex flex-col items-center justify-center gap-3 py-16 px-4 text-center">
             <div className="text-muted/15 text-5xl leading-none select-none">⊞</div>
             <p className="text-muted text-xs font-mono leading-relaxed">
-              No sections yet.<br />
-              <span className="text-accent/60">+ Section</span> to get started.
+              {t.noSections}<br />
+              <span className="text-accent/60">{t.noSectionsHint}</span>
             </p>
           </div>
         ) : (
