@@ -38,7 +38,7 @@ export default function App() {
       document.documentElement.dataset.theme = theme
       localStorage.setItem('documinter-theme', theme)
    }, [theme])
-   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), [])
+   const toggleTheme = useCallback(() => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark'), [])
 
    // Language
    const [lang, setLang] = useState<Lang>(
@@ -66,7 +66,7 @@ export default function App() {
 
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
-      setMeta(m => ({ ...m, ...patch }))
+      setMeta(currentMeta => ({ ...currentMeta, ...patch }))
    }, [])
 
    // Load state from JSON
@@ -116,7 +116,7 @@ export default function App() {
                   docAccent={docAccent}
                   onDocThemeChange={setDocTheme}
                   onDocAccentChange={setDocAccent}
-                  onToggle={() => setPanelOpen(o => !o)}
+                  onToggle={() => setPanelOpen(currentlyOpen => !currentlyOpen)}
                   sections={sections}
                   onAddSection={sectionMutations.addSection}
                   onToggleSec={sectionMutations.toggleSec}

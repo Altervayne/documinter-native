@@ -38,8 +38,8 @@ export function SectionItem({
    function handleDragEnd(event: DragEndEvent) {
       const { active, over } = event
       if (!over || active.id === over.id) return
-      const oldIdx = section.blocks.findIndex(b => b.id === active.id)
-      const newIdx = section.blocks.findIndex(b => b.id === over.id)
+      const oldIdx = section.blocks.findIndex(block => block.id === active.id)
+      const newIdx = section.blocks.findIndex(block => block.id === over.id)
       if (oldIdx !== -1 && newIdx !== -1) onReorderBlocks(oldIdx, newIdx)
    }
 
@@ -54,7 +54,7 @@ export function SectionItem({
             <span
                {...listeners}
                className="text-muted/25 group-hover:text-muted/60 cursor-grab shrink-0 transition-colors"
-               onClick={e => e.stopPropagation()}
+               onClick={event => event.stopPropagation()}
                title={t.dragToReorder}
             >
                <GripVertical size={14} />
@@ -69,7 +69,7 @@ export function SectionItem({
             {/* Actions — revealed on hover */}
             <div
                className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-               onClick={e => e.stopPropagation()}
+               onClick={event => event.stopPropagation()}
             >
                <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
                <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
@@ -86,14 +86,14 @@ export function SectionItem({
          {!section.collapsed && (
             <div className="border-t border-border/60 px-3 py-3 flex flex-col gap-1">
                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={section.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-                     {section.blocks.map((blk: Block) => (
+                  <SortableContext items={section.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}>
+                     {section.blocks.map((block: Block) => (
                         <BlockItem
-                           key={blk.id}
-                           block={blk}
-                           onMoveUp={()   => onMoveBlkUp(blk.id)}
-                           onMoveDown={() => onMoveBlkDown(blk.id)}
-                           onRemove={() =>   onRemoveBlk(blk.id)}
+                           key={block.id}
+                           block={block}
+                           onMoveUp={()   => onMoveBlkUp(block.id)}
+                           onMoveDown={() => onMoveBlkDown(block.id)}
+                           onRemove={() =>   onRemoveBlk(block.id)}
                         />
                      ))}
                   </SortableContext>

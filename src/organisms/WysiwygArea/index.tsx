@@ -35,8 +35,8 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
    function handleDragEnd(event: DragEndEvent) {
       const { active, over } = event
       if (!over || active.id === over.id) return
-      const oldIdx = sections.findIndex(s => s.id === active.id)
-      const newIdx = sections.findIndex(s => s.id === over.id)
+      const oldIdx = sections.findIndex(section => section.id === active.id)
+      const newIdx = sections.findIndex(section => section.id === over.id)
       if (oldIdx !== -1 && newIdx !== -1) reorderSections(oldIdx, newIdx)
    }
 
@@ -59,29 +59,29 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                   tag="div"
                   className="page-module"
                   content={meta.module || t.placeholderModule}
-                  onBlur={v => onUpdateMeta({ module: v.trim() })}
+                  onBlur={value => onUpdateMeta({ module: value.trim() })}
                   singleLine
                />
                <ContentEditable
                   tag="h1"
                   content={meta.title || t.placeholderTitle}
-                  onBlur={v => onUpdateMeta({ title: v.trim() })}
+                  onBlur={value => onUpdateMeta({ title: value.trim() })}
                   singleLine
                />
                <div className="page-meta">
                   <ContentEditable
                      tag="span"
                      content={meta.env || t.placeholderEnv}
-                     onBlur={v => onUpdateMeta({ env: v.trim() })}
+                     onBlur={value => onUpdateMeta({ env: value.trim() })}
                      singleLine
                   />
                   <ContentEditable
                      tag="span"
                      content={meta.date ? `${t.prefixUpdated} ${meta.date}` : t.placeholderDate}
-                     onBlur={v => {
-                        const stripped = v.startsWith(t.prefixUpdated)
-                           ? v.slice(t.prefixUpdated.length).trim()
-                           : v.replace(/^[^:]+:\s*/, '').trim() || v.trim()
+                     onBlur={value => {
+                        const stripped = value.startsWith(t.prefixUpdated)
+                           ? value.slice(t.prefixUpdated.length).trim()
+                           : value.replace(/^[^:]+:\s*/, '').trim() || value.trim()
                         onUpdateMeta({ date: stripped })
                      }}
                      singleLine
@@ -89,10 +89,10 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                   <ContentEditable
                      tag="span"
                      content={meta.author ? `${t.prefixAuthor} ${meta.author}` : t.placeholderAuthor}
-                     onBlur={v => {
-                        const stripped = v.startsWith(t.prefixAuthor)
-                           ? v.slice(t.prefixAuthor.length).trim()
-                           : v.replace(/^[^:]+:\s*/, '').trim() || v.trim()
+                     onBlur={value => {
+                        const stripped = value.startsWith(t.prefixAuthor)
+                           ? value.slice(t.prefixAuthor.length).trim()
+                           : value.replace(/^[^:]+:\s*/, '').trim() || value.trim()
                         onUpdateMeta({ author: stripped })
                      }}
                      singleLine
@@ -110,7 +110,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
 
             {/* Sections */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-               <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+               <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
                   {sections.map((sec, index) => (
                      <div key={sec.id}>
                         <WysiwygSection section={sec} index={index} />

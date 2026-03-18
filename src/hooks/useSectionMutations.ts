@@ -28,52 +28,52 @@ export function useSectionMutations(
    t: T,
 ) {
    const addSection = useCallback(() => {
-      setSections(s => [...s, mkSection()])
+      setSections(sections => [...sections, mkSection()])
    }, [setSections])
 
    const toggleSec = useCallback((secId: string) => {
-      setSections(s => s.map(sec => sec.id === secId ? { ...sec, collapsed: !sec.collapsed } : sec))
+      setSections(sections => sections.map(sec => sec.id === secId ? { ...sec, collapsed: !sec.collapsed } : sec))
    }, [setSections])
 
    const updateSecTitle = useCallback((secId: string, title: string) => {
-      setSections(s => s.map(sec => sec.id === secId ? { ...sec, title } : sec))
+      setSections(sections => sections.map(sec => sec.id === secId ? { ...sec, title } : sec))
    }, [setSections])
 
    const moveSecUp = useCallback((secId: string) => {
-      setSections(s => {
-         const i = s.findIndex(sec => sec.id === secId)
-         return moveItem(s, i, i - 1)
+      setSections(sections => {
+         const index = sections.findIndex(sec => sec.id === secId)
+         return moveItem(sections, index, index - 1)
       })
    }, [setSections])
 
    const moveSecDown = useCallback((secId: string) => {
-      setSections(s => {
-         const i = s.findIndex(sec => sec.id === secId)
-         return moveItem(s, i, i + 1)
+      setSections(sections => {
+         const index = sections.findIndex(sec => sec.id === secId)
+         return moveItem(sections, index, index + 1)
       })
    }, [setSections])
 
    const reorderSections = useCallback((oldIdx: number, newIdx: number) => {
-      setSections(s => arrayMove(s, oldIdx, newIdx))
+      setSections(sections => arrayMove(sections, oldIdx, newIdx))
    }, [setSections])
 
    const removeSec = useCallback((secId: string) => {
-      setSections(s => {
-         const idx = s.findIndex(sec => sec.id === secId)
-         const section = s[idx]
-         if (!section) return s
+      setSections(sections => {
+         const sectionIndex = sections.findIndex(sec => sec.id === secId)
+         const section = sections[sectionIndex]
+         if (!section) return sections
          showToast(t.sectionDeleted, {
             label: t.undo,
             onClick: () => {
-               setSections(cur => {
-                  const next = [...cur]
-                  next.splice(idx, 0, section)
+               setSections(current => {
+                  const next = [...current]
+                  next.splice(sectionIndex, 0, section)
                   return next
                })
                clearToast()
             },
          })
-         return s.filter(sec => sec.id !== secId)
+         return sections.filter(sec => sec.id !== secId)
       })
    }, [setSections, showToast, clearToast, t])
 

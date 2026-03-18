@@ -16,41 +16,41 @@ const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
  * New documents store sanitized HTML (<strong>, <em>, <u>, <s>, <br> only).
  * Old plain-text documents are escaped for backward compatibility.
  */
-function textToHtml(s: string | undefined): string {
-   if (!s) return ''
+function textToHtml(text: string | undefined): string {
+   if (!text) return ''
    // If the string contains any of our rich-text tags, it's already HTML
-   if (/<(strong|em|u|s|br)\b/.test(s)) return s
-   return esc(s)
+   if (/<(strong|em|u|s|br)\b/.test(text)) return text
+   return esc(text)
 }
 
-function exportBlock(b: Block): string {
-   if (b.type === 'p')       return `<p>${textToHtml(b.text)}</p>`
-   if (b.type === 'h3')      return `<h3>${textToHtml(b.text)}</h3>`
-   if (b.type === 'h4')      return `<h4>${textToHtml(b.text)}</h4>`
-   if (b.type === 'callout') return `<div class="callout ${b.style ?? 'info'}">${textToHtml(b.text)}</div>`
-   if (b.type === 'code') {
-      const highlighted = highlight(b.code ?? '', b.lang ?? 'windev')
+function exportBlock(block: Block): string {
+   if (block.type === 'p')       return `<p>${textToHtml(block.text)}</p>`
+   if (block.type === 'h3')      return `<h3>${textToHtml(block.text)}</h3>`
+   if (block.type === 'h4')      return `<h4>${textToHtml(block.text)}</h4>`
+   if (block.type === 'callout') return `<div class="callout ${block.style ?? 'info'}">${textToHtml(block.text)}</div>`
+   if (block.type === 'code') {
+      const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
       return `<pre><code>${highlighted}</code></pre>`
    }
-   if (b.type === 'list')
-      return `<ul>${(b.items ?? []).map(i => `<li>${textToHtml(i)}</li>`).join('')}</ul>`
-   if (b.type === 'table') {
-      const th = (b.headers ?? []).map(h => `<th>${textToHtml(h)}</th>`).join('')
-      const td = (b.rows ?? []).map(r =>
-         `<tr>${r.map(c => `<td>${textToHtml(c)}</td>`).join('')}</tr>`
+   if (block.type === 'list')
+      return `<ul>${(block.items ?? []).map(item => `<li>${textToHtml(item)}</li>`).join('')}</ul>`
+   if (block.type === 'table') {
+      const headerCells = (block.headers ?? []).map(header => `<th>${textToHtml(header)}</th>`).join('')
+      const bodyRows = (block.rows ?? []).map(row =>
+         `<tr>${row.map(cell => `<td>${textToHtml(cell)}</td>`).join('')}</tr>`
       ).join('')
-      return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>${td}</tbody></table></div>`
+      return `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`
    }
-   if (b.type === 'image' && b.src) {
+   if (block.type === 'image' && block.src) {
       return `<figure class="doc-figure">
-         <img src="${b.src}" alt="${esc(b.alt)}" style="max-width:100%;height:auto;border-radius:4px;display:block">
-         ${b.caption ? `<figcaption>${esc(b.caption)}</figcaption>` : ''}
+         <img src="${block.src}" alt="${esc(block.alt)}" style="max-width:100%;height:auto;border-radius:4px;display:block">
+         ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
       </figure>`
    }
-   if (b.type === 'container') {
-      const ratio   = b.ratio ?? 0.5
-      const leftHtml  = (b.left  ?? []).map(exportBlock).join('\n')
-      const rightHtml = (b.right ?? []).map(exportBlock).join('\n')
+   if (block.type === 'container') {
+      const ratio    = block.ratio ?? 0.5
+      const leftHtml  = (block.left  ?? []).map(exportBlock).join('\n')
+      const rightHtml = (block.right ?? []).map(exportBlock).join('\n')
       return `<div class="doc-container" style="display:flex;gap:1.5rem;align-items:flex-start">
          <div style="flex:${ratio}">${leftHtml}</div>
          <div style="flex:${1 - ratio}">${rightHtml}</div>
@@ -118,17 +118,17 @@ function getColors(theme: 'light' | 'dark'): Colors {
    }
 }
 
-function buildStyles(accent: string, c: Colors): string {
+function buildStyles(accent: string, colors: Colors): string {
    return `
             /* Reset */
             *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
             html { scroll-behavior: smooth; }
             body {
-                  background: ${c.bodyBg};
+                  background: ${colors.bodyBg};
                   font-family: 'Inter', sans-serif;
                   font-size: 15px;
                   line-height: 1.75;
-                  color: ${c.text};
+                  color: ${colors.text};
                   display: flex;
                   min-height: 100vh;
                   -webkit-font-smoothing: antialiased;
@@ -138,8 +138,8 @@ function buildStyles(accent: string, c: Colors): string {
             .sidebar {
                   position: fixed; top: 0; left: 0;
                   width: 260px; height: 100vh;
-                  background: ${c.sidebarBg};
-                  border-right: 1px solid ${c.border};
+                  background: ${colors.sidebarBg};
+                  border-right: 1px solid ${colors.border};
                   overflow-y: auto;
                   padding: 1.5rem 0 2rem;
                   z-index: 100;
@@ -150,7 +150,7 @@ function buildStyles(accent: string, c: Colors): string {
                   text-transform: uppercase; letter-spacing: 0.08em;
                   color: ${accent};
                   padding: 0 1.25rem 1rem;
-                  border-bottom: 1px solid ${c.border};
+                  border-bottom: 1px solid ${colors.border};
                   margin-bottom: 0.75rem;
                   display: block;
             }
@@ -158,12 +158,12 @@ function buildStyles(accent: string, c: Colors): string {
                   display: block;
                   padding: 0.4rem 1.25rem;
                   text-decoration: none;
-                  color: ${c.navLink};
+                  color: ${colors.navLink};
                   font-size: 0.82rem;
                   border-left: 2px solid transparent;
                   transition: color .15s, border-color .15s;
             }
-            .nav-link:hover { color: ${c.navHover}; }
+            .nav-link:hover { color: ${colors.navHover}; }
             .nav-link.active { color: ${accent}; border-left-color: ${accent}; }
 
             /* Main area */
@@ -180,10 +180,10 @@ function buildStyles(accent: string, c: Colors): string {
             .doc-card {
                   width: 100%;
                   max-width: 860px;
-                  background: ${c.cardBg};
+                  background: ${colors.cardBg};
                   border-radius: 2px;
                   border-top: 4px solid ${accent};
-                  box-shadow: ${c.cardShadow};
+                  box-shadow: ${colors.cardShadow};
             }
 
             /* Document content */
@@ -192,26 +192,26 @@ function buildStyles(accent: string, c: Colors): string {
                   font-family: 'Inter', sans-serif;
                   font-size: 15px;
                   line-height: 1.75;
-                  color: ${c.text};
+                  color: ${colors.text};
             }
 
             /* Page header */
-            .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid ${c.border}; }
+            .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid ${colors.border}; }
             .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${accent}; margin-bottom: 0.4rem; }
-            .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: ${c.textH}; }
-            .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${c.textMuted}; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+            .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: ${colors.textH}; }
+            .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${colors.textMuted}; display: flex; gap: 1.5rem; flex-wrap: wrap; }
 
             /* Sections */
             .doc-render .doc-section   { margin-bottom: 3.5rem; scroll-margin-top: 1.5rem; }
-            .doc-render h2             { font-size: 1.2rem; font-weight: 600; color: ${c.textH}; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid ${c.border}; border-left: 3px solid ${accent}; padding-left: 0.75rem; }
-            .doc-render h3             { font-size: 0.95rem; font-weight: 600; color: ${c.textH}; margin: 1.75rem 0 0.6rem; }
-            .doc-render h4             { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: ${c.textMuted}; margin: 1.25rem 0 0.4rem; }
-            .doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: ${c.textP}; }
-            .doc-render hr             { border: none; border-top: 1px solid ${c.border}; margin: 3rem 0; }
+            .doc-render h2             { font-size: 1.2rem; font-weight: 600; color: ${colors.textH}; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid ${colors.border}; border-left: 3px solid ${accent}; padding-left: 0.75rem; }
+            .doc-render h3             { font-size: 0.95rem; font-weight: 600; color: ${colors.textH}; margin: 1.75rem 0 0.6rem; }
+            .doc-render h4             { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: ${colors.textMuted}; margin: 1.25rem 0 0.4rem; }
+            .doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: ${colors.textP}; }
+            .doc-render hr             { border: none; border-top: 1px solid ${colors.border}; margin: 3rem 0; }
 
             /* Images */
             .doc-render .doc-figure { margin: 1.25rem 0; }
-            .doc-render .doc-figure figcaption { font-size: 0.8rem; color: ${c.textMuted}; font-style: italic; margin-top: 0.4rem; text-align: center; }
+            .doc-render .doc-figure figcaption { font-size: 0.8rem; color: ${colors.textMuted}; font-style: italic; margin-top: 0.4rem; text-align: center; }
 
             /* Containers */
             .doc-render .doc-container { margin: 1.25rem 0; }
@@ -224,47 +224,47 @@ function buildStyles(accent: string, c: Colors): string {
             .doc-render s      { text-decoration: line-through; }
 
             /* Inline code */
-            .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: ${c.inlineCodeBg}; color: ${c.inlineCodeText}; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid ${c.inlineCodeBorder}; }
+            .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: ${colors.inlineCodeBg}; color: ${colors.inlineCodeText}; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid ${colors.inlineCodeBorder}; }
 
             /* Code block */
-            .doc-render pre            { background: ${c.preBg}; border: 1px solid ${c.preBorder}; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; }
-            .doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: ${c.preText}; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
+            .doc-render pre            { background: ${colors.preBg}; border: 1px solid ${colors.preBorder}; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; }
+            .doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: ${colors.preText}; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
 
             /* Callouts */
-            .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${c.textP}; }
-            .doc-render .callout.info    { background: ${c.calloutInfoBg}; border-color: ${c.calloutInfoBorder}; }
-            .doc-render .callout.valid   { background: ${c.calloutValidBg}; border-color: ${c.calloutValidBorder}; }
-            .doc-render .callout.warning { background: ${c.calloutWarnBg}; border-color: ${c.calloutWarnBorder}; }
-            .doc-render .callout.danger  { background: ${c.calloutDangerBg}; border-color: ${c.calloutDangerBorder}; }
+            .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${colors.textP}; }
+            .doc-render .callout.info    { background: ${colors.calloutInfoBg}; border-color: ${colors.calloutInfoBorder}; }
+            .doc-render .callout.valid   { background: ${colors.calloutValidBg}; border-color: ${colors.calloutValidBorder}; }
+            .doc-render .callout.warning { background: ${colors.calloutWarnBg}; border-color: ${colors.calloutWarnBorder}; }
+            .doc-render .callout.danger  { background: ${colors.calloutDangerBg}; border-color: ${colors.calloutDangerBorder}; }
 
             /* Table */
-            .doc-render .table-wrap    { overflow-x: auto; margin: 1.25rem 0; border-radius: 6px; border: 1px solid ${c.border}; }
+            .doc-render .table-wrap    { overflow-x: auto; margin: 1.25rem 0; border-radius: 6px; border: 1px solid ${colors.border}; }
             .doc-render table          { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-            .doc-render th             { background: ${c.thBg}; padding: 0.6rem 1rem; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: ${c.textMuted}; border-bottom: 1px solid ${c.border}; }
-            .doc-render td             { padding: 0.6rem 1rem; border-bottom: 1px solid ${c.border}; vertical-align: top; color: ${c.textP}; }
+            .doc-render th             { background: ${colors.thBg}; padding: 0.6rem 1rem; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: ${colors.textMuted}; border-bottom: 1px solid ${colors.border}; }
+            .doc-render td             { padding: 0.6rem 1rem; border-bottom: 1px solid ${colors.border}; vertical-align: top; color: ${colors.textP}; }
             .doc-render tbody tr:last-child td { border-bottom: none; }
-            .doc-render tbody tr:hover td { background: ${c.tdHover}; }
+            .doc-render tbody tr:hover td { background: ${colors.tdHover}; }
 
             /* Lists */
             .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
-            .doc-render li             { margin-bottom: 0.3rem; color: ${c.textP}; }
-            .doc-render li::marker     { color: ${c.inlineCodeText}; }
+            .doc-render li             { margin-bottom: 0.3rem; color: ${colors.textP}; }
+            .doc-render li::marker     { color: ${colors.inlineCodeText}; }
 
             /* Syntax tokens */
-            .tok-kw   { color: ${c.tokKw}; font-weight: 600; }
-            .tok-str  { color: ${c.tokStr}; }
-            .tok-cmt  { color: ${c.tokCmt}; font-style: italic; }
-            .tok-num  { color: ${c.tokNum}; }
-            .tok-fn   { color: ${c.tokFn}; }
-            .tok-op   { color: ${c.tokOp}; }
-            .tok-type { color: ${c.tokType}; }
+            .tok-kw   { color: ${colors.tokKw}; font-weight: 600; }
+            .tok-str  { color: ${colors.tokStr}; }
+            .tok-cmt  { color: ${colors.tokCmt}; font-style: italic; }
+            .tok-num  { color: ${colors.tokNum}; }
+            .tok-fn   { color: ${colors.tokFn}; }
+            .tok-op   { color: ${colors.tokOp}; }
+            .tok-type { color: ${colors.tokType}; }
 
             /* Back to top */
             #toTopBtn {
                   position: fixed; bottom: 1.5rem; right: 1.5rem;
                   width: 34px; height: 34px;
-                  background: ${c.btnBg}; border: 1px solid ${c.btnBorder};
-                  border-radius: 8px; color: ${c.btnText}; cursor: pointer;
+                  background: ${colors.btnBg}; border: 1px solid ${colors.btnBorder};
+                  border-radius: 8px; color: ${colors.btnText}; cursor: pointer;
                   font-size: 0.9rem; display: flex; align-items: center; justify-content: center;
                   opacity: 0; pointer-events: none;
                   transition: opacity .2s, color .2s, border-color .2s; z-index: 200;
@@ -275,8 +275,8 @@ function buildStyles(accent: string, c: Colors): string {
 
             /* Scrollbar */
             ::-webkit-scrollbar { width: 5px; }
-            ::-webkit-scrollbar-track { background: ${c.scrollTrack}; }
-            ::-webkit-scrollbar-thumb { background: ${c.scrollThumb}; border-radius: 3px; }
+            ::-webkit-scrollbar-track { background: ${colors.scrollTrack}; }
+            ::-webkit-scrollbar-thumb { background: ${colors.scrollThumb}; border-radius: 3px; }
 
             /* Watermark footer */
             .doc-footer {
@@ -287,9 +287,9 @@ function buildStyles(accent: string, c: Colors): string {
                   gap: 0.4rem;
                   font-family: 'JetBrains Mono', monospace;
                   font-size: 0.65rem;
-                  color: ${c.textMuted};
+                  color: ${colors.textMuted};
                   opacity: 0.35;
-                  border-top: 1px solid ${c.border};
+                  border-top: 1px solid ${colors.border};
                   letter-spacing: 0.04em;
             }
             .doc-footer svg {
@@ -312,21 +312,21 @@ const STRINGS = {
 
 export function generateExportHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): string {
    const { theme, accent, lang = 'en' } = opts
-   const s = STRINGS[lang]
-   const c = getColors(theme)
-   const styles = buildStyles(accent, c)
+   const strings = STRINGS[lang]
+   const colors  = getColors(theme)
+   const styles  = buildStyles(accent, colors)
 
-   const navLinks = sections.map((s, i) =>
-      `        <a href="#section-${s.id}" class="nav-link">${i + 1}. ${esc(s.title)}</a>`
+   const navLinks = sections.map((section, sectionIndex) =>
+      `        <a href="#section-${section.id}" class="nav-link">${sectionIndex + 1}. ${esc(section.title)}</a>`
    ).join('\n')
 
-   const sectionsHTML = sections.map((sec, si) => {
-      const blocksHTML = sec.blocks.map(b => '            ' + exportBlock(b)).join('\n')
+   const sectionsHTML = sections.map((sec, sectionIndex) => {
+      const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block)).join('\n')
       return `
             <div class="doc-section" id="section-${sec.id}">
-                  <h2>${si + 1}. ${esc(sec.title)}</h2>
+                  <h2>${sectionIndex + 1}. ${esc(sec.title)}</h2>
 ${blocksHTML}
-            </div>${si < sections.length - 1 ? '\n        <hr>' : ''}`
+            </div>${sectionIndex < sections.length - 1 ? '\n        <hr>' : ''}`
    }).join('\n')
 
    return `<!DOCTYPE html>
@@ -334,14 +334,14 @@ ${blocksHTML}
 <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${esc(meta.title) || s.fallback}</title>
+      <title>${esc(meta.title) || strings.fallback}</title>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <style>${styles}    </style>
 </head>
 <body>
 
 <aside class="sidebar">
-      <span class="sidebar-brand">${esc(meta.module) || s.fallback}</span>
+      <span class="sidebar-brand">${esc(meta.module) || strings.fallback}</span>
       <nav>
 ${navLinks}
       </nav>
@@ -352,16 +352,16 @@ ${navLinks}
             <div class="doc-render">
                   <div class="page-header">
                         ${meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''}
-                        <h1>${esc(meta.title) || s.fallback}</h1>
+                        <h1>${esc(meta.title) || strings.fallback}</h1>
                         <div class="page-meta">
                               ${meta.env    ? `<span>${esc(meta.env)}</span>` : ''}
-                              ${meta.date   ? `<span>${s.updated} ${esc(meta.date)}</span>` : ''}
-                              ${meta.author ? `<span>${s.author} ${esc(meta.author)}</span>` : ''}
+                              ${meta.date   ? `<span>${strings.updated} ${esc(meta.date)}</span>` : ''}
+                              ${meta.author ? `<span>${strings.author} ${esc(meta.author)}</span>` : ''}
                         </div>
                   </div>
                   ${sectionsHTML}
             </div>
-            <div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${s.madeWith}</div>
+            <div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${strings.madeWith}</div>
       </div>
 </main>
 
@@ -397,9 +397,9 @@ ${navLinks}
 export function downloadHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): void {
    const html = generateExportHTML(meta, sections, opts)
    const slug = slugify(meta.title)
-   const a = document.createElement('a')
-   a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-   a.download = slug + '.html'
-   a.click()
-   URL.revokeObjectURL(a.href)
+   const anchor = document.createElement('a')
+   anchor.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+   anchor.download = slug + '.html'
+   anchor.click()
+   URL.revokeObjectURL(anchor.href)
 }

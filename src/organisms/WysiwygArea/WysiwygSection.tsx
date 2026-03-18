@@ -34,8 +34,8 @@ export function WysiwygSection({ section, index }: WysiwygSectionProps) {
    function handleDragEnd(event: DragEndEvent) {
       const { active, over } = event
       if (!over || active.id === over.id) return
-      const oldIdx = section.blocks.findIndex(b => b.id === active.id)
-      const newIdx = section.blocks.findIndex(b => b.id === over.id)
+      const oldIdx = section.blocks.findIndex(block => block.id === active.id)
+      const newIdx = section.blocks.findIndex(block => block.id === over.id)
       if (oldIdx !== -1 && newIdx !== -1) reorderBlocks(section.id, oldIdx, newIdx)
    }
 
@@ -72,12 +72,12 @@ export function WysiwygSection({ section, index }: WysiwygSectionProps) {
             )}
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-               <SortableContext items={section.blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
-                  {section.blocks.map((blk: Block) => (
+               <SortableContext items={section.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}>
+                  {section.blocks.map((block: Block) => (
                      <WysiwygBlock
-                        key={blk.id}
+                        key={block.id}
                         secId={section.id}
-                        block={blk}
+                        block={block}
                         containerMutations={containerMutations}
                      />
                   ))}

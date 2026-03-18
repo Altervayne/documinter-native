@@ -47,8 +47,8 @@ export function Panel({
    function handleDragEnd(event: DragEndEvent) {
       const { active, over } = event
       if (!over || active.id === over.id) return
-      const oldIdx = sections.findIndex(s => s.id === active.id)
-      const newIdx = sections.findIndex(s => s.id === over.id)
+      const oldIdx = sections.findIndex(section => section.id === active.id)
+      const newIdx = sections.findIndex(section => section.id === over.id)
       if (oldIdx !== -1 && newIdx !== -1) onReorderSections(oldIdx, newIdx)
    }
 
@@ -89,7 +89,7 @@ export function Panel({
          {/* Appearance */}
          <div className="shrink-0 border-b border-border">
             <button
-               onClick={() => { setAppearanceOpen(o => !o); if (appearanceOpen) setPickerOpen(false) }}
+               onClick={() => { setAppearanceOpen(currentlyOpen => !currentlyOpen); if (appearanceOpen) setPickerOpen(false) }}
                className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/5 transition-colors cursor-pointer"
             >
                <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold">{t.appearance}</span>
@@ -101,14 +101,14 @@ export function Panel({
             <div className="flex items-center justify-between">
                <span className="text-xs text-muted">{t.document}</span>
                <div className="flex gap-1">
-                  {(['light', 'dark'] as const).map(th => (
+                  {(['light', 'dark'] as const).map(themeOption => (
                      <button
-                        key={th}
-                        onClick={() => onDocThemeChange(th)}
+                        key={themeOption}
+                        onClick={() => onDocThemeChange(themeOption)}
                         className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors border
-                           ${docTheme === th ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
+                           ${docTheme === themeOption ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
                      >
-                        {th === 'light' ? t.light : t.dark}
+                        {themeOption === 'light' ? t.light : t.dark}
                      </button>
                   ))}
                </div>
@@ -130,7 +130,7 @@ export function Panel({
                   ))}
                   <button
                      title={t.customColor}
-                     onClick={() => setPickerOpen(o => !o)}
+                     onClick={() => setPickerOpen(currentlyOpen => !currentlyOpen)}
                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all
                         ${isCustomAccent ? 'border-white/70 scale-110' : 'border-border opacity-50 hover:opacity-90 hover:scale-105'}`}
                      style={isCustomAccent ? { background: docAccent } : {}}
@@ -165,7 +165,7 @@ export function Panel({
                </div>
             ) : (
                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                  <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
                      {sections.map((sec, index) => (
                         <SectionItem
                            key={sec.id}

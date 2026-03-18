@@ -68,30 +68,30 @@ export function ContentEditable({
          onClick={onClick}
          {...(rich ? { 'data-rich': 'true' } : {})}
          onFocus={() => { editing.current = true }}
-         onKeyDown={(e: React.KeyboardEvent<HTMLElement>) => {
-            if (e.key === 'Enter') {
+         onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
+            if (event.key === 'Enter') {
                if (singleLine) {
-                  e.preventDefault()
+                  event.preventDefault()
                } else if (rich) {
-                  e.preventDefault()
+                  event.preventDefault()
                   // execCommand is deprecated but remains the only cross-browser way
                   // to insert a <br> without splitting the element in contenteditable
                   document.execCommand('insertLineBreak')
                }
             }
          }}
-         onPaste={(e: React.ClipboardEvent<HTMLElement>) => {
+         onPaste={(event: React.ClipboardEvent<HTMLElement>) => {
             // Always paste as plain text to avoid injecting foreign HTML/styles
-            e.preventDefault()
-            const text = e.clipboardData.getData('text/plain')
+            event.preventDefault()
+            const text = event.clipboardData.getData('text/plain')
             document.execCommand('insertText', false, text)
          }}
-         onBlur={(e: React.FocusEvent<HTMLElement>) => {
+         onBlur={(event: React.FocusEvent<HTMLElement>) => {
             editing.current = false
             if (rich) {
-               onBlur(sanitizeRichText(e.currentTarget.innerHTML))
+               onBlur(sanitizeRichText(event.currentTarget.innerHTML))
             } else {
-               onBlur(e.currentTarget.innerText)
+               onBlur(event.currentTarget.innerText)
             }
          }}
       />

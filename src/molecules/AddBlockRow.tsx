@@ -20,7 +20,7 @@ export function AddBlockRow({ onAdd, insideContainer, docStyle }: AddBlockRowPro
       callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
       image: t.blockImage, container: t.blockContainer,
    }
-   const icons = insideContainer ? BLOCK_ICONS.filter(b => b.type !== 'container') : BLOCK_ICONS
+   const icons = insideContainer ? BLOCK_ICONS.filter(blockIcon => blockIcon.type !== 'container') : BLOCK_ICONS
 
    if (docStyle) {
       // Uses doc.css classes so buttons inherit the document theme (light/dark)

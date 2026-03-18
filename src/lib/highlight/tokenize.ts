@@ -11,9 +11,9 @@ function escChar(ch: string): string {
  */
 export function tokenize(code: string, rules: TokenRule[]): string {
    // Ensure all patterns are sticky
-   const stickyRules = rules.map(r => ({
-      type: r.type,
-      re: new RegExp(r.pattern.source, r.pattern.flags.includes('y') ? r.pattern.flags : r.pattern.flags + 'y'),
+   const stickyRules = rules.map(rule => ({
+      type: rule.type,
+      re: new RegExp(rule.pattern.source, rule.pattern.flags.includes('y') ? rule.pattern.flags : rule.pattern.flags + 'y'),
    }))
 
    let pos = 0
@@ -24,10 +24,10 @@ export function tokenize(code: string, rules: TokenRule[]): string {
 
       for (const { type, re } of stickyRules) {
          re.lastIndex = pos
-         const m = re.exec(code)
-         if (m) {
-            out += `<span class="tok-${type}">${escChar(m[0])}</span>`
-            pos += m[0].length
+         const match = re.exec(code)
+         if (match) {
+            out += `<span class="tok-${type}">${escChar(match[0])}</span>`
+            pos += match[0].length
             matched = true
             break
          }

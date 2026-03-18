@@ -50,7 +50,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang,
          {/* Modal */}
          <div
             className="relative z-10 bg-raised border border-border rounded-xl shadow-2xl p-5 w-80 flex flex-col gap-4"
-            onClick={e => e.stopPropagation()}
+            onClick={event => event.stopPropagation()}
          >
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -67,17 +67,17 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang,
             <div className="flex flex-col gap-2">
                <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.theme}</span>
                <div className="flex gap-2">
-                  {(['light', 'dark'] as const).map(th => (
+                  {(['light', 'dark'] as const).map(themeOption => (
                      <button
-                        key={th}
-                        onClick={() => setTheme(th)}
+                        key={themeOption}
+                        onClick={() => setTheme(themeOption)}
                         className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors capitalize
-                           ${theme === th
+                           ${theme === themeOption
                               ? 'bg-accent/10 border-accent/50 text-accent'
                               : 'border-border text-muted hover:text-text'
                            }`}
                      >
-                        {th === 'light' ? t.light : t.dark}
+                        {themeOption === 'light' ? t.light : t.dark}
                      </button>
                   ))}
                </div>

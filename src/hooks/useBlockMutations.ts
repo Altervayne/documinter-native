@@ -26,7 +26,7 @@ function mutateSec(
    secId: string,
    fn: (sec: Section) => Section,
 ) {
-   setSections(s => s.map(sec => sec.id === secId ? fn(sec) : sec))
+   setSections(sections => sections.map(sec => sec.id === secId ? fn(sec) : sec))
 }
 
 export function useBlockMutations(
@@ -42,43 +42,43 @@ export function useBlockMutations(
    const updateBlock = useCallback((secId: string, blkId: string, patch: Partial<Block>) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b => b.id === blkId ? { ...b, ...patch } : b),
+         blocks: sec.blocks.map(block => block.id === blkId ? { ...block, ...patch } : block),
       }))
    }, [setSections])
 
    const removeBlk = useCallback((secId: string, blkId: string) => {
-      setSections(s => s.map(sec => {
+      setSections(sections => sections.map(sec => {
          if (sec.id !== secId) return sec
-         const idx = sec.blocks.findIndex(b => b.id === blkId)
-         const block = sec.blocks[idx]
+         const blockIndex = sec.blocks.findIndex(block => block.id === blkId)
+         const block = sec.blocks[blockIndex]
          if (!block) return sec
          showToast(t.blockDeleted, {
             label: t.undo,
             onClick: () => {
-               setSections(cur => cur.map(s2 => {
-                  if (s2.id !== secId) return s2
-                  const next = [...s2.blocks]
-                  next.splice(idx, 0, block)
-                  return { ...s2, blocks: next }
+               setSections(current => current.map(otherSection => {
+                  if (otherSection.id !== secId) return otherSection
+                  const next = [...otherSection.blocks]
+                  next.splice(blockIndex, 0, block)
+                  return { ...otherSection, blocks: next }
                }))
                clearToast()
             },
          })
-         return { ...sec, blocks: sec.blocks.filter(b => b.id !== blkId) }
+         return { ...sec, blocks: sec.blocks.filter(block => block.id !== blkId) }
       }))
    }, [setSections, showToast, clearToast, t])
 
    const moveBlkUp = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => {
-         const i = sec.blocks.findIndex(b => b.id === blkId)
-         return { ...sec, blocks: moveItem(sec.blocks, i, i - 1) }
+         const index = sec.blocks.findIndex(block => block.id === blkId)
+         return { ...sec, blocks: moveItem(sec.blocks, index, index - 1) }
       })
    }, [setSections])
 
    const moveBlkDown = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => {
-         const i = sec.blocks.findIndex(b => b.id === blkId)
-         return { ...sec, blocks: moveItem(sec.blocks, i, i + 1) }
+         const index = sec.blocks.findIndex(block => block.id === blkId)
+         return { ...sec, blocks: moveItem(sec.blocks, index, index + 1) }
       })
    }, [setSections])
 
@@ -88,11 +88,11 @@ export function useBlockMutations(
 
    const duplicateBlock = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => {
-         const idx = sec.blocks.findIndex(b => b.id === blkId)
-         if (idx === -1) return sec
-         const clone = cloneBlock(sec.blocks[idx])
+         const blockIndex = sec.blocks.findIndex(block => block.id === blkId)
+         if (blockIndex === -1) return sec
+         const clone = cloneBlock(sec.blocks[blockIndex])
          const next = [...sec.blocks]
-         next.splice(idx + 1, 0, clone)
+         next.splice(blockIndex + 1, 0, clone)
          return { ...sec, blocks: next }
       })
    }, [setSections])
@@ -100,10 +100,10 @@ export function useBlockMutations(
    const addListItem = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b =>
-            b.id === blkId && b.type === 'list'
-               ? { ...b, items: [...(b.items ?? []), t.newItem] }
-               : b
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: [...(block.items ?? []), t.newItem] }
+               : block
          ),
       }))
    }, [setSections, t])
@@ -111,10 +111,10 @@ export function useBlockMutations(
    const removeLastItem = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b =>
-            b.id === blkId && b.type === 'list' && (b.items?.length ?? 0) > 1
-               ? { ...b, items: b.items!.slice(0, -1) }
-               : b
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list' && (block.items?.length ?? 0) > 1
+               ? { ...block, items: block.items!.slice(0, -1) }
+               : block
          ),
       }))
    }, [setSections])
@@ -122,10 +122,10 @@ export function useBlockMutations(
    const addTableRow = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b =>
-            b.id === blkId && b.type === 'table'
-               ? { ...b, rows: [...(b.rows ?? []), (b.headers ?? []).map(() => '')] }
-               : b
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'table'
+               ? { ...block, rows: [...(block.rows ?? []), (block.headers ?? []).map(() => '')] }
+               : block
          ),
       }))
    }, [setSections])
@@ -133,10 +133,10 @@ export function useBlockMutations(
    const removeLastRow = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b =>
-            b.id === blkId && b.type === 'table' && (b.rows?.length ?? 0) > 1
-               ? { ...b, rows: b.rows!.slice(0, -1) }
-               : b
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'table' && (block.rows?.length ?? 0) > 1
+               ? { ...block, rows: block.rows!.slice(0, -1) }
+               : block
          ),
       }))
    }, [setSections])
@@ -144,10 +144,10 @@ export function useBlockMutations(
    const addTableCol = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(b =>
-            b.id === blkId && b.type === 'table'
-               ? { ...b, headers: [...(b.headers ?? []), t.newColumn], rows: (b.rows ?? []).map(r => [...r, '']) }
-               : b
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'table'
+               ? { ...block, headers: [...(block.headers ?? []), t.newColumn], rows: (block.rows ?? []).map(row => [...row, '']) }
+               : block
          ),
       }))
    }, [setSections, t])

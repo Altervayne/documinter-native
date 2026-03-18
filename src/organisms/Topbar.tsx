@@ -63,14 +63,14 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onT
                   {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
                </Button>
                <div className="flex gap-0.5">
-                  {(['en', 'fr'] as const).map(l => (
+                  {(['en', 'fr'] as const).map(language => (
                      <button
-                        key={l}
-                        onClick={() => setLang(l)}
+                        key={language}
+                        onClick={() => setLang(language)}
                         className={`px-2 py-1 rounded-md text-xs font-mono font-semibold uppercase transition-colors border
-                           ${lang === l ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
+                           ${lang === language ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
                      >
-                        {l}
+                        {language}
                      </button>
                   ))}
                </div>

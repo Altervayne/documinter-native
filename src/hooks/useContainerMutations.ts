@@ -21,7 +21,7 @@ function mutateSec(
    secId: string,
    fn: (sec: Section) => Section,
 ) {
-   setSections(s => s.map(sec => sec.id === secId ? fn(sec) : sec))
+   setSections(sections => sections.map(sec => sec.id === secId ? fn(sec) : sec))
 }
 
 function mutateContainer(
@@ -33,9 +33,9 @@ function mutateContainer(
 ) {
    mutateSec(setSections, secId, sec => ({
       ...sec,
-      blocks: sec.blocks.map(b => {
-         if (b.id !== blkId || b.type !== 'container') return b
-         return { ...b, [side]: fn(b[side] ?? []) }
+      blocks: sec.blocks.map(block => {
+         if (block.id !== blkId || block.type !== 'container') return block
+         return { ...block, [side]: fn(block[side] ?? []) }
       }),
    }))
 }
@@ -47,7 +47,7 @@ export function useContainerMutations(
    return {
       updateBlock: useCallback((secId, blkId, side, innerBlkId, patch) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b => b.id === innerBlkId ? { ...b, ...patch } : b)
+            blocks.map(block => block.id === innerBlkId ? { ...block, ...patch } : block)
          )
       }, [setSections]),
 
@@ -56,7 +56,7 @@ export function useContainerMutations(
       }, [setSections]),
 
       removeBlock: useCallback((secId, blkId, side, innerBlkId) => {
-         mutateContainer(setSections, secId, blkId, side, blocks => blocks.filter(b => b.id !== innerBlkId))
+         mutateContainer(setSections, secId, blkId, side, blocks => blocks.filter(block => block.id !== innerBlkId))
       }, [setSections]),
 
       moveBlock: useCallback((secId, blkId, side, from, to) => {
@@ -65,50 +65,50 @@ export function useContainerMutations(
 
       addListItem: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b =>
-               b.id === innerBlkId && b.type === 'list'
-                  ? { ...b, items: [...(b.items ?? []), t.newItem] }
-                  : b
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: [...(block.items ?? []), t.newItem] }
+                  : block
             )
          )
       }, [setSections, t]),
 
       removeLastItem: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b =>
-               b.id === innerBlkId && b.type === 'list' && (b.items?.length ?? 0) > 1
-                  ? { ...b, items: b.items!.slice(0, -1) }
-                  : b
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list' && (block.items?.length ?? 0) > 1
+                  ? { ...block, items: block.items!.slice(0, -1) }
+                  : block
             )
          )
       }, [setSections]),
 
       addTableRow: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b =>
-               b.id === innerBlkId && b.type === 'table'
-                  ? { ...b, rows: [...(b.rows ?? []), (b.headers ?? []).map(() => '')] }
-                  : b
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'table'
+                  ? { ...block, rows: [...(block.rows ?? []), (block.headers ?? []).map(() => '')] }
+                  : block
             )
          )
       }, [setSections]),
 
       removeLastRow: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b =>
-               b.id === innerBlkId && b.type === 'table' && (b.rows?.length ?? 0) > 1
-                  ? { ...b, rows: b.rows!.slice(0, -1) }
-                  : b
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'table' && (block.rows?.length ?? 0) > 1
+                  ? { ...block, rows: block.rows!.slice(0, -1) }
+                  : block
             )
          )
       }, [setSections]),
 
       addTableCol: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
-            blocks.map(b =>
-               b.id === innerBlkId && b.type === 'table'
-                  ? { ...b, headers: [...(b.headers ?? []), t.newColumn], rows: (b.rows ?? []).map(r => [...r, '']) }
-                  : b
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'table'
+                  ? { ...block, headers: [...(block.headers ?? []), t.newColumn], rows: (block.rows ?? []).map(row => [...row, '']) }
+                  : block
             )
          )
       }, [setSections, t]),
@@ -116,7 +116,7 @@ export function useContainerMutations(
       updateRatio: useCallback((secId, blkId, ratio) => {
          mutateSec(setSections, secId, sec => ({
             ...sec,
-            blocks: sec.blocks.map(b => b.id === blkId ? { ...b, ratio } : b),
+            blocks: sec.blocks.map(block => block.id === blkId ? { ...block, ratio } : block),
          }))
       }, [setSections]),
    }

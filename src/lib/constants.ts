@@ -23,5 +23,5 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
 
 /** Keyed by BlockType — useful for O(1) icon lookups. */
 export const BLOCK_ICONS_MAP: Record<BlockType, LucideIcon> = Object.fromEntries(
-   BLOCK_ICONS.map(b => [b.type, b.icon])
+   BLOCK_ICONS.map(blockIcon => [blockIcon.type, blockIcon.icon])
 ) as Record<BlockType, LucideIcon>

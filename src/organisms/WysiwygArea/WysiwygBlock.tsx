@@ -27,7 +27,7 @@ import type { Block, CalloutStyle, CodeLang, ContainerMutations } from '../../ty
 
 interface ImageBlockProps {
    block: Block
-   patch: (p: Partial<Block>) => void
+   patch: (partialBlock: Partial<Block>) => void
 }
 
 function ImageBlock({ block, patch }: ImageBlockProps) {
@@ -53,7 +53,7 @@ function ImageBlock({ block, patch }: ImageBlockProps) {
                tag="p"
                className="image-field image-alt"
                content={block.alt ?? ''}
-               onBlur={v => patch({ alt: v })}
+               onBlur={value => patch({ alt: value })}
                singleLine
                spellCheck={false}
             />
@@ -61,7 +61,7 @@ function ImageBlock({ block, patch }: ImageBlockProps) {
                tag="p"
                className="image-field image-caption"
                content={block.caption ?? ''}
-               onBlur={v => patch({ caption: v })}
+               onBlur={value => patch({ caption: value })}
                singleLine
             />
             <div className="wysiwyg-util-row" style={{ marginTop: 6 }}>
@@ -76,9 +76,9 @@ function ImageBlock({ block, patch }: ImageBlockProps) {
    return (
       <div
          className={`image-dropzone${dropping ? ' dropping' : ''}`}
-         onDragOver={e => { e.preventDefault(); setDropping(true) }}
+         onDragOver={event => { event.preventDefault(); setDropping(true) }}
          onDragLeave={() => setDropping(false)}
-         onDrop={e => { e.preventDefault(); setDropping(false); handleFile(e.dataTransfer.files[0]) }}
+         onDrop={event => { event.preventDefault(); setDropping(false); handleFile(event.dataTransfer.files[0]) }}
          onClick={() => inputRef.current?.click()}
       >
          <input
@@ -86,7 +86,7 @@ function ImageBlock({ block, patch }: ImageBlockProps) {
             type="file"
             accept="image/*"
             style={{ display: 'none' }}
-            onChange={e => { handleFile(e.target.files?.[0]); e.target.value = '' }}
+            onChange={event => { handleFile(event.target.files?.[0]); event.target.value = '' }}
          />
          <p className="image-dropzone-hint">{t.dropImageHere}</p>
       </div>
@@ -127,8 +127,8 @@ function ContainerColumn({ secId, blkId, side, blocks, cm }: ContainerColumnProp
    return (
       <div className="container-col">
          <div className="container-col-label">{side === 'left' ? t.leftColumn : t.rightColumn}</div>
-         {blocks.map((b, idx) => (
-            <WysiwygBlock key={b.id} {...makeInnerProps(b, idx)} />
+         {blocks.map((block, idx) => (
+            <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
          ))}
          <AddBlockRow insideContainer docStyle onAdd={type => cm.addBlock(secId, blkId, side, type)} />
       </div>
@@ -183,9 +183,9 @@ export function WysiwygBlock({
       : { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? 0.5 : 1 }
 
    // Route mutations: inner blocks use passed handlers, top-level use context
-   function patch(p: Partial<Block>) {
-      if (inner && onUpdate) onUpdate(secId, block.id, p)
-      else ctx.updateBlock(secId, block.id, p)
+   function patch(partialBlock: Partial<Block>) {
+      if (inner && onUpdate) onUpdate(secId, block.id, partialBlock)
+      else ctx.updateBlock(secId, block.id, partialBlock)
    }
 
    const handleRemove    = inner ? onRemove!    : () => ctx.removeBlock(secId, block.id)
@@ -200,15 +200,15 @@ export function WysiwygBlock({
 
    if (block.type === 'p') {
       inner_content = (
-         <ContentEditable tag="p" content={block.text ?? ''} onBlur={v => patch({ text: v })} rich />
+         <ContentEditable tag="p" content={block.text ?? ''} onBlur={value => patch({ text: value })} rich />
       )
    } else if (block.type === 'h3') {
       inner_content = (
-         <ContentEditable tag="h3" content={block.text ?? ''} onBlur={v => patch({ text: v })} rich />
+         <ContentEditable tag="h3" content={block.text ?? ''} onBlur={value => patch({ text: value })} rich />
       )
    } else if (block.type === 'h4') {
       inner_content = (
-         <ContentEditable tag="h4" content={block.text ?? ''} onBlur={v => patch({ text: v })} rich />
+         <ContentEditable tag="h4" content={block.text ?? ''} onBlur={value => patch({ text: value })} rich />
       )
    } else if (block.type === 'callout') {
       inner_content = (
@@ -221,7 +221,7 @@ export function WysiwygBlock({
                tag="p"
                className={`callout ${block.style ?? 'info'}`}
                content={block.text ?? ''}
-               onBlur={v => patch({ text: v })}
+               onBlur={value => patch({ text: value })}
                rich
             />
          </>
@@ -232,13 +232,13 @@ export function WysiwygBlock({
          <>
             <div className="lang-picker">
                <span>lang:</span>
-               {(Object.keys(LANG_LABELS) as CodeLang[]).map(l => (
+               {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
                   <button
-                     key={l}
-                     className={lang === l ? 'active' : ''}
-                     onClick={() => patch({ lang: l })}
+                     key={langOption}
+                     className={lang === langOption ? 'active' : ''}
+                     onClick={() => patch({ lang: langOption })}
                   >
-                     {LANG_LABELS[l]}
+                     {LANG_LABELS[langOption]}
                   </button>
                ))}
             </div>
@@ -248,7 +248,7 @@ export function WysiwygBlock({
                      tag="code"
                      content={block.code ?? ''}
                      spellCheck={false}
-                     onBlur={v => { patch({ code: v }); setCodeEditing(false) }}
+                     onBlur={value => { patch({ code: value }); setCodeEditing(false) }}
                   />
                </pre>
             ) : (
@@ -262,14 +262,14 @@ export function WysiwygBlock({
       inner_content = (
          <>
             <ul>
-               {(block.items ?? []).map((item, i) => (
+               {(block.items ?? []).map((item, itemIndex) => (
                   <ContentEditable
-                     key={i}
+                     key={itemIndex}
                      tag="li"
                      content={item}
-                     onBlur={v => {
+                     onBlur={value => {
                         const items = [...(block.items ?? [])]
-                        items[i] = v
+                        items[itemIndex] = value
                         patch({ items })
                      }}
                      rich
@@ -291,14 +291,14 @@ export function WysiwygBlock({
                <table>
                   <thead>
                      <tr>
-                        {headers.map((h, ci) => (
+                        {headers.map((header, columnIndex) => (
                            <ContentEditable
-                              key={ci}
+                              key={columnIndex}
                               tag="th"
-                              content={h}
-                              onBlur={v => {
+                              content={header}
+                              onBlur={value => {
                                  const newHeaders = [...headers]
-                                 newHeaders[ci] = v
+                                 newHeaders[columnIndex] = value
                                  patch({ headers: newHeaders })
                               }}
                               rich
@@ -307,16 +307,16 @@ export function WysiwygBlock({
                      </tr>
                   </thead>
                   <tbody>
-                     {rows.map((row, ri) => (
-                        <tr key={ri}>
-                           {row.map((cell, ci) => (
+                     {rows.map((row, rowIndex) => (
+                        <tr key={rowIndex}>
+                           {row.map((cell, columnIndex) => (
                               <ContentEditable
-                                 key={ci}
+                                 key={columnIndex}
                                  tag="td"
                                  content={cell}
-                                 onBlur={v => {
-                                    const newRows = rows.map(r => [...r])
-                                    newRows[ri][ci] = v
+                                 onBlur={value => {
+                                    const newRows = rows.map(existingRow => [...existingRow])
+                                    newRows[rowIndex][columnIndex] = value
                                     patch({ rows: newRows })
                                  }}
                                  rich
@@ -339,13 +339,13 @@ export function WysiwygBlock({
    } else if (block.type === 'container' && containerMutations) {
       const ratio = block.ratio ?? 0.5
 
-      function handleDividerPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-         e.preventDefault()
-         const parent = e.currentTarget.parentElement!
+      function handleDividerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+         event.preventDefault()
+         const parent = event.currentTarget.parentElement!
          const rect   = parent.getBoundingClientRect()
-         function onMove(ev: PointerEvent) {
-            const r = Math.max(0.1, Math.min(0.9, (ev.clientX - rect.left) / rect.width))
-            patch({ ratio: Math.round(r * 100) / 100 })
+         function onMove(pointerEvent: PointerEvent) {
+            const ratio = Math.max(0.1, Math.min(0.9, (pointerEvent.clientX - rect.left) / rect.width))
+            patch({ ratio: Math.round(ratio * 100) / 100 })
          }
          function onUp() {
             document.removeEventListener('pointermove', onMove)

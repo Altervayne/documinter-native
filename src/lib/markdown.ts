@@ -27,8 +27,8 @@ function htmlToMd(html: string): string {
 }
 
 /** Escape pipe and backslash characters in table cells. */
-function mdCell(s: string): string {
-   return htmlToMd(s).replace(/\|/g, '\\|').replace(/\\/g, '\\\\').trim()
+function mdCell(text: string): string {
+   return htmlToMd(text).replace(/\|/g, '\\|').replace(/\\/g, '\\\\').trim()
 }
 
 const CALLOUT_LABEL: Record<string, string> = {
@@ -38,50 +38,50 @@ const CALLOUT_LABEL: Record<string, string> = {
    danger:  'DANGER',
 }
 
-function blockToMd(b: Block): string {
-   switch (b.type) {
+function blockToMd(block: Block): string {
+   switch (block.type) {
       case 'p':
-         return `${htmlToMd(b.text ?? '')}\n\n`
+         return `${htmlToMd(block.text ?? '')}\n\n`
 
       case 'h3':
-         return `### ${stripTags(b.text ?? '')}\n\n`
+         return `### ${stripTags(block.text ?? '')}\n\n`
 
       case 'h4':
-         return `#### ${stripTags(b.text ?? '')}\n\n`
+         return `#### ${stripTags(block.text ?? '')}\n\n`
 
       case 'callout': {
-         const label = CALLOUT_LABEL[b.style ?? 'info']
-         const body  = htmlToMd(b.text ?? '').split('\n').map(l => `> ${l}`).join('\n')
+         const label = CALLOUT_LABEL[block.style ?? 'info']
+         const body  = htmlToMd(block.text ?? '').split('\n').map(line => `> ${line}`).join('\n')
          return `> **[${label}]**\n${body}\n\n`
       }
 
       case 'code': {
-         const lang = b.lang === 'windev' ? 'windev' : (b.lang ?? '')
-         return `\`\`\`${lang}\n${b.code ?? ''}\n\`\`\`\n\n`
+         const lang = block.lang === 'windev' ? 'windev' : (block.lang ?? '')
+         return `\`\`\`${lang}\n${block.code ?? ''}\n\`\`\`\n\n`
       }
 
       case 'list':
-         return (b.items ?? []).map(i => `- ${htmlToMd(i)}`).join('\n') + '\n\n'
+         return (block.items ?? []).map(item => `- ${htmlToMd(item)}`).join('\n') + '\n\n'
 
       case 'table': {
-         const headers = b.headers ?? []
-         const rows    = b.rows    ?? []
+         const headers = block.headers ?? []
+         const rows    = block.rows    ?? []
          if (!headers.length) return ''
-         const header    = `| ${headers.map(h => mdCell(h)).join(' | ')} |`
+         const headerRow = `| ${headers.map(header => mdCell(header)).join(' | ')} |`
          const separator = `| ${headers.map(() => '---').join(' | ')} |`
-         const body      = rows.map(r =>
-            `| ${r.map(c => mdCell(c)).join(' | ')} |`
+         const bodyRows  = rows.map(row =>
+            `| ${row.map(cell => mdCell(cell)).join(' | ')} |`
          ).join('\n')
-         return [header, separator, body].filter(Boolean).join('\n') + '\n\n'
+         return [headerRow, separator, bodyRows].filter(Boolean).join('\n') + '\n\n'
       }
 
       case 'image':
-         if (!b.src) return ''
-         return `![${b.alt ?? ''}](${b.src})${b.caption ? `\n*${b.caption}*` : ''}\n\n`
+         if (!block.src) return ''
+         return `![${block.alt ?? ''}](${block.src})${block.caption ? `\n*${block.caption}*` : ''}\n\n`
 
       case 'container': {
-         const leftMd  = (b.left  ?? []).map(blockToMd).join('')
-         const rightMd = (b.right ?? []).map(blockToMd).join('')
+         const leftMd  = (block.left  ?? []).map(blockToMd).join('')
+         const rightMd = (block.right ?? []).map(blockToMd).join('')
          return leftMd + (leftMd && rightMd ? '---\n\n' : '') + rightMd
       }
 
@@ -101,10 +101,10 @@ export function generateMarkdown(meta: DocMeta, sections: Section[]): string {
    parts.push('\n---\n\n')
 
    // Sections
-   sections.forEach((sec, i) => {
-      parts.push(`## ${i + 1}. ${sec.title}\n\n`)
-      sec.blocks.forEach(b => parts.push(blockToMd(b)))
-      if (i < sections.length - 1) parts.push('---\n\n')
+   sections.forEach((sec, index) => {
+      parts.push(`## ${index + 1}. ${sec.title}\n\n`)
+      sec.blocks.forEach(block => parts.push(blockToMd(block)))
+      if (index < sections.length - 1) parts.push('---\n\n')
    })
 
    return parts.join('')
@@ -114,9 +114,9 @@ export function downloadMarkdown(meta: DocMeta, sections: Section[]): void {
    const md   = generateMarkdown(meta, sections)
    const slug = (meta.title || 'documentation')
       .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-   const a = document.createElement('a')
-   a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown;charset=utf-8' }))
-   a.download = slug + '.md'
-   a.click()
-   URL.revokeObjectURL(a.href)
+   const anchor = document.createElement('a')
+   anchor.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown;charset=utf-8' }))
+   anchor.download = slug + '.md'
+   anchor.click()
+   URL.revokeObjectURL(anchor.href)
 }
