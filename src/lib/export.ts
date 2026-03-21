@@ -19,33 +19,44 @@ const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
 function textToHtml(text: string | undefined): string {
    if (!text) return ''
    // If the string contains any of our rich-text tags, it's already HTML
-   if (/<(strong|em|u|s|br)\b/.test(text)) return text
+   if (/<(strong|em|u|s|br|a)\b/.test(text)) return text
    return esc(text)
 }
 
+function withHandle(block: Block, html: string): string {
+   if (!block.handle) return html
+   return `<div id="${block.handle}" style="scroll-margin-top:1.5rem">${html}</div>`
+}
+
 function exportBlock(block: Block): string {
-   if (block.type === 'p')       return `<p>${textToHtml(block.text)}</p>`
-   if (block.type === 'h3')      return `<h3>${textToHtml(block.text)}</h3>`
-   if (block.type === 'h4')      return `<h4>${textToHtml(block.text)}</h4>`
-   if (block.type === 'callout') return `<div class="callout ${block.style ?? 'info'}">${textToHtml(block.text)}</div>`
+   if (block.type === 'p')       return withHandle(block, `<p>${textToHtml(block.text)}</p>`)
+   if (block.type === 'h3')      return withHandle(block, `<h3>${textToHtml(block.text)}</h3>`)
+   if (block.type === 'h4')      return withHandle(block, `<h4>${textToHtml(block.text)}</h4>`)
+   if (block.type === 'callout') return withHandle(block, `<div class="callout ${block.style ?? 'info'}">${textToHtml(block.text)}</div>`)
    if (block.type === 'code') {
       const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
-      return `<pre><code>${highlighted}</code></pre>`
+      return withHandle(block, `<pre><code>${highlighted}</code></pre>`)
    }
    if (block.type === 'list')
-      return `<ul>${(block.items ?? []).map(item => `<li>${textToHtml(item)}</li>`).join('')}</ul>`
+      return withHandle(block, `<ul>${(block.items ?? []).map(listItem =>
+         `<li>${textToHtml(listItem.text)}${
+            listItem.children?.length
+               ? `<ul>${listItem.children.map(child => `<li>${textToHtml(child)}</li>`).join('')}</ul>`
+               : ''
+         }</li>`
+      ).join('')}</ul>`)
    if (block.type === 'table') {
       const headerCells = (block.headers ?? []).map(header => `<th>${textToHtml(header)}</th>`).join('')
       const bodyRows = (block.rows ?? []).map(row =>
          `<tr>${row.map(cell => `<td>${textToHtml(cell)}</td>`).join('')}</tr>`
       ).join('')
-      return `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`
+      return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
    if (block.type === 'image' && block.src) {
-      return `<figure class="doc-figure">
+      return withHandle(block, `<figure class="doc-figure">
          <img src="${block.src}" alt="${esc(block.alt)}" style="max-width:100%;height:auto;border-radius:4px;display:block">
          ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
-      </figure>`
+      </figure>`)
    }
    if (block.type === 'container') {
       const ratio    = block.ratio ?? 0.5
@@ -222,6 +233,8 @@ function buildStyles(accent: string, colors: Colors): string {
             .doc-render em     { font-style: italic; }
             .doc-render u      { text-decoration: underline; }
             .doc-render s      { text-decoration: line-through; }
+            .doc-render a      { color: ${accent}; text-decoration: underline; }
+            .doc-render a:hover { opacity: 0.8; }
 
             /* Inline code */
             .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: ${colors.inlineCodeBg}; color: ${colors.inlineCodeText}; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid ${colors.inlineCodeBorder}; }

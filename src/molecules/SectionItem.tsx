@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Block, BlockType, Section } from '../types'
 import { Badge } from '../atoms/Badge'
 import { Button } from '../atoms/Button'
@@ -30,6 +31,8 @@ export function SectionItem({
    onAddBlock, onMoveBlkUp, onMoveBlkDown, onRemoveBlk, onReorderBlocks,
 }: SectionItemProps) {
    const { t } = useLang()
+   const [hovered, setHovered] = useState(false)
+
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
 
@@ -47,13 +50,15 @@ export function SectionItem({
       <div ref={setNodeRef} style={style} {...attributes} className="shrink-0 rounded-lg overflow-hidden border border-border bg-el">
          {/* Header */}
          <div
-            className="group flex items-center gap-2.5 px-3 py-2.5 cursor-pointer select-none hover:bg-white/4 transition-colors"
+            className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer select-none hover:bg-white/4 transition-colors"
             onClick={onToggle}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
          >
             {/* Drag handle */}
             <span
                {...listeners}
-               className="text-muted/25 group-hover:text-muted/60 cursor-grab shrink-0 transition-colors"
+               className={`${hovered ? 'text-muted/60' : 'text-muted/25'} cursor-grab shrink-0 transition-colors`}
                onClick={event => event.stopPropagation()}
                title={t.dragToReorder}
             >
@@ -66,18 +71,20 @@ export function SectionItem({
                {section.title}
             </span>
 
-            {/* Actions — revealed on hover */}
-            <div
-               className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-               onClick={event => event.stopPropagation()}
-            >
-               <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
-               <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
-               <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteSection}><Trash2 size={13} /></Button>
-            </div>
+            {/* Actions — only mounted while hovered */}
+            {hovered && (
+               <div
+                  className="flex items-center gap-0.5 shrink-0"
+                  onClick={event => event.stopPropagation()}
+               >
+                  <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
+                  <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
+                  <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteSection}><Trash2 size={13} /></Button>
+               </div>
+            )}
 
             {/* Expand chevron */}
-            <span className="text-muted/40 group-hover:text-muted/70 shrink-0 transition-colors">
+            <span className={`${hovered ? 'text-muted/70' : 'text-muted/40'} shrink-0 transition-colors`}>
                {section.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
             </span>
          </div>

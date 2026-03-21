@@ -1,14 +1,3 @@
-/**
- * WinDev / WLangage syntax highlighting rules.
- *
- * HOW TO EXTEND:
- * - Add keywords to the appropriate array below (all arrays are plain string lists).
- * - Add types to TYPES.
- * - Each entry is matched as a whole word (\b boundary anchored).
- * - Rules run in order — higher-priority rules must come first.
- *   Current order: comments → strings → numbers → types → keywords → functions → operators
- */
-
 import type { Language } from '../types'
 
 // Control flow

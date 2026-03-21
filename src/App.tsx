@@ -47,6 +47,11 @@ export default function App() {
    useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
    const t = translations[lang]
 
+   // Dynamic page title
+   useEffect(() => {
+      document.title = meta.title ? `${meta.title} — Documinter` : 'Documinter'
+   }, [meta.title])
+
    // Document appearance (independent of app theme)
    const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
    const [docAccent, setDocAccent] = useState('#2dcea8')

@@ -13,6 +13,8 @@ interface ContentEditableProps {
    rich?: boolean
    /** Prevents Enter key entirely (for single-line fields like titles). */
    singleLine?: boolean
+   /** Shown as greyed italic hint when the field is empty and unfocused. */
+   placeholder?: string
 }
 
 /**
@@ -33,6 +35,7 @@ export function ContentEditable({
    onClick,
    rich,
    singleLine,
+   placeholder,
 }: ContentEditableProps) {
    const ref = useRef<HTMLElement>(null)
    const editing = useRef(false)
@@ -67,6 +70,7 @@ export function ContentEditable({
          spellCheck={spellCheck}
          onClick={onClick}
          {...(rich ? { 'data-rich': 'true' } : {})}
+         {...(placeholder ? { 'data-placeholder': placeholder } : {})}
          onFocus={() => { editing.current = true }}
          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             if (event.key === 'Enter') {

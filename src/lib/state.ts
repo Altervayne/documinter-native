@@ -26,7 +26,7 @@ export function mkBlock(type: BlockType): Block {
       case 'h4':        return { id, type, text: 'Heading H4' }
       case 'callout':   return { id, type, style: 'info', text: 'Your note here.' }
       case 'code':      return { id, type, code: '// Code here', lang: 'windev' }
-      case 'list':      return { id, type, items: ['First item', 'Second item'] }
+      case 'list':      return { id, type, items: [{ text: 'First item', children: [] }, { text: 'Second item', children: [] }] }
       case 'table':     return { id, type, headers: ['Column 1', 'Column 2'], rows: [['', ''], ['', '']] }
       case 'image':     return { id, type, src: '', alt: '', caption: '' }
       case 'container': return { id, type, ratio: 0.5, left: [], right: [] }

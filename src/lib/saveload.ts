@@ -4,11 +4,14 @@ import { slugify } from './helpers'
 // -- Type Imports --
 import type { Block, DocMeta, DocState, Section } from '../types'
 
-/** Convert any legacy numeric IDs (from pre-UUID saves) to strings. */
+/** Convert any legacy numeric IDs (from pre-UUID saves) to strings, and migrate old string[] list items to ListItem[]. */
 function migrateBlock(b: Block): Block {
    const base = { ...b, id: String(b.id) }
    if (b.type === 'container') {
       return { ...base, left: (b.left ?? []).map(migrateBlock), right: (b.right ?? []).map(migrateBlock) }
+   }
+   if (b.type === 'list' && Array.isArray(b.items) && b.items.length > 0 && typeof b.items[0] === 'string') {
+      return { ...base, items: (b.items as unknown as string[]).map(text => ({ text, children: [] })) }
    }
    return base
 }

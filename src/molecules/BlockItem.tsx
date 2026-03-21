@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Block } from '../types'
 import { Button } from '../atoms/Button'
 import { blkPreview } from '../lib/helpers'
@@ -16,23 +17,29 @@ interface BlockItemProps {
 
 export function BlockItem({ block, onMoveUp, onMoveDown, onRemove }: BlockItemProps) {
    const { t } = useLang()
+   const [hovered, setHovered] = useState(false)
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
    const TypeIcon = BLOCK_ICONS_MAP[block.type]
 
    return (
-      <div ref={setNodeRef} style={style} {...attributes} className="group flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted hover:bg-white/4 hover:text-text transition-colors">
+      <div
+         ref={setNodeRef} style={style} {...attributes}
+         className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-muted hover:bg-white/4 hover:text-text transition-colors"
+         onMouseEnter={() => setHovered(true)}
+         onMouseLeave={() => setHovered(false)}
+      >
          {/* Drag handle */}
          <span
             {...listeners}
-            className="text-muted/20 group-hover:text-muted/60 cursor-grab shrink-0 transition-colors"
+            className={`${hovered ? 'text-muted/60' : 'text-muted/20'} cursor-grab shrink-0 transition-colors`}
             title={t.dragToReorder}
          >
             <GripVertical size={13} />
          </span>
 
          {/* Type icon */}
-         <span className="text-muted/50 group-hover:text-muted/80 shrink-0 transition-colors">
+         <span className={`${hovered ? 'text-muted/80' : 'text-muted/50'} shrink-0 transition-colors`}>
             {TypeIcon && <TypeIcon size={13} />}
          </span>
 
@@ -41,12 +48,14 @@ export function BlockItem({ block, onMoveUp, onMoveDown, onRemove }: BlockItemPr
             {blkPreview(block)}
          </span>
 
-         {/* Actions — revealed on hover */}
-         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
-            <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
-            <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteBlock}><Trash2 size={13} /></Button>
-         </div>
+         {/* Actions — only mounted while hovered */}
+         {hovered && (
+            <div className="flex items-center gap-0.5 shrink-0">
+               <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}><ArrowUp size={13} /></Button>
+               <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}><ArrowDown size={13} /></Button>
+               <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteBlock}><Trash2 size={13} /></Button>
+            </div>
+         )}
       </div>
    )
 }

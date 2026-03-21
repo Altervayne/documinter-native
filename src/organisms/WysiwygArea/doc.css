@@ -27,6 +27,9 @@
 .doc-render p              { margin-bottom: 0.9rem; font-size: 0.92rem; color: #374151; }
 .doc-render hr             { border: none; border-top: 1px solid #e5e7eb; margin: 3rem 0; }
 
+/* Links */
+.doc-render a { color: var(--doc-accent, var(--color-accent)); text-decoration: underline; }
+
 /* Inline code */
 .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, #fff); color: var(--doc-accent, var(--color-accent)); padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--doc-accent, var(--color-accent)) 28%, #fff); }
 
@@ -48,6 +51,7 @@
 .doc-render table          { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .doc-render th             { background: #f9fafb; padding: 0.6rem 1rem; text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
 .doc-render td             { padding: 0.6rem 1rem; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+.doc-render table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 5%, transparent); }
 .doc-render tbody tr:last-child td { border-bottom: none; }
 
 /* Lists */
@@ -75,7 +79,8 @@
   position: relative;
 }
 
-/* Sidebar pill — absolutely positioned to the left of content, never affects layout */
+/* Sidebar pill — conditionally rendered, only exists in DOM when the block is hovered */
+@keyframes sidebar-fadein { from { opacity: 0; } to { opacity: 1; } }
 .blk-sidebar {
   position: absolute;
   right: 100%;
@@ -87,19 +92,13 @@
   gap: 2px;
   padding: 5px 4px;
   border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  border: 1px solid #d1d5db;
+  background: #eef0f3;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   user-select: none;
   min-width: 1.9rem;
   z-index: 10;
-}
-.blk-sidebar.active {
-  opacity: 1;
-  background: #eef0f3;
-  border-color: #d1d5db;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  animation: sidebar-fadein 0.12s ease;
 }
 
 .blk-sidebar-grip {
@@ -123,6 +122,40 @@
 
 .blk-content { min-width: 0; }
 
+/* Anchor name editor — horizontal pill, same position as the sidebar */
+.blk-anchor-editor {
+  position: absolute; right: 100%; top: 0; margin-right: 10px;
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 8px; border-radius: 10px;
+  border: 1px solid #d1d5db; background: #eef0f3;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  white-space: nowrap; z-index: 10;
+  animation: sidebar-fadein 0.12s ease;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+}
+.doc-dark .blk-anchor-editor { background: #21262d; border-color: #30363d; }
+.blk-anchor-hash { flex-shrink: 0; font-weight: 600; color: var(--doc-accent, var(--color-accent)); }
+.blk-anchor-input {
+  width: 140px; background: transparent; border: none; outline: none;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: inherit;
+}
+.blk-anchor-remove {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; padding: 1px; border-radius: 3px; transition: color 0.1s;
+}
+.blk-anchor-remove:hover { color: #e11d48; }
+.doc-dark .blk-anchor-remove:hover { color: #f87171; }
+
+/* DnD insertion indicator line */
+.dnd-insert-line {
+  height: 2px;
+  background: var(--doc-accent, var(--color-accent));
+  border-radius: 1px;
+  margin: 2px 0;
+  opacity: 0.7;
+}
+
 /* Section — flex row with a dedicated drag handle in the padding gutter */
 .sec-wrap {
   display: flex;
@@ -137,27 +170,23 @@
   display: flex;
   justify-content: center;
   padding-top: 0.65rem;
-  opacity: 0;
-  transition: opacity 0.15s;
   cursor: grab;
   color: #9ca3af;
   user-select: none;
 }
 .sec-drag-handle:active { cursor: grabbing; }
 .sec-drag-handle:hover { color: #374151; }
-.sec-wrap:hover .sec-drag-handle { opacity: 1; }
 
 .doc-section { flex: 1; min-width: 0; position: relative; }
 
-/* Delete button inside .doc-section, revealed on sec-wrap hover */
+/* Delete button inside .doc-section, conditionally mounted by React on hover */
 .sec-delete {
   position: absolute; top: 0.15rem; right: 0;
-  display: none; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; cursor: pointer;
   color: #9ca3af; padding: 4px; border-radius: 6px;
   transition: color 0.1s, background 0.1s; z-index: 5;
 }
-.sec-wrap:hover .sec-delete { display: flex; }
 .sec-delete:hover { color: #e11d48; background: rgba(225,29,72,0.08); }
 
 
@@ -176,6 +205,31 @@
 .wysiwyg-util-row button.danger { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
 .wysiwyg-util-row button.danger:hover { background: #ffe4e6; }
 
+/* Placeholder hint for empty rich-text blocks */
+.doc-render [data-placeholder][contenteditable]:empty:not(:focus)::before,
+.doc-render [data-placeholder][contenteditable]:not(:focus):has(> br:only-child)::before {
+  content: attr(data-placeholder);
+  color: #bbb;
+  font-style: italic;
+  pointer-events: none;
+}
+.doc-dark [data-placeholder][contenteditable]:empty:not(:focus)::before,
+.doc-dark [data-placeholder][contenteditable]:not(:focus):has(> br:only-child)::before {
+  color: #484f58;
+}
+
+/* Sub-list control buttons (hover-reveal per list item) */
+.list-sub-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem; padding: 0.1rem 0.4rem;
+  border-radius: 4px; border: 1px solid #e5e7eb;
+  background: #f9fafb; color: #6b7280; cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.list-sub-btn:hover { background: #f3f4f6; color: #374151; }
+.list-sub-btn.danger { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
+.list-sub-btn.danger:hover { background: #ffe4e6; }
+
 /* Lang picker pills */
 .lang-picker { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
 .lang-picker span { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #9ca3af; margin-right: 4px; }
@@ -189,14 +243,11 @@
 .lang-picker button:hover  { color: #111827; }
 .lang-picker button.active { color: var(--doc-accent, var(--color-accent)); border-color: var(--doc-accent, var(--color-accent)); font-weight: 700; }
 
-/* Inline add-block row — appears at bottom of each section on hover */
+/* Inline add-block row — always visible */
 .inline-add-row {
   display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
   padding: 0.5rem 0 0.1rem;
-  opacity: 0; transition: opacity 0.15s;
 }
-.sec-wrap:hover .inline-add-row,
-.inline-add-row:focus-within { opacity: 1; }
 
 .wysiwyg-add-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -304,6 +355,7 @@
 .doc-dark .doc-render .table-wrap { border-color: #30363d; }
 .doc-dark .doc-render th          { background: #0d1117; color: #8b949e; border-bottom-color: #30363d; }
 .doc-dark .doc-render td          { border-bottom-color: #30363d; color: #c9d1d9; }
+.doc-dark .doc-render table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 8%, transparent); }
 .doc-dark .doc-render tbody tr:hover td { background: #1c2128; }
 
 /* Lists */
@@ -332,13 +384,15 @@
 .doc-dark .sec-drag-handle        { color: #484f58; }
 .doc-dark .sec-drag-handle:hover  { color: #8b949e; }
 .doc-dark .sec-delete             { color: #484f58; }
-.doc-dark .blk-sidebar.active { background: #21262d; border-color: #30363d; }
+.doc-dark .blk-sidebar { background: #21262d; border-color: #30363d; }
 .doc-dark .blk-sidebar-grip       { color: #484f58; }
 .doc-dark .blk-sidebar-grip:hover { color: #8b949e; }
 .doc-dark .blk-sidebar-btn        { color: #484f58; }
 .doc-dark .wysiwyg-util-row button { background: #1c2128; border-color: #30363d; color: #c9d1d9; }
 .doc-dark .wysiwyg-util-row button:hover { background: #21262d; }
 .doc-dark .wysiwyg-util-row button.danger { background: #1f0a0a; border-color: #f8514960; color: #f85149; }
+.doc-dark .list-sub-btn { background: #21262d; border-color: #30363d; color: #8b949e; }
+.doc-dark .list-sub-btn:hover { background: #30363d; color: #c9d1d9; }
 .doc-dark .section-empty          { color: #484f58; }
 
 /* Container dark overrides */

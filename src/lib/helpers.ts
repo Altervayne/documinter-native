@@ -37,6 +37,11 @@ export function sanitizeRichText(html: string): string {
          case 'em':     case 'i':                    return inner ? `<em>${inner}</em>` : ''
          case 'u':                                   return inner ? `<u>${inner}</u>` : ''
          case 's':      case 'del': case 'strike':   return inner ? `<s>${inner}</s>` : ''
+         case 'a': {
+            const href = (el as HTMLAnchorElement).getAttribute('href') ?? ''
+            if (/^javascript:/i.test(href)) return inner
+            return inner ? `<a href="${href.replace(/"/g, '&quot;')}">${inner}</a>` : ''
+         }
          case 'span': {
             // Handle inline-style bold/italic produced by some browsers
             const s = (el as HTMLElement).style
@@ -79,7 +84,7 @@ export function blkPreview(b: Block): string {
    if (b.type === 'code')
       return (b.code ?? '').substring(0, 32)
    if (b.type === 'list')
-      return stripTags((b.items ?? [''])[0] ?? '').substring(0, 32)
+      return stripTags(b.items?.[0]?.text ?? '').substring(0, 32)
    if (b.type === 'table')
       return `${(b.headers ?? []).length} col × ${(b.rows ?? []).length} rows`
    if (b.type === 'image')

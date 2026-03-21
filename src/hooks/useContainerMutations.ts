@@ -67,7 +67,7 @@ export function useContainerMutations(
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
                block.id === innerBlkId && block.type === 'list'
-                  ? { ...block, items: [...(block.items ?? []), t.newItem] }
+                  ? { ...block, items: [...(block.items ?? []), { text: t.newItem, children: [] }] }
                   : block
             )
          )

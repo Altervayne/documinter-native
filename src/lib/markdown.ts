@@ -19,6 +19,10 @@ function htmlToMd(html: string): string {
          case 's':      case 'del': case 'strike': return `~~${inner}~~`
          case 'u':                                 return inner // no standard Markdown for underline
          case 'br':                                return '\n'
+         case 'a': {
+            const href = (el as HTMLAnchorElement).getAttribute('href') ?? ''
+            return href ? `[${inner}](${href})` : inner
+         }
          default:                                  return inner
       }
    }
@@ -61,7 +65,10 @@ function blockToMd(block: Block): string {
       }
 
       case 'list':
-         return (block.items ?? []).map(item => `- ${htmlToMd(item)}`).join('\n') + '\n\n'
+         return (block.items ?? []).map(listItem =>
+            `- ${htmlToMd(listItem.text)}` +
+            (listItem.children?.length ? '\n' + listItem.children.map(child => `  - ${htmlToMd(child)}`).join('\n') : '')
+         ).join('\n') + '\n\n'
 
       case 'table': {
          const headers = block.headers ?? []

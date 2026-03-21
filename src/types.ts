@@ -3,6 +3,11 @@ export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'plain'
 
+export interface ListItem {
+   text:      string
+   children?: string[]   // one level of sub-bullets
+}
+
 export interface Block {
    id: string
    type: BlockType
@@ -10,7 +15,7 @@ export interface Block {
    style?: CalloutStyle  // callout
    code?: string         // code
    lang?: CodeLang       // code — default 'windev'
-   items?: string[]      // list
+   items?: ListItem[]    // list
    headers?: string[]    // table
    rows?: string[][]     // table
    src?: string          // image: base64 data URL
@@ -19,6 +24,7 @@ export interface Block {
    ratio?: number        // container: left column width 0.1–0.9, default 0.5
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks
+   handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" → href="#my-note")
 }
 
 export interface Section {

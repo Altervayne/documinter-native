@@ -102,7 +102,7 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block =>
             block.id === blkId && block.type === 'list'
-               ? { ...block, items: [...(block.items ?? []), t.newItem] }
+               ? { ...block, items: [...(block.items ?? []), { text: t.newItem, children: [] }] }
                : block
          ),
       }))

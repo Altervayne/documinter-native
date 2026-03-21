@@ -1,8 +1,9 @@
 // -- React Imports --
+import { useState } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
-import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
+import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 
 // -- Context / Hook Imports --
@@ -31,8 +32,14 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+
+   function handleDragStart(event: DragStartEvent) {
+      setActiveSectionId(String(event.active.id))
+   }
 
    function handleDragEnd(event: DragEndEvent) {
+      setActiveSectionId(null)
       const { active, over } = event
       if (!over || active.id === over.id) return
       const oldIdx = sections.findIndex(section => section.id === active.id)
@@ -42,7 +49,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
 
    return (
       <>
-      <FormatToolbar />
+      <FormatToolbar sections={sections} />
       <div className="flex-1 overflow-y-auto" style={{ background: 'var(--color-canvas)' }}>
          <div
             className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
@@ -109,11 +116,11 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
             )}
 
             {/* Sections */}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveSectionId(null)}>
                <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
                   {sections.map((sec, index) => (
                      <div key={sec.id}>
-                        <WysiwygSection section={sec} index={index} />
+                        <WysiwygSection section={sec} index={index} activeSectionId={activeSectionId} />
                         {index < sections.length - 1 && <hr />}
                      </div>
                   ))}
