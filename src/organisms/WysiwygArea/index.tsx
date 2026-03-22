@@ -4,7 +4,9 @@ import type React from 'react'
 
 // -- Library Imports --
 import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
+
+const noopStrategy: SortingStrategy = () => null
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
@@ -44,7 +46,10 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
       if (!over || active.id === over.id) return
       const oldIdx = sections.findIndex(section => section.id === active.id)
       const newIdx = sections.findIndex(section => section.id === over.id)
-      if (oldIdx !== -1 && newIdx !== -1) reorderSections(oldIdx, newIdx)
+      if (oldIdx !== -1 && newIdx !== -1) {
+         const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
+         reorderSections(oldIdx, adjustedIdx)
+      }
    }
 
    return (
@@ -117,7 +122,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
 
             {/* Sections */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveSectionId(null)}>
-               <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
+               <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
                   {sections.map((sec, index) => (
                      <div key={sec.id}>
                         <WysiwygSection section={sec} index={index} activeSectionId={activeSectionId} />

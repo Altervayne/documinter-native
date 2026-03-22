@@ -147,13 +147,15 @@
 .blk-anchor-remove:hover { color: #e11d48; }
 .doc-dark .blk-anchor-remove:hover { color: #f87171; }
 
-/* DnD insertion indicator line */
+/* DnD insertion indicator — absolutely positioned so it doesn't affect item heights */
 .dnd-insert-line {
+  position: absolute;
+  top: -2px; left: 0; right: 0;
   height: 2px;
   background: var(--doc-accent, var(--color-accent));
   border-radius: 1px;
-  margin: 2px 0;
   opacity: 0.7;
+  pointer-events: none;
 }
 
 /* Section — flex row with a dedicated drag handle in the padding gutter */

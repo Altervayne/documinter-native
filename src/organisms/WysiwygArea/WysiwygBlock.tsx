@@ -139,9 +139,10 @@ export function WysiwygBlock({
    }
 
    const showSidebar = useCallback(() => {
+      if (activeBlockId && activeBlockId !== block.id) return
       clearTimeout(leaveTimer.current)
       setSidebarActive(true)
-   }, [])
+   }, [activeBlockId, block.id])
    const hideSidebar = useCallback(() => {
       leaveTimer.current = setTimeout(() => setSidebarActive(false), 120)
    }, [])
@@ -153,7 +154,12 @@ export function WysiwygBlock({
    const sortable = useSortable({ id: block.id, disabled: !!inner })
    const dndStyle = inner
       ? {}
-      : { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? 0.5 : 1 }
+      : {
+         transform:  CSS.Transform.toString(sortable.transform),
+         transition: sortable.isDragging ? undefined : sortable.transition,
+         opacity:    sortable.isDragging ? 0 : 1,
+      }
+   const isSidebarShown = (sidebarActive || (!inner && sortable.isDragging)) && !anchorEditing
    const showInsertLine = !inner && sortable.isOver && activeBlockId !== block.id
 
    // Route mutations: inner blocks use passed handlers, top-level use context
@@ -205,9 +211,8 @@ export function WysiwygBlock({
    const wrapAttr = inner ? {} : sortable.attributes
 
    return (
-      <>
-      {showInsertLine && <div className="dnd-insert-line" />}
       <div ref={wrapRef} style={dndStyle} className="blk-wrap" {...wrapAttr}>
+         {showInsertLine && <div className="dnd-insert-line" />}
          {/* Anchor editor — replaces the sidebar while active, same position */}
          {anchorEditing && (
             <div className="blk-anchor-editor">
@@ -240,7 +245,7 @@ export function WysiwygBlock({
          )}
 
          {/* Sidebar: handle + actions — hidden while anchor editor is open */}
-         {sidebarActive && !anchorEditing && (
+         {isSidebarShown && (
             <div className="blk-sidebar" onMouseEnter={keepSidebarVisible} onMouseLeave={hideSidebar}>
                {inner ? (
                   <>
@@ -275,7 +280,6 @@ export function WysiwygBlock({
             {renderBlockContent()}
          </div>
       </div>
-      </>
    )
 }
 
