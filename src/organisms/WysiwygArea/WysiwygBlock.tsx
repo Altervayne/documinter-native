@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 
 // -- Library Imports --
 import { useSortable } from '@dnd-kit/sortable'
@@ -60,7 +60,9 @@ export function WysiwygBlock({
    const [sidebarActive, setSidebarActive] = useState(false)
    const [anchorEditing, setAnchorEditing] = useState(false)
    const [anchorDraft, setAnchorDraft]     = useState('')
-   const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+   const [anchorPos, setAnchorPos]         = useState<{ top: number; right: number } | null>(null)
+   const leaveTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+   const blockDivRef  = useRef<HTMLDivElement>(null)
 
    // ── Anchor editor ──────────────────────────────────────────────────────────
 
@@ -79,6 +81,16 @@ export function WysiwygBlock({
       patch({ handle: undefined })
       closeAnchorEditor()
    }
+
+   // Compute fixed screen position when anchor editor opens, so it escapes overflow clipping
+   useEffect(() => {
+      if (anchorEditing) {
+         const rect = blockDivRef.current?.getBoundingClientRect()
+         if (rect) setAnchorPos({ top: rect.top, right: window.innerWidth - rect.left + 10 })
+      } else {
+         setAnchorPos(null)
+      }
+   }, [anchorEditing])
 
    // ── Sidebar visibility ────────────────────────────────────────────────────
 
@@ -151,14 +163,19 @@ export function WysiwygBlock({
 
    // ── Wrapper ────────────────────────────────────────────────────────────────
 
-   const wrapRef  = inner ? undefined : sortable.setNodeRef
+   // Merge sortable's ref (for DnD) with blockDivRef (for anchor editor positioning)
+   const setWrapRef = useCallback((node: HTMLDivElement | null) => {
+      blockDivRef.current = node
+      if (!inner) sortable.setNodeRef(node)
+   }, [inner, sortable.setNodeRef])
+
    const wrapAttr = inner ? {} : sortable.attributes
 
    return (
-      <div ref={wrapRef} style={dndStyle} className="relative" {...wrapAttr}>
+      <div ref={setWrapRef} style={dndStyle} className="relative" {...wrapAttr}>
          {showInsertLine && <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none" style={{ background: 'var(--doc-accent, var(--color-accent))' }} />}
 
-         {anchorEditing && (
+         {anchorEditing && anchorPos && (
             <AnchorEditor
                draft={anchorDraft}
                hasHandle={!!block.handle}
@@ -166,6 +183,7 @@ export function WysiwygBlock({
                onConfirm={confirmAnchor}
                onClose={closeAnchorEditor}
                onRemove={removeAnchor}
+               pos={anchorPos}
             />
          )}
 

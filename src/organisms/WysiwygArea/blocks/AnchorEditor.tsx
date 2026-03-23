@@ -11,13 +11,17 @@ interface AnchorEditorProps {
    onConfirm: () => void
    onClose:   () => void
    onRemove:  () => void
+   pos:       { top: number; right: number }
 }
 
-export function AnchorEditor({ draft, hasHandle, onChange, onConfirm, onClose, onRemove }: AnchorEditorProps) {
+export function AnchorEditor({ draft, hasHandle, onChange, onConfirm, onClose, onRemove, pos }: AnchorEditorProps) {
    const { t } = useLang()
 
    return (
-      <div className="absolute right-full top-0 mr-2.5 flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-gray-300 bg-[#eef0f3] shadow-sm whitespace-nowrap z-10 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs doc-dark:bg-[#21262d] doc-dark:border-[#30363d]">
+      <div
+         className="flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-gray-300 bg-[#eef0f3] shadow-sm whitespace-nowrap z-200 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs doc-dark:bg-[#21262d] doc-dark:border-[#30363d]"
+         style={{ position: 'fixed', top: pos.top, right: pos.right }}
+      >
          <span className="shrink-0 font-semibold text-accent">#</span>
          <input
             autoFocus
