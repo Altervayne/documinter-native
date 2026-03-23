@@ -1,5 +1,14 @@
 import type { Block } from '../types'
 
+/** Computes the unique HTML anchor id for a block.
+ *  Appends the last 8 hex chars of the block UUID so two blocks
+ *  with the same user-defined handle never collide in exported HTML. */
+export function blockAnchor(block: { handle?: string; id: string }): string {
+   if (!block.handle) return ''
+   const suffix = block.id.replace(/-/g, '').slice(-8)
+   return `${block.handle}-${suffix}`
+}
+
 export function esc(str: unknown): string {
    return String(str ?? '')
       .replace(/&/g, '&amp;')
@@ -74,6 +83,22 @@ export const BLOCK_TYPE_LABELS: Record<string, string> = {
 
 export function slugify(s: string): string {
    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'doc'
+}
+
+/** Generate a suggested anchor handle from a block's content. */
+export function generateHandle(block: Block): string {
+   const rawText = block.text
+      ? stripTags(block.text)
+      : block.code
+         ? block.code.split('\n')[0]
+         : block.items?.[0]?.text
+            ? stripTags(block.items[0].text)
+            : ''
+   const slug = rawText.trim().toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 28)
+   return slug || crypto.randomUUID().substring(0, 8)
 }
 
 export function blkPreview(b: Block): string {

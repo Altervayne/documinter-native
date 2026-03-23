@@ -74,89 +74,6 @@
 .tok-op   { color: #6b7280; }
 .tok-type { color: #0891b2; }
 
-/* Block wrapper — content fills full width, sidebar floats in the left gutter */
-.blk-wrap {
-  position: relative;
-}
-
-/* Sidebar pill — conditionally rendered, only exists in DOM when the block is hovered */
-@keyframes sidebar-fadein { from { opacity: 0; } to { opacity: 1; } }
-.blk-sidebar {
-  position: absolute;
-  right: 100%;
-  top: 0;
-  margin-right: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 5px 4px;
-  border-radius: 10px;
-  border: 1px solid #d1d5db;
-  background: #eef0f3;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  user-select: none;
-  min-width: 1.9rem;
-  z-index: 10;
-  animation: sidebar-fadein 0.12s ease;
-}
-
-.blk-sidebar-grip {
-  display: flex; align-items: center; justify-content: center;
-  cursor: grab; color: #6b7280; padding: 4px; border-radius: 6px;
-  transition: color 0.1s, background 0.1s;
-  width: 100%;
-}
-.blk-sidebar-grip:active { cursor: grabbing; }
-.blk-sidebar-grip:hover  { color: #111827; background: rgba(0,0,0,0.06); }
-
-.blk-sidebar-btn {
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: none; cursor: pointer;
-  color: #6b7280; padding: 4px; border-radius: 6px;
-  transition: color 0.1s, background 0.1s;
-  width: 100%;
-}
-.blk-sidebar-btn:hover        { color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 14%, transparent); }
-.blk-sidebar-btn.danger:hover { color: #e11d48; background: rgba(225,29,72,0.12); }
-
-.blk-content { min-width: 0; }
-
-/* Anchor name editor — horizontal pill, same position as the sidebar */
-.blk-anchor-editor {
-  position: absolute; right: 100%; top: 0; margin-right: 10px;
-  display: flex; align-items: center; gap: 5px;
-  padding: 4px 8px; border-radius: 10px;
-  border: 1px solid #d1d5db; background: #eef0f3;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  white-space: nowrap; z-index: 10;
-  animation: sidebar-fadein 0.12s ease;
-  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
-}
-.doc-dark .blk-anchor-editor { background: #21262d; border-color: #30363d; }
-.blk-anchor-hash { flex-shrink: 0; font-weight: 600; color: var(--doc-accent, var(--color-accent)); }
-.blk-anchor-input {
-  width: 140px; background: transparent; border: none; outline: none;
-  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: inherit;
-}
-.blk-anchor-remove {
-  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-  background: none; border: none; cursor: pointer;
-  color: #9ca3af; padding: 1px; border-radius: 3px; transition: color 0.1s;
-}
-.blk-anchor-remove:hover { color: #e11d48; }
-.doc-dark .blk-anchor-remove:hover { color: #f87171; }
-
-/* DnD insertion indicator — absolutely positioned so it doesn't affect item heights */
-.dnd-insert-line {
-  position: absolute;
-  top: -2px; left: 0; right: 0;
-  height: 2px;
-  background: var(--doc-accent, var(--color-accent));
-  border-radius: 1px;
-  opacity: 0.7;
-  pointer-events: none;
-}
 
 /* Section — flex row with a dedicated drag handle in the padding gutter */
 .sec-wrap {
@@ -386,10 +303,6 @@
 .doc-dark .sec-drag-handle        { color: #484f58; }
 .doc-dark .sec-drag-handle:hover  { color: #8b949e; }
 .doc-dark .sec-delete             { color: #484f58; }
-.doc-dark .blk-sidebar { background: #21262d; border-color: #30363d; }
-.doc-dark .blk-sidebar-grip       { color: #484f58; }
-.doc-dark .blk-sidebar-grip:hover { color: #8b949e; }
-.doc-dark .blk-sidebar-btn        { color: #484f58; }
 .doc-dark .wysiwyg-util-row button { background: #1c2128; border-color: #30363d; color: #c9d1d9; }
 .doc-dark .wysiwyg-util-row button:hover { background: #21262d; }
 .doc-dark .wysiwyg-util-row button.danger { background: #1f0a0a; border-color: #f8514960; color: #f85149; }

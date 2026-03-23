@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bold, Italic, Underline, Strikethrough, Link, Link2Off } from 'lucide-react'
 import type { Block, Section } from '../types'
+import { blockAnchor } from '../lib/helpers'
 
 interface AnchoredBlock {
    block:         Block
@@ -44,11 +45,8 @@ interface FormatToolbarProps {
    sections: Section[]
 }
 
-/**
- * Floating format toolbar that appears above a text selection inside any
- * element with the data-rich attribute (set by ContentEditable rich=true).
- * Uses position:fixed so it works inside scrollable containers.
- */
+
+
 export function FormatToolbar({ sections }: FormatToolbarProps) {
    const [pos, setPos] = useState<Pos | null>(null)
    const [linkMode, setLinkMode] = useState(false)
@@ -62,7 +60,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    // Stores the <a> element captured by onDocClick so openLinkMode can read its href
    const pendingLinkAnchor = useRef<HTMLAnchorElement | null>(null)
 
-   // ── Helper functions (defined before early return so useEffect can call them) ──
+   // Helper functions
 
    function openLinkMode() {
       // Save selection so we can restore it before inserting the link
@@ -108,7 +106,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       closeLinkMode()
    }
 
-   // ── Effects ────────────────────────────────────────────────────────────────
+   // Effects
 
    useEffect(() => {
       function onSelChange() {
@@ -165,6 +163,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    useEffect(() => {
       if (pos && pendingLinkOpen.current) {
          pendingLinkOpen.current = false
+         // eslint-disable-next-line react-hooks/set-state-in-effect
          openLinkMode()
       }
    }, [pos])
@@ -225,7 +224,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
 
          {/* Link panel — shown when link mode is active */}
          {linkMode && (
-            <div className="border-t border-white/10 pt-1 pb-1.5 flex flex-col gap-1">
+            <div className="border-t border-white/10 pt-1 pb-1.5 flex flex-col gap-1 max-h-72 overflow-y-auto">
                {/* External URL row */}
                <div className="flex items-center gap-1 px-1.5">
                   <input
@@ -259,13 +258,13 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   // Derive which anchor is currently linked (for highlighting)
                   const activeFragment = linkUrl.startsWith('#') ? linkUrl.slice(1) : null
                   return (
-                     <div className="border-t border-white/10 pt-1 px-1.5">
+                     <div className="shrink-0 border-t border-white/10 pt-1 px-1.5">
                         <div className="text-white/30 text-[0.6rem] uppercase tracking-wider mb-0.5 px-1">
                            Jump to block
                         </div>
-                        <div className="flex flex-col gap-px max-h-28 overflow-y-auto">
+                        <div className="flex flex-col gap-px overflow-y-scroll">
                            {getAnchoredBlocks(sections).map(({ block, sectionIndex }) => {
-                              const isActive = activeFragment === block.handle
+                              const isActive = activeFragment === blockAnchor(block)
                               return (
                                  <button
                                     key={block.id}
@@ -280,7 +279,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                                           sel?.removeAllRanges()
                                           sel?.addRange(savedRange.current)
                                        }
-                                       cmd('createLink', `#${block.handle}`)
+                                       cmd('createLink', `#${blockAnchor(block)}`)
                                        closeLinkMode()
                                     }}
                                  >
@@ -300,7 +299,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                {sections.length > 0 && (() => {
                   const activeFragment = linkUrl.startsWith('#') ? linkUrl.slice(1) : null
                   return (
-                     <div className="border-t border-white/10 pt-1 px-1.5">
+                     <div className="shrink-0 border-t border-white/10 pt-1 px-1.5">
                         <div className="text-white/30 text-[0.6rem] uppercase tracking-wider mb-0.5 px-1">
                            Jump to section
                         </div>

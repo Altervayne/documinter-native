@@ -1,5 +1,5 @@
 import type { DocMeta, Section, Block } from '../types'
-import { esc, slugify } from './helpers'
+import { esc, slugify, blockAnchor } from './helpers'
 import { highlight } from './highlight'
 
 export interface ExportOptions {
@@ -25,7 +25,7 @@ function textToHtml(text: string | undefined): string {
 
 function withHandle(block: Block, html: string): string {
    if (!block.handle) return html
-   return `<div id="${block.handle}" style="scroll-margin-top:1.5rem">${html}</div>`
+   return `<div id="${blockAnchor(block)}" style="scroll-margin-top:1.5rem">${html}</div>`
 }
 
 function exportBlock(block: Block): string {

@@ -1,6 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Makes .doc-dark a usable Tailwind variant: doc-dark:bg-[#21262d] etc. */
+@custom-variant doc-dark (&:where(.doc-dark *));
+
+/* Fade-in animation for sidebar / anchor editor */
+@keyframes sidebar-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @theme {
   /* ── Dark theme defaults (mint) ────────────────────────────────────────── */
   --color-bg:      #0a0f0d;
