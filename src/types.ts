@@ -21,6 +21,8 @@ export interface Block {
    src?: string          // image: base64 data URL
    alt?: string          // image: alt text
    caption?: string      // image: optional caption
+   align?: 'left' | 'center' | 'right'  // image: horizontal alignment, default center
+   imageHeight?: number                  // image: constrained display height in px; undefined = unconstrained
    ratio?: number        // container: left column width 0.1–0.9, default 0.5
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks

@@ -53,8 +53,17 @@ function exportBlock(block: Block): string {
       return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
    if (block.type === 'image' && block.src) {
-      return withHandle(block, `<figure class="doc-figure">
-         <img src="${block.src}" alt="${esc(block.alt)}" style="max-width:100%;height:auto;border-radius:4px;display:block">
+      const align = block.align ?? 'center'
+      const figureMargin = align === 'left'
+         ? 'margin-left:0;margin-right:auto'
+         : align === 'right'
+            ? 'margin-left:auto;margin-right:0'
+            : 'margin-left:auto;margin-right:auto'
+      const imgHeight = block.imageHeight
+         ? `height:${block.imageHeight}px;object-fit:cover;`
+         : 'height:auto;'
+      return withHandle(block, `<figure class="doc-figure" style="width:fit-content;max-width:100%;margin-top:1.25rem;margin-bottom:1.25rem;${figureMargin}">
+         <img src="${block.src}" alt="${esc(block.alt)}" style="max-width:100%;${imgHeight}border-radius:6px;border:1px solid rgba(0,0,0,0.08);box-shadow:0 1px 4px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.05);display:block">
          ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
       </figure>`)
    }
@@ -222,6 +231,9 @@ function buildStyles(accent: string, colors: Colors): string {
 
             /* Images */
             .doc-render .doc-figure { margin: 1.25rem 0; }
+            .doc-render .doc-figure-left   { margin-right: auto; }
+            .doc-render .doc-figure-center { margin-left: auto; margin-right: auto; }
+            .doc-render .doc-figure-right  { margin-left: auto; }
             .doc-render .doc-figure figcaption { font-size: 0.8rem; color: ${colors.textMuted}; font-style: italic; margin-top: 0.4rem; text-align: center; }
 
             /* Containers */
