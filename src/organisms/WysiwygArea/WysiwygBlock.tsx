@@ -7,6 +7,8 @@ import { CSS } from '@dnd-kit/utilities'
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
+import { useDocumentHandles } from '../../lib/DocumentHandlesContext'
+import { useLang } from '../../lib/LangContext'
 
 // -- Component Imports --
 import { ParagraphBlock }  from './blocks/ParagraphBlock'
@@ -21,6 +23,9 @@ import { BlockSidebar }    from './blocks/BlockSidebar'
 
 // -- Lib / Util Imports --
 import { generateHandle } from '../../lib/helpers'
+
+// -- Atom Imports --
+import { TriangleAlert } from 'lucide-react'
 
 // -- Type Imports --
 import type { Block, ContainerMutations } from '../../types'
@@ -55,7 +60,10 @@ export function WysiwygBlock({
    onAddListItem, onRemoveLastItem,
    onAddTableRow, onRemoveLastRow, onAddTableCol,
 }: WysiwygBlockProps) {
-   const ctx = useDocumentMutations()
+   const ctx        = useDocumentMutations()
+   const { t }      = useLang()
+   const allHandles = useDocumentHandles()
+   const isAnchorDupe = !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
 
    const [sidebarActive, setSidebarActive] = useState(false)
    const [anchorEditing, setAnchorEditing] = useState(false)
@@ -172,12 +180,16 @@ export function WysiwygBlock({
    const wrapAttr = inner ? {} : sortable.attributes
 
    return (
-      <div ref={setWrapRef} style={dndStyle} className="relative" {...wrapAttr}>
+      <div
+         ref={setWrapRef} style={dndStyle} {...wrapAttr}
+         className={`relative rounded-sm ${isAnchorDupe ? 'ring-2 ring-amber-400/60' : ''}`}
+      >
          {showInsertLine && <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none" style={{ background: 'var(--doc-accent, var(--color-accent))' }} />}
 
          {anchorEditing && anchorPos && (
             <AnchorEditor
                draft={anchorDraft}
+               currentHandle={block.handle}
                hasHandle={!!block.handle}
                onChange={setAnchorDraft}
                onConfirm={confirmAnchor}
@@ -205,6 +217,13 @@ export function WysiwygBlock({
          <div className="min-w-0" onMouseEnter={showSidebar} onMouseLeave={hideSidebar}>
             {renderBlockContent()}
          </div>
+
+         {isAnchorDupe && (
+            <div className="flex items-center gap-1 mt-1 px-1 text-amber-500 text-xs font-medium">
+               <TriangleAlert size={11} />
+               <span>{t.duplicateAnchor} — #{block.handle}</span>
+            </div>
+         )}
       </div>
    )
 }

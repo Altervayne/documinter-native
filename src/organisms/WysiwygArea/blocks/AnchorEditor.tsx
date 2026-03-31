@@ -1,21 +1,32 @@
 // -- Library Imports --
-import { X } from 'lucide-react'
+import { X, TriangleAlert } from 'lucide-react'
 
 // -- Context / Hook Imports --
 import { useLang } from '../../../lib/LangContext'
+import { useDocumentHandles } from '../../../lib/DocumentHandlesContext'
 
 interface AnchorEditorProps {
-   draft:     string
-   hasHandle: boolean
-   onChange:  (value: string) => void
-   onConfirm: () => void
-   onClose:   () => void
-   onRemove:  () => void
-   pos:       { top: number; right: number }
+   draft:         string
+   currentHandle: string | undefined   // the block's currently saved handle (excluded from duplicate check)
+   hasHandle:     boolean
+   onChange:      (value: string) => void
+   onConfirm:     () => void
+   onClose:       () => void
+   onRemove:      () => void
+   pos:           { top: number; right: number }
 }
 
-export function AnchorEditor({ draft, hasHandle, onChange, onConfirm, onClose, onRemove, pos }: AnchorEditorProps) {
+export function AnchorEditor({ draft, currentHandle, hasHandle, onChange, onConfirm, onClose, onRemove, pos }: AnchorEditorProps) {
    const { t } = useLang()
+   const allHandles = useDocumentHandles()
+
+   const sluggedDraft    = draft.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+   const matchCount      = allHandles.filter(handle => handle === sluggedDraft).length
+   // Duplicate if: same as own saved handle but appears more than once (e.g. after duplication),
+   // or different from own saved handle but appears at least once elsewhere.
+   const isDuplicate     = sluggedDraft !== '' && (
+      sluggedDraft === currentHandle ? matchCount > 1 : matchCount > 0
+   )
 
    return (
       <div
@@ -37,6 +48,11 @@ export function AnchorEditor({ draft, hasHandle, onChange, onConfirm, onClose, o
             }}
             onBlur={onConfirm}
          />
+         {isDuplicate && (
+            <span className="shrink-0 flex items-center gap-0.5 text-amber-500" title={t.duplicateAnchor}>
+               <TriangleAlert size={11} />
+            </span>
+         )}
          {hasHandle && (
             <button
                className="shrink-0 flex items-center justify-center bg-transparent border-0 cursor-pointer text-gray-400 p-px rounded-sm transition-colors hover:text-rose-600 doc-dark:hover:text-red-400"

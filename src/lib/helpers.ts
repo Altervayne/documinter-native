@@ -1,12 +1,8 @@
 import type { Block } from '../types'
 
-/** Computes the unique HTML anchor id for a block.
- *  Appends the last 8 hex chars of the block UUID so two blocks
- *  with the same user-defined handle never collide in exported HTML. */
-export function blockAnchor(block: { handle?: string; id: string }): string {
-   if (!block.handle) return ''
-   const suffix = block.id.replace(/-/g, '').slice(-8)
-   return `${block.handle}-${suffix}`
+/** Returns the HTML anchor id for a block — just the user-defined handle slug. */
+export function blockAnchor(block: { handle?: string }): string {
+   return block.handle ?? ''
 }
 
 export function esc(str: unknown): string {

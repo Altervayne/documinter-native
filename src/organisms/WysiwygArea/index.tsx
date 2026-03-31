@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
@@ -10,6 +10,7 @@ const noopStrategy: SortingStrategy = () => null
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
+import { DocumentHandlesProvider } from '../../lib/DocumentHandlesContext'
 import { useLang } from '../../lib/LangContext'
 
 // -- Component Imports --
@@ -33,6 +34,16 @@ interface WysiwygAreaProps {
 export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
+
+   const allHandles = useMemo(() =>
+      sections.flatMap(section =>
+         section.blocks.flatMap(block => [
+            block.handle,
+            ...(block.left  ?? []).map(inner => inner.handle),
+            ...(block.right ?? []).map(inner => inner.handle),
+         ])
+      ).filter((handle): handle is string => !!handle),
+   [sections])
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
@@ -53,7 +64,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
    }
 
    return (
-      <>
+      <DocumentHandlesProvider handles={allHandles}>
       <FormatToolbar sections={sections} />
       <div className="flex-1 overflow-y-auto" style={{ background: 'var(--color-canvas)' }}>
          <div
@@ -134,6 +145,6 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
          </div>
          </div>
       </div>
-      </>
+      </DocumentHandlesProvider>
    )
 }

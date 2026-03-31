@@ -1,9 +1,10 @@
 // -- Library Imports --
-import { GripVertical, Trash2, ChevronUp, ChevronDown, Copy, Anchor } from 'lucide-react'
+import { GripVertical, Trash2, ChevronUp, ChevronDown, Copy, Anchor, TriangleAlert } from 'lucide-react'
 import type { useSortable } from '@dnd-kit/sortable'
 
 // -- Context / Hook Imports --
 import { useLang } from '../../../lib/LangContext'
+import { useDocumentHandles } from '../../../lib/DocumentHandlesContext'
 
 // -- Type Imports --
 import type { Block } from '../../../types'
@@ -30,6 +31,8 @@ export function BlockSidebar({
    onAnchorEdit, onRemove, onMouseEnter, onMouseLeave, dragListeners,
 }: BlockSidebarProps) {
    const { t } = useLang()
+   const allHandles    = useDocumentHandles()
+   const isAnchorDupe  = !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
 
    return (
       <div
@@ -58,11 +61,21 @@ export function BlockSidebar({
          )}
          <button
             className={btnStd}
-            style={block.handle ? { color: 'var(--doc-accent, var(--color-accent))' } : {}}
-            title={block.handle ? `#${block.handle} — ${t.editAnchor}` : t.addAnchor}
+            style={isAnchorDupe
+               ? { color: 'rgb(245 158 11)' }
+               : block.handle
+                  ? { color: 'var(--doc-accent, var(--color-accent))' }
+                  : {}
+            }
+            title={isAnchorDupe
+               ? `#${block.handle} — ${t.duplicateAnchor}`
+               : block.handle
+                  ? `#${block.handle} — ${t.editAnchor}`
+                  : t.addAnchor
+            }
             onClick={onAnchorEdit}
          >
-            <Anchor size={14} />
+            {isAnchorDupe ? <TriangleAlert size={14} /> : <Anchor size={14} />}
          </button>
          <button className={btnDgr} onClick={onRemove} title={t.deleteBlock}>
             <Trash2 size={14} />
