@@ -29,9 +29,10 @@ interface WysiwygAreaProps {
    docTheme:  'light' | 'dark'
    docAccent: string
    onUpdateMeta: (patch: Partial<DocMeta>) => void
+   readOnly?: boolean
 }
 
-export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta }: WysiwygAreaProps) {
+export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta, readOnly }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
 
@@ -65,7 +66,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
 
    return (
       <DocumentHandlesProvider handles={allHandles}>
-      <FormatToolbar sections={sections} />
+      {!readOnly && <FormatToolbar sections={sections} />}
       <div className="flex-1 overflow-y-auto" style={{ background: 'var(--color-canvas)' }}>
          <div
             className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
@@ -84,12 +85,14 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                   content={meta.module || t.placeholderModule}
                   onBlur={value => onUpdateMeta({ module: value.trim() })}
                   singleLine
+                  readOnly={readOnly}
                />
                <ContentEditable
                   tag="h1"
                   content={meta.title || t.placeholderTitle}
                   onBlur={value => onUpdateMeta({ title: value.trim() })}
                   singleLine
+                  readOnly={readOnly}
                />
                <div className="page-meta">
                   <ContentEditable
@@ -97,6 +100,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                      content={meta.env || t.placeholderEnv}
                      onBlur={value => onUpdateMeta({ env: value.trim() })}
                      singleLine
+                     readOnly={readOnly}
                   />
                   <ContentEditable
                      tag="span"
@@ -108,6 +112,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                         onUpdateMeta({ date: stripped })
                      }}
                      singleLine
+                     readOnly={readOnly}
                   />
                   <ContentEditable
                      tag="span"
@@ -119,6 +124,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
                         onUpdateMeta({ author: stripped })
                      }}
                      singleLine
+                     readOnly={readOnly}
                   />
                </div>
             </div>
@@ -132,16 +138,27 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta 
             )}
 
             {/* Sections */}
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveSectionId(null)}>
-               <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
+            {readOnly ? (
+               <>
                   {sections.map((sec, index) => (
                      <div key={sec.id}>
-                        <WysiwygSection section={sec} index={index} activeSectionId={activeSectionId} />
+                        <WysiwygSection section={sec} index={index} activeSectionId={null} readOnly />
                         {index < sections.length - 1 && <hr />}
                      </div>
                   ))}
-               </SortableContext>
-            </DndContext>
+               </>
+            ) : (
+               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveSectionId(null)}>
+                  <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
+                     {sections.map((sec, index) => (
+                        <div key={sec.id}>
+                           <WysiwygSection section={sec} index={index} activeSectionId={activeSectionId} />
+                           {index < sections.length - 1 && <hr />}
+                        </div>
+                     ))}
+                  </SortableContext>
+               </DndContext>
+            )}
          </div>
          </div>
       </div>

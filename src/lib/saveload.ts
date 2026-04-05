@@ -65,3 +65,21 @@ export function loadJSONFile(
    }
    input.click()
 }
+
+export function loadMintdownFile(
+   onLoad: (text: string) => void,
+   onError: (msg: string) => void,
+): void {
+   const input = document.createElement('input')
+   input.type = 'file'
+   input.accept = '.mint,.md,.txt'
+   input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = (event) => { onLoad(event.target?.result as string) }
+      reader.onerror = () => onError('Could not read file.')
+      reader.readAsText(file)
+   }
+   input.click()
+}

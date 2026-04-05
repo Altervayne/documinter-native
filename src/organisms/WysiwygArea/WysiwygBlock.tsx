@@ -30,7 +30,7 @@ import { TriangleAlert } from 'lucide-react'
 // -- Type Imports --
 import type { Block, ContainerMutations } from '../../types'
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+
 
 interface WysiwygBlockProps {
    secId: string
@@ -38,6 +38,8 @@ interface WysiwygBlockProps {
    containerMutations?: ContainerMutations
    /** When true: inner block inside a container — uses ↑↓ buttons instead of DnD */
    inner?: boolean
+   /** When true: renders a static read-only view — no editing, no sidebar, no DnD */
+   readOnly?: boolean
    /** ID of the block currently being dragged (for showing insertion indicator) */
    activeBlockId?: string | null
    // Inner block handlers (only used when inner=true)
@@ -52,18 +54,18 @@ interface WysiwygBlockProps {
    onAddTableCol?:    () => void
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+
 
 export function WysiwygBlock({
    secId, block, containerMutations, activeBlockId,
-   inner, onUpdate, onRemove, onMoveUp, onMoveDown,
+   inner, readOnly, onUpdate, onRemove, onMoveUp, onMoveDown,
    onAddListItem, onRemoveLastItem,
    onAddTableRow, onRemoveLastRow, onAddTableCol,
 }: WysiwygBlockProps) {
    const ctx        = useDocumentMutations()
    const { t }      = useLang()
    const allHandles = useDocumentHandles()
-   const isAnchorDupe = !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
+   const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
 
    const [sidebarActive, setSidebarActive] = useState(false)
    const [anchorEditing, setAnchorEditing] = useState(false)
@@ -72,7 +74,7 @@ export function WysiwygBlock({
    const leaveTimer   = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
    const blockDivRef  = useRef<HTMLDivElement>(null)
 
-   // ── Anchor editor ──────────────────────────────────────────────────────────
+
 
    function openAnchorEditor() {
       setAnchorDraft(block.handle ?? generateHandle(block))
@@ -94,13 +96,12 @@ export function WysiwygBlock({
    useEffect(() => {
       if (anchorEditing) {
          const rect = blockDivRef.current?.getBoundingClientRect()
+         // eslint-disable-next-line react-hooks/set-state-in-effect
          if (rect) setAnchorPos({ top: rect.top, right: window.innerWidth - rect.left + 10 })
       } else {
          setAnchorPos(null)
       }
    }, [anchorEditing])
-
-   // ── Sidebar visibility ────────────────────────────────────────────────────
 
    const showSidebar = useCallback(() => {
       if (activeBlockId && activeBlockId !== block.id) return
@@ -114,20 +115,20 @@ export function WysiwygBlock({
       clearTimeout(leaveTimer.current)
    }, [])
 
-   // ── DnD — only active for top-level blocks ────────────────────────────────
 
-   const sortable = useSortable({ id: block.id, disabled: !!inner })
-   const dndStyle = inner
+
+   const sortable = useSortable({ id: block.id, disabled: !!inner || !!readOnly })
+   const dndStyle = inner || readOnly
       ? {}
       : {
          transform:  CSS.Transform.toString(sortable.transform),
          transition: sortable.isDragging ? undefined : sortable.transition,
          opacity:    sortable.isDragging ? 0 : 1,
       }
-   const isSidebarShown = (sidebarActive || (!inner && sortable.isDragging)) && !anchorEditing
-   const showInsertLine = !inner && sortable.isOver && activeBlockId !== block.id
+   const isSidebarShown = !readOnly && (sidebarActive || (!inner && sortable.isDragging)) && !anchorEditing
+   const showInsertLine = !readOnly && !inner && sortable.isOver && activeBlockId !== block.id
 
-   // ── Mutation routing: inner blocks use passed handlers, top-level use ctx ──
+
 
    function patch(partialBlock: Partial<Block>) {
       if (inner && onUpdate) onUpdate(secId, block.id, partialBlock)
@@ -142,42 +143,44 @@ export function WysiwygBlock({
    const handleRowDel    = inner ? onRemoveLastRow!  : () => ctx.removeLastRow(secId, block.id)
    const handleColAdd    = inner ? onAddTableCol!    : () => ctx.addTableCol(secId, block.id)
 
-   // ── Block content dispatch ────────────────────────────────────────────────
+
 
    function renderBlockContent() {
       if (block.type === 'p' || block.type === 'h3' || block.type === 'h4') {
-         return <ParagraphBlock block={block} patch={patch} />
+         return <ParagraphBlock block={block} patch={patch} readOnly={readOnly} />
       }
       if (block.type === 'callout') {
-         return <CalloutBlock block={block} patch={patch} />
+         return <CalloutBlock block={block} patch={patch} readOnly={readOnly} />
       }
       if (block.type === 'code') {
-         return <CodeBlock block={block} patch={patch} />
+         return <CodeBlock block={block} patch={patch} readOnly={readOnly} />
       }
       if (block.type === 'list') {
-         return <ListBlock block={block} patch={patch} onAddItem={handleListAdd} onRemoveLast={handleListDel} />
+         return <ListBlock block={block} patch={patch} onAddItem={handleListAdd} onRemoveLast={handleListDel} readOnly={readOnly} />
       }
       if (block.type === 'table') {
-         return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} />
+         return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} readOnly={readOnly} />
       }
       if (block.type === 'image') {
-         return <ImageBlock block={block} patch={patch} />
+         return <ImageBlock block={block} patch={patch} readOnly={readOnly} />
       }
-      if (block.type === 'container' && containerMutations) {
-         return <ContainerBlock block={block} patch={patch} containerMutations={containerMutations} secId={secId} />
+      if (block.type === 'container' && (containerMutations || readOnly)) {
+         return <ContainerBlock block={block} patch={patch} containerMutations={containerMutations!} secId={secId} readOnly={readOnly} />
       }
       return null
    }
 
-   // ── Wrapper ────────────────────────────────────────────────────────────────
 
+   
    // Merge sortable's ref (for DnD) with blockDivRef (for anchor editor positioning)
-   const setWrapRef = useCallback((node: HTMLDivElement | null) => {
+   // Merge sortable's ref with blockDivRef. Defined as a plain function so the
+   // React Compiler can memoize it freely — ref callbacks only fire on mount/unmount.
+   function setWrapRef(node: HTMLDivElement | null) {
       blockDivRef.current = node
-      if (!inner) sortable.setNodeRef(node)
-   }, [inner, sortable.setNodeRef])
+      if (!inner && !readOnly) sortable.setNodeRef(node)
+   }
 
-   const wrapAttr = inner ? {} : sortable.attributes
+   const wrapAttr = inner || readOnly ? {} : sortable.attributes
 
    return (
       <div
@@ -186,7 +189,7 @@ export function WysiwygBlock({
       >
          {showInsertLine && <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none" style={{ background: 'var(--doc-accent, var(--color-accent))' }} />}
 
-         {anchorEditing && anchorPos && (
+         {!readOnly && anchorEditing && anchorPos && (
             <AnchorEditor
                draft={anchorDraft}
                currentHandle={block.handle}
@@ -214,7 +217,7 @@ export function WysiwygBlock({
             />
          )}
 
-         <div className="min-w-0" onMouseEnter={showSidebar} onMouseLeave={hideSidebar}>
+         <div className="min-w-0" onMouseEnter={readOnly ? undefined : showSidebar} onMouseLeave={readOnly ? undefined : hideSidebar}>
             {renderBlockContent()}
          </div>
 

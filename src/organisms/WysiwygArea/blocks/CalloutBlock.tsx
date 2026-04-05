@@ -6,16 +6,19 @@ import type { Block, CalloutStyle } from '../../../types'
 interface CalloutBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
+   readOnly?: boolean
 }
 
-export function CalloutBlock({ block, patch }: CalloutBlockProps) {
+export function CalloutBlock({ block, patch, readOnly }: CalloutBlockProps) {
    const { t } = useLang()
    return (
       <>
-         <CalloutStylePicker
-            current={block.style ?? 'info'}
-            onChange={(style: CalloutStyle) => patch({ style })}
-         />
+         {!readOnly && (
+            <CalloutStylePicker
+               current={block.style ?? 'info'}
+               onChange={(style: CalloutStyle) => patch({ style })}
+            />
+         )}
          <ContentEditable
             tag="p"
             className={`callout ${block.style ?? 'info'}`}
@@ -23,6 +26,7 @@ export function CalloutBlock({ block, patch }: CalloutBlockProps) {
             onBlur={value => patch({ text: value })}
             rich
             placeholder={t.clickToEdit}
+            readOnly={readOnly}
          />
       </>
    )

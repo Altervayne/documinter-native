@@ -414,7 +414,7 @@ ${navLinks}
                   if (t) t.scrollIntoView({ behavior: 'smooth' });
             });
       });
-<\/script>
+</script>
 </body>
 </html>`
 }

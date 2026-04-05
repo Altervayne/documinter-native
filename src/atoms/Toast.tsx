@@ -16,6 +16,7 @@ export function Toast({ message, action, onDone }: ToastProps) {
 
    useEffect(() => {
       if (!message) return
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(true)
       const duration = action ? 2500 : 2000
       const t = setTimeout(() => {
@@ -30,7 +31,7 @@ export function Toast({ message, action, onDone }: ToastProps) {
    return (
       <div
          className={[
-            'fixed bottom-6 left-1/2 -translate-x-1/2 z-[999]',
+            'fixed bottom-6 left-1/2 -translate-x-1/2 z-999',
             'bg-raised border border-border rounded',
             'font-mono text-sm text-green px-5 py-3',
             'flex items-center gap-4 shadow-lg',

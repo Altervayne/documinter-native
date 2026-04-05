@@ -8,9 +8,10 @@ interface TableBlockProps {
    onAddRow:    () => void
    onAddCol:    () => void
    onRemoveRow: () => void
+   readOnly?:   boolean
 }
 
-export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow }: TableBlockProps) {
+export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, readOnly }: TableBlockProps) {
    const { t } = useLang()
    const headers = block.headers ?? []
    const rows    = block.rows    ?? []
@@ -33,6 +34,7 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow }: Ta
                            }}
                            rich
                            placeholder={t.clickToEdit}
+                           readOnly={readOnly}
                         />
                      ))}
                   </tr>
@@ -52,6 +54,7 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow }: Ta
                               }}
                               rich
                               placeholder={t.clickToEdit}
+                              readOnly={readOnly}
                            />
                         ))}
                      </tr>
@@ -59,11 +62,13 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow }: Ta
                </tbody>
             </table>
          </div>
-         <div className="wysiwyg-util-row">
-            <button onClick={onAddRow}>{t.addRow}</button>
-            <button onClick={onAddCol}>{t.addCol}</button>
-            <button className="danger" onClick={onRemoveRow}>{t.removeRow}</button>
-         </div>
+         {!readOnly && (
+            <div className="wysiwyg-util-row">
+               <button onClick={onAddRow}>{t.addRow}</button>
+               <button onClick={onAddCol}>{t.addCol}</button>
+               <button className="danger" onClick={onRemoveRow}>{t.removeRow}</button>
+            </div>
+         )}
       </>
    )
 }

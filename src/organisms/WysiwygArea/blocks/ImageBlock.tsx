@@ -8,9 +8,10 @@ import type { Block } from '../../../types'
 interface ImageBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
+   readOnly?: boolean
 }
 
-export function ImageBlock({ block, patch }: ImageBlockProps) {
+export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
    const { t } = useLang()
    const inputRef  = useRef<HTMLInputElement>(null)
    const imageRef  = useRef<HTMLImageElement>(null)
@@ -82,15 +83,17 @@ export function ImageBlock({ block, patch }: ImageBlockProps) {
                      />
 
                      {/* Drag handle */}
-                     <div
-                        className="absolute bottom-0 left-0 right-0 flex justify-center items-center py-0.5 cursor-ns-resize opacity-40 hover:opacity-100 transition-opacity bg-linear-to-t from-black/55 to-transparent"
-                        onMouseDown={handleResizeMouseDown}
-                     >
-                        <GripHorizontal size={16} className="text-white drop-shadow" />
-                     </div>
+                     {!readOnly && (
+                        <div
+                           className="absolute bottom-0 left-0 right-0 flex justify-center items-center py-0.5 cursor-ns-resize opacity-40 hover:opacity-100 transition-opacity bg-linear-to-t from-black/55 to-transparent"
+                           onMouseDown={handleResizeMouseDown}
+                        >
+                           <GripHorizontal size={16} className="text-white drop-shadow" />
+                        </div>
+                     )}
 
                      {/* Height badge during drag */}
-                     {draggingHeight !== null && (
+                     {!readOnly && draggingHeight !== null && (
                         <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-xs font-mono bg-black/50 text-white pointer-events-none">
                            {draggingHeight} px
                         </div>
@@ -108,6 +111,7 @@ export function ImageBlock({ block, patch }: ImageBlockProps) {
                placeholder={t.imageAlt}
                singleLine
                spellCheck={false}
+               readOnly={readOnly}
             />
             <ContentEditable
                tag="p"
@@ -116,8 +120,9 @@ export function ImageBlock({ block, patch }: ImageBlockProps) {
                onBlur={value => patch({ caption: value })}
                placeholder={t.imageCaption}
                singleLine
+               readOnly={readOnly}
             />
-            <div className="wysiwyg-util-row" style={{ marginTop: 6 }}>
+            {!readOnly && <div className="wysiwyg-util-row" style={{ marginTop: 6 }}>
                <div className="flex items-center gap-0.5">
                   {ALIGN_BUTTONS.map(({ value, Icon }) => (
                      <button
@@ -158,7 +163,15 @@ export function ImageBlock({ block, patch }: ImageBlockProps) {
                <button className="danger" onClick={() => patch({ src: '', alt: '', caption: '' })}>
                   ✕ Remove
                </button>
-            </div>
+            </div>}
+         </div>
+      )
+   }
+
+   if (readOnly) {
+      return (
+         <div className="image-dropzone" style={{ opacity: 0.4, cursor: 'default', pointerEvents: 'none' }}>
+            <p className="image-dropzone-hint">No image</p>
          </div>
       )
    }

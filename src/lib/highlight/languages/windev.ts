@@ -64,7 +64,7 @@ const TYPES = [
    'est', 'sont', 'un', 'des',
    // Numeric
    'entier', 'réel', 'reel', 'numérique', 'numerique', '1 octet', '2 octets', '3 octets', '4 octets', '5 octets', '6 octets', '7 octets', '8 octets',
-   'signé', 'non signé',
+   'sur 1', 'sur 2', 'sur 3', 'sur 4', 'sur 5', 'sur 6', 'sur 7', 'sur 8', 'signé', 'non signé',
    // String
    'chaîne', 'chaine', 'caractère',
    // Boolean

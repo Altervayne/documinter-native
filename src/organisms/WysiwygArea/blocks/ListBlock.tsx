@@ -8,9 +8,10 @@ interface ListBlockProps {
    patch:        (partial: Partial<Block>) => void
    onAddItem:    () => void
    onRemoveLast: () => void
+   readOnly?:    boolean
 }
 
-export function ListBlock({ block, patch, onAddItem, onRemoveLast }: ListBlockProps) {
+export function ListBlock({ block, patch, onAddItem, onRemoveLast, readOnly }: ListBlockProps) {
    const { t } = useLang()
    const listItems = block.items ?? []
    const [hoveredItemIndex, setHoveredItemIndex] = useState<number | null>(null)
@@ -39,8 +40,9 @@ export function ListBlock({ block, patch, onAddItem, onRemoveLast }: ListBlockPr
                         rich
                         placeholder={t.clickToEdit}
                         style={{ flex: 1 }}
+                        readOnly={readOnly}
                      />
-                     {hoveredItemIndex === itemIndex && (
+                     {!readOnly && hoveredItemIndex === itemIndex && (
                         <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'center' }}>
                            <button
                               className="list-sub-btn"
@@ -87,6 +89,7 @@ export function ListBlock({ block, patch, onAddItem, onRemoveLast }: ListBlockPr
                                  }}
                                  rich
                                  style={{ flex: 1 }}
+                                 readOnly={readOnly}
                               />
                            </li>
                         ))}
@@ -95,10 +98,12 @@ export function ListBlock({ block, patch, onAddItem, onRemoveLast }: ListBlockPr
                </li>
             ))}
          </ul>
-         <div className="wysiwyg-util-row">
-            <button onClick={onAddItem}>{t.addItem}</button>
-            <button className="danger" onClick={onRemoveLast}>{t.removeLast}</button>
-         </div>
+         {!readOnly && (
+            <div className="wysiwyg-util-row">
+               <button onClick={onAddItem}>{t.addItem}</button>
+               <button className="danger" onClick={onRemoveLast}>{t.removeLast}</button>
+            </div>
+         )}
       </>
    )
 }

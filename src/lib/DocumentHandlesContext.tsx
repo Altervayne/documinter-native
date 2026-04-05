@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 

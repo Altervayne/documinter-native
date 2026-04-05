@@ -49,6 +49,8 @@ export interface DocState {
    sections: Section[]
 }
 
+export type Mode = 'wysiwyg' | 'preview' | 'raw' | 'split'
+
 export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void

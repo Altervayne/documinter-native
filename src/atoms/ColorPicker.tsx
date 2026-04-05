@@ -1,6 +1,14 @@
+/* eslint-disable react-hooks/refs --
+   Sticky-ref pattern: sHsvH, sHslH/S, sCmykC/M/Y are deliberately read during
+   render to drive thumb positions and channel gradients. Re-renders are always
+   triggered by setRgb() in event handlers, so the values are current. The refs
+   intentionally bypass the RGB round-trip to prevent hue drift on degenerate
+   colors (black, white, gray → hue=0 from any conversion). */
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-// ─── Color math ───────────────────────────────────────────────────────────────
+// ##############
+// # Color math #
+// ##############
 
 function hsvToRgb(hue: number, saturation: number, value: number): [number, number, number] {
    saturation /= 100; value /= 100
@@ -89,7 +97,9 @@ function rgbToHex(red: number, green: number, blue: number): string {
    return '#' + [red, green, blue].map(component => Math.max(0, Math.min(255, component)).toString(16).padStart(2, '0')).join('')
 }
 
-// ─── Channel slider ────────────────────────────────────────────────────────────
+// ##################
+// # Channel slider #
+// ##################
 
 interface SliderProps {
    value: number
@@ -128,7 +138,9 @@ function ChannelSlider({ value, min, max, gradient, onChange }: SliderProps) {
    )
 }
 
-// ─── Channel row ───────────────────────────────────────────────────────────────
+// ###############
+// # Channel row #
+// ###############
 
 interface ChannelRowProps {
    label: string
@@ -169,7 +181,9 @@ function ChannelRow({ label, labelColor, value, min, max, gradient, onChange }: 
    )
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
+// ##################
+// # Main component #
+// ##################
 
 type ColorMode = 'hex' | 'rgb' | 'hsl' | 'cmyk'
 const MODES: ColorMode[] = ['hex', 'rgb', 'hsl', 'cmyk']
@@ -182,7 +196,7 @@ interface ColorPickerProps {
 export function ColorPicker({ value, onChange }: ColorPickerProps) {
    const [mode, setMode] = useState<ColorMode>('hex')
 
-   // ── Internal RGB state ───────────────────────────────────────────────────────
+   // ============ Internal RGB state ============
    // Source of truth. Avoids the prop→hex→derive feedback loop that causes
    // degenerate color conversions (e.g. hsl(*, *, 100%) always → [0,0,100]).
    const emittedHex = useRef(value)
@@ -193,7 +207,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
    const [,, hslLightness]      = rgbToHsl(red, green, blue)
    const [cyan, magenta, yellow, black] = rgbToCmyk(red, green, blue)
 
-   // ── Sticky refs ──────────────────────────────────────────────────────────────
+   // ============ Sticky refs ============
    // Preserve hue/saturation through degenerate colors (black, white, gray).
    // Only updated explicitly in onChange handlers and on external value changes —
    // never from derived RGB round-trips, which introduce rounding drift.
@@ -219,7 +233,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             if (newBlack < 100) { sCmykC.current = newCyan; sCmykM.current = newMagenta; sCmykY.current = newYellow }
          }
       }
-   }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+   }, [value])
 
    const pureHue = rgbToHex(...hsvToRgb(sHsvH.current, 100, 100))
 
@@ -230,7 +244,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       onChange(hex)
    }, [onChange])
 
-   // ── SV square & hue bar ──────────────────────────────────────────────────────
+   // ============ SV square & hue bar ============
    const svRef  = useRef<HTMLDivElement>(null)
    const hueRef = useRef<HTMLDivElement>(null)
 
@@ -250,15 +264,15 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       emit(hsvToRgb(newHue, hsvSaturation, hsvValue))
    }
 
-   // ── Hex input ────────────────────────────────────────────────────────────────
+   // ============ Hex input ============
    const currentHex = rgbToHex(red, green, blue)
    const [hexRaw, setHexRaw] = useState(currentHex.replace('#', ''))
-   useEffect(() => { setHexRaw(currentHex.replace('#', '')) }, [currentHex]) // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { setHexRaw(currentHex.replace('#', '')) }, [currentHex])
 
    return (
       <div className="flex flex-col gap-2.5 select-none">
 
-         {/* ── SV square ─────────────────────────────────────────────────────── */}
+         {/* ============ SV square ============ */}
          <div
             ref={svRef}
             className="relative w-full rounded-md overflow-hidden cursor-crosshair touch-none"
@@ -275,7 +289,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             />
          </div>
 
-         {/* ── Hue bar ───────────────────────────────────────────────────────── */}
+         {/* ============ Hue bar ============ */}
          <div
             ref={hueRef}
             className="relative w-full h-3 rounded-full cursor-pointer touch-none"
@@ -289,7 +303,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             />
          </div>
 
-         {/* ── Mode tabs ─────────────────────────────────────────────────────── */}
+         {/* ============ Mode tabs ============ */}
          <div className="flex gap-0.5 bg-bg rounded-lg p-0.5 border border-border/60">
             {MODES.map(colorMode => (
                <button
@@ -303,7 +317,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             ))}
          </div>
 
-         {/* ── Mode content ──────────────────────────────────────────────────── */}
+         {/* ============ Mode content ============ */}
          <div className="flex flex-col gap-2">
 
             {mode === 'hex' && (

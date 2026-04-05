@@ -4,7 +4,7 @@ import { sanitizeRichText } from '../lib/helpers'
 interface ContentEditableProps {
    tag?: ElementType
    content: string
-   onBlur: (value: string) => void
+   onBlur?: (value: string) => void
    spellCheck?: boolean
    className?: string
    style?: React.CSSProperties
@@ -15,6 +15,8 @@ interface ContentEditableProps {
    singleLine?: boolean
    /** Shown as greyed italic hint when the field is empty and unfocused. */
    placeholder?: string
+   /** When true, renders a plain static element — no editing, no event handlers. */
+   readOnly?: boolean
 }
 
 /**
@@ -28,7 +30,7 @@ interface ContentEditableProps {
 export function ContentEditable({
    tag: Tag = 'p',
    content,
-   onBlur,
+   onBlur = () => {},
    spellCheck = true,
    className,
    style,
@@ -36,6 +38,7 @@ export function ContentEditable({
    rich,
    singleLine,
    placeholder,
+   readOnly,
 }: ContentEditableProps) {
    const ref = useRef<HTMLElement>(null)
    const editing = useRef(false)
@@ -59,6 +62,11 @@ export function ContentEditable({
          if (ref.current.innerText !== content) ref.current.innerText = content
       }
    }, [content, rich])
+
+   if (readOnly) {
+      if (rich) return <Tag className={className} style={style} dangerouslySetInnerHTML={{ __html: content }} />
+      return <Tag className={className} style={style}>{content}</Tag>
+   }
 
    return (
       <Tag

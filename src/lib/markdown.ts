@@ -2,7 +2,7 @@ import type { Block, DocMeta, Section } from '../types'
 import { stripTags } from './helpers'
 
 /** Convert stored rich HTML to Markdown inline syntax. */
-function htmlToMd(html: string): string {
+export function htmlToMd(html: string): string {
    if (!html) return ''
    // Use DOMParser for reliable parsing
    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
@@ -31,8 +31,8 @@ function htmlToMd(html: string): string {
 }
 
 /** Escape pipe and backslash characters in table cells. */
-function mdCell(text: string): string {
-   return htmlToMd(text).replace(/\|/g, '\\|').replace(/\\/g, '\\\\').trim()
+export function mdCell(text: string): string {
+   return htmlToMd(text).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim()
 }
 
 const CALLOUT_LABEL: Record<string, string> = {

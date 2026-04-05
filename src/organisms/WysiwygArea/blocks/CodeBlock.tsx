@@ -7,28 +7,31 @@ import type { Block, CodeLang } from '../../../types'
 interface CodeBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
+   readOnly?: boolean
 }
 
-export function CodeBlock({ block, patch }: CodeBlockProps) {
+export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
    const { t } = useLang()
    const [codeEditing, setCodeEditing] = useState(false)
    const lang = block.lang ?? 'windev'
 
    return (
       <>
-         <div className="lang-picker">
-            <span>lang:</span>
-            {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
-               <button
-                  key={langOption}
-                  className={lang === langOption ? 'active' : ''}
-                  onClick={() => patch({ lang: langOption })}
-               >
-                  {LANG_LABELS[langOption]}
-               </button>
-            ))}
-         </div>
-         {codeEditing ? (
+         {!readOnly && (
+            <div className="lang-picker">
+               <span>lang:</span>
+               {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
+                  <button
+                     key={langOption}
+                     className={lang === langOption ? 'active' : ''}
+                     onClick={() => patch({ lang: langOption })}
+                  >
+                     {LANG_LABELS[langOption]}
+                  </button>
+               ))}
+            </div>
+         )}
+         {!readOnly && codeEditing ? (
             <pre>
                <ContentEditable
                   tag="code"
@@ -38,7 +41,11 @@ export function CodeBlock({ block, patch }: CodeBlockProps) {
                />
             </pre>
          ) : (
-            <pre title={t.clickToEdit} onClick={() => setCodeEditing(true)} style={{ cursor: 'text' }}>
+            <pre
+               title={readOnly ? undefined : t.clickToEdit}
+               onClick={readOnly ? undefined : () => setCodeEditing(true)}
+               style={{ cursor: readOnly ? undefined : 'text' }}
+            >
                <code dangerouslySetInnerHTML={{ __html: highlight(block.code ?? '', lang) }} />
             </pre>
          )}

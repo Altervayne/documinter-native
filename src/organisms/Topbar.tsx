@@ -1,10 +1,9 @@
 import { useState } from 'react'
-import type { DocMeta, Section } from '../types'
+import type { DocMeta, DocState, Mode, Section } from '../types'
 import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
 import { downloadJSON, loadJSONFile } from '../lib/saveload'
-import type { DocState } from '../types'
-import { Upload, Save, Download, Sun, Moon } from 'lucide-react'
+import { Upload, Save, Download, Sun, Moon, FileCode2, Eye, Columns2 } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
 import { useLang } from '../lib/LangContext'
 import { downloadMarkdown } from '../lib/markdown'
@@ -15,12 +14,16 @@ interface TopbarProps {
    theme: 'dark' | 'light'
    docTheme: 'light' | 'dark'
    docAccent: string
+   mode: Mode
    onLoad: (state: DocState) => void
    onToast: (msg: string) => void
    onToggleTheme: () => void
+   onSetMode: (mode: Mode) => void
+   onDownloadMintdown: () => void
+   onLoadMintdown: () => void
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onToast, onToggleTheme }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToast, onToggleTheme, onSetMode, onDownloadMintdown, onLoadMintdown }: TopbarProps) {
    const [exportOpen, setExportOpen] = useState(false)
    const { t, lang, setLang } = useLang()
 
@@ -35,6 +38,12 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onT
          msg => onToast(msg),
       )
    }
+
+   const MODE_BUTTONS = [
+      { value: 'preview' as Mode, icon: <Eye size={14} />,       label: t.previewMode },
+      { value: 'raw'     as Mode, icon: <FileCode2 size={14} />, label: t.rawMode     },
+      { value: 'split'   as Mode, icon: <Columns2 size={14} />,  label: t.splitMode   },
+   ] as const
 
    return (
       <>
@@ -58,6 +67,20 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, onLoad, onT
                <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />{t.load}</Button>
                <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />{t.save}</Button>
                <Button variant="ghost" onClick={() => downloadMarkdown(meta, sections)}>{t.downloadMd}</Button>
+               <Button variant="ghost" onClick={onLoadMintdown}>{t.loadMint}</Button>
+               <Button variant="ghost" onClick={onDownloadMintdown}>{t.downloadMint}</Button>
+               {MODE_BUTTONS.map(({ value, icon, label }) => (
+                  <Button
+                     key={value}
+                     variant="ghost"
+                     size="icon"
+                     onClick={() => onSetMode(value)}
+                     title={label}
+                     style={mode === value ? { color: 'var(--color-accent)' } : undefined}
+                  >
+                     {icon}
+                  </Button>
+               ))}
                <div className="w-px h-5 bg-border mx-1" />
                <Button variant="ghost" size="icon" onClick={onToggleTheme} title={theme === 'dark' ? t.toLightMode : t.toDarkMode}>
                   {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}

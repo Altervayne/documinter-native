@@ -13,17 +13,20 @@ import { WysiwygBlock } from '../WysiwygBlock'
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations } from '../../../types'
 
-// ── ContainerColumn ───────────────────────────────────────────────────────────
+// ###################
+// # ContainerColumn #
+// ###################
 
 interface ContainerColumnProps {
-   secId:  string
-   blkId:  string
-   side:   'left' | 'right'
-   blocks: Block[]
-   cm:     ContainerMutations
+   secId:     string
+   blkId:     string
+   side:      'left' | 'right'
+   blocks:    Block[]
+   cm:        ContainerMutations
+   readOnly?: boolean
 }
 
-function ContainerColumn({ secId, blkId, side, blocks, cm }: ContainerColumnProps) {
+function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: ContainerColumnProps) {
    const { t } = useLang()
 
    function makeInnerProps(innerBlock: Block, idx: number) {
@@ -48,23 +51,26 @@ function ContainerColumn({ secId, blkId, side, blocks, cm }: ContainerColumnProp
       <div className="container-col">
          <div className="container-col-label">{side === 'left' ? t.leftColumn : t.rightColumn}</div>
          {blocks.map((block, idx) => (
-            <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
+            <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly={readOnly} />
          ))}
-         <AddBlockRow insideContainer docStyle onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />
+         {!readOnly && <AddBlockRow insideContainer docStyle onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />}
       </div>
    )
 }
 
-// ── ContainerBlock ────────────────────────────────────────────────────────────
+// ##################
+// # ContainerBlock #
+// ##################
 
 export interface ContainerBlockProps {
    block:              Block
    patch:              (partial: Partial<Block>) => void
    containerMutations: ContainerMutations
    secId:              string
+   readOnly?:          boolean
 }
 
-export function ContainerBlock({ block, patch, containerMutations, secId }: ContainerBlockProps) {
+export function ContainerBlock({ block, patch, containerMutations, secId, readOnly }: ContainerBlockProps) {
    const ratio = block.ratio ?? 0.5
 
    function handleDividerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -89,10 +95,14 @@ export function ContainerBlock({ block, patch, containerMutations, secId }: Cont
             <div style={{ flex: ratio, minWidth: 0 }}>
                <ContainerColumn
                   secId={secId} blkId={block.id} side="left"
-                  blocks={block.left ?? []} cm={containerMutations}
+                  blocks={block.left ?? []} cm={containerMutations} readOnly={readOnly}
                />
             </div>
-            <div className="container-divider" onPointerDown={handleDividerPointerDown}>
+            <div
+               className="container-divider"
+               onPointerDown={readOnly ? undefined : handleDividerPointerDown}
+               style={{ cursor: readOnly ? 'default' : undefined }}
+            >
                <span className="container-ratio-badge">
                   {Math.round(ratio * 100)}/{Math.round((1 - ratio) * 100)}
                </span>
@@ -100,7 +110,7 @@ export function ContainerBlock({ block, patch, containerMutations, secId }: Cont
             <div style={{ flex: 1 - ratio, minWidth: 0 }}>
                <ContainerColumn
                   secId={secId} blkId={block.id} side="right"
-                  blocks={block.right ?? []} cm={containerMutations}
+                  blocks={block.right ?? []} cm={containerMutations} readOnly={readOnly}
                />
             </div>
          </div>

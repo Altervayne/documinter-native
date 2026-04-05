@@ -24,9 +24,10 @@ interface WysiwygSectionProps {
    section:         Section
    index:           number
    activeSectionId: string | null
+   readOnly?:       boolean
 }
 
-export function WysiwygSection({ section, index, activeSectionId }: WysiwygSectionProps) {
+export function WysiwygSection({ section, index, activeSectionId, readOnly }: WysiwygSectionProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
    const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
@@ -34,7 +35,7 @@ export function WysiwygSection({ section, index, activeSectionId }: WysiwygSecti
    const containerRef = useRef<HTMLDivElement>(null)
    const { addBlock, removeSection, reorderBlocks, updateTitle, containerMutations } = useDocumentMutations()
 
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: section.id })
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: section.id, disabled: !!readOnly })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -64,25 +65,32 @@ export function WysiwygSection({ section, index, activeSectionId }: WysiwygSecti
 
    return (
       <div
-         ref={setNodeRef} style={style} className="sec-wrap" {...attributes}
-         onMouseEnter={() => setHovered(true)}
-         onMouseLeave={() => setHovered(false)}
+         ref={readOnly ? undefined : setNodeRef}
+         style={style}
+         className="sec-wrap"
+         {...(readOnly ? {} : attributes)}
+         onMouseEnter={readOnly ? undefined : () => setHovered(true)}
+         onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
-         {/* DnD section insertion indicator — absolute so it doesn't affect layout height */}
-         {isOver && activeSectionId !== section.id && (
-            <div className="dnd-insert-line" />
+         {/* DnD section insertion indicator */}
+         {!readOnly && isOver && activeSectionId !== section.id && (
+            <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none" style={{ background: 'var(--doc-accent, var(--color-accent))' }} />
          )}
 
-         {/* Drag handle — always in DOM to hold the 2rem gutter; icon shown only while hovered */}
-         <div {...listeners} className="sec-drag-handle" title={hovered ? t.dragSection : undefined}>
-            {hovered && <GripVertical size={16} />}
+         {/* Drag handle — always in DOM to hold the 2rem gutter */}
+         <div
+            {...(readOnly ? {} : listeners)}
+            className="sec-drag-handle"
+            title={!readOnly && hovered ? t.dragSection : undefined}
+         >
+            {!readOnly && hovered && <GripVertical size={16} />}
          </div>
 
          {/* Section content */}
          <div className="doc-section">
 
-            {/* Delete — appears top-right only while hovered */}
-            {hovered && (
+            {/* Delete — appears top-right only while hovered, never in readOnly */}
+            {!readOnly && hovered && (
                <button className="sec-delete" onClick={() => removeSection(section.id)} title={t.deleteSection}>
                   <Trash2 size={14} />
                </button>
@@ -93,65 +101,81 @@ export function WysiwygSection({ section, index, activeSectionId }: WysiwygSecti
                content={`${index + 1}. ${section.title}`}
                onBlur={handleTitleBlur}
                singleLine
+               readOnly={readOnly}
             />
 
             {section.blocks.length === 0 && (
                <p className="section-empty">{t.noBlocks}</p>
             )}
 
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleBlockDragStart} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveBlockId(null); setDragWidth(null) }}>
+            {readOnly ? (
                <div ref={containerRef}>
-                  <SortableContext items={section.blocks.map(block => block.id)} strategy={noopStrategy}>
-                     {section.blocks.map((block: Block) => (
-                        <WysiwygBlock
-                           key={block.id}
-                           secId={section.id}
-                           block={block}
-                           containerMutations={containerMutations}
-                           activeBlockId={activeBlockId}
-                        />
-                     ))}
-                  </SortableContext>
+                  {section.blocks.map((block: Block) => (
+                     <WysiwygBlock
+                        key={block.id}
+                        secId={section.id}
+                        block={block}
+                        readOnly
+                     />
+                  ))}
                </div>
-               <DragOverlay>
-                  {activeBlockId && (() => {
-                     const activeBlock = section.blocks.find(block => block.id === activeBlockId)
-                     return activeBlock ? (
-                        <div style={{ width: dragWidth ?? undefined, pointerEvents: 'none', opacity: 0.9 }}>
+            ) : (
+               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleBlockDragStart} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveBlockId(null); setDragWidth(null) }}>
+                  <div ref={containerRef}>
+                     <SortableContext items={section.blocks.map(block => block.id)} strategy={noopStrategy}>
+                        {section.blocks.map((block: Block) => (
                            <WysiwygBlock
+                              key={block.id}
                               secId={section.id}
-                              block={activeBlock}
-                              inner
-                              onUpdate={() => {}}
-                              onRemove={() => {}}
+                              block={block}
+                              containerMutations={containerMutations}
+                              activeBlockId={activeBlockId}
                            />
-                        </div>
-                     ) : null
-                  })()}
-               </DragOverlay>
-            </DndContext>
+                        ))}
+                     </SortableContext>
+                  </div>
+                  <DragOverlay>
+                     {activeBlockId && (() => {
+                        const activeBlock = section.blocks.find(block => block.id === activeBlockId)
+                        return activeBlock ? (
+                           <div style={{ width: dragWidth ?? undefined, pointerEvents: 'none', opacity: 0.9 }}>
+                              <WysiwygBlock
+                                 secId={section.id}
+                                 block={activeBlock}
+                                 inner
+                                 onUpdate={() => {}}
+                                 onRemove={() => {}}
+                              />
+                           </div>
+                        ) : null
+                     })()}
+                  </DragOverlay>
+               </DndContext>
+            )}
 
-            {/* Inline add block row */}
-            <div className="inline-add-row">
-               <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.add}</span>
-               {BLOCK_ICONS.map(({ type, icon: Icon }) => {
-                  const labels: Record<BlockType, string> = {
-                     p: t.blockParagraph, h3: t.blockH3, h4: t.blockH4,
-                     callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
-                     image: t.blockImage, container: t.blockContainer,
-                  }
-                  return (
-                     <button
-                        key={type}
-                        title={labels[type]}
-                        className="wysiwyg-add-btn"
-                        onClick={() => addBlock(section.id, type)}
-                     >
-                        <Icon size={13} />
-                     </button>
-                  )
-               })}
-            </div>
+            {/* Inline add block row — hidden in readOnly */}
+            {!readOnly && (
+               <div className="inline-add-row">
+                  <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.add}</span>
+                  {BLOCK_ICONS.map(({ type, icon: Icon }) => {
+                     const labels: Record<BlockType, string> = {
+                        p: t.blockParagraph, h3: t.blockH3, h4: t.blockH4,
+                        callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
+                        image: t.blockImage, container: t.blockContainer,
+                     }
+                     return (
+                        <button
+                           key={type}
+                           title={labels[type]}
+                           className="wysiwyg-add-btn"
+                           onClick={() => addBlock(section.id, type)}
+                        >
+                           <Icon size={13} />
+                        </button>
+                     )
+                  })}
+               </div>
+            )}
          </div>
       </div>
    )
