@@ -6,7 +6,7 @@ import type React from 'react'
 import { mkSection } from './lib/state'
 import { translations, type Lang } from './lib/i18n'
 import { documentToMintdown, downloadMintdown, mintdownToDocument } from './lib/mintdown'
-import { loadMintdownFile } from './lib/saveload'
+import { loadMintdownFile, readAutosave, writeAutosave } from './lib/saveload'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -30,8 +30,8 @@ import type { DocMeta, DocState, Mode, Section } from './types'
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
 
 export default function App() {
-   const [sections, setSections] = useState<Section[]>(() => [mkSection()])
-   const [meta, setMeta]         = useState<DocMeta>(EMPTY_META)
+   const [sections, setSections] = useState<Section[]>(() => readAutosave()?.sections ?? [mkSection()])
+   const [meta, setMeta]         = useState<DocMeta>(() => readAutosave()?.meta ?? EMPTY_META)
    const [panelOpen, setPanelOpen] = useState(true)
 
    // Theme
@@ -57,8 +57,16 @@ export default function App() {
    }, [meta.title])
 
    // Document appearance (independent of app theme)
-   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
-   const [docAccent, setDocAccent] = useState('#2dcea8')
+   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>(() => readAutosave()?.docTheme  ?? 'light')
+   const [docAccent, setDocAccent] = useState(                 () => readAutosave()?.docAccent ?? '#2dcea8')
+
+   // Autosave document state — debounced 1 second
+   useEffect(() => {
+      const timer = setTimeout(() => {
+         writeAutosave({ meta, sections, docTheme, docAccent })
+      }, 1000)
+      return () => clearTimeout(timer)
+   }, [meta, sections, docTheme, docAccent])
 
    // Mode system
    const [mode, setMode]           = useState<Mode>('wysiwyg')

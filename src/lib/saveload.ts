@@ -27,6 +27,39 @@ function migrateIds(state: DocState): DocState {
    }
 }
 
+// ============ Autosave ============
+
+const AUTOSAVE_KEY = 'documinter-autosave'
+
+export interface AutosaveData {
+   meta:      DocMeta
+   sections:  Section[]
+   docTheme:  'light' | 'dark'
+   docAccent: string
+}
+
+export function readAutosave(): AutosaveData | null {
+   try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY)
+      if (!raw) return null
+      const data = JSON.parse(raw) as Partial<AutosaveData>
+      if (!data.meta || !Array.isArray(data.sections)) return null
+      const migrated = migrateIds({ meta: data.meta, sections: data.sections })
+      return {
+         meta:      migrated.meta,
+         sections:  migrated.sections,
+         docTheme:  data.docTheme  ?? 'light',
+         docAccent: data.docAccent ?? '#2dcea8',
+      }
+   } catch {
+      return null
+   }
+}
+
+export function writeAutosave(data: AutosaveData): void {
+   localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data))
+}
+
 export function downloadJSON(meta: DocMeta, sections: Section[]): void {
    const state: DocState = { meta, sections }
    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json;charset=utf-8' })
