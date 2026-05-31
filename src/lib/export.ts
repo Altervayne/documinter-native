@@ -1,5 +1,6 @@
 import type { DocMeta, Section, Block } from '../types'
-import { esc, slugify, blockAnchor } from './helpers'
+import { esc, slugify } from './text'
+import { blockAnchor } from './document'
 import { highlight } from './highlight'
 
 export interface ExportOptions {

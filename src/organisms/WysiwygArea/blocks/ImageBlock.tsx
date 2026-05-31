@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { AlignLeft, AlignCenter, AlignRight, GripHorizontal } from 'lucide-react'
 import { ContentEditable } from '../../../atoms/ContentEditable'
-import { compressImage } from '../../../lib/imageUtils'
-import { useLang } from '../../../lib/LangContext'
+import { compressImage } from '../../../lib/image'
+import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
 interface ImageBlockProps {

@@ -3,26 +3,11 @@ import { useCallback } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 // -- Lib / Util Imports --
-import { mkBlock } from '../lib/state'
+import { mkBlock, moveItem, mutateSec } from '../lib/document'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, Section, Side } from '../types'
 import type { T } from '../lib/i18n'
-
-function moveItem<T>(arr: T[], from: number, to: number): T[] {
-   if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr
-   const next = [...arr]
-   ;[next[from], next[to]] = [next[to], next[from]]
-   return next
-}
-
-function mutateSec(
-   setSections: Dispatch<SetStateAction<Section[]>>,
-   secId: string,
-   fn: (sec: Section) => Section,
-) {
-   setSections(sections => sections.map(sec => sec.id === secId ? fn(sec) : sec))
-}
 
 function mutateContainer(
    setSections: Dispatch<SetStateAction<Section[]>>,

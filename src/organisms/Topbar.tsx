@@ -2,11 +2,10 @@ import { useState } from 'react'
 import type { DocMeta, DocState, Mode, Section } from '../types'
 import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
-import { downloadJSON, loadJSONFile } from '../lib/saveload'
-import { Upload, Save, Download, Sun, Moon, FileCode2, Eye, Columns2 } from 'lucide-react'
+import { downloadJSON, loadJSONFile } from '../lib/storage'
+import { Upload, Save, Download, Sun, Moon, Eye } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
-import { useLang } from '../lib/LangContext'
-import { downloadMarkdown } from '../lib/markdown'
+import { useLang } from '../contexts/LangContext'
 
 interface TopbarProps {
    meta: DocMeta
@@ -19,11 +18,9 @@ interface TopbarProps {
    onToast: (msg: string) => void
    onToggleTheme: () => void
    onSetMode: (mode: Mode) => void
-   onDownloadMintdown: () => void
-   onLoadMintdown: () => void
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToast, onToggleTheme, onSetMode, onDownloadMintdown, onLoadMintdown }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToast, onToggleTheme, onSetMode }: TopbarProps) {
    const [exportOpen, setExportOpen] = useState(false)
    const { t, lang, setLang } = useLang()
 
@@ -34,15 +31,13 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoa
 
    function handleLoadJSON() {
       loadJSONFile(
-         state => { onLoad(state); onToast(t.docLoaded) },
-         msg => onToast(msg),
+         (state: DocState) => { onLoad(state); onToast(t.docLoaded) },
+         (msg: string) => onToast(msg),
       )
    }
 
    const MODE_BUTTONS = [
-      { value: 'preview' as Mode, icon: <Eye size={14} />,       label: t.previewMode },
-      { value: 'raw'     as Mode, icon: <FileCode2 size={14} />, label: t.rawMode     },
-      { value: 'split'   as Mode, icon: <Columns2 size={14} />,  label: t.splitMode   },
+      { value: 'preview' as Mode, icon: <Eye size={14} />, label: t.previewMode },
    ] as const
 
    return (
@@ -66,9 +61,6 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoa
             <div className="flex gap-2 items-center shrink-0">
                <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />{t.load}</Button>
                <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />{t.save}</Button>
-               <Button variant="ghost" onClick={() => downloadMarkdown(meta, sections)}>{t.downloadMd}</Button>
-               <Button variant="ghost" onClick={onLoadMintdown}>{t.loadMint}</Button>
-               <Button variant="ghost" onClick={onDownloadMintdown}>{t.downloadMint}</Button>
                {MODE_BUTTONS.map(({ value, icon, label }) => (
                   <Button
                      key={value}

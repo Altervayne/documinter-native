@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { BlockType, Section } from '../types'
 import { Button } from '../atoms/Button'
-import { ColorPicker } from '../atoms/ColorPicker'
+import { ColorPicker } from '../molecules/ColorPicker'
 import { SectionItem } from '../molecules/SectionItem'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, PanelLeftClose, PanelLeftOpen, Palette, ChevronDown } from 'lucide-react'
-import { useLang } from '../lib/LangContext'
+import { useLang } from '../contexts/LangContext'
 import { ACCENT_PRESETS } from '../lib/constants'
 
 interface PanelProps {

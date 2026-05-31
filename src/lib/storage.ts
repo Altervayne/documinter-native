@@ -1,17 +1,25 @@
-// -- Lib / Util Imports --
-import { slugify } from './helpers'
+/**
+ * storage.ts — Saving and loading documents.
+ *
+ * Exports: readAutosave, writeAutosave, downloadJSON, loadJSONFile,
+ *          AutosaveData
+ *
+ * Covers three persistence mechanisms:
+ *   1. Autosave  — debounced writes to localStorage, read on startup
+ *   2. JSON file — manual download/load of .documinter.json backups
+ */
 
-// -- Type Imports --
+import { slugify } from './text'
 import type { Block, DocMeta, DocState, Section } from '../types'
 
-/** Convert any legacy numeric IDs (from pre-UUID saves) to strings, and migrate old string[] list items to ListItem[]. */
-function migrateBlock(b: Block): Block {
-   const base = { ...b, id: String(b.id) }
-   if (b.type === 'container') {
-      return { ...base, left: (b.left ?? []).map(migrateBlock), right: (b.right ?? []).map(migrateBlock) }
+/** Convert any legacy numeric IDs to strings, and migrate old string[] list items to ListItem[]. */
+function migrateBlock(block: Block): Block {
+   const base = { ...block, id: String(block.id) }
+   if (block.type === 'container') {
+      return { ...base, left: (block.left ?? []).map(migrateBlock), right: (block.right ?? []).map(migrateBlock) }
    }
-   if (b.type === 'list' && Array.isArray(b.items) && b.items.length > 0 && typeof b.items[0] === 'string') {
-      return { ...base, items: (b.items as unknown as string[]).map(text => ({ text, children: [] })) }
+   if (block.type === 'list' && Array.isArray(block.items) && block.items.length > 0 && typeof block.items[0] === 'string') {
+      return { ...base, items: (block.items as unknown as string[]).map(text => ({ text, children: [] })) }
    }
    return base
 }
@@ -27,7 +35,9 @@ function migrateIds(state: DocState): DocState {
    }
 }
 
-// ============ Autosave ============
+// ============================================================
+// Autosave
+// ============================================================
 
 const AUTOSAVE_KEY = 'documinter-autosave'
 
@@ -38,6 +48,7 @@ export interface AutosaveData {
    docAccent: string
 }
 
+/** Read the autosaved document from localStorage. Returns null if absent or malformed. */
 export function readAutosave(): AutosaveData | null {
    try {
       const raw = localStorage.getItem(AUTOSAVE_KEY)
@@ -56,21 +67,28 @@ export function readAutosave(): AutosaveData | null {
    }
 }
 
+/** Write the current document state to localStorage. Called on a debounce in App.tsx. */
 export function writeAutosave(data: AutosaveData): void {
    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data))
 }
 
+// ============================================================
+// JSON file (manual backup)
+// ============================================================
+
+/** Trigger a browser download of the document as a .documinter.json file. */
 export function downloadJSON(meta: DocMeta, sections: Section[]): void {
    const state: DocState = { meta, sections }
    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json;charset=utf-8' })
    const url = URL.createObjectURL(blob)
-   const a = document.createElement('a')
-   a.href = url
-   a.download = slugify(meta.title) + '.documinter.json'
-   a.click()
+   const anchor = document.createElement('a')
+   anchor.href = url
+   anchor.download = slugify(meta.title) + '.documinter.json'
+   anchor.click()
    URL.revokeObjectURL(url)
 }
 
+/** Open a file picker for .json files and parse the selected file as a DocState. */
 export function loadJSONFile(
    onLoad: (state: DocState) => void,
    onError: (msg: string) => void,
@@ -82,9 +100,9 @@ export function loadJSONFile(
       const file = input.files?.[0]
       if (!file) return
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = (event) => {
          try {
-            const raw = JSON.parse(e.target?.result as string) as DocState
+            const raw = JSON.parse(event.target?.result as string) as DocState
             if (!raw.meta || !Array.isArray(raw.sections)) {
                onError('Invalid Documinter JSON file.')
                return
@@ -94,24 +112,6 @@ export function loadJSONFile(
             onError('Could not parse JSON file.')
          }
       }
-      reader.readAsText(file)
-   }
-   input.click()
-}
-
-export function loadMintdownFile(
-   onLoad: (text: string) => void,
-   onError: (msg: string) => void,
-): void {
-   const input = document.createElement('input')
-   input.type = 'file'
-   input.accept = '.mint,.md,.txt'
-   input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = (event) => { onLoad(event.target?.result as string) }
-      reader.onerror = () => onError('Could not read file.')
       reader.readAsText(file)
    }
    input.click()

@@ -9,16 +9,16 @@ const noopStrategy: SortingStrategy = () => null
 import { GripVertical, Trash2 } from 'lucide-react'
 
 // -- Context / Hook Imports --
-import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
-import { useLang } from '../../lib/LangContext'
+import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
+import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
 import { ContentEditable } from '../../atoms/ContentEditable'
+import { AddBlockRow } from '../../molecules/AddBlockRow'
 import { WysiwygBlock } from './WysiwygBlock'
-import { BLOCK_ICONS } from '../../lib/constants'
 
 // -- Type Imports --
-import type { Block, BlockType, Section } from '../../types'
+import type { Block, Section } from '../../types'
 
 interface WysiwygSectionProps {
    section:         Section
@@ -153,29 +153,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                </DndContext>
             )}
 
-            {/* Inline add block row — hidden in readOnly */}
-            {!readOnly && (
-               <div className="inline-add-row">
-                  <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t.add}</span>
-                  {BLOCK_ICONS.map(({ type, icon: Icon }) => {
-                     const labels: Record<BlockType, string> = {
-                        p: t.blockParagraph, h3: t.blockH3, h4: t.blockH4,
-                        callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
-                        image: t.blockImage, container: t.blockContainer,
-                     }
-                     return (
-                        <button
-                           key={type}
-                           title={labels[type]}
-                           className="wysiwyg-add-btn"
-                           onClick={() => addBlock(section.id, type)}
-                        >
-                           <Icon size={13} />
-                        </button>
-                     )
-                  })}
-               </div>
-            )}
+            {!readOnly && <AddBlockRow docStyle onAdd={type => addBlock(section.id, type)} />}
          </div>
       </div>
    )

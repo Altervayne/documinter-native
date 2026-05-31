@@ -49,7 +49,7 @@ export interface DocState {
    sections: Section[]
 }
 
-export type Mode = 'wysiwyg' | 'preview' | 'raw' | 'split'
+export type Mode = 'wysiwyg' | 'preview'
 
 export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void

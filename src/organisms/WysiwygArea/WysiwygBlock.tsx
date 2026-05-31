@@ -6,9 +6,9 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 // -- Context / Hook Imports --
-import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
-import { useDocumentHandles } from '../../lib/DocumentHandlesContext'
-import { useLang } from '../../lib/LangContext'
+import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
+import { useDocumentHandles } from '../../contexts/DocumentHandlesContext'
+import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
 import { ParagraphBlock }  from './blocks/ParagraphBlock'
@@ -22,7 +22,7 @@ import { AnchorEditor }    from './blocks/AnchorEditor'
 import { BlockSidebar }    from './blocks/BlockSidebar'
 
 // -- Lib / Util Imports --
-import { generateHandle } from '../../lib/helpers'
+import { generateHandle } from '../../lib/document'
 
 // -- Atom Imports --
 import { TriangleAlert } from 'lucide-react'

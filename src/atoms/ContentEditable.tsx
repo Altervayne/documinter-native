@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type ElementType } from 'react'
-import { sanitizeRichText } from '../lib/helpers'
+import { sanitizeRichText } from '../lib/text'
 
 interface ContentEditableProps {
    tag?: ElementType

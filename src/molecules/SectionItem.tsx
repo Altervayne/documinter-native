@@ -9,7 +9,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { GripVertical, ArrowUp, ArrowDown, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
-import { useLang } from '../lib/LangContext'
+import { useLang } from '../contexts/LangContext'
 
 interface SectionItemProps {
    section:    Section

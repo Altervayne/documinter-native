@@ -6,20 +6,13 @@ import type { Dispatch, SetStateAction } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 
 // -- Lib / Util Imports --
-import { mkSection } from '../lib/state'
+import { mkSection, moveItem } from '../lib/document'
 
 // -- Type Imports --
 import type { Section } from '../types'
 import type { T } from '../lib/i18n'
 
 type ToastAction = { label: string; onClick: () => void }
-
-function moveItem<T>(arr: T[], from: number, to: number): T[] {
-   if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr
-   const next = [...arr]
-   ;[next[from], next[to]] = [next[to], next[from]]
-   return next
-}
 
 export function useSectionMutations(
    setSections: Dispatch<SetStateAction<Section[]>>,

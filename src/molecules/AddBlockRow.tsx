@@ -1,5 +1,5 @@
 import type { BlockType } from '../types'
-import { useLang } from '../lib/LangContext'
+import { useLang } from '../contexts/LangContext'
 import { BLOCK_ICONS } from '../lib/constants'
 
 interface AddBlockRowProps {

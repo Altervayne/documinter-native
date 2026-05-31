@@ -82,10 +82,6 @@ export const translations = {
       download:      'Download',
       downloaded:    'Downloaded!',
       htmlCopied:    'HTML copied!',
-      downloadMd:    '↓ .md',
-      loadMint:      'Load .mint',
-      downloadMint:  'Save .mint',
-      mintLoaded:    'Mintdown file loaded.',
       // Toasts / mutations
       sectionDeleted: 'Section deleted',
       blockDeleted:   'Block deleted',
@@ -94,8 +90,6 @@ export const translations = {
       newColumn:      'Column',
       // View mode toggles
       previewMode: 'Preview',
-      rawMode:     'Raw',
-      splitMode:   'Split',
       // Export HTML
       docFallback:    'Documentation',
    },
@@ -180,10 +174,6 @@ export const translations = {
       download:      'Télécharger',
       downloaded:    'Téléchargé !',
       htmlCopied:    'HTML copié !',
-      downloadMd:    '↓ .md',
-      loadMint:      'Charger .mint',
-      downloadMint:  'Sauver .mint',
-      mintLoaded:    'Fichier Mintdown chargé.',
       // Toasts / mutations
       sectionDeleted: 'Section supprimée',
       blockDeleted:   'Bloc supprimé',
@@ -192,8 +182,6 @@ export const translations = {
       newColumn:      'Colonne',
       // View mode toggles
       previewMode: 'Aperçu',
-      rawMode:     'Brut',
-      splitMode:   'Divisé',
       // Export HTML
       docFallback:    'Documentation',
    },

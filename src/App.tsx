@@ -1,12 +1,10 @@
 // -- React Imports --
 import { useCallback, useEffect, useState } from 'react'
-import type React from 'react'
 
 // -- Lib / Util Imports --
-import { mkSection } from './lib/state'
+import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
-import { documentToMintdown, downloadMintdown, mintdownToDocument } from './lib/mintdown'
-import { loadMintdownFile, readAutosave, writeAutosave } from './lib/saveload'
+import { readAutosave, writeAutosave } from './lib/storage'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -14,15 +12,14 @@ import { useBlockMutations } from './hooks/useBlockMutations'
 import { useContainerMutations } from './hooks/useContainerMutations'
 
 // -- Context Imports --
-import { DocumentMutationsContext } from './lib/DocumentMutationsContext'
+import { DocumentMutationsContext } from './contexts/DocumentMutationsContext'
 
 // -- Component Imports --
 import { Topbar } from './organisms/Topbar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
-import { MintdownEditor } from './organisms/MintdownEditor'
 import { Toast } from './atoms/Toast'
-import { LangProvider } from './lib/LangContext'
+import { LangProvider } from './contexts/LangContext'
 
 // -- Type Imports --
 import type { DocMeta, DocState, Mode, Section } from './types'
@@ -69,58 +66,12 @@ export default function App() {
    }, [meta, sections, docTheme, docAccent])
 
    // Mode system
-   const [mode, setMode]           = useState<Mode>('wysiwyg')
-   const [rawText, setRawText]     = useState('')
-   const [rawTextDirty, setRawTextDirty]       = useState(true)
-   const [previewSections, setPreviewSections] = useState<Section[]>([])
-   const [previewMeta, setPreviewMeta]         = useState<Partial<DocMeta>>({})
-
-   // Wrapper that marks rawText stale whenever wysiwyg mutations change sections
-   const setSectionsAndMarkDirty = useCallback((updater: React.SetStateAction<Section[]>) => {
-      setSections(updater)
-      setRawTextDirty(true)
-   }, [])
+   const [mode, setMode] = useState<Mode>('wysiwyg')
 
    function handleSetMode(newMode: Mode) {
       if (newMode === mode) { setMode('wysiwyg'); return }
-
-      if (newMode === 'raw' || newMode === 'split') {
-         if (rawTextDirty) {
-            const text = documentToMintdown(meta, sections)
-            setRawText(text)
-            setRawTextDirty(false)
-            if (newMode === 'split') {
-               const result = mintdownToDocument(text)
-               setPreviewSections(result.sections)
-               setPreviewMeta(result.meta)
-            }
-         } else if (newMode === 'split') {
-            // rawText already valid — just init preview from it
-            const result = mintdownToDocument(rawText)
-            setPreviewSections(result.sections)
-            setPreviewMeta(result.meta)
-         }
-      } else if (mode === 'raw' || mode === 'split') {
-         const result = mintdownToDocument(rawText)
-         if (result.sections.length > 0) {
-            setSections(result.sections)        // direct setter — rawText is still valid
-            handleMetaChange(result.meta as Partial<DocMeta>)
-            setRawTextDirty(false)
-         }
-      }
       setMode(newMode)
    }
-
-   // Live split preview — debounced 300ms
-   useEffect(() => {
-      if (mode !== 'split') return
-      const timer = setTimeout(() => {
-         const result = mintdownToDocument(rawText)
-         setPreviewSections(result.sections)
-         setPreviewMeta(result.meta)
-      }, 300)
-      return () => clearTimeout(timer)
-   }, [rawText, mode])
 
    // Toast
    const [toast, setToast]         = useState('')
@@ -144,37 +95,12 @@ export default function App() {
    const handleLoad = useCallback((state: DocState) => {
       setMeta(state.meta)
       setSections(state.sections)
-      setRawTextDirty(true)
    }, [])
 
    // Mutations — extracted into focused hooks
-   const sectionMutations   = useSectionMutations(setSectionsAndMarkDirty, showToast, clearToast, t)
-   const blockMutations     = useBlockMutations(setSectionsAndMarkDirty, showToast, clearToast, t)
-   const containerMutations = useContainerMutations(setSectionsAndMarkDirty, t)
-
-   function handleDownloadMintdown() {
-      const text = (mode === 'raw' || mode === 'split') ? rawText : documentToMintdown(meta, sections)
-      downloadMintdown(text, meta.title)
-   }
-
-   function handleLoadMintdown() {
-      loadMintdownFile(
-         text => {
-            const result = mintdownToDocument(text)
-            if (result.sections.length > 0) {
-               setSections(result.sections)
-               handleMetaChange(result.meta as Partial<DocMeta>)
-               setRawText(text)
-               setRawTextDirty(false)
-               setMode('wysiwyg')
-               showToast(t.mintLoaded)
-            } else {
-               showToast('No sections found in file.')
-            }
-         },
-         msg => showToast(msg),
-      )
-   }
+   const sectionMutations   = useSectionMutations(setSections, showToast, clearToast, t)
+   const blockMutations     = useBlockMutations(setSections, showToast, clearToast, t)
+   const containerMutations = useContainerMutations(setSections, t)
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
@@ -189,8 +115,6 @@ export default function App() {
             onToast={msg => showToast(msg)}
             onToggleTheme={toggleTheme}
             onSetMode={handleSetMode}
-            onDownloadMintdown={handleDownloadMintdown}
-            onLoadMintdown={handleLoadMintdown}
          />
 
          <DocumentMutationsContext.Provider value={{
@@ -231,42 +155,14 @@ export default function App() {
                   onReorderBlocks={blockMutations.reorderBlocks}
                />
 
-               {mode === 'wysiwyg' && (
-                  <WysiwygArea
-                     meta={meta}
-                     sections={sections}
-                     docTheme={docTheme}
-                     docAccent={docAccent}
-                     onUpdateMeta={handleMetaChange}
-                  />
-               )}
-               {mode === 'preview' && (
-                  <WysiwygArea
-                     meta={meta}
-                     sections={sections}
-                     docTheme={docTheme}
-                     docAccent={docAccent}
-                     onUpdateMeta={handleMetaChange}
-                     readOnly
-                  />
-               )}
-               {mode === 'raw' && (
-                  <MintdownEditor value={rawText} onChange={setRawText} />
-               )}
-               {mode === 'split' && (
-                  <div className="flex flex-1 min-h-0 overflow-hidden">
-                     <MintdownEditor value={rawText} onChange={setRawText} />
-                     <div className="w-px shrink-0 bg-border" />
-                     <WysiwygArea
-                        meta={{ ...meta, ...previewMeta } as DocMeta}
-                        sections={previewSections}
-                        docTheme={docTheme}
-                        docAccent={docAccent}
-                        onUpdateMeta={handleMetaChange}
-                        readOnly
-                     />
-                  </div>
-               )}
+               <WysiwygArea
+                  meta={meta}
+                  sections={sections}
+                  docTheme={docTheme}
+                  docAccent={docAccent}
+                  onUpdateMeta={handleMetaChange}
+                  readOnly={mode === 'preview'}
+               />
             </div>
          </DocumentMutationsContext.Provider>
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bold, Italic, Underline, Strikethrough, Link, Link2Off } from 'lucide-react'
 import type { Block, Section } from '../types'
-import { blockAnchor } from '../lib/helpers'
+import { blockAnchor } from '../lib/document'
 
 interface AnchoredBlock {
    block:         Block

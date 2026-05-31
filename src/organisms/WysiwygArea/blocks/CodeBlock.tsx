@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { highlight, LANG_LABELS } from '../../../lib/highlight'
-import { useLang } from '../../../lib/LangContext'
+import { useLang } from '../../../contexts/LangContext'
 import type { Block, CodeLang } from '../../../types'
 
 interface CodeBlockProps {

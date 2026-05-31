@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { X, Download, Copy } from 'lucide-react'
 import { Button } from '../atoms/Button'
-import { ColorPicker } from '../atoms/ColorPicker'
+import { ColorPicker } from '../molecules/ColorPicker'
 import type { DocMeta, Section } from '../types'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
 import type { Lang } from '../lib/i18n'
-import { useLang } from '../lib/LangContext'
+import { useLang } from '../contexts/LangContext'
 import { ACCENT_PRESETS } from '../lib/constants'
 
 interface ExportModalProps {

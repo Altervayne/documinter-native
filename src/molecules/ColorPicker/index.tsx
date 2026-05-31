@@ -5,6 +5,7 @@
    intentionally bypass the RGB round-trip to prevent hue drift on degenerate
    colors (black, white, gray → hue=0 from any conversion). */
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { ChannelRow } from './ChannelRow'
 
 // ##############
 // # Color math #
@@ -98,90 +99,6 @@ function rgbToHex(red: number, green: number, blue: number): string {
 }
 
 // ##################
-// # Channel slider #
-// ##################
-
-interface SliderProps {
-   value: number
-   min: number
-   max: number
-   gradient: string
-   onChange: (value: number) => void
-}
-
-function ChannelSlider({ value, min, max, gradient, onChange }: SliderProps) {
-   const ref = useRef<HTMLDivElement>(null)
-
-   function pick(event: React.PointerEvent<HTMLDivElement>) {
-      const el = ref.current
-      if (!el) return
-      const bounds = el.getBoundingClientRect()
-      const positionRatio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
-      onChange(Math.round(min + positionRatio * (max - min)))
-   }
-
-   const pct = ((value - min) / (max - min)) * 100
-
-   return (
-      <div
-         ref={ref}
-         className="relative h-2 rounded-full flex-1 cursor-pointer touch-none"
-         style={{ background: gradient }}
-         onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); pick(event) }}
-         onPointerMove={event => { if (event.buttons === 0) return; pick(event) }}
-      >
-         <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 border-white pointer-events-none"
-            style={{ left: `${pct}%`, boxShadow: '0 0 0 1px rgba(0,0,0,0.3)' }}
-         />
-      </div>
-   )
-}
-
-// ###############
-// # Channel row #
-// ###############
-
-interface ChannelRowProps {
-   label: string
-   labelColor: string
-   value: number
-   min: number
-   max: number
-   gradient: string
-   onChange: (value: number) => void
-}
-
-function ChannelRow({ label, labelColor, value, min, max, gradient, onChange }: ChannelRowProps) {
-   const [raw, setRaw] = useState(String(value))
-   useEffect(() => { setRaw(String(value)) }, [value])
-
-   function commit(rawValue: string) {
-      const parsedValue = parseInt(rawValue, 10)
-      if (!isNaN(parsedValue)) onChange(Math.max(min, Math.min(max, parsedValue)))
-      setRaw(String(value))
-   }
-
-   return (
-      <div className="flex items-center gap-2">
-         <span className="font-mono text-xs font-bold w-4 text-center select-none" style={{ color: labelColor }}>
-            {label}
-         </span>
-         <ChannelSlider value={value} min={min} max={max} gradient={gradient} onChange={onChange} />
-         <input
-            type="text"
-            inputMode="numeric"
-            value={raw}
-            onChange={event => { setRaw(event.target.value) }}
-            onBlur={event => commit(event.target.value)}
-            onKeyDown={event => { if (event.key === 'Enter') commit((event.target as HTMLInputElement).value) }}
-            className="w-9 text-right text-xs font-mono bg-transparent text-text outline-none border-none"
-         />
-      </div>
-   )
-}
-
-// ##################
 // # Main component #
 // ##################
 
@@ -189,7 +106,7 @@ type ColorMode = 'hex' | 'rgb' | 'hsl' | 'cmyk'
 const MODES: ColorMode[] = ['hex', 'rgb', 'hsl', 'cmyk']
 
 interface ColorPickerProps {
-   value: string
+   value:    string
    onChange: (hex: string) => void
 }
 

@@ -1,3 +1,13 @@
+/**
+ * DocumentHandlesContext — Provides the flat list of all anchor handles
+ * currently defined in the document.
+ *
+ * Exports: DocumentHandlesProvider, useDocumentHandles
+ *
+ * Used by AnchorEditor and BlockSidebar to detect duplicate handles, and by
+ * FormatToolbar to populate the "jump to block" link picker.
+ */
+
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext } from 'react'
 import type { ReactNode } from 'react'

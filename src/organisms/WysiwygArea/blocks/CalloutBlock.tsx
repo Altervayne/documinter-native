@@ -1,6 +1,6 @@
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { CalloutStylePicker } from '../../../molecules/CalloutStylePicker'
-import { useLang } from '../../../lib/LangContext'
+import { useLang } from '../../../contexts/LangContext'
 import type { Block, CalloutStyle } from '../../../types'
 
 interface CalloutBlockProps {

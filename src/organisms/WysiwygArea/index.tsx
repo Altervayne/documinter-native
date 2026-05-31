@@ -9,13 +9,13 @@ import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 const noopStrategy: SortingStrategy = () => null
 
 // -- Context / Hook Imports --
-import { useDocumentMutations } from '../../lib/DocumentMutationsContext'
-import { DocumentHandlesProvider } from '../../lib/DocumentHandlesContext'
-import { useLang } from '../../lib/LangContext'
+import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
+import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
+import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
 import { ContentEditable } from '../../atoms/ContentEditable'
-import { FormatToolbar } from '../../atoms/FormatToolbar'
+import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --

@@ -2,8 +2,8 @@
 import { X, TriangleAlert } from 'lucide-react'
 
 // -- Context / Hook Imports --
-import { useLang } from '../../../lib/LangContext'
-import { useDocumentHandles } from '../../../lib/DocumentHandlesContext'
+import { useLang } from '../../../contexts/LangContext'
+import { useDocumentHandles } from '../../../contexts/DocumentHandlesContext'
 
 interface AnchorEditorProps {
    draft:         string

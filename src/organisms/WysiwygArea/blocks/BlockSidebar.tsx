@@ -3,8 +3,8 @@ import { GripVertical, Trash2, ChevronUp, ChevronDown, Copy, Anchor, TriangleAle
 import type { useSortable } from '@dnd-kit/sortable'
 
 // -- Context / Hook Imports --
-import { useLang } from '../../../lib/LangContext'
-import { useDocumentHandles } from '../../../lib/DocumentHandlesContext'
+import { useLang } from '../../../contexts/LangContext'
+import { useDocumentHandles } from '../../../contexts/DocumentHandlesContext'
 
 // -- Type Imports --
 import type { Block } from '../../../types'

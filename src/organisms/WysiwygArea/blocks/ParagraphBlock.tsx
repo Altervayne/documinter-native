@@ -1,5 +1,5 @@
 import { ContentEditable } from '../../../atoms/ContentEditable'
-import { useLang } from '../../../lib/LangContext'
+import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
 interface ParagraphBlockProps {

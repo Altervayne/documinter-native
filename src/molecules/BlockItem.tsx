@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { Block } from '../types'
 import { Button } from '../atoms/Button'
-import { blkPreview } from '../lib/helpers'
+import { blkPreview } from '../lib/document'
 import { BLOCK_ICONS_MAP } from '../lib/constants'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
-import { useLang } from '../lib/LangContext'
+import { useLang } from '../contexts/LangContext'
 
 interface BlockItemProps {
    block: Block
