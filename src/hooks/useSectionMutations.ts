@@ -6,20 +6,21 @@ import type { Dispatch, SetStateAction } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 
 // -- Lib / Util Imports --
-import { mkSection, moveItem } from '../lib/document'
+import { cloneBlock, mkSection, moveItem } from '../lib/document'
+
+// -- Context Imports --
+import { useToast } from '../contexts/ToastContext'
 
 // -- Type Imports --
 import type { Section } from '../types'
 import type { T } from '../lib/i18n'
 
-type ToastAction = { label: string; onClick: () => void }
-
 export function useSectionMutations(
    setSections: Dispatch<SetStateAction<Section[]>>,
-   showToast: (msg: string, action?: ToastAction) => void,
-   clearToast: () => void,
    t: T,
 ) {
+   const { showToast, dismissToast } = useToast()
+
    const addSection = useCallback(() => {
       setSections(sections => [...sections, mkSection()])
    }, [setSections])
@@ -50,25 +51,49 @@ export function useSectionMutations(
       setSections(sections => arrayMove(sections, oldIdx, newIdx))
    }, [setSections])
 
-   const removeSec = useCallback((secId: string) => {
+   const duplicateSec = useCallback((secId: string) => {
       setSections(sections => {
          const sectionIndex = sections.findIndex(sec => sec.id === secId)
-         const section = sections[sectionIndex]
-         if (!section) return sections
-         showToast(t.sectionDeleted, {
-            label: t.undo,
+         if (sectionIndex === -1) return sections
+         const original = sections[sectionIndex]
+         const clone: Section = {
+            ...original,
+            id:     crypto.randomUUID(),
+            title:  `${original.title} (copy)`,
+            blocks: original.blocks.map(cloneBlock),
+         }
+         const next = [...sections]
+         next.splice(sectionIndex + 1, 0, clone)
+         return next
+      })
+   }, [setSections])
+
+   const removeSec = useCallback((secId: string) => {
+      let deletedSection: Section | undefined
+      let deletedIndex = -1
+      setSections(sections => {
+         deletedIndex   = sections.findIndex(sec => sec.id === secId)
+         deletedSection = sections[deletedIndex]
+         if (!deletedSection) return sections
+         return sections.filter(sec => sec.id !== secId)
+      })
+      if (!deletedSection) return
+      const sectionSnapshot = deletedSection
+      const indexSnapshot   = deletedIndex
+      const toastId = showToast(t.sectionDeleted, {
+         action: {
+            label:   t.undo,
             onClick: () => {
                setSections(current => {
                   const next = [...current]
-                  next.splice(sectionIndex, 0, section)
+                  next.splice(indexSnapshot, 0, sectionSnapshot)
                   return next
                })
-               clearToast()
+               dismissToast(toastId)
             },
-         })
-         return sections.filter(sec => sec.id !== secId)
+         },
       })
-   }, [setSections, showToast, clearToast, t])
+   }, [setSections, showToast, dismissToast, t])
 
-   return { addSection, toggleSec, updateSecTitle, moveSecUp, moveSecDown, reorderSections, removeSec }
+   return { addSection, toggleSec, updateSecTitle, moveSecUp, moveSecDown, reorderSections, duplicateSec, removeSec }
 }

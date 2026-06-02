@@ -48,7 +48,8 @@ interface FormatToolbarProps {
 
 
 export function FormatToolbar({ sections }: FormatToolbarProps) {
-   const [pos, setPos] = useState<Pos | null>(null)
+   const [pos, setPos]       = useState<Pos>({ top: 0, left: 0 })
+   const [visible, setVisible] = useState(false)
    const [linkMode, setLinkMode] = useState(false)
    const [linkUrl, setLinkUrl]   = useState('')
    const savedRange     = useRef<Range | null>(null)
@@ -59,6 +60,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    const pendingLinkOpen = useRef(false)
    // Stores the <a> element captured by onDocClick so openLinkMode can read its href
    const pendingLinkAnchor = useRef<HTMLAnchorElement | null>(null)
+   const debounceTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
    // Helper functions
 
@@ -111,27 +113,38 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    useEffect(() => {
       function onSelChange() {
          // While the URL input is focused, the contenteditable selection collapses.
-         // Bail out so the toolbar stays mounted until the user confirms or cancels.
+         // Bail out so the toolbar stays visible until the user confirms or cancels.
          if (linkModeRef.current) return
+
+         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
 
          const sel = window.getSelection()
          if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
-            setPos(null)
+            setVisible(false)
             return
          }
-         // Only show inside rich-text contenteditables
          const anchor = sel.anchorNode
          const inRich = anchor?.parentElement?.closest('[data-rich]')
          if (!inRich) {
-            setPos(null)
+            setVisible(false)
             return
          }
-         const rect = sel.getRangeAt(0).getBoundingClientRect()
-         if (!rect.width) {
-            setPos(null)
-            return
-         }
-         setPos({ top: rect.top - 44, left: rect.left + rect.width / 2 })
+
+         // Debounce position updates to prevent jitter during active selection
+         debounceTimerRef.current = setTimeout(() => {
+            const currentSel = window.getSelection()
+            if (!currentSel || currentSel.isCollapsed || currentSel.rangeCount === 0) {
+               setVisible(false)
+               return
+            }
+            const rect = currentSel.getRangeAt(0).getBoundingClientRect()
+            if (!rect.width) {
+               setVisible(false)
+               return
+            }
+            setPos({ top: rect.top - 44, left: rect.left + rect.width / 2 })
+            setVisible(true)
+         }, 40)
       }
 
       // Clicking on an <a> inside a rich contenteditable auto-selects the link
@@ -155,35 +168,34 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       return () => {
          document.removeEventListener('selectionchange', onSelChange)
          document.removeEventListener('click', onDocClick)
+         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       }
    }, [])
 
-   // After a link-click sets pendingLinkOpen, wait for pos to be set by selectionchange,
+   // After a link-click sets pendingLinkOpen, wait for the toolbar to become visible,
    // then open link mode so the panel appears with the href pre-filled.
    useEffect(() => {
-      if (pos && pendingLinkOpen.current) {
+      if (visible && pendingLinkOpen.current) {
          pendingLinkOpen.current = false
          // eslint-disable-next-line react-hooks/set-state-in-effect
          openLinkMode()
       }
-   }, [pos])
+   }, [visible])
 
    // Focus the URL input when link mode opens
    useEffect(() => {
       if (linkMode) inputRef.current?.focus()
    }, [linkMode])
 
-   if (!pos) return null
-
    const buttonClass = 'w-7 h-7 flex items-center justify-center rounded hover:bg-white/15 transition-colors cursor-pointer text-white/75 hover:text-white'
 
    return (
       <div
-         className="fixed z-9999 flex flex-col rounded-lg shadow-xl border border-white/12"
+         className={`fixed z-9999 flex flex-col rounded-lg shadow-xl border border-white/12 transition-opacity duration-100 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
          style={{
-            top: pos.top,
-            left: pos.left,
-            transform: 'translateX(-50%)',
+            top: 0,
+            left: 0,
+            transform: `translate(calc(${pos.left}px - 50%), ${pos.top}px)`,
             background: '#0d1117',
          }}
          onMouseDown={event => event.preventDefault()} // keep focus in contenteditable

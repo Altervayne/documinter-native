@@ -63,10 +63,25 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, read
             </table>
          </div>
          {!readOnly && (
-            <div className="wysiwyg-util-row">
-               <button onClick={onAddRow}>{t.addRow}</button>
-               <button onClick={onAddCol}>{t.addCol}</button>
-               <button className="danger" onClick={onRemoveRow}>{t.removeRow}</button>
+            <div className="flex items-center gap-1.5 p-2 flex-wrap">
+               <button
+                  onClick={onAddRow}
+                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all border-current/20 opacity-50 hover:opacity-80"
+               >
+                  {t.addRow}
+               </button>
+               <button
+                  onClick={onAddCol}
+                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all border-current/20 opacity-50 hover:opacity-80"
+               >
+                  {t.addCol}
+               </button>
+               <button
+                  onClick={onRemoveRow}
+                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all border-red/30 text-red/60 opacity-70 hover:opacity-100 hover:bg-red/8"
+               >
+                  {t.removeRow}
+               </button>
             </div>
          )}
       </>

@@ -10,16 +10,31 @@
  */
 
 import { slugify } from './text'
-import type { Block, DocMeta, DocState, Section } from '../types'
+import type { Block, DocMeta, DocState, ListItem, Section } from '../types'
 
-/** Convert any legacy numeric IDs to strings, and migrate old string[] list items to ListItem[]. */
+/**
+ * Normalize a raw list item from any historical format to the current ListItem shape.
+ * Handles: plain strings (very old), objects without id, objects with string[] children.
+ */
+function migrateListItem(raw: unknown): ListItem {
+   if (typeof raw === 'string') {
+      return { id: crypto.randomUUID(), text: raw, children: [] }
+   }
+   const obj = raw as Record<string, unknown>
+   const id       = typeof obj.id === 'string'   ? obj.id       : crypto.randomUUID()
+   const text     = typeof obj.text === 'string' ? obj.text     : ''
+   const children = Array.isArray(obj.children)  ? obj.children : []
+   return { id, text, children: children.map(migrateListItem) }
+}
+
+/** Convert any legacy numeric IDs to strings, and normalize list items to the current shape. */
 function migrateBlock(block: Block): Block {
    const base = { ...block, id: String(block.id) }
    if (block.type === 'container') {
       return { ...base, left: (block.left ?? []).map(migrateBlock), right: (block.right ?? []).map(migrateBlock) }
    }
-   if (block.type === 'list' && Array.isArray(block.items) && block.items.length > 0 && typeof block.items[0] === 'string') {
-      return { ...base, items: (block.items as unknown as string[]).map(text => ({ text, children: [] })) }
+   if (block.type === 'list' && Array.isArray(block.items)) {
+      return { ...base, items: block.items.map(migrateListItem) }
    }
    return base
 }

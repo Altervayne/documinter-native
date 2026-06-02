@@ -1,109 +1,315 @@
+// -- React Imports --
 import { useState } from 'react'
+
+// -- Library Imports --
+import {
+   DndContext, DragOverlay, closestCenter,
+   type DragEndEvent, type DragStartEvent,
+   useSensor, useSensors, PointerSensor,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { GripVertical, CirclePlus } from 'lucide-react'
+
+// -- Context / Atom Imports --
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { useLang } from '../../../contexts/LangContext'
-import type { Block } from '../../../types'
 
-interface ListBlockProps {
-   block:        Block
-   patch:        (partial: Partial<Block>) => void
-   onAddItem:    () => void
-   onRemoveLast: () => void
-   readOnly?:    boolean
+// -- Lib Imports --
+import {
+   updateListItemText,
+   reorderListItemsUnderParent,
+   indentListItem,
+   unindentListItem,
+   removeListItemById,
+   insertListItemAfter,
+} from '../../../lib/document'
+
+// -- Type Imports --
+import type { Block, ListItem } from '../../../types'
+
+// ============================================================
+// Utilities
+// ============================================================
+
+/**
+ * Returns true when the cursor (selection) is at the very start of the element's
+ * text content — works correctly for rich contenteditable elements with nested tags.
+ */
+function isCursorAtStart(element: HTMLElement): boolean {
+   const selection = window.getSelection()
+   if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
+   const range = selection.getRangeAt(0)
+   const preRange = document.createRange()
+   preRange.selectNodeContents(element)
+   preRange.setEnd(range.startContainer, range.startOffset)
+   return preRange.toString().length === 0
 }
 
-export function ListBlock({ block, patch, onAddItem, onRemoveLast, readOnly }: ListBlockProps) {
-   const { t } = useLang()
-   const listItems = block.items ?? []
-   const [hoveredItemIndex, setHoveredItemIndex] = useState<number | null>(null)
+// ============================================================
+// ListItemRow — one sortable row at a given nesting level
+// ============================================================
+
+interface ListItemRowProps {
+   item:          ListItem
+   depth:         number
+   rootItems:     ListItem[]
+   onUpdateItems: (newItems: ListItem[]) => void
+   readOnly?:     boolean
+   isDragOverlay?:boolean
+}
+
+const BULLETS = ['•', '◦', '▸', '▹']
+
+function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOverlay }: ListItemRowProps) {
+   const [hovered, setHovered] = useState(false)
+
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+      id:       item.id,
+      disabled: !!readOnly || !!isDragOverlay,
+   })
+
+   const style = isDragOverlay
+      ? undefined
+      : { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
+
+   const bullet = BULLETS[Math.min(depth, BULLETS.length - 1)]
+
+   function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+      const element = event.currentTarget
+
+      // Tab / Shift+Tab — indent / unindent
+      // preventDefault is critical: stops browser focus-change behaviour.
+      // After the state update the item moves in the DOM; we restore focus explicitly.
+      if (event.key === 'Tab') {
+         event.preventDefault()
+         const currentItemId = item.id
+         if (event.shiftKey) {
+            if (depth > 0) onUpdateItems(unindentListItem(rootItems, item.id))
+         } else {
+            onUpdateItems(indentListItem(rootItems, item.id))
+         }
+         requestAnimationFrame(() => {
+            const target = document.querySelector(`[data-list-item-id="${currentItemId}"] [contenteditable]`)
+            if (target instanceof HTMLElement) target.focus()
+         })
+         return
+      }
+
+      // Enter — create new sibling immediately after (Shift+Enter falls through to <br>)
+      if (event.key === 'Enter' && !event.shiftKey) {
+         event.preventDefault()
+         const newItem: ListItem = { id: crypto.randomUUID(), text: '', children: [] }
+         onUpdateItems(insertListItemAfter(rootItems, item.id, newItem))
+         requestAnimationFrame(() => {
+            const newEl = document.querySelector(`[data-list-item-id="${newItem.id}"] [contenteditable]`)
+            if (newEl instanceof HTMLElement) newEl.focus()
+         })
+         return
+      }
+
+      // Backspace at start — unindent or delete
+      if (event.key === 'Backspace' && isCursorAtStart(element)) {
+         if (depth > 0) {
+            event.preventDefault()
+            onUpdateItems(unindentListItem(rootItems, item.id))
+            return
+         }
+         if (element.textContent?.trim() === '') {
+            event.preventDefault()
+            onUpdateItems(removeListItemById(rootItems, item.id))
+            return
+         }
+         // depth === 0, non-empty: default browser behavior
+      }
+   }
 
    return (
-      <>
-         <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-            {listItems.map((listItem, itemIndex) => (
-               <li
-                  key={itemIndex}
-                  style={{ marginBottom: 2 }}
-                  onMouseEnter={() => setHoveredItemIndex(itemIndex)}
-                  onMouseLeave={() => setHoveredItemIndex(null)}
+      <div
+         ref={isDragOverlay ? undefined : setNodeRef}
+         style={style}
+         {...(isDragOverlay ? {} : attributes)}
+         data-list-item-id={item.id}
+         onMouseEnter={readOnly ? undefined : () => setHovered(true)}
+         onMouseLeave={readOnly ? undefined : () => setHovered(false)}
+      >
+         {/* Item row */}
+         <div className="flex items-baseline gap-1.5 py-0.5 min-h-[1.5rem]">
+            {/* Drag handle — always in DOM when editable, opacity toggled on hover */}
+            {!readOnly && !isDragOverlay && (
+               <span
+                  {...listeners}
+                  className={`shrink-0 cursor-grab active:cursor-grabbing text-muted transition-opacity ${hovered ? 'opacity-50' : 'opacity-0'}`}
+                  style={{ marginLeft: -16, marginRight: 0, width: 14 }}
                >
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                     <span style={{ color: 'var(--c-muted, #6b7280)', flexShrink: 0, userSelect: 'none' }}>•</span>
-                     <ContentEditable
-                        tag="span"
-                        content={listItem.text}
-                        onBlur={value => {
-                           const newItems = listItems.map((existing, idx) =>
-                              idx === itemIndex ? { ...existing, text: value } : existing
-                           )
-                           patch({ items: newItems })
-                        }}
-                        rich
-                        placeholder={t.clickToEdit}
-                        style={{ flex: 1 }}
-                        readOnly={readOnly}
-                     />
-                     {!readOnly && hoveredItemIndex === itemIndex && (
-                        <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'center' }}>
-                           <button
-                              className="list-sub-btn"
-                              title={t.addSubItem}
-                              onClick={() => {
-                                 const newItems = listItems.map((existing, idx) =>
-                                    idx === itemIndex ? { ...existing, children: [...(existing.children ?? []), ''] } : existing
-                                 )
-                                 patch({ items: newItems })
-                              }}
-                           >↳+</button>
-                           {(listItem.children?.length ?? 0) > 0 && (
-                              <button
-                                 className="list-sub-btn danger"
-                                 title={t.removeSubItem}
-                                 onClick={() => {
-                                    const newItems = listItems.map((existing, idx) =>
-                                       idx === itemIndex ? { ...existing, children: existing.children?.slice(0, -1) } : existing
-                                    )
-                                    patch({ items: newItems })
-                                 }}
-                              >↳−</button>
-                           )}
-                        </div>
-                     )}
-                  </div>
-                  {(listItem.children?.length ?? 0) > 0 && (
-                     <ul style={{ listStyle: 'none', paddingLeft: 18, marginTop: 2 }}>
-                        {listItem.children!.map((child, childIndex) => (
-                           <li key={childIndex} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                              <span style={{ color: 'var(--c-muted, #9ca3af)', fontSize: '0.8em', flexShrink: 0, userSelect: 'none' }}>◦</span>
-                              <ContentEditable
-                                 tag="span"
-                                 content={child}
-                                 onBlur={value => {
-                                    const newItems = listItems.map((existing, idx) => {
-                                       if (idx !== itemIndex) return existing
-                                       const newChildren = (existing.children ?? []).map((childText, cidx) =>
-                                          cidx === childIndex ? value : childText
-                                       )
-                                       return { ...existing, children: newChildren }
-                                    })
-                                    patch({ items: newItems })
-                                 }}
-                                 rich
-                                 style={{ flex: 1 }}
-                                 readOnly={readOnly}
-                              />
-                           </li>
-                        ))}
-                     </ul>
-                  )}
-               </li>
-            ))}
-         </ul>
-         {!readOnly && (
-            <div className="wysiwyg-util-row">
-               <button onClick={onAddItem}>{t.addItem}</button>
-               <button className="danger" onClick={onRemoveLast}>{t.removeLast}</button>
+                  <GripVertical size={12} />
+               </span>
+            )}
+
+            {/* Bullet */}
+            <span className="shrink-0 select-none text-muted/50 font-mono text-xs mt-px" style={{ minWidth: '1ch' }}>
+               {bullet}
+            </span>
+
+            {/* Text */}
+            <ContentEditable
+               tag="span"
+               content={item.text}
+               onBlur={value => onUpdateItems(updateListItemText(rootItems, item.id, value))}
+               onKeyDown={readOnly ? undefined : handleKeyDown}
+               rich
+               placeholder="Item"
+               style={{ flex: 1 }}
+               readOnly={readOnly}
+            />
+         </div>
+
+         {/* Children — recursive, indented */}
+         {item.children.length > 0 && (
+            <div style={{ paddingLeft: 20 }}>
+               <ListLevel
+                  items={item.children}
+                  parentItemId={item.id}
+                  depth={depth + 1}
+                  rootItems={rootItems}
+                  onUpdateItems={onUpdateItems}
+                  readOnly={readOnly}
+               />
             </div>
          )}
-      </>
+      </div>
+   )
+}
+
+// ============================================================
+// ListLevel — one isolated DnD context for a sibling group
+// ============================================================
+
+interface ListLevelProps {
+   items:         ListItem[]
+   parentItemId:  string | null
+   depth:         number
+   rootItems:     ListItem[]
+   onUpdateItems: (newItems: ListItem[]) => void
+   readOnly?:     boolean
+}
+
+function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readOnly }: ListLevelProps) {
+   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+   const activeItem = activeDragId ? items.find(item => item.id === activeDragId) ?? null : null
+
+   function handleDragStart(event: DragStartEvent) {
+      setActiveDragId(String(event.active.id))
+   }
+
+   function handleDragEnd(event: DragEndEvent) {
+      setActiveDragId(null)
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const oldIndex = items.findIndex(item => item.id === active.id)
+      const newIndex = items.findIndex(item => item.id === over.id)
+      if (oldIndex !== -1 && newIndex !== -1) {
+         onUpdateItems(reorderListItemsUnderParent(rootItems, parentItemId, oldIndex, newIndex))
+      }
+   }
+
+   if (readOnly) {
+      return (
+         <>
+            {items.map(item => (
+               <ListItemRow
+                  key={item.id}
+                  item={item}
+                  depth={depth}
+                  rootItems={rootItems}
+                  onUpdateItems={onUpdateItems}
+                  readOnly
+               />
+            ))}
+         </>
+      )
+   }
+
+   return (
+      <DndContext
+         sensors={sensors}
+         collisionDetection={closestCenter}
+         onDragStart={handleDragStart}
+         onDragEnd={handleDragEnd}
+         onDragCancel={() => setActiveDragId(null)}
+      >
+         <SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
+            {items.map(item => (
+               <ListItemRow
+                  key={item.id}
+                  item={item}
+                  depth={depth}
+                  rootItems={rootItems}
+                  onUpdateItems={onUpdateItems}
+               />
+            ))}
+         </SortableContext>
+
+         <DragOverlay dropAnimation={{ duration: 150, easing: 'ease' }}>
+            {activeItem && (
+               <div className="rounded-lg border border-accent/25 bg-raised shadow-xl px-2 py-1 opacity-90">
+                  <ListItemRow
+                     item={activeItem}
+                     depth={depth}
+                     rootItems={rootItems}
+                     onUpdateItems={() => {}}
+                     readOnly
+                     isDragOverlay
+                  />
+               </div>
+            )}
+         </DragOverlay>
+      </DndContext>
+   )
+}
+
+// ============================================================
+// ListBlock — public component
+// ============================================================
+
+interface ListBlockProps {
+   block:     Block
+   patch:     (partial: Partial<Block>) => void
+   onAddItem: () => void
+   readOnly?: boolean
+}
+
+export function ListBlock({ block, patch, onAddItem, readOnly }: ListBlockProps) {
+   const { t } = useLang()
+   const rootItems = block.items ?? []
+
+   function onUpdateItems(newItems: ListItem[]) {
+      patch({ items: newItems })
+   }
+
+   return (
+      <div>
+         <ListLevel
+            items={rootItems}
+            parentItemId={null}
+            depth={0}
+            rootItems={rootItems}
+            onUpdateItems={onUpdateItems}
+            readOnly={readOnly}
+         />
+
+         {!readOnly && (
+            <div className="mt-4 p-2">
+               <button
+                  onClick={onAddItem}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-muted/50 hover:text-muted hover:bg-accent/5 border border-dashed border-border/40 hover:border-accent/30 transition-colors cursor-pointer bg-transparent"
+               >
+                  <CirclePlus size={14} />
+                  <span>{t.addItem}</span>
+               </button>
+            </div>
+         )}
+      </div>
    )
 }

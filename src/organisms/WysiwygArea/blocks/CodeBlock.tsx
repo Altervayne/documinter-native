@@ -18,13 +18,18 @@ export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
    return (
       <>
          {!readOnly && (
-            <div className="lang-picker">
-               <span>lang:</span>
+            <div className="flex items-center gap-1 p-2 flex-wrap">
+               <span className="text-xs opacity-40 font-mono mr-1">lang:</span>
                {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
                   <button
                      key={langOption}
-                     className={lang === langOption ? 'active' : ''}
                      onClick={() => patch({ lang: langOption })}
+                     className={[
+                        'px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all',
+                        lang === langOption
+                           ? 'border-accent/50 bg-accent/10 text-accent font-semibold'
+                           : 'border-current/20 opacity-50 hover:opacity-80',
+                     ].join(' ')}
                   >
                      {LANG_LABELS[langOption]}
                   </button>

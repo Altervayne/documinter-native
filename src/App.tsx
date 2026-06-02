@@ -13,13 +13,13 @@ import { useContainerMutations } from './hooks/useContainerMutations'
 
 // -- Context Imports --
 import { DocumentMutationsContext } from './contexts/DocumentMutationsContext'
+import { LangProvider } from './contexts/LangContext'
 
 // -- Component Imports --
 import { Topbar } from './organisms/Topbar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
-import { Toast } from './atoms/Toast'
-import { LangProvider } from './contexts/LangContext'
+import { ToastContainer } from './atoms/ToastContainer'
 
 // -- Type Imports --
 import type { DocMeta, DocState, Mode, Section } from './types'
@@ -73,19 +73,6 @@ export default function App() {
       setMode(newMode)
    }
 
-   // Toast
-   const [toast, setToast]         = useState('')
-   const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | undefined>()
-
-   function showToast(msg: string, action?: { label: string; onClick: () => void }) {
-      setToast(msg)
-      setToastAction(action)
-   }
-   function clearToast() {
-      setToast('')
-      setToastAction(undefined)
-   }
-
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
       setMeta(currentMeta => ({ ...currentMeta, ...patch }))
@@ -98,75 +85,80 @@ export default function App() {
    }, [])
 
    // Mutations — extracted into focused hooks
-   const sectionMutations   = useSectionMutations(setSections, showToast, clearToast, t)
-   const blockMutations     = useBlockMutations(setSections, showToast, clearToast, t)
+   const sectionMutations   = useSectionMutations(setSections, t)
+   const blockMutations     = useBlockMutations(setSections, t)
    const containerMutations = useContainerMutations(setSections, t)
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
-         <Topbar
-            meta={meta}
-            sections={sections}
-            theme={theme}
-            docTheme={docTheme}
-            docAccent={docAccent}
-            mode={mode}
-            onLoad={handleLoad}
-            onToast={msg => showToast(msg)}
-            onToggleTheme={toggleTheme}
-            onSetMode={handleSetMode}
-         />
+            <Topbar
+               meta={meta}
+               sections={sections}
+               theme={theme}
+               docTheme={docTheme}
+               docAccent={docAccent}
+               mode={mode}
+               onLoad={handleLoad}
+               onToggleTheme={toggleTheme}
+               onSetMode={handleSetMode}
+            />
 
-         <DocumentMutationsContext.Provider value={{
-            updateBlock:       blockMutations.updateBlock,
-            addBlock:          blockMutations.addBlock,
-            removeBlock:       blockMutations.removeBlk,
-            duplicateBlock:    blockMutations.duplicateBlock,
-            reorderBlocks:     blockMutations.reorderBlocks,
-            addListItem:       blockMutations.addListItem,
-            removeLastItem:    blockMutations.removeLastItem,
-            addTableRow:       blockMutations.addTableRow,
-            removeLastRow:     blockMutations.removeLastRow,
-            addTableCol:       blockMutations.addTableCol,
-            containerMutations,
-            updateTitle:       sectionMutations.updateSecTitle,
-            removeSection:     sectionMutations.removeSec,
-            reorderSections:   sectionMutations.reorderSections,
-         }}>
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-               <Panel
-                  open={panelOpen}
-                  docTheme={docTheme}
-                  docAccent={docAccent}
-                  onDocThemeChange={setDocTheme}
-                  onDocAccentChange={setDocAccent}
-                  onToggle={() => setPanelOpen(currentlyOpen => !currentlyOpen)}
-                  sections={sections}
-                  onAddSection={sectionMutations.addSection}
-                  onToggleSec={sectionMutations.toggleSec}
-                  onMoveSecUp={sectionMutations.moveSecUp}
-                  onMoveSecDown={sectionMutations.moveSecDown}
-                  onRemoveSec={sectionMutations.removeSec}
-                  onAddBlock={blockMutations.addBlock}
-                  onMoveBlkUp={blockMutations.moveBlkUp}
-                  onMoveBlkDown={blockMutations.moveBlkDown}
-                  onRemoveBlk={blockMutations.removeBlk}
-                  onReorderSections={sectionMutations.reorderSections}
-                  onReorderBlocks={blockMutations.reorderBlocks}
-               />
+            <DocumentMutationsContext.Provider value={{
+               updateBlock:       blockMutations.updateBlock,
+               addBlock:          blockMutations.addBlock,
+               insertBlockAt:     blockMutations.insertBlockAt,
+               removeBlock:       blockMutations.removeBlk,
+               duplicateBlock:    blockMutations.duplicateBlock,
+               reorderBlocks:     blockMutations.reorderBlocks,
+               addListItem:       blockMutations.addListItem,
+               removeLastItem:    blockMutations.removeLastItem,
+               addTableRow:       blockMutations.addTableRow,
+               removeLastRow:     blockMutations.removeLastRow,
+               addTableCol:       blockMutations.addTableCol,
+               insertTableRowAt:  blockMutations.insertTableRowAt,
+               deleteTableRowAt:  blockMutations.deleteTableRowAt,
+               insertTableColAt:  blockMutations.insertTableColAt,
+               deleteTableColAt:  blockMutations.deleteTableColAt,
+               containerMutations,
+               updateTitle:       sectionMutations.updateSecTitle,
+               removeSection:     sectionMutations.removeSec,
+               reorderSections:   sectionMutations.reorderSections,
+            }}>
+               <div className="flex flex-1 min-h-0 overflow-hidden">
+                  <Panel
+                     open={panelOpen}
+                     docTheme={docTheme}
+                     docAccent={docAccent}
+                     onDocThemeChange={setDocTheme}
+                     onDocAccentChange={setDocAccent}
+                     onToggle={() => setPanelOpen(currentlyOpen => !currentlyOpen)}
+                     sections={sections}
+                     onAddSection={sectionMutations.addSection}
+                     onToggleSec={sectionMutations.toggleSec}
+                     onMoveSecUp={sectionMutations.moveSecUp}
+                     onMoveSecDown={sectionMutations.moveSecDown}
+                     onDuplicateSec={sectionMutations.duplicateSec}
+                     onRemoveSec={sectionMutations.removeSec}
+                     onAddBlock={blockMutations.addBlock}
+                     onMoveBlkUp={blockMutations.moveBlkUp}
+                     onMoveBlkDown={blockMutations.moveBlkDown}
+                     onRemoveBlk={blockMutations.removeBlk}
+                     onReorderSections={sectionMutations.reorderSections}
+                     onReorderBlocks={blockMutations.reorderBlocks}
+                  />
 
-               <WysiwygArea
-                  meta={meta}
-                  sections={sections}
-                  docTheme={docTheme}
-                  docAccent={docAccent}
-                  onUpdateMeta={handleMetaChange}
-                  readOnly={mode === 'preview'}
-               />
-            </div>
-         </DocumentMutationsContext.Provider>
+                  <WysiwygArea
+                     meta={meta}
+                     sections={sections}
+                     docTheme={docTheme}
+                     docAccent={docAccent}
+                     onUpdateMeta={handleMetaChange}
+                     readOnly={mode === 'preview'}
+                  />
+               </div>
+            </DocumentMutationsContext.Provider>
 
-         <Toast message={toast} action={toastAction} onDone={clearToast} />
-      </LangProvider>
+            <ToastContainer />
+         </LangProvider>
    )
 }

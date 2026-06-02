@@ -9,6 +9,7 @@ interface ContentEditableProps {
    className?: string
    style?: React.CSSProperties
    onClick?: React.MouseEventHandler<HTMLElement>
+   onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
    /** Enables inline formatting toolbar + Enter inserts <br> instead of a block element. */
    rich?: boolean
    /** Prevents Enter key entirely (for single-line fields like titles). */
@@ -35,6 +36,7 @@ export function ContentEditable({
    className,
    style,
    onClick,
+   onKeyDown,
    rich,
    singleLine,
    placeholder,
@@ -43,7 +45,10 @@ export function ContentEditable({
    const ref = useRef<HTMLElement>(null)
    const editing = useRef(false)
 
-   // Mount: set content imperatively
+   // Mount + readOnly toggle: set content imperatively.
+   // Depends on readOnly because React removes managed children when switching
+   // from readOnly=true (renders {content} as a React text node) back to
+   // readOnly=false (renders with no React children), leaving the element blank.
    useLayoutEffect(() => {
       if (!ref.current) return
       if (rich) {
@@ -51,7 +56,7 @@ export function ContentEditable({
       } else {
          ref.current.innerText = content
       }
-   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+   }, [readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
    // External changes: sync only when not actively editing
    useEffect(() => {
@@ -81,14 +86,25 @@ export function ContentEditable({
          {...(placeholder ? { 'data-placeholder': placeholder } : {})}
          onFocus={() => { editing.current = true }}
          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
+            // External handler runs first; if it prevents default, skip internal logic
+            onKeyDown?.(event)
+            if (event.defaultPrevented) return
+
             if (event.key === 'Enter') {
                if (singleLine) {
                   event.preventDefault()
                } else if (rich) {
-                  event.preventDefault()
-                  // execCommand is deprecated but remains the only cross-browser way
-                  // to insert a <br> without splitting the element in contenteditable
-                  document.execCommand('insertLineBreak')
+                  // No external handler: bare Enter → line break (paragraph mode)
+                  // With external handler: Shift+Enter → line break; bare Enter → external handled it
+                  if (!onKeyDown || event.shiftKey) {
+                     event.preventDefault()
+                     // execCommand is deprecated but remains the only cross-browser way
+                     // to insert a <br> without splitting the element in contenteditable
+                     document.execCommand('insertLineBreak')
+                  } else {
+                     // Bare Enter with external handler — prevent browser's block-element creation
+                     event.preventDefault()
+                  }
                }
             }
          }}

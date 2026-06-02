@@ -15,19 +15,21 @@ interface CalloutStylePickerProps {
 
 export function CalloutStylePicker({ current, onChange }: CalloutStylePickerProps) {
    return (
-      <div className="flex items-center gap-1 mb-1.5">
-         <span className="font-mono text-xs text-muted mr-1.5">style:</span>
+      <div className="flex items-center gap-1 p-2">
          {STYLES.map(({ value, color }) => (
             <button
                key={value}
                onClick={() => onChange(value)}
                className={clsx(
-                  'text-xs px-2 py-0.5 rounded cursor-pointer border transition-colors',
+                  'px-2.5 py-1 text-xs rounded-md border capitalize cursor-pointer transition-all',
                   current === value
-                     ? 'border-current font-bold'
-                     : 'border-transparent text-muted hover:text-text',
+                     ? 'font-semibold'
+                     : 'border-current/20 opacity-50 hover:opacity-80',
                )}
-               style={current === value ? { color } : undefined}
+               style={current === value
+                  ? { color, borderColor: color, background: `color-mix(in srgb, ${color} 10%, transparent)` }
+                  : undefined
+               }
             >
                {value}
             </button>

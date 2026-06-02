@@ -1,56 +1,44 @@
-import type { BlockType } from '../types'
+import { useRef, useState } from 'react'
+import { Plus } from 'lucide-react'
+import { BlockTypePicker } from './BlockTypePicker'
 import { useLang } from '../contexts/LangContext'
-import { BLOCK_ICONS } from '../lib/constants'
+import type { BlockType } from '../types'
 
 interface AddBlockRowProps {
-   onAdd: (type: BlockType) => void
-   /** When true, hides the container button (no nested containers). */
+   onAdd:            (type: BlockType) => void
    insideContainer?: boolean
-   /**
-    * When true, uses doc-CSS classes (.wysiwyg-add-btn / .inline-add-row) instead
-    * of Tailwind classes. Use inside the WYSIWYG area so buttons follow doc-theme.
-    */
-   docStyle?: boolean
 }
 
-export function AddBlockRow({ onAdd, insideContainer, docStyle }: AddBlockRowProps) {
+export function AddBlockRow({ onAdd, insideContainer }: AddBlockRowProps) {
    const { t } = useLang()
-   const labels: Record<BlockType, string> = {
-      p: t.blockParagraph, h3: t.blockH3, h4: t.blockH4,
-      callout: t.blockCallout, code: t.blockCode, list: t.blockList, table: t.blockTable,
-      image: t.blockImage, container: t.blockContainer,
-   }
-   const icons = insideContainer ? BLOCK_ICONS.filter(blockIcon => blockIcon.type !== 'container') : BLOCK_ICONS
+   const [open, setOpen]           = useState(false)
+   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+   const buttonRef = useRef<HTMLButtonElement>(null)
 
-   if (docStyle) {
-      // Uses doc.css classes so buttons inherit the document theme (light/dark)
-      return (
-         <div className="inline-add-row" style={{ opacity: 1 }}>
-            <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontFamily: 'var(--font-mono, monospace)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-               {t.add}
-            </span>
-            {icons.map(({ type, icon: Icon }) => (
-               <button key={type} title={labels[type]} className="wysiwyg-add-btn" onClick={() => onAdd(type)}>
-                  <Icon size={13} />
-               </button>
-            ))}
-         </div>
-      )
+   function handleOpen() {
+      setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null)
+      setOpen(true)
    }
 
    return (
-      <div className="flex flex-wrap items-center gap-1 pt-2.5 mt-1.5 border-t border-border/50">
-         <span className="font-mono text-xs uppercase tracking-wider text-muted/50 mr-1">{t.add}</span>
-         {icons.map(({ type, icon: Icon }) => (
-            <button
-               key={type}
-               onClick={() => onAdd(type)}
-               title={labels[type]}
-               className="p-1.5 rounded-lg border border-border/60 bg-bg text-muted hover:text-accent hover:border-accent/50 hover:bg-accent/5 transition-colors cursor-pointer"
-            >
-               <Icon size={14} />
-            </button>
-         ))}
+      <div className="pt-2 mt-1.5 border-t border-border/40">
+         <button
+            ref={buttonRef}
+            onClick={handleOpen}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm text-muted/50 hover:text-muted hover:bg-accent/5 border border-dashed border-border/40 hover:border-accent/30 transition-colors cursor-pointer bg-transparent"
+         >
+            <Plus size={15} />
+            <span>{t.addBlock}</span>
+         </button>
+
+         {open && anchorRect && (
+            <BlockTypePicker
+               anchorRect={anchorRect}
+               insideContainer={insideContainer}
+               onSelect={(type: BlockType) => { onAdd(type); setOpen(false) }}
+               onClose={() => setOpen(false)}
+            />
+         )}
       </div>
    )
 }

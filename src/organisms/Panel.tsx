@@ -17,11 +17,12 @@ interface PanelProps {
    docAccent: string
    onDocThemeChange:  (t: 'light' | 'dark') => void
    onDocAccentChange: (hex: string) => void
-   onAddSection:  () => void
-   onToggleSec:   (secId: string) => void
-   onMoveSecUp:   (secId: string) => void
-   onMoveSecDown: (secId: string) => void
-   onRemoveSec:   (secId: string) => void
+   onAddSection:    () => void
+   onToggleSec:     (secId: string) => void
+   onMoveSecUp:     (secId: string) => void
+   onMoveSecDown:   (secId: string) => void
+   onDuplicateSec:  (secId: string) => void
+   onRemoveSec:     (secId: string) => void
    onAddBlock:    (secId: string, type: BlockType) => void
    onMoveBlkUp:   (secId: string, blkId: string) => void
    onMoveBlkDown: (secId: string, blkId: string) => void
@@ -34,7 +35,7 @@ export function Panel({
    open, onToggle,
    sections,
    docTheme, docAccent, onDocThemeChange, onDocAccentChange,
-   onAddSection, onToggleSec, onMoveSecUp, onMoveSecDown, onRemoveSec,
+   onAddSection, onToggleSec, onMoveSecUp, onMoveSecDown, onDuplicateSec, onRemoveSec,
    onAddBlock, onMoveBlkUp, onMoveBlkDown, onRemoveBlk,
    onReorderSections, onReorderBlocks,
 }: PanelProps) {
@@ -174,6 +175,7 @@ export function Panel({
                            onToggle={()    => onToggleSec(sec.id)}
                            onMoveUp={()    => onMoveSecUp(sec.id)}
                            onMoveDown={()  => onMoveSecDown(sec.id)}
+                           onDuplicate={() => onDuplicateSec(sec.id)}
                            onRemove={()    => onRemoveSec(sec.id)}
                            onAddBlock={type  => onAddBlock(sec.id, type)}
                            onMoveBlkUp={id   => onMoveBlkUp(sec.id, id)}

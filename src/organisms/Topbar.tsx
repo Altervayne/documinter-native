@@ -6,33 +6,34 @@ import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { Upload, Save, Download, Sun, Moon, Eye } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 
 interface TopbarProps {
-   meta: DocMeta
-   sections: Section[]
-   theme: 'dark' | 'light'
-   docTheme: 'light' | 'dark'
-   docAccent: string
-   mode: Mode
-   onLoad: (state: DocState) => void
-   onToast: (msg: string) => void
+   meta:          DocMeta
+   sections:      Section[]
+   theme:         'dark' | 'light'
+   docTheme:      'light' | 'dark'
+   docAccent:     string
+   mode:          Mode
+   onLoad:        (state: DocState) => void
    onToggleTheme: () => void
-   onSetMode: (mode: Mode) => void
+   onSetMode:     (mode: Mode) => void
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToast, onToggleTheme, onSetMode }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToggleTheme, onSetMode }: TopbarProps) {
    const [exportOpen, setExportOpen] = useState(false)
    const { t, lang, setLang } = useLang()
+   const { showToast } = useToast()
 
    function handleDownloadJSON() {
       downloadJSON(meta, sections)
-      onToast(t.jsonSaved)
+      showToast(t.jsonSaved, { type: 'success' })
    }
 
    function handleLoadJSON() {
       loadJSONFile(
-         (state: DocState) => { onLoad(state); onToast(t.docLoaded) },
-         (msg: string) => onToast(msg),
+         (state: DocState) => { onLoad(state); showToast(t.docLoaded, { type: 'success' }) },
+         (msg: string) => showToast(msg, { type: 'error' }),
       )
    }
 
@@ -101,7 +102,6 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoa
                defaultAccent={docAccent}
                lang={lang}
                onClose={() => setExportOpen(false)}
-               onToast={onToast}
             />
          )}
       </>

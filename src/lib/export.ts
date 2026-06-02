@@ -1,4 +1,4 @@
-import type { DocMeta, Section, Block } from '../types'
+import type { DocMeta, ListItem, Section, Block } from '../types'
 import { esc, slugify } from './text'
 import { blockAnchor } from './document'
 import { highlight } from './highlight'
@@ -38,14 +38,15 @@ function exportBlock(block: Block): string {
       const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
       return withHandle(block, `<pre><code>${highlighted}</code></pre>`)
    }
-   if (block.type === 'list')
-      return withHandle(block, `<ul>${(block.items ?? []).map(listItem =>
-         `<li>${textToHtml(listItem.text)}${
-            listItem.children?.length
-               ? `<ul>${listItem.children.map(child => `<li>${textToHtml(child)}</li>`).join('')}</ul>`
-               : ''
-         }</li>`
-      ).join('')}</ul>`)
+   if (block.type === 'list') {
+      function exportListItem(item: ListItem): string {
+         const childHtml = item.children.length > 0
+            ? `<ul>${item.children.map(exportListItem).join('')}</ul>`
+            : ''
+         return `<li>${textToHtml(item.text)}${childHtml}</li>`
+      }
+      return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
+   }
    if (block.type === 'table') {
       const headerCells = (block.headers ?? []).map(header => `<th>${textToHtml(header)}</th>`).join('')
       const bodyRows = (block.rows ?? []).map(row =>

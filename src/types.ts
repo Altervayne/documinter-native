@@ -4,8 +4,9 @@ export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'plain'
 
 export interface ListItem {
-   text:      string
-   children?: string[]   // one level of sub-bullets
+   id:       string
+   text:     string
+   children: ListItem[]
 }
 
 export interface Block {
@@ -54,12 +55,18 @@ export type Mode = 'wysiwyg' | 'preview'
 export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void
+   insertBlockAt:  (secId: string, blkId: string, side: Side, index: number, type: BlockType) => void
+   duplicateBlock: (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    removeBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    moveBlock:      (secId: string, blkId: string, side: Side, from: number, to: number) => void
    addListItem:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    removeLastItem: (secId: string, blkId: string, side: Side, innerBlkId: string) => void
-   addTableRow:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
-   removeLastRow:  (secId: string, blkId: string, side: Side, innerBlkId: string) => void
-   addTableCol:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
-   updateRatio:    (secId: string, blkId: string, ratio: number) => void
+   addTableRow:      (secId: string, blkId: string, side: Side, innerBlkId: string) => void
+   removeLastRow:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
+   addTableCol:      (secId: string, blkId: string, side: Side, innerBlkId: string) => void
+   insertTableRowAt: (secId: string, blkId: string, side: Side, innerBlkId: string, rowIndex: number) => void
+   deleteTableRowAt: (secId: string, blkId: string, side: Side, innerBlkId: string, rowIndex: number) => void
+   insertTableColAt: (secId: string, blkId: string, side: Side, innerBlkId: string, colIndex: number) => void
+   deleteTableColAt: (secId: string, blkId: string, side: Side, innerBlkId: string, colIndex: number) => void
+   updateRatio:      (secId: string, blkId: string, ratio: number) => void
 }

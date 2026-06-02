@@ -10,12 +10,12 @@ import { WysiwygBlock } from '../WysiwygBlock'
 import { AddBlockRow } from '../../../molecules/AddBlockRow'
 
 // -- Type Imports --
-import type { Block, BlockType, ContainerMutations } from '../../../types'
+import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
 
 interface ContainerColumnProps {
    secId:     string
    blkId:     string
-   side:      'left' | 'right'
+   side:      Side
    blocks:    Block[]
    cm:        ContainerMutations
    readOnly?: boolean
@@ -31,14 +31,20 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
          inner: true as const,
          onUpdate: (_sid: string, innerBlkId: string, patch: Partial<Block>) =>
             cm.updateBlock(secId, blkId, side, innerBlkId, patch),
-         onRemove: () => cm.removeBlock(secId, blkId, side, innerBlock.id),
+         onRemove:        () => cm.removeBlock(secId, blkId, side, innerBlock.id),
+         onDuplicate:     () => cm.duplicateBlock(secId, blkId, side, innerBlock.id),
+         onInsertBefore:  (type: BlockType) => cm.insertBlockAt(secId, blkId, side, idx, type),
+         onInsertAfter:   (type: BlockType) => cm.insertBlockAt(secId, blkId, side, idx + 1, type),
          onMoveUp:         idx > 0                ? () => cm.moveBlock(secId, blkId, side, idx, idx - 1) : undefined,
          onMoveDown:       idx < blocks.length - 1 ? () => cm.moveBlock(secId, blkId, side, idx, idx + 1) : undefined,
-         onAddListItem:    () => cm.addListItem(secId, blkId, side, innerBlock.id),
-         onRemoveLastItem: () => cm.removeLastItem(secId, blkId, side, innerBlock.id),
-         onAddTableRow:    () => cm.addTableRow(secId, blkId, side, innerBlock.id),
-         onRemoveLastRow:  () => cm.removeLastRow(secId, blkId, side, innerBlock.id),
-         onAddTableCol:    () => cm.addTableCol(secId, blkId, side, innerBlock.id),
+         onAddListItem:       () => cm.addListItem(secId, blkId, side, innerBlock.id),
+         onAddTableRow:       () => cm.addTableRow(secId, blkId, side, innerBlock.id),
+         onRemoveLastRow:     () => cm.removeLastRow(secId, blkId, side, innerBlock.id),
+         onAddTableCol:       () => cm.addTableCol(secId, blkId, side, innerBlock.id),
+         onInsertTableRowAt:  (rowIndex: number) => cm.insertTableRowAt(secId, blkId, side, innerBlock.id, rowIndex),
+         onDeleteTableRowAt:  (rowIndex: number) => cm.deleteTableRowAt(secId, blkId, side, innerBlock.id, rowIndex),
+         onInsertTableColAt:  (colIndex: number) => cm.insertTableColAt(secId, blkId, side, innerBlock.id, colIndex),
+         onDeleteTableColAt:  (colIndex: number) => cm.deleteTableColAt(secId, blkId, side, innerBlock.id, colIndex),
       }
    }
 
@@ -48,7 +54,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
          {blocks.map((block, idx) => (
             <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly={readOnly} />
          ))}
-         {!readOnly && <AddBlockRow insideContainer docStyle onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />}
+         {!readOnly && <AddBlockRow insideContainer onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />}
       </div>
    )
 }

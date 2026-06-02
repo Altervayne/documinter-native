@@ -6,7 +6,8 @@ import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragSta
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 
 const noopStrategy: SortingStrategy = () => null
-import { GripVertical, Trash2 } from 'lucide-react'
+import { GripVertical, SquareDashed, Trash2 } from 'lucide-react'
+import { BlockTypePicker } from '../../molecules/BlockTypePicker'
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
@@ -32,8 +33,11 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
    const [hovered, setHovered] = useState(false)
    const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
    const [dragWidth, setDragWidth] = useState<number | null>(null)
+   const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
+   const [emptyPickerRect, setEmptyPickerRect] = useState<DOMRect | null>(null)
+   const emptyCardRef = useRef<HTMLDivElement>(null)
    const containerRef = useRef<HTMLDivElement>(null)
-   const { addBlock, removeSection, reorderBlocks, updateTitle, containerMutations } = useDocumentMutations()
+   const { addBlock, insertBlockAt, removeSection, reorderBlocks, updateTitle, containerMutations } = useDocumentMutations()
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: section.id, disabled: !!readOnly })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
@@ -104,8 +108,30 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                readOnly={readOnly}
             />
 
-            {section.blocks.length === 0 && (
-               <p className="section-empty">{t.noBlocks}</p>
+            {section.blocks.length === 0 && !readOnly && (
+               <>
+                  <div
+                     ref={emptyCardRef}
+                     onClick={() => {
+                        setEmptyPickerRect(emptyCardRef.current?.getBoundingClientRect() ?? null)
+                        setEmptyPickerOpen(true)
+                     }}
+                     className="w-full flex flex-col items-center gap-3 py-10 px-6 rounded-xl border border-dashed border-accent/20 bg-accent/5 text-center my-2 cursor-pointer hover:bg-accent/8 hover:border-accent/35 transition-colors select-none"
+                  >
+                     <SquareDashed size={32} className="text-accent/30" />
+                     <div className="flex flex-col gap-1">
+                        <p className="text-text/60 text-sm font-medium">{t.emptySection}</p>
+                        <p className="text-accent/50 text-xs font-medium">{t.emptySectionHint}</p>
+                     </div>
+                  </div>
+                  {emptyPickerOpen && emptyPickerRect && (
+                     <BlockTypePicker
+                        anchorRect={emptyPickerRect}
+                        onSelect={type => { addBlock(section.id, type); setEmptyPickerOpen(false) }}
+                        onClose={() => setEmptyPickerOpen(false)}
+                     />
+                  )}
+               </>
             )}
 
             {readOnly ? (
@@ -123,13 +149,17 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleBlockDragStart} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveBlockId(null); setDragWidth(null) }}>
                   <div ref={containerRef}>
                      <SortableContext items={section.blocks.map(block => block.id)} strategy={noopStrategy}>
-                        {section.blocks.map((block: Block) => (
+                        {section.blocks.map((block: Block, blockIndex: number) => (
                            <WysiwygBlock
                               key={block.id}
                               secId={section.id}
                               block={block}
                               containerMutations={containerMutations}
                               activeBlockId={activeBlockId}
+                              onInsertBefore={type => insertBlockAt(section.id, blockIndex, type)}
+                              onInsertAfter={type => insertBlockAt(section.id, blockIndex + 1, type)}
+                              onMoveUp={blockIndex > 0 ? () => reorderBlocks(section.id, blockIndex, blockIndex - 1) : undefined}
+                              onMoveDown={blockIndex < section.blocks.length - 1 ? () => reorderBlocks(section.id, blockIndex, blockIndex + 1) : undefined}
                            />
                         ))}
                      </SortableContext>
@@ -153,7 +183,9 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                </DndContext>
             )}
 
-            {!readOnly && <AddBlockRow docStyle onAdd={type => addBlock(section.id, type)} />}
+            {!readOnly && section.blocks.length > 0 && (
+               <AddBlockRow onAdd={type => addBlock(section.id, type)} />
+            )}
          </div>
       </div>
    )

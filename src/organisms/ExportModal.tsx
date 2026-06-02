@@ -6,6 +6,7 @@ import type { DocMeta, Section } from '../types'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
 import type { Lang } from '../lib/i18n'
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 import { ACCENT_PRESETS } from '../lib/constants'
 
 interface ExportModalProps {
@@ -15,26 +16,26 @@ interface ExportModalProps {
    defaultAccent: string
    lang: Lang
    onClose: () => void
-   onToast: (msg: string) => void
 }
 
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang, onClose, onToast }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang, onClose }: ExportModalProps) {
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
    const { t } = useLang()
+   const { showToast } = useToast()
 
    const opts: ExportOptions = { theme, accent, lang }
 
    function handleDownload() {
       downloadHTML(meta, sections, opts)
-      onToast(t.downloaded)
+      showToast(t.downloaded, { type: 'success' })
       onClose()
    }
 
    function handleCopy() {
       const html = generateExportHTML(meta, sections, opts)
       navigator.clipboard.writeText(html).then(() => {
-         onToast(t.htmlCopied)
+         showToast(t.htmlCopied, { type: 'success' })
          onClose()
       })
    }
