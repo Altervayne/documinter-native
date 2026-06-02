@@ -237,14 +237,14 @@ export function WysiwygBlock({
             <div
                {...sortable.listeners}
                className={[
-                  'absolute -left-5 inset-y-0 flex items-center justify-center w-4',
+                  'absolute -left-12 inset-y-0 flex items-center justify-center w-6',
                   'cursor-grab active:cursor-grabbing transition-opacity',
                   'text-muted/40 hover:text-muted/80',
                   hovered ? 'opacity-100' : 'opacity-0',
                ].join(' ')}
                title={t.dragToReorder}
             >
-               <GripVertical size={13} />
+               <GripVertical size={30} />
             </div>
          )}
 

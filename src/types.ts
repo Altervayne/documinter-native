@@ -1,7 +1,7 @@
 export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'list' | 'table' | 'image' | 'container'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
-export type CodeLang = 'windev' | 'js' | 'sql' | 'plain'
+export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
 
 export interface ListItem {
    id:       string

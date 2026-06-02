@@ -30,7 +30,7 @@ const KEYWORDS_DECL = [
    // Scope
    'LOCAL', 'GLOBAL', 'STATIQUE',
    // Constants
-   'CONSTANTE', 'CONSTANT',
+   'CONSTANTE', 'CONSTANT', 'Structure',
    // OOP — class & inheritance
    'CLASSE', 'HÉRITE', 'HERITE',
    // OOP — members
@@ -61,7 +61,7 @@ const KEYWORDS_BOOL = [
 // Built-in types
 const TYPES = [
    // Declarations
-   'est', 'sont', 'un', 'des',
+   'est', 'sont', 'un', 'des', 'une',
    // Numeric
    'entier', 'réel', 'reel', 'numérique', 'numerique', '1 octet', '2 octets', '3 octets', '4 octets', '5 octets', '6 octets', '7 octets', '8 octets',
    'sur 1', 'sur 2', 'sur 3', 'sur 4', 'sur 5', 'sur 6', 'sur 7', 'sur 8', 'signé', 'non signé',

@@ -87,7 +87,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
             className="sec-drag-handle"
             title={!readOnly && hovered ? t.dragSection : undefined}
          >
-            {!readOnly && hovered && <GripVertical size={16} />}
+            {!readOnly && hovered && <GripVertical size={22} />}
          </div>
 
          {/* Section content */}
