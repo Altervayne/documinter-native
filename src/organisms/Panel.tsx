@@ -56,7 +56,7 @@ export function Panel({
    if (!open) {
       return (
          <aside
-            className="w-10 shrink-0 bg-raised border-r border-border border-t-2 border-t-accent/30 flex flex-col items-center pt-2 h-full overflow-hidden"
+            className="w-14 shrink-0 bg-raised border-r border-border border-t-2 border-t-accent/30 flex flex-col items-center p-2 h-full overflow-hidden"
             style={{ transition: 'width 0.2s ease' }}
          >
             <button
@@ -99,7 +99,7 @@ export function Panel({
 
             {appearanceOpen && <div className="px-4 pb-3 flex flex-col gap-3">
             {/* Doc theme toggle */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mt-2">
                <span className="text-xs text-muted">{t.document}</span>
                <div className="flex gap-1">
                   {(['light', 'dark'] as const).map(themeOption => (

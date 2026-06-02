@@ -25,7 +25,7 @@ export function BlockItem({ block, onMoveUp, onMoveDown, onRemove }: BlockItemPr
    return (
       <div
          ref={setNodeRef} style={style} {...attributes}
-         className="group flex items-center gap-2 px-2 h-8 rounded-lg text-xs text-muted hover:bg-white/4 hover:text-text transition-colors"
+         className="group flex items-center gap-2 pl-2 h-8 rounded-lg text-xs text-muted hover:bg-white/4 hover:text-text transition-colors"
          onMouseEnter={() => setHovered(true)}
          onMouseLeave={() => setHovered(false)}
       >
@@ -49,7 +49,7 @@ export function BlockItem({ block, onMoveUp, onMoveDown, onRemove }: BlockItemPr
          </span>
 
          {/* Action buttons — always in DOM, opacity toggled. Fixed width prevents layout shift. */}
-         <div className="flex items-center gap-0.5 shrink-0 w-[66px] justify-end">
+         <div className="flex items-center gap-0.5 shrink-0 w-16.5 p-1 justify-end">
             <Button
                variant="ghost" size="icon"
                onClick={onMoveUp}

@@ -85,7 +85,7 @@ export function SectionItem({
          {/* Action bar — revealed on hover via grid-rows transition */}
          <div className={`grid transition-[grid-template-rows] duration-150 ${hovered ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
             <div className="overflow-hidden">
-               <div className="flex items-center gap-0.5 p-2 justify-end">
+               <div className="flex items-center gap-0.5 p-1 justify-end">
                   <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}>
                      <ArrowUp size={13} />
                   </Button>
