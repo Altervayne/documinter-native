@@ -96,7 +96,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
             {/* Delete — appears top-right only while hovered, never in readOnly */}
             {!readOnly && hovered && (
                <button className="sec-delete" onClick={() => removeSection(section.id)} title={t.deleteSection}>
-                  <Trash2 size={14} />
+                  <Trash2 size={16} />
                </button>
             )}
 
