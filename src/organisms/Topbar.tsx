@@ -1,12 +1,50 @@
-import { useState } from 'react'
-import type { DocMeta, DocState, Mode, Section } from '../types'
+import { useRef, useState } from 'react'
+import type { DocMeta, DocState, Mode, SaveStatus, Section } from '../types'
 import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
 import { downloadJSON, loadJSONFile } from '../lib/storage'
-import { Upload, Save, Download, Sun, Moon, Eye } from 'lucide-react'
+import { Upload, Save, Download, Sun, Moon, Eye, CircleDot, Loader2, CircleCheck } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
+
+// ============================================================
+// Save status indicator
+// ============================================================
+
+interface SaveStatusIndicatorProps {
+   status:     SaveStatus
+   labelDirty:  string
+   labelSaving: string
+   labelSaved:  string
+}
+
+function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: SaveStatusIndicatorProps) {
+   const lastNonCleanRef = useRef<'dirty' | 'saving' | 'saved'>('dirty')
+   if (status !== 'clean') lastNonCleanRef.current = status
+
+   const displayed = lastNonCleanRef.current
+   const isVisible = status !== 'clean'
+
+   return (
+      <div className={`flex items-center gap-1.5 font-mono text-xs select-none pointer-events-none transition-opacity duration-500 ${
+         isVisible ? 'opacity-100' : 'opacity-0'
+      } ${
+         displayed === 'dirty'  ? 'text-yellow' :
+         displayed === 'saving' ? 'text-muted'  :
+         'text-green'
+      }`}>
+         {displayed === 'dirty'  && <CircleDot    size={12} />}
+         {displayed === 'saving' && <Loader2      size={12} className="animate-spin" />}
+         {displayed === 'saved'  && <CircleCheck  size={12} />}
+         <span>
+            {displayed === 'dirty'  ? labelDirty  :
+             displayed === 'saving' ? labelSaving :
+             labelSaved}
+         </span>
+      </div>
+   )
+}
 
 interface TopbarProps {
    meta:          DocMeta
@@ -15,18 +53,21 @@ interface TopbarProps {
    docTheme:      'light' | 'dark'
    docAccent:     string
    mode:          Mode
+   saveStatus:    SaveStatus
    onLoad:        (state: DocState) => void
    onToggleTheme: () => void
    onSetMode:     (mode: Mode) => void
+   onManualSave:  () => void
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoad, onToggleTheme, onSetMode }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, saveStatus, onLoad, onToggleTheme, onSetMode, onManualSave }: TopbarProps) {
    const [exportOpen, setExportOpen] = useState(false)
    const { t, lang, setLang } = useLang()
    const { showToast } = useToast()
 
    function handleDownloadJSON() {
       downloadJSON(meta, sections)
+      onManualSave()
       showToast(t.jsonSaved, { type: 'success' })
    }
 
@@ -53,10 +94,20 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, onLoa
                <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
             </div>
 
-            {/* Doc title breadcrumb */}
-            <span className="font-mono text-xs text-muted/70 truncate flex-1 text-center select-none">
-               {meta.title || t.untitledDoc}
-            </span>
+            {/* Doc title + save status */}
+            <div className="flex-1 relative flex items-center justify-center">
+               <span className="font-mono text-xs text-muted/70 truncate select-none">
+                  {meta.title || t.untitledDoc}
+               </span>
+               <div className="absolute right-0 inset-y-0 flex items-center">
+                  <SaveStatusIndicator
+                     status={saveStatus}
+                     labelDirty={t.unsavedChanges}
+                     labelSaving={t.autosaving}
+                     labelSaved={t.saved}
+                  />
+               </div>
+            </div>
 
             {/* Actions */}
             <div className="flex gap-2 items-center shrink-0">

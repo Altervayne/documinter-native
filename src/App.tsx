@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
@@ -22,7 +22,7 @@ import { WysiwygArea } from './organisms/WysiwygArea'
 import { ToastContainer } from './atoms/ToastContainer'
 
 // -- Type Imports --
-import type { DocMeta, DocState, Mode, Section } from './types'
+import type { DocMeta, DocState, Mode, SaveStatus, Section } from './types'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
 
@@ -48,21 +48,56 @@ export default function App() {
    useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
    const t = translations[lang]
 
-   // Dynamic page title
-   useEffect(() => {
-      document.title = meta.title ? `${meta.title} — Documinter` : 'Documinter'
-   }, [meta.title])
-
    // Document appearance (independent of app theme)
    const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>(() => readAutosave()?.docTheme  ?? 'light')
    const [docAccent, setDocAccent] = useState(                 () => readAutosave()?.docAccent ?? '#2dcea8')
 
-   // Autosave document state — debounced 1 second
+   // ============================================================
+   // Save status
+   // ============================================================
+
+   const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
+
+   const hasMountedRef    = useRef(false)
+   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+   const writeTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+   // Autosave on any document change — debounced 1.5 seconds
    useEffect(() => {
-      const timer = setTimeout(() => {
-         writeAutosave({ meta, sections, docTheme, docAccent })
-      }, 1000)
-      return () => clearTimeout(timer)
+      if (!hasMountedRef.current) { hasMountedRef.current = true; return }
+      setSaveStatus('dirty')
+      autosaveTimerRef.current = setTimeout(() => {
+         setSaveStatus('saving')
+         writeTimerRef.current = setTimeout(() => {
+            writeAutosave({ meta, sections, docTheme, docAccent })
+            setSaveStatus('saved')
+         }, 400)
+      }, 1500)
+      return () => {
+         if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
+         if (writeTimerRef.current    !== null) clearTimeout(writeTimerRef.current)
+      }
+   }, [meta, sections, docTheme, docAccent])
+
+   // Fade the "Saved" indicator out after 2.5 s
+   useEffect(() => {
+      if (saveStatus !== 'saved') return
+      const clearTimer = setTimeout(() => setSaveStatus('clean'), 2500)
+      return () => clearTimeout(clearTimer)
+   }, [saveStatus])
+
+   // Browser tab title — asterisk while dirty
+   useEffect(() => {
+      const baseTitle = meta.title ? `${meta.title} — Documinter` : 'Documinter'
+      document.title  = saveStatus !== 'clean' ? `* ${baseTitle}` : baseTitle
+   }, [saveStatus, meta.title])
+
+   // Manual save: cancel any pending autosave, write immediately, mark saved
+   const handleManualSave = useCallback(() => {
+      if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
+      if (writeTimerRef.current    !== null) { clearTimeout(writeTimerRef.current);    writeTimerRef.current    = null }
+      writeAutosave({ meta, sections, docTheme, docAccent })
+      setSaveStatus('saved')
    }, [meta, sections, docTheme, docAccent])
 
    // Mode system
@@ -98,9 +133,11 @@ export default function App() {
                docTheme={docTheme}
                docAccent={docAccent}
                mode={mode}
+               saveStatus={saveStatus}
                onLoad={handleLoad}
                onToggleTheme={toggleTheme}
                onSetMode={handleSetMode}
+               onManualSave={handleManualSave}
             />
 
             <DocumentMutationsContext.Provider value={{

@@ -42,8 +42,9 @@ export function ContentEditable({
    placeholder,
    readOnly,
 }: ContentEditableProps) {
-   const ref = useRef<HTMLElement>(null)
-   const editing = useRef(false)
+   const ref             = useRef<HTMLElement>(null)
+   const editing         = useRef(false)
+   const snapshotOnFocus = useRef<string>('')
 
    // Mount + readOnly toggle: set content imperatively.
    // Depends on readOnly because React removes managed children when switching
@@ -84,7 +85,12 @@ export function ContentEditable({
          onClick={onClick}
          {...(rich ? { 'data-rich': 'true' } : {})}
          {...(placeholder ? { 'data-placeholder': placeholder } : {})}
-         onFocus={() => { editing.current = true }}
+         onFocus={() => {
+            editing.current = true
+            snapshotOnFocus.current = rich
+               ? (ref.current?.innerHTML ?? '')
+               : (ref.current?.innerText  ?? '')
+         }}
          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             // External handler runs first; if it prevents default, skip internal logic
             onKeyDown?.(event)
@@ -116,6 +122,10 @@ export function ContentEditable({
          }}
          onBlur={(event: React.FocusEvent<HTMLElement>) => {
             editing.current = false
+            const currentContent = rich
+               ? event.currentTarget.innerHTML
+               : event.currentTarget.innerText
+            if (currentContent === snapshotOnFocus.current) return
             if (rich) {
                onBlur(sanitizeRichText(event.currentTarget.innerHTML))
             } else {

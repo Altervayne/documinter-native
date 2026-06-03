@@ -110,6 +110,10 @@ export const translations = {
       deleteTableCol:     'Delete this column',
       // View mode toggles
       previewMode: 'Preview',
+      // Save status indicator
+      unsavedChanges: 'Unsaved changes',
+      autosaving:     'Autosaving...',
+      saved:          'Saved',
       // Export HTML
       docFallback:    'Documentation',
    },
@@ -222,6 +226,10 @@ export const translations = {
       deleteTableCol:     'Supprimer cette colonne',
       // View mode toggles
       previewMode: 'Aperçu',
+      // Save status indicator
+      unsavedChanges: 'Modifications non sauvegardées',
+      autosaving:     'Sauvegarde...',
+      saved:          'Sauvegardé',
       // Export HTML
       docFallback:    'Documentation',
    },

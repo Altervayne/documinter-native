@@ -52,6 +52,8 @@ export interface DocState {
 
 export type Mode = 'wysiwyg' | 'preview'
 
+export type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved'
+
 export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void
