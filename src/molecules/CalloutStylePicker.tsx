@@ -15,7 +15,7 @@ interface CalloutStylePickerProps {
 
 export function CalloutStylePicker({ current, onChange }: CalloutStylePickerProps) {
    return (
-      <div className="flex items-center gap-1 p-2">
+      <div className="flex items-center gap-1 p-2 -mb-4">
          {STYLES.map(({ value, color }) => (
             <button
                key={value}

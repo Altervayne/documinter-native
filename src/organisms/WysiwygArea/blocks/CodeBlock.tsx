@@ -18,7 +18,7 @@ export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
    return (
       <>
          {!readOnly && (
-            <div className="flex items-center gap-1 p-2 flex-wrap">
+            <div className="flex items-center gap-1 p-2 -mb-4 flex-wrap">
                <span className="text-xs opacity-40 font-mono mr-1">lang:</span>
                {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
                   <button
