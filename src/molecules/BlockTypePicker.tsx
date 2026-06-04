@@ -80,17 +80,21 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       <div
          ref={listRef}
          className="fixed z-[9999] rounded-xl border border-border bg-raised shadow-2xl overflow-hidden"
-         style={{ top, left, width: PICKER_WIDTH, padding: PADDING }}
+         style={{
+            top, left, width: PICKER_WIDTH, padding: PADDING,
+            animation: 'menu-in 120ms ease-out both',
+            transformOrigin: openAbove ? '50% 100%' : '50% 0%',
+         }}
       >
          {items.map((item, index) => (
             <button
                key={item.type}
                className={[
                   'w-full flex items-center gap-3 px-3 rounded-lg transition-colors cursor-pointer text-left',
-                  'border-0 bg-transparent',
+                  'border-0',
                   focused === index
                      ? 'bg-accent/10 text-text'
-                     : 'text-text/80 hover:bg-accent/6',
+                     : 'text-text/75 hover:text-text hover:bg-accent/10',
                ].join(' ')}
                style={{ height: ITEM_HEIGHT }}
                onPointerEnter={() => setFocused(index)}

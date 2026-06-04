@@ -10,6 +10,18 @@
   to   { opacity: 1; }
 }
 
+/* Slide-in animation for the link creator panel */
+@keyframes link-panel-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Snap-in animation for floating menus (block picker, context menu) */
+@keyframes menu-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
 @theme {
   /* ── Dark theme defaults (mint) ────────────────────────────────────────── */
   --color-bg:      #0a0f0d;

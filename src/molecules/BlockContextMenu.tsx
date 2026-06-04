@@ -269,16 +269,16 @@ export function BlockContextMenu({
    return createPortal(
       <div
          ref={menuRef}
-         className="fixed z-[9999] rounded-xl border border-white/12 shadow-2xl py-1 min-w-[172px]"
-         style={{ top, left, background: '#0d1117' }}
+         className="fixed z-[9999] rounded-xl border border-border bg-raised shadow-2xl min-w-[172px] overflow-hidden"
+         style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
       >
          {entries.map((entry, entryIndex) => {
             if (entry === 'divider') {
-               return <div key={`divider-${entryIndex}`} className="my-0.5 h-px mx-2 bg-white/10" />
+               return <div key={`divider-${entryIndex}`} className="my-0.5 h-px mx-2 bg-border" />
             }
             if ('type' in entry) {
                return (
-                  <div key={`header-${entryIndex}`} className="px-3 pt-2 pb-1 text-[0.6rem] uppercase tracking-wider text-white/30 font-semibold select-none">
+                  <div key={`header-${entryIndex}`} className="px-3 pt-2 pb-1 text-[0.6rem] uppercase tracking-wider text-muted/60 font-semibold select-none">
                      {entry.label}
                   </div>
                )
@@ -291,12 +291,12 @@ export function BlockContextMenu({
                   key={entry.id}
                   disabled={entry.disabled}
                   className={[
-                     'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer border-0 bg-transparent transition-colors text-left',
+                     'w-full flex items-center gap-2.5 px-3 py-1.5 text-xs cursor-pointer border-0 transition-colors text-left',
                      entry.disabled
                         ? 'opacity-30 cursor-default'
                         : entry.danger
-                           ? isFocused ? 'text-rose-400 bg-white/8' : 'text-rose-400/80 hover:text-rose-400 hover:bg-white/8'
-                           : isFocused ? 'text-white bg-white/8' : 'text-white/75 hover:text-white hover:bg-white/8',
+                           ? isFocused ? 'text-red bg-red/10'       : 'text-red/80 hover:text-red hover:bg-red/10'
+                           : isFocused ? 'text-text bg-accent/10' : 'text-text/75 hover:text-text hover:bg-accent/10',
                   ].join(' ')}
                   onPointerEnter={() => !entry.disabled && setFocused(itemSelectableIndex)}
                   onClick={entry.disabled ? undefined : entry.action}

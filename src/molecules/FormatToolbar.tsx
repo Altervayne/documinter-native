@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bold, Italic, Underline, Strikethrough, Link, Link2Off } from 'lucide-react'
+import {
+   Bold, Italic, Underline, Strikethrough,
+   Link, Link2Off, Baseline, Highlighter, CornerDownLeft,
+} from 'lucide-react'
 import type { Block, Section } from '../types'
 import { blockAnchor } from '../lib/document'
 
+// ============================================================
+// Helpers
+// ============================================================
+
 interface AnchoredBlock {
-   block:         Block
-   sectionIndex:  number
+   block:        Block
+   sectionIndex: number
 }
 
 function getAnchoredBlocks(sections: Section[]): AnchoredBlock[] {
@@ -39,43 +46,58 @@ function applyBoldItalic() {
    }
 }
 
+// ============================================================
+// Types
+// ============================================================
+
 interface Pos { top: number; left: number }
+
+interface FormatState {
+   bold:          boolean
+   italic:        boolean
+   underline:     boolean
+   strikethrough: boolean
+}
 
 interface FormatToolbarProps {
    sections: Section[]
 }
 
-
+// ============================================================
+// Component
+// ============================================================
 
 export function FormatToolbar({ sections }: FormatToolbarProps) {
-   const [pos, setPos]       = useState<Pos>({ top: 0, left: 0 })
-   const [visible, setVisible] = useState(false)
-   const [linkMode, setLinkMode] = useState(false)
-   const [linkUrl, setLinkUrl]   = useState('')
-   const savedRange     = useRef<Range | null>(null)
-   const inputRef       = useRef<HTMLInputElement>(null)
-   // Ref so the selectionchange handler can read link mode without stale closure
-   const linkModeRef    = useRef(false)
-   // Set to true by the link-click handler; consumed by the useEffect([pos]) below
-   const pendingLinkOpen = useRef(false)
-   // Stores the <a> element captured by onDocClick so openLinkMode can read its href
+   const [pos, setPos]             = useState<Pos>({ top: 0, left: 0 })
+   const [visible, setVisible]     = useState(false)
+   const [linkMode, setLinkMode]   = useState(false)
+   const [linkUrl, setLinkUrl]     = useState('')
+   const [formatState, setFormatState] = useState<FormatState>({
+      bold: false, italic: false, underline: false, strikethrough: false,
+   })
+   const [isEditingExistingLink, setIsEditingExistingLink] = useState(false)
+
+   const toolbarRef        = useRef<HTMLDivElement>(null)
+   const inputRef          = useRef<HTMLInputElement>(null)
+   const savedRange        = useRef<Range | null>(null)
+   const linkModeRef       = useRef(false)
+   const pendingLinkOpen   = useRef(false)
    const pendingLinkAnchor = useRef<HTMLAnchorElement | null>(null)
    const debounceTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-   // Helper functions
+   // ============================================================
+   // Link mode helpers
+   // ============================================================
 
    function openLinkMode() {
-      // Save selection so we can restore it before inserting the link
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange()
-      // Pre-fill with existing href.
-      // onDocClick stores the <a> directly (selectNodeContents makes anchorNode the element,
-      // not a text child, so the parentElement.closest('a') path below would miss it).
       const existingLink = pendingLinkAnchor.current
          ?? sel?.anchorNode?.parentElement?.closest('a')
       pendingLinkAnchor.current = null
+      setIsEditingExistingLink(!!existingLink)
       setLinkUrl(existingLink?.getAttribute('href') ?? '')
-      linkModeRef.current = true  // set before focus moves so selectionchange ignores the collapse
+      linkModeRef.current = true
       setLinkMode(true)
    }
 
@@ -83,18 +105,16 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       linkModeRef.current = false
       setLinkMode(false)
       setLinkUrl('')
+      setIsEditingExistingLink(false)
    }
 
    function applyLink() {
       const sel = window.getSelection()
-      // Restore saved selection (focusing the input collapsed it)
       if (savedRange.current) {
          sel?.removeAllRanges()
          sel?.addRange(savedRange.current)
       }
-      if (linkUrl.trim()) {
-         cmd('createLink', linkUrl.trim())
-      }
+      if (linkUrl.trim()) cmd('createLink', linkUrl.trim())
       closeLinkMode()
    }
 
@@ -108,7 +128,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       closeLinkMode()
    }
 
+   // ============================================================
    // Effects
+   // ============================================================
 
    useEffect(() => {
       function onSelChange() {
@@ -123,8 +145,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             setVisible(false)
             return
          }
-         const anchor = sel.anchorNode
-         const inRich = anchor?.parentElement?.closest('[data-rich]')
+         const inRich = sel.anchorNode?.parentElement?.closest('[data-rich]')
          if (!inRich) {
             setVisible(false)
             return
@@ -138,11 +159,15 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                return
             }
             const rect = currentSel.getRangeAt(0).getBoundingClientRect()
-            if (!rect.width) {
-               setVisible(false)
-               return
-            }
+            if (!rect.width) { setVisible(false); return }
+
             setPos({ top: rect.top - 44, left: rect.left + rect.width / 2 })
+            setFormatState({
+               bold:          document.queryCommandState('bold'),
+               italic:        document.queryCommandState('italic'),
+               underline:     document.queryCommandState('underline'),
+               strikethrough: document.queryCommandState('strikeThrough'),
+            })
             setVisible(true)
          }, 40)
       }
@@ -160,14 +185,24 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
          sel?.addRange(range)
          pendingLinkAnchor.current = anchor as HTMLAnchorElement
          pendingLinkOpen.current = true
-         // selectionchange fires next, sets pos, then the useEffect([pos]) opens link mode
+         // selectionchange fires next, sets pos, then useEffect([visible]) opens link mode
+      }
+
+      // Dismiss link mode when the user clicks outside the toolbar
+      function onOutsideMouseDown(event: MouseEvent) {
+         if (!linkModeRef.current) return
+         if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
+            closeLinkMode()
+         }
       }
 
       document.addEventListener('selectionchange', onSelChange)
       document.addEventListener('click', onDocClick)
+      document.addEventListener('mousedown', onOutsideMouseDown)
       return () => {
          document.removeEventListener('selectionchange', onSelChange)
          document.removeEventListener('click', onDocClick)
+         document.removeEventListener('mousedown', onOutsideMouseDown)
          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       }
    }, [])
@@ -182,173 +217,226 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       }
    }, [visible])
 
-   // Focus the URL input when link mode opens
+   // Focus the URL input whenever link mode opens
    useEffect(() => {
       if (linkMode) inputRef.current?.focus()
    }, [linkMode])
 
-   const buttonClass = 'w-7 h-7 flex items-center justify-center rounded hover:bg-white/15 transition-colors cursor-pointer text-white/75 hover:text-white'
+   // ============================================================
+   // Button class helper
+   // ============================================================
+
+   function formatButtonClass(active: boolean): string {
+      return `w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+         active
+            ? 'text-accent bg-accent/15'
+            : 'text-muted hover:text-text hover:bg-accent/10'
+      }`
+   }
+
+   // ============================================================
+   // Render
+   // ============================================================
 
    return (
+      // Outer div: handles fixed positioning only.
+      // Inner div: handles visual appearance + enter/exit animation.
+      // Keeping them separate avoids a transform conflict between the
+      // positioning translate and the animation scale.
       <div
-         className={`fixed z-9999 flex flex-col rounded-lg shadow-xl border border-white/12 transition-opacity duration-100 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-         style={{
-            top: 0,
-            left: 0,
-            transform: `translate(calc(${pos.left}px - 50%), ${pos.top}px)`,
-            background: '#0d1117',
-         }}
-         onMouseDown={event => event.preventDefault()} // keep focus in contenteditable
+         ref={toolbarRef}
+         className={`fixed z-9999 ${visible ? 'pointer-events-auto' : 'pointer-events-none'}`}
+         style={{ top: 0, left: 0, transform: `translate(calc(${pos.left}px - 50%), ${pos.top}px)` }}
+         onMouseDown={event => event.preventDefault()}
       >
-         {/* Formatting buttons row */}
-         <div className="flex items-center gap-0.5 px-1.5 py-1">
-            <button className={buttonClass} title="Bold"              onClick={() => cmd('bold')}>
-               <Bold size={12} />
-            </button>
-            <button className={buttonClass} title="Italic"            onClick={() => cmd('italic')}>
-               <Italic size={12} />
-            </button>
-            <button
-               className={buttonClass}
-               title="Bold + Italic"
-               onClick={applyBoldItalic}
-               style={{ fontSize: '0.68rem', fontFamily: 'Georgia, serif', fontWeight: 700, fontStyle: 'italic' }}
-            >
-               BI
-            </button>
-            <div className="w-px h-4 bg-white/15 mx-0.5" />
-            <button className={buttonClass} title="Underline"         onClick={() => cmd('underline')}>
-               <Underline size={12} />
-            </button>
-            <button className={buttonClass} title="Strikethrough"     onClick={() => cmd('strikeThrough')}>
-               <Strikethrough size={12} />
-            </button>
-            <div className="w-px h-4 bg-white/15 mx-0.5" />
-            <button
-               className={buttonClass}
-               title="Insert link"
-               onClick={openLinkMode}
-               style={linkMode ? { color: 'white', background: 'rgba(255,255,255,0.12)' } : {}}
-            >
-               <Link size={12} />
-            </button>
-         </div>
+         <div
+            className={`relative flex flex-col rounded-lg shadow-xl border border-border bg-raised transition-[opacity,transform] duration-[120ms] ease-out ${
+               visible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.97]'
+            }`}
+         >
+            {/* ── Toolbar buttons row ─────────────────────────── */}
+            <div className="flex items-center gap-0.5 px-1.5 py-1">
 
-         {/* Link panel — shown when link mode is active */}
-         {linkMode && (
-            <div className="border-t border-white/10 pt-1 pb-1.5 flex flex-col gap-1 max-h-72 overflow-y-auto">
-               {/* External URL row */}
-               <div className="flex items-center gap-1 px-1.5">
-                  <input
-                     ref={inputRef}
-                     type="url"
-                     placeholder="https://…"
-                     value={linkUrl}
-                     onChange={event => setLinkUrl(event.target.value)}
-                     onKeyDown={event => { if (event.key === 'Enter') applyLink(); else if (event.key === 'Escape') closeLinkMode() }}
-                     className="flex-1 bg-white/8 border border-white/15 rounded px-2 py-0.5 text-white/90 text-xs outline-none focus:border-white/35"
-                     style={{ minWidth: 180 }}
-                  />
-                  <button
-                     className="w-6 h-6 flex items-center justify-center rounded bg-white/10 hover:bg-white/20 text-white/75 hover:text-white transition-colors cursor-pointer"
-                     title="Apply link"
-                     onClick={applyLink}
-                  >
-                     ↵
-                  </button>
-                  <button
-                     className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/15 text-white/50 hover:text-white transition-colors cursor-pointer"
-                     title="Remove link"
-                     onClick={removeLink}
-                  >
-                     <Link2Off size={11} />
-                  </button>
-               </div>
+               {/* Formatting group */}
+               <button className={formatButtonClass(formatState.bold)}   title="Bold"         onClick={() => cmd('bold')}>
+                  <Bold size={13} />
+               </button>
+               <button className={formatButtonClass(formatState.italic)} title="Italic"       onClick={() => cmd('italic')}>
+                  <Italic size={13} />
+               </button>
+               <button
+                  className={formatButtonClass(formatState.bold && formatState.italic)}
+                  title="Bold + Italic"
+                  onClick={applyBoldItalic}
+                  style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontStyle: 'italic', fontSize: '0.68rem' }}
+               >
+                  BI
+               </button>
 
-               {/* Block anchor picker */}
-               {getAnchoredBlocks(sections).length > 0 && (() => {
-                  // Derive which anchor is currently linked (for highlighting)
-                  const activeFragment = linkUrl.startsWith('#') ? linkUrl.slice(1) : null
-                  return (
-                     <div className="shrink-0 border-t border-white/10 pt-1 px-1.5">
-                        <div className="text-white/30 text-[0.6rem] uppercase tracking-wider mb-0.5 px-1">
+               <div className="w-px h-4 bg-border mx-1" />
+
+               <button className={formatButtonClass(formatState.underline)}     title="Underline"     onClick={() => cmd('underline')}>
+                  <Underline size={13} />
+               </button>
+               <button className={formatButtonClass(formatState.strikethrough)} title="Strikethrough" onClick={() => cmd('strikeThrough')}>
+                  <Strikethrough size={13} />
+               </button>
+
+               {/* Link group */}
+               <div className="w-px h-4 bg-border mx-1" />
+               <button className={formatButtonClass(linkMode)} title="Link" onClick={openLinkMode}>
+                  <Link size={13} />
+               </button>
+
+               {/* Color placeholders — slots reserved for font color and highlight color */}
+               <div className="w-px h-4 bg-border mx-1" />
+               <button
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-muted opacity-40 cursor-not-allowed"
+                  title="Font color (coming soon)"
+                  disabled
+               >
+                  <Baseline size={13} />
+               </button>
+               <button
+                  className="w-7 h-7 flex items-center justify-center rounded-md text-muted opacity-40 cursor-not-allowed"
+                  title="Highlight color (coming soon)"
+                  disabled
+               >
+                  <Highlighter size={13} />
+               </button>
+            </div>
+
+            {/* ── Link creator panel ──────────────────────────── */}
+            {linkMode && (
+               <div
+                  className="absolute w-72 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
+                  style={{
+                     top: 'calc(100% + 6px)',
+                     left: '50%',
+                     transform: 'translateX(-50%)',
+                     animation: 'link-panel-in 120ms ease-out both',
+                  }}
+                  onKeyDown={event => { if (event.key === 'Escape') closeLinkMode() }}
+               >
+                  {/* URL input */}
+                  <div className="px-3 pt-3 pb-2.5">
+                     <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider mb-1.5">
+                        URL
+                     </div>
+                     <input
+                        ref={inputRef}
+                        type="url"
+                        placeholder="https://…"
+                        value={linkUrl}
+                        onChange={event => setLinkUrl(event.target.value)}
+                        onKeyDown={event => {
+                           if (event.key === 'Enter')  applyLink()
+                           if (event.key === 'Escape') closeLinkMode()
+                        }}
+                        className="w-full bg-el border border-border rounded-md px-3 py-1.5 text-sm text-text outline-none focus:border-accent transition-colors placeholder:text-muted/50"
+                     />
+                  </div>
+
+                  {/* Block anchor list */}
+                  {getAnchoredBlocks(sections).length > 0 && (
+                     <div className="border-t border-border">
+                        <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
                            Jump to block
                         </div>
-                        <div className="flex flex-col gap-px overflow-y-scroll">
+                        <div className="max-h-28 overflow-y-auto px-1.5 pb-1.5">
                            {getAnchoredBlocks(sections).map(({ block, sectionIndex }) => {
-                              const isActive = activeFragment === blockAnchor(block)
+                              const isActive = linkUrl === `#${blockAnchor(block)}`
                               return (
                                  <button
                                     key={block.id}
-                                    className={`text-left text-xs rounded px-2 py-0.5 transition-colors cursor-pointer truncate ${
+                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-sm text-left transition-colors cursor-pointer ${
                                        isActive
-                                          ? 'bg-white/15 text-white'
-                                          : 'text-white/65 hover:text-white hover:bg-white/10'
+                                          ? 'bg-accent/10 text-text'
+                                          : 'text-text/65 hover:text-text hover:bg-accent/10'
                                     }`}
                                     onClick={() => {
                                        const sel = window.getSelection()
-                                       if (savedRange.current) {
-                                          sel?.removeAllRanges()
-                                          sel?.addRange(savedRange.current)
-                                       }
+                                       if (savedRange.current) { sel?.removeAllRanges(); sel?.addRange(savedRange.current) }
                                        cmd('createLink', `#${blockAnchor(block)}`)
                                        closeLinkMode()
                                     }}
                                  >
-                                    <span className="text-white/30 font-mono text-[0.6rem] mr-1.5">
+                                    <span className="font-mono text-[0.6rem] text-muted/50 w-5 shrink-0 text-right">
                                        {String(sectionIndex + 1).padStart(2, '0')}
                                     </span>
-                                    #{block.handle}
+                                    <span className="truncate">#{block.handle}</span>
                                  </button>
                               )
                            })}
                         </div>
                      </div>
-                  )
-               })()}
+                  )}
 
-               {/* Section anchor picker */}
-               {sections.length > 0 && (() => {
-                  const activeFragment = linkUrl.startsWith('#') ? linkUrl.slice(1) : null
-                  return (
-                     <div className="shrink-0 border-t border-white/10 pt-1 px-1.5">
-                        <div className="text-white/30 text-[0.6rem] uppercase tracking-wider mb-0.5 px-1">
+                  {/* Section anchor list */}
+                  {sections.length > 0 && (
+                     <div className="border-t border-border">
+                        <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
                            Jump to section
                         </div>
-                        <div className="flex flex-col gap-px max-h-36 overflow-y-auto">
+                        <div className="max-h-28 overflow-y-auto px-1.5 pb-1.5">
                            {sections.map((section, sectionIndex) => {
-                              const isActive = activeFragment === `section-${section.id}`
+                              const isActive = linkUrl === `#section-${section.id}`
                               return (
                                  <button
                                     key={section.id}
-                                    className={`text-left text-xs rounded px-2 py-0.5 transition-colors cursor-pointer truncate ${
+                                    className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-sm text-left transition-colors cursor-pointer ${
                                        isActive
-                                          ? 'bg-white/15 text-white'
-                                          : 'text-white/65 hover:text-white hover:bg-white/10'
+                                          ? 'bg-accent/10 text-text'
+                                          : 'text-text/65 hover:text-text hover:bg-accent/10'
                                     }`}
                                     onClick={() => {
                                        const sel = window.getSelection()
-                                       if (savedRange.current) {
-                                          sel?.removeAllRanges()
-                                          sel?.addRange(savedRange.current)
-                                       }
+                                       if (savedRange.current) { sel?.removeAllRanges(); sel?.addRange(savedRange.current) }
                                        cmd('createLink', `#section-${section.id}`)
                                        closeLinkMode()
                                     }}
                                  >
-                                    <span className="text-white/30 font-mono text-[0.6rem] mr-1.5">
+                                    <span className="font-mono text-[0.6rem] text-muted/50 w-5 shrink-0 text-right">
                                        {String(sectionIndex + 1).padStart(2, '0')}
                                     </span>
-                                    {section.title}
+                                    <span className="truncate">{section.title || `Section ${sectionIndex + 1}`}</span>
                                  </button>
                               )
                            })}
                         </div>
                      </div>
-                  )
-               })()}
-            </div>
-         )}
+                  )}
+
+                  {/* Action row */}
+                  <div className="border-t border-border px-3 py-2.5 flex items-center justify-between">
+                     <button
+                        className="text-sm text-muted hover:text-text transition-colors cursor-pointer"
+                        onClick={closeLinkMode}
+                     >
+                        Cancel
+                     </button>
+                     <div className="flex items-center gap-2">
+                        {isEditingExistingLink && (
+                           <button
+                              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-red/70 hover:text-red hover:bg-red/10 transition-colors cursor-pointer"
+                              onClick={removeLink}
+                           >
+                              <Link2Off size={12} />
+                              Remove link
+                           </button>
+                        )}
+                        <button
+                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium bg-accent hover:bg-accent/90 text-white transition-colors cursor-pointer"
+                           onClick={applyLink}
+                        >
+                           <CornerDownLeft size={12} />
+                           Apply
+                        </button>
+                     </div>
+                  </div>
+               </div>
+            )}
+         </div>
       </div>
    )
 }
