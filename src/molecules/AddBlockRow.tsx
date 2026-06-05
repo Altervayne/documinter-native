@@ -25,7 +25,7 @@ export function AddBlockRow({ onAdd, insideContainer }: AddBlockRowProps) {
          <button
             ref={buttonRef}
             onClick={handleOpen}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm text-muted/50 hover:text-muted hover:bg-accent/5 border border-dashed border-border/40 hover:border-accent/30 transition-colors cursor-pointer bg-transparent"
+            className="doc-add-btn w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm border border-dashed cursor-pointer"
          >
             <Plus size={15} />
             <span>{t.addBlock}</span>

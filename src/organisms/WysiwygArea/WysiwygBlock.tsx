@@ -219,7 +219,7 @@ export function WysiwygBlock({
          ref={setWrapRef} style={dndStyle} {...wrapAttr}
          className={[
             'relative rounded-md transition-colors my-4',
-            !readOnly && hovered ? 'bg-black/3 doc-dark:bg-white/4' : '',
+            !readOnly && hovered ? 'doc-block-hover' : '',
             isAnchorDupe ? 'ring-2 ring-amber-400/60' : '',
          ].join(' ')}
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}

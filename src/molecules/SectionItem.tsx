@@ -57,7 +57,7 @@ export function SectionItem({
       >
          {/* Header — fixed height, always visible */}
          <div
-            className="flex items-center gap-2 px-3 h-10 cursor-pointer select-none hover:bg-white/4 transition-colors"
+            className="flex items-center gap-2 px-3 h-10 cursor-pointer select-none hover:bg-accent/10 transition-colors"
             onClick={onToggle}
          >
             {/* Drag handle */}

@@ -30,7 +30,7 @@ export function AnchorEditor({ draft, currentHandle, hasHandle, onChange, onConf
 
    return (
       <div
-         className="flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-gray-300 bg-[#eef0f3] shadow-sm whitespace-nowrap z-200 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs doc-dark:bg-[#21262d] doc-dark:border-[#30363d]"
+         className="flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-border bg-raised shadow-sm whitespace-nowrap z-200 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs"
          style={{ position: 'fixed', top: pos.top, right: pos.right }}
       >
          <span className="shrink-0 font-semibold text-accent">#</span>
@@ -49,13 +49,13 @@ export function AnchorEditor({ draft, currentHandle, hasHandle, onChange, onConf
             onBlur={onConfirm}
          />
          {isDuplicate && (
-            <span className="shrink-0 flex items-center gap-0.5 text-amber-500" title={t.duplicateAnchor}>
+            <span className="shrink-0 flex items-center gap-0.5 text-yellow" title={t.duplicateAnchor}>
                <TriangleAlert size={11} />
             </span>
          )}
          {hasHandle && (
             <button
-               className="shrink-0 flex items-center justify-center bg-transparent border-0 cursor-pointer text-gray-400 p-px rounded-sm transition-colors hover:text-rose-600 doc-dark:hover:text-red-400"
+               className="shrink-0 flex items-center justify-center bg-transparent border-0 cursor-pointer text-muted p-px rounded-sm transition-colors hover:text-red"
                onMouseDown={event => event.preventDefault()}
                onClick={onRemove}
                title={t.removeAnchor}

@@ -26,10 +26,13 @@ export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
                      onClick={() => patch({ lang: langOption })}
                      className={[
                         'px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all',
-                        lang === langOption
-                           ? 'border-accent/50 bg-accent/10 text-accent font-semibold'
-                           : 'border-current/20 opacity-50 hover:opacity-80',
+                        lang === langOption ? 'font-semibold' : 'border-current/20 opacity-50 hover:opacity-80',
                      ].join(' ')}
+                     style={lang === langOption ? {
+                        color:       'var(--doc-accent, var(--color-accent))',
+                        borderColor: 'var(--doc-accent, var(--color-accent))',
+                        background:  'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, transparent)',
+                     } : undefined}
                   >
                      {LANG_LABELS[langOption]}
                   </button>

@@ -25,7 +25,7 @@ export function BlockItem({ block, onMoveUp, onMoveDown, onRemove }: BlockItemPr
    return (
       <div
          ref={setNodeRef} style={style} {...attributes}
-         className="group flex items-center gap-2 pl-2 h-8 rounded-lg text-xs text-muted hover:bg-white/4 hover:text-text transition-colors"
+         className="group flex items-center gap-2 pl-2 h-8 rounded-lg text-xs text-muted hover:bg-accent/10 hover:text-text transition-colors"
          onMouseEnter={() => setHovered(true)}
          onMouseLeave={() => setHovered(false)}
       >

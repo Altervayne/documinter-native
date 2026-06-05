@@ -71,7 +71,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
          <div
             className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
             style={{
-               background: docTheme === 'dark' ? '#161b22' : '#ffffff',
+               background: 'var(--doc-canvas-bg)',
                borderTopColor: docAccent,
                '--doc-accent': docAccent,
             } as React.CSSProperties}
@@ -133,7 +133,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
             {sections.length === 0 && (
                <div className="wysiwyg-empty">
                   <strong>{t.nothingYet}</strong>
-                  <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, ${docTheme === 'dark' ? '#161b22' : '#fff'})`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ {t.addSection}</code> {t.nothingYetHint}
+                  <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, var(--doc-canvas-bg))`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ {t.addSection}</code> {t.nothingYetHint}
                </div>
             )}
 

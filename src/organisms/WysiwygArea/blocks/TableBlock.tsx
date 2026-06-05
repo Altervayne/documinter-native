@@ -78,7 +78,12 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, read
                </button>
                <button
                   onClick={onRemoveRow}
-                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all border-red/30 text-red/60 opacity-70 hover:opacity-100 hover:bg-red/8"
+                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all opacity-70 hover:opacity-100"
+                  style={{
+                     color:       'var(--callout-danger-accent)',
+                     borderColor: 'color-mix(in srgb, var(--callout-danger-accent) 30%, transparent)',
+                     background:  'color-mix(in srgb, var(--callout-danger-accent) 8%, transparent)',
+                  }}
                >
                   {t.removeRow}
                </button>

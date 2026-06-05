@@ -3,9 +3,9 @@ import type { ToastEntry } from '../contexts/ToastContext'
 // Left-border color per toast type
 const TYPE_COLORS: Record<ToastEntry['type'], string> = {
    neutral: 'var(--color-accent)',
-   success: '#22c55e',
-   warning: '#f59e0b',
-   error:   '#f43f5e',
+   success: 'var(--color-green)',
+   warning: 'var(--color-yellow)',
+   error:   'var(--color-red)',
 }
 
 interface ToastProps {

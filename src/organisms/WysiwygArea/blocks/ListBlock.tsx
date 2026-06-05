@@ -253,7 +253,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
 
          <DragOverlay dropAnimation={{ duration: 150, easing: 'ease' }}>
             {activeItem && (
-               <div className="rounded-lg border border-accent/25 bg-raised shadow-xl px-2 py-1 opacity-90">
+               <div className="rounded-lg border shadow-xl px-2 py-1 opacity-90" style={{ borderColor: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 25%, transparent)', background: 'var(--doc-canvas-bg)' }}>
                   <ListItemRow
                      item={activeItem}
                      depth={depth}
@@ -303,7 +303,7 @@ export function ListBlock({ block, patch, onAddItem, readOnly }: ListBlockProps)
             <div className="mt-4 p-2">
                <button
                   onClick={onAddItem}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm text-muted/50 hover:text-muted hover:bg-accent/5 border border-dashed border-border/40 hover:border-accent/30 transition-colors cursor-pointer bg-transparent"
+                  className="doc-add-btn w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm border border-dashed cursor-pointer"
                >
                   <CirclePlus size={14} />
                   <span>{t.addItem}</span>

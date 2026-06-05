@@ -116,12 +116,12 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                         setEmptyPickerRect(emptyCardRef.current?.getBoundingClientRect() ?? null)
                         setEmptyPickerOpen(true)
                      }}
-                     className="w-full flex flex-col items-center gap-3 py-10 px-6 rounded-xl border border-dashed border-accent/20 bg-accent/5 text-center my-2 cursor-pointer hover:bg-accent/8 hover:border-accent/35 transition-colors select-none"
+                     className="doc-empty-section w-full flex flex-col items-center gap-3 py-10 px-6 rounded-xl border border-dashed text-center my-2 cursor-pointer select-none"
                   >
-                     <SquareDashed size={32} className="text-accent/30" />
+                     <SquareDashed size={32} style={{ color: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 30%, transparent)' }} />
                      <div className="flex flex-col gap-1">
-                        <p className="text-text/60 text-sm font-medium">{t.emptySection}</p>
-                        <p className="text-accent/50 text-xs font-medium">{t.emptySectionHint}</p>
+                        <p className="text-sm font-medium opacity-60">{t.emptySection}</p>
+                        <p className="text-xs font-medium" style={{ color: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 60%, transparent)' }}>{t.emptySectionHint}</p>
                      </div>
                   </div>
                   {emptyPickerOpen && emptyPickerRect && (

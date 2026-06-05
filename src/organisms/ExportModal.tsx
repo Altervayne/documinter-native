@@ -98,7 +98,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang,
                            style={{ background: color }}
                            className={`w-4 h-4 rounded-full border-2 transition-all
                               ${accent === color
-                                 ? 'border-white/70 scale-110'
+                                 ? 'border-text/70 scale-110'
                                  : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'
                               }`}
                         />

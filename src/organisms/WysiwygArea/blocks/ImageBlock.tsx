@@ -129,10 +129,12 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                         key={value}
                         onClick={() => patch({ align: value })}
                         className={`flex items-center justify-center p-1 rounded transition-colors ${
-                           align === value
-                              ? 'text-accent bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)]'
-                              : 'text-gray-400 hover:text-gray-600'
+                           align === value ? '' : 'doc-img-ctrl'
                         }`}
+                        style={align === value ? {
+                           color:      'var(--doc-accent, var(--color-accent))',
+                           background: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent)',
+                        } : undefined}
                      >
                         <Icon size={13} />
                      </button>
@@ -148,13 +150,13 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                      placeholder="—"
                      onBlur={handleHeightInputBlur}
                      onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                     className="w-12 text-xs font-mono text-gray-400 bg-transparent border-b border-gray-200 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                     className="w-12 text-xs font-mono doc-img-ctrl bg-transparent border-b border-current/30 text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  <span className="text-xs text-gray-400">px</span>
+                  <span className="text-xs doc-img-ctrl">px</span>
                   {block.imageHeight !== undefined && (
                      <button
                         onClick={() => patch({ imageHeight: undefined })}
-                        className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                        className="text-xs doc-img-ctrl transition-colors"
                      >
                         Auto
                      </button>

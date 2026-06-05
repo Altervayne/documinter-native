@@ -126,14 +126,14 @@ export function Panel({
                         onClick={() => { onDocAccentChange(color); setPickerOpen(false) }}
                         style={{ background: color }}
                         className={`w-4 h-4 rounded-full border-2 transition-all
-                           ${docAccent === color ? 'border-white/70 scale-110' : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'}`}
+                           ${docAccent === color ? 'border-text/70 scale-110' : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'}`}
                      />
                   ))}
                   <button
                      title={t.customColor}
                      onClick={() => setPickerOpen(currentlyOpen => !currentlyOpen)}
                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all
-                        ${isCustomAccent ? 'border-white/70 scale-110' : 'border-border opacity-50 hover:opacity-90 hover:scale-105'}`}
+                        ${isCustomAccent ? 'border-text/70 scale-110' : 'border-border opacity-50 hover:opacity-90 hover:scale-105'}`}
                      style={isCustomAccent ? { background: docAccent } : {}}
                   >
                      {!isCustomAccent && <Palette size={9} className="text-muted pointer-events-none" />}

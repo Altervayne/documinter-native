@@ -426,7 +426,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                            </button>
                         )}
                         <button
-                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium bg-accent hover:bg-accent/90 text-white transition-colors cursor-pointer"
+                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-medium bg-accent hover:bg-accent/90 text-on-accent transition-colors cursor-pointer"
                            onClick={applyLink}
                         >
                            <CornerDownLeft size={12} />

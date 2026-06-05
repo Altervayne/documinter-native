@@ -1,11 +1,13 @@
 import type { CalloutStyle } from '../types'
 import { clsx } from '../lib/clsx'
 
-const STYLES: { value: CalloutStyle; color: string }[] = [
-   { value: 'info',    color: '#2563eb' },
-   { value: 'valid',   color: '#16a34a' },
-   { value: 'warning', color: '#d97706' },
-   { value: 'danger',  color: '#e11d48' },
+// Callout accent colors live as CSS custom properties in doc.css so they
+// automatically switch between light-doc and dark-doc palettes.
+const STYLES: { value: CalloutStyle; cssVar: string }[] = [
+   { value: 'info',    cssVar: '--callout-info-accent'    },
+   { value: 'valid',   cssVar: '--callout-valid-accent'   },
+   { value: 'warning', cssVar: '--callout-warning-accent' },
+   { value: 'danger',  cssVar: '--callout-danger-accent'  },
 ]
 
 interface CalloutStylePickerProps {
@@ -16,7 +18,7 @@ interface CalloutStylePickerProps {
 export function CalloutStylePicker({ current, onChange }: CalloutStylePickerProps) {
    return (
       <div className="flex items-center gap-1 p-2 -mb-4">
-         {STYLES.map(({ value, color }) => (
+         {STYLES.map(({ value, cssVar }) => (
             <button
                key={value}
                onClick={() => onChange(value)}
@@ -27,7 +29,11 @@ export function CalloutStylePicker({ current, onChange }: CalloutStylePickerProp
                      : 'border-current/20 opacity-50 hover:opacity-80',
                )}
                style={current === value
-                  ? { color, borderColor: color, background: `color-mix(in srgb, ${color} 10%, transparent)` }
+                  ? {
+                       color:       `var(${cssVar})`,
+                       borderColor: `var(${cssVar})`,
+                       background:  `color-mix(in srgb, var(${cssVar}) 10%, transparent)`,
+                    }
                   : undefined
                }
             >
