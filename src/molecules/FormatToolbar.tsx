@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import type { Block, Section } from '../types'
 import { blockAnchor } from '../lib/document'
+import { useLang } from '../contexts/LangContext'
 
 // ============================================================
 // Helpers
@@ -68,6 +69,8 @@ interface FormatToolbarProps {
 // ============================================================
 
 export function FormatToolbar({ sections }: FormatToolbarProps) {
+   const { t } = useLang()
+
    const [pos, setPos]             = useState<Pos>({ top: 0, left: 0 })
    const [visible, setVisible]     = useState(false)
    const [linkMode, setLinkMode]   = useState(false)
@@ -258,15 +261,15 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             <div className="flex items-center gap-0.5 px-1.5 py-1">
 
                {/* Formatting group */}
-               <button className={formatButtonClass(formatState.bold)}   title="Bold"         onClick={() => cmd('bold')}>
+               <button className={formatButtonClass(formatState.bold)}   title={t.formatBold}         onClick={() => cmd('bold')}>
                   <Bold size={13} />
                </button>
-               <button className={formatButtonClass(formatState.italic)} title="Italic"       onClick={() => cmd('italic')}>
+               <button className={formatButtonClass(formatState.italic)} title={t.formatItalic}       onClick={() => cmd('italic')}>
                   <Italic size={13} />
                </button>
                <button
                   className={formatButtonClass(formatState.bold && formatState.italic)}
-                  title="Bold + Italic"
+                  title={t.formatBoldItalic}
                   onClick={applyBoldItalic}
                   style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontStyle: 'italic', fontSize: '0.68rem' }}
                >
@@ -275,16 +278,16 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
 
                <div className="w-px h-4 bg-border mx-1" />
 
-               <button className={formatButtonClass(formatState.underline)}     title="Underline"     onClick={() => cmd('underline')}>
+               <button className={formatButtonClass(formatState.underline)}     title={t.formatUnderline}     onClick={() => cmd('underline')}>
                   <Underline size={13} />
                </button>
-               <button className={formatButtonClass(formatState.strikethrough)} title="Strikethrough" onClick={() => cmd('strikeThrough')}>
+               <button className={formatButtonClass(formatState.strikethrough)} title={t.formatStrikethrough} onClick={() => cmd('strikeThrough')}>
                   <Strikethrough size={13} />
                </button>
 
                {/* Link group */}
                <div className="w-px h-4 bg-border mx-1" />
-               <button className={formatButtonClass(linkMode)} title="Link" onClick={openLinkMode}>
+               <button className={formatButtonClass(linkMode)} title={t.formatLink} onClick={openLinkMode}>
                   <Link size={13} />
                </button>
 
@@ -292,14 +295,14 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                <div className="w-px h-4 bg-border mx-1" />
                <button
                   className="w-7 h-7 flex items-center justify-center rounded-md text-muted opacity-40 cursor-not-allowed"
-                  title="Font color (coming soon)"
+                  title={t.formatFontColor}
                   disabled
                >
                   <Baseline size={13} />
                </button>
                <button
                   className="w-7 h-7 flex items-center justify-center rounded-md text-muted opacity-40 cursor-not-allowed"
-                  title="Highlight color (coming soon)"
+                  title={t.formatHighlightColor}
                   disabled
                >
                   <Highlighter size={13} />
@@ -321,7 +324,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   {/* URL input */}
                   <div className="px-3 pt-3 pb-2.5">
                      <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider mb-1.5">
-                        URL
+                        {t.linkPanelUrl}
                      </div>
                      <input
                         ref={inputRef}
@@ -341,7 +344,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   {getAnchoredBlocks(sections).length > 0 && (
                      <div className="border-t border-border">
                         <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
-                           Jump to block
+                           {t.linkPanelJumpToBlock}
                         </div>
                         <div className="max-h-28 overflow-y-auto px-1.5 pb-1.5">
                            {getAnchoredBlocks(sections).map(({ block, sectionIndex }) => {
@@ -376,7 +379,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   {sections.length > 0 && (
                      <div className="border-t border-border">
                         <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
-                           Jump to section
+                           {t.linkPanelJumpToSection}
                         </div>
                         <div className="max-h-28 overflow-y-auto px-1.5 pb-1.5">
                            {sections.map((section, sectionIndex) => {
@@ -399,7 +402,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                                     <span className="font-mono text-[0.6rem] text-muted/50 w-5 shrink-0 text-right">
                                        {String(sectionIndex + 1).padStart(2, '0')}
                                     </span>
-                                    <span className="truncate">{section.title || `Section ${sectionIndex + 1}`}</span>
+                                    <span className="truncate">{section.title || `${t.linkPanelSectionFallback} ${sectionIndex + 1}`}</span>
                                  </button>
                               )
                            })}
@@ -413,7 +416,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                         className="text-sm text-muted hover:text-text transition-colors cursor-pointer"
                         onClick={closeLinkMode}
                      >
-                        Cancel
+                        {t.linkPanelCancel}
                      </button>
                      <div className="flex items-center gap-2">
                         {isEditingExistingLink && (
@@ -422,7 +425,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                               onClick={removeLink}
                            >
                               <Link2Off size={12} />
-                              Remove link
+                              {t.linkPanelRemove}
                            </button>
                         )}
                         <button
@@ -430,7 +433,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                            onClick={applyLink}
                         >
                            <CornerDownLeft size={12} />
-                           Apply
+                           {t.linkPanelApply}
                         </button>
                      </div>
                   </div>

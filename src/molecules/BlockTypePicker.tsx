@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, Image, Columns2 } from 'lucide-react'
 import type { BlockType } from '../types'
+import { useLang } from '../contexts/LangContext'
 
 interface PickerItem {
    type:        BlockType
@@ -9,18 +10,6 @@ interface PickerItem {
    description: string
    Icon:        React.ElementType
 }
-
-const ALL_ITEMS: PickerItem[] = [
-   { type: 'p',         Icon: AlignLeft, label: 'Paragraph',   description: 'Rich text — bold, italic, links' },
-   { type: 'h3',        Icon: Heading3,  label: 'Heading 3',   description: 'Large section sub-heading' },
-   { type: 'h4',        Icon: Heading4,  label: 'Heading 4',   description: 'Smaller sub-heading' },
-   { type: 'callout',   Icon: Info,      label: 'Callout',     description: 'Highlighted note — info, warning, danger, valid' },
-   { type: 'code',      Icon: Code2,     label: 'Code block',  description: 'Syntax-highlighted snippet' },
-   { type: 'list',      Icon: List,      label: 'List',        description: 'Bullet points with optional sub-items' },
-   { type: 'table',     Icon: Table,     label: 'Table',       description: 'Rows and columns with headers' },
-   { type: 'image',     Icon: Image,     label: 'Image',       description: 'Photo or graphic with caption' },
-   { type: 'container', Icon: Columns2,  label: 'Two columns', description: 'Side-by-side blocks with adjustable ratio' },
-]
 
 const PICKER_WIDTH  = 264
 const ITEM_HEIGHT   = 44
@@ -36,7 +25,21 @@ interface BlockTypePickerProps {
 }
 
 export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect, preferAbove }: BlockTypePickerProps) {
-   const items = insideContainer ? ALL_ITEMS.filter(item => item.type !== 'container') : ALL_ITEMS
+   const { t } = useLang()
+
+   const allItems: PickerItem[] = [
+      { type: 'p',         Icon: AlignLeft, label: t.blockParagraph, description: t.blockParagraphDesc },
+      { type: 'h3',        Icon: Heading3,  label: t.blockH3,        description: t.blockH3Desc },
+      { type: 'h4',        Icon: Heading4,  label: t.blockH4,        description: t.blockH4Desc },
+      { type: 'callout',   Icon: Info,      label: t.blockCallout,   description: t.blockCalloutDesc },
+      { type: 'code',      Icon: Code2,     label: t.blockCode,      description: t.blockCodeDesc },
+      { type: 'list',      Icon: List,      label: t.blockList,       description: t.blockListDesc },
+      { type: 'table',     Icon: Table,     label: t.blockTable,      description: t.blockTableDesc },
+      { type: 'image',     Icon: Image,     label: t.blockImage,      description: t.blockImageDesc },
+      { type: 'container', Icon: Columns2,  label: t.blockContainer,  description: t.blockContainerDesc },
+   ]
+
+   const items = insideContainer ? allItems.filter(item => item.type !== 'container') : allItems
    const pickerHeight = items.length * ITEM_HEIGHT + PADDING * 2
 
    const [focused, setFocused] = useState(0)
