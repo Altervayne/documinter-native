@@ -103,7 +103,7 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block =>
             block.id === blkId && block.type === 'list'
-               ? { ...block, items: [...(block.items ?? []), { id: crypto.randomUUID(), text: t.newItem, children: [] }] }
+               ? { ...block, items: [...(block.items ?? []), { id: crypto.randomUUID(), richText: [{ text: t.newItem }], children: [] }] }
                : block
          ),
       }))
@@ -123,22 +123,29 @@ export function useBlockMutations(
    const addTableRow = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'table'
-               ? { ...block, rows: [...(block.rows ?? []), (block.headers ?? []).map(() => '')] }
-               : block
-         ),
+         blocks: sec.blocks.map(block => {
+            if (block.id !== blkId || block.type !== 'table') return block
+            const columnCount = (block.richHeaders ?? []).length
+            const emptyRow: import('../types').InlineContent[] = Array.from({ length: columnCount }, () => [])
+            return {
+               ...block,
+               richRows: [...(block.richRows ?? []), emptyRow],
+            }
+         }),
       }))
    }, [setSections])
 
    const removeLastRow = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'table' && (block.rows?.length ?? 0) > 1
-               ? { ...block, rows: block.rows!.slice(0, -1) }
-               : block
-         ),
+         blocks: sec.blocks.map(block => {
+            if (block.id !== blkId || block.type !== 'table') return block
+            if ((block.richRows ?? []).length <= 1) return block
+            return {
+               ...block,
+               richRows: block.richRows?.slice(0, -1),
+            }
+         }),
       }))
    }, [setSections])
 
@@ -147,10 +154,11 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block => {
             if (block.id !== blkId || block.type !== 'table') return block
-            const newRow = (block.headers ?? []).map(() => '')
-            const newRows = [...(block.rows ?? [])]
-            newRows.splice(rowIndex, 0, newRow)
-            return { ...block, rows: newRows }
+            const columnCount = (block.richHeaders ?? []).length
+            const emptyRow: import('../types').InlineContent[] = Array.from({ length: columnCount }, () => [])
+            const newRichRows = [...(block.richRows ?? [])]
+            newRichRows.splice(rowIndex, 0, emptyRow)
+            return { ...block, richRows: newRichRows }
          }),
       }))
    }, [setSections])
@@ -160,8 +168,11 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block => {
             if (block.id !== blkId || block.type !== 'table') return block
-            if ((block.rows?.length ?? 0) <= 1) return block
-            return { ...block, rows: (block.rows ?? []).filter((_, index) => index !== rowIndex) }
+            if ((block.richRows ?? []).length <= 1) return block
+            return {
+               ...block,
+               richRows: block.richRows?.filter((_, index) => index !== rowIndex),
+            }
          }),
       }))
    }, [setSections])
@@ -171,14 +182,14 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block => {
             if (block.id !== blkId || block.type !== 'table') return block
-            const newHeaders = [...(block.headers ?? [])]
-            newHeaders.splice(colIndex, 0, t.newColumn)
-            const newRows = (block.rows ?? []).map(row => {
-               const newRow = [...row]
-               newRow.splice(colIndex, 0, '')
-               return newRow
+            const newRichHeaders = [...(block.richHeaders ?? [])]
+            newRichHeaders.splice(colIndex, 0, [{ text: t.newColumn }])
+            const newRichRows = (block.richRows ?? []).map(row => {
+               const nextRow = [...row]
+               nextRow.splice(colIndex, 0, [])
+               return nextRow
             })
-            return { ...block, headers: newHeaders, rows: newRows }
+            return { ...block, richHeaders: newRichHeaders, richRows: newRichRows }
          }),
       }))
    }, [setSections, t])
@@ -188,10 +199,10 @@ export function useBlockMutations(
          ...sec,
          blocks: sec.blocks.map(block => {
             if (block.id !== blkId || block.type !== 'table') return block
-            if ((block.headers?.length ?? 0) <= 1) return block
-            const newHeaders = (block.headers ?? []).filter((_, index) => index !== colIndex)
-            const newRows = (block.rows ?? []).map(row => row.filter((_, index) => index !== colIndex))
-            return { ...block, headers: newHeaders, rows: newRows }
+            if ((block.richHeaders ?? []).length <= 1) return block
+            const newRichHeaders = (block.richHeaders ?? []).filter((_, index) => index !== colIndex)
+            const newRichRows    = (block.richRows    ?? []).map(row => row.filter((_, index) => index !== colIndex))
+            return { ...block, richHeaders: newRichHeaders, richRows: newRichRows }
          }),
       }))
    }, [setSections])
@@ -199,11 +210,14 @@ export function useBlockMutations(
    const addTableCol = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
-         blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'table'
-               ? { ...block, headers: [...(block.headers ?? []), t.newColumn], rows: (block.rows ?? []).map(row => [...row, '']) }
-               : block
-         ),
+         blocks: sec.blocks.map(block => {
+            if (block.id !== blkId || block.type !== 'table') return block
+            return {
+               ...block,
+               richHeaders: [...(block.richHeaders ?? []), [{ text: t.newColumn }]],
+               richRows:    (block.richRows ?? []).map(row => [...row, []]),
+            }
+         }),
       }))
    }, [setSections, t])
 

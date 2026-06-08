@@ -17,7 +17,7 @@ import { useLang } from '../../../contexts/LangContext'
 
 // -- Lib Imports --
 import {
-   updateListItemText,
+   updateListItemRichText,
    reorderListItemsUnderParent,
    indentListItem,
    unindentListItem,
@@ -26,7 +26,7 @@ import {
 } from '../../../lib/document'
 
 // -- Type Imports --
-import type { Block, ListItem } from '../../../types'
+import type { Block, InlineContent, ListItem } from '../../../types'
 
 // ============================================================
 // Utilities
@@ -99,7 +99,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
       // Enter — create new sibling immediately after (Shift+Enter falls through to <br>)
       if (event.key === 'Enter' && !event.shiftKey) {
          event.preventDefault()
-         const newItem: ListItem = { id: crypto.randomUUID(), text: '', children: [] }
+         const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [] }
          onUpdateItems(insertListItemAfter(rootItems, item.id, newItem))
          requestAnimationFrame(() => {
             const newEl = document.querySelector(`[data-list-item-id="${newItem.id}"] [contenteditable]`)
@@ -154,10 +154,9 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
             {/* Text */}
             <ContentEditable
                tag="span"
-               content={item.text}
-               onBlur={value => onUpdateItems(updateListItemText(rootItems, item.id, value))}
+               content={(item.richText ?? []) as InlineContent}
+               onCommit={richText => onUpdateItems(updateListItemRichText(rootItems, item.id, richText))}
                onKeyDown={readOnly ? undefined : handleKeyDown}
-               rich
                placeholder="Item"
                style={{ flex: 1 }}
                readOnly={readOnly}

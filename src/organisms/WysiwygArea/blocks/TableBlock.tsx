@@ -1,6 +1,6 @@
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { useLang } from '../../../contexts/LangContext'
-import type { Block } from '../../../types'
+import type { Block, InlineContent } from '../../../types'
 
 interface TableBlockProps {
    block:       Block
@@ -13,8 +13,8 @@ interface TableBlockProps {
 
 export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, readOnly }: TableBlockProps) {
    const { t } = useLang()
-   const headers = block.headers ?? []
-   const rows    = block.rows    ?? []
+   const richHeaders = block.richHeaders ?? []
+   const richRows    = block.richRows    ?? []
 
    return (
       <>
@@ -22,17 +22,16 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, read
             <table>
                <thead>
                   <tr>
-                     {headers.map((header, columnIndex) => (
+                     {richHeaders.map((headerContent, columnIndex) => (
                         <ContentEditable
                            key={columnIndex}
                            tag="th"
-                           content={header}
-                           onBlur={value => {
-                              const newHeaders = [...headers]
-                              newHeaders[columnIndex] = value
-                              patch({ headers: newHeaders })
+                           content={headerContent}
+                           onCommit={(richText: InlineContent) => {
+                              const newRichHeaders = [...richHeaders]
+                              newRichHeaders[columnIndex] = richText
+                              patch({ richHeaders: newRichHeaders })
                            }}
-                           rich
                            placeholder={t.clickToEdit}
                            readOnly={readOnly}
                         />
@@ -40,19 +39,18 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, read
                   </tr>
                </thead>
                <tbody>
-                  {rows.map((row, rowIndex) => (
+                  {richRows.map((row, rowIndex) => (
                      <tr key={rowIndex}>
-                        {row.map((cell, columnIndex) => (
+                        {row.map((cellContent, columnIndex) => (
                            <ContentEditable
                               key={columnIndex}
                               tag="td"
-                              content={cell}
-                              onBlur={value => {
-                                 const newRows = rows.map(existingRow => [...existingRow])
-                                 newRows[rowIndex][columnIndex] = value
-                                 patch({ rows: newRows })
+                              content={cellContent}
+                              onCommit={(richText: InlineContent) => {
+                                 const newRichRows = richRows.map(existingRow => [...existingRow])
+                                 newRichRows[rowIndex][columnIndex] = richText
+                                 patch({ richRows: newRichRows })
                               }}
-                              rich
                               placeholder={t.clickToEdit}
                               readOnly={readOnly}
                            />

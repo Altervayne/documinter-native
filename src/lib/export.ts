@@ -1,5 +1,6 @@
-import type { DocMeta, ListItem, Section, Block } from '../types'
+import type { DocMeta, InlineContent, ListItem, Section, Block } from '../types'
 import { esc, slugify } from './text'
+import { renderInlineContent } from './inline'
 import { blockAnchor } from './document'
 import { highlight } from './highlight'
 
@@ -11,17 +12,10 @@ export interface ExportOptions {
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
 
-
-/**
- * Convert a stored text value to safe HTML for export.
- * New documents store sanitized HTML (<strong>, <em>, <u>, <s>, <br> only).
- * Old plain-text documents are escaped for backward compatibility.
- */
-function textToHtml(text: string | undefined): string {
-   if (!text) return ''
-   // If the string contains any of our rich-text tags, it's already HTML
-   if (/<(strong|em|u|s|br|a)\b/.test(text)) return text
-   return esc(text)
+/** Render an InlineContent array to export-safe HTML. */
+function richToHtml(richText: InlineContent | undefined): string {
+   if (!richText || richText.length === 0) return ''
+   return renderInlineContent(richText)
 }
 
 function withHandle(block: Block, html: string): string {
@@ -30,10 +24,10 @@ function withHandle(block: Block, html: string): string {
 }
 
 function exportBlock(block: Block): string {
-   if (block.type === 'p')       return withHandle(block, `<p>${textToHtml(block.text)}</p>`)
-   if (block.type === 'h3')      return withHandle(block, `<h3>${textToHtml(block.text)}</h3>`)
-   if (block.type === 'h4')      return withHandle(block, `<h4>${textToHtml(block.text)}</h4>`)
-   if (block.type === 'callout') return withHandle(block, `<div class="callout ${block.style ?? 'info'}">${textToHtml(block.text)}</div>`)
+   if (block.type === 'p')       return withHandle(block, `<p>${richToHtml(block.richText)}</p>`)
+   if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
+   if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
+   if (block.type === 'callout') return withHandle(block, `<div class="callout ${block.style ?? 'info'}">${richToHtml(block.richText)}</div>`)
    if (block.type === 'code') {
       const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
       return withHandle(block, `<pre><code>${highlighted}</code></pre>`)
@@ -43,15 +37,17 @@ function exportBlock(block: Block): string {
          const childHtml = item.children.length > 0
             ? `<ul>${item.children.map(exportListItem).join('')}</ul>`
             : ''
-         return `<li>${textToHtml(item.text)}${childHtml}</li>`
+         return `<li>${richToHtml(item.richText)}${childHtml}</li>`
       }
       return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
    }
    if (block.type === 'table') {
-      const headerCells = (block.headers ?? []).map(header => `<th>${textToHtml(header)}</th>`).join('')
-      const bodyRows = (block.rows ?? []).map(row =>
-         `<tr>${row.map(cell => `<td>${textToHtml(cell)}</td>`).join('')}</tr>`
-      ).join('')
+      const headerCells = (block.richHeaders ?? [])
+         .map(header => `<th>${richToHtml(header)}</th>`).join('')
+      const bodyRows = (block.richRows ?? [])
+         .map(row =>
+            `<tr>${row.map(cell => `<td>${richToHtml(cell)}</td>`).join('')}</tr>`
+         ).join('')
       return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
    if (block.type === 'image' && block.src) {

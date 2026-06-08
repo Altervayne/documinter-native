@@ -14,7 +14,7 @@ import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { ContentEditable } from '../../atoms/ContentEditable'
+import { PlainEditable } from '../../atoms/PlainEditable'
 import { AddBlockRow } from '../../molecules/AddBlockRow'
 import { WysiwygBlock } from './WysiwygBlock'
 
@@ -100,7 +100,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                </button>
             )}
 
-            <ContentEditable
+            <PlainEditable
                tag="h2"
                content={`${index + 1}. ${section.title}`}
                onBlur={handleTitleBlur}

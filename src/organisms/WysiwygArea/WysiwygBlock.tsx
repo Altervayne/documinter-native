@@ -286,8 +286,8 @@ export function WysiwygBlock({
             let tableCellActions: TableCellContextActions | undefined
             if (contextMenuTableCell && block.type === 'table') {
                const { rowIndex, colIndex } = contextMenuTableCell
-               const rowCount = block.rows?.length ?? 0
-               const colCount = block.headers?.length ?? 0
+               const rowCount = block.richRows?.length ?? 0
+               const colCount = block.richHeaders?.length ?? 0
                tableCellActions = {
                   rowIndex,
                   colIndex,

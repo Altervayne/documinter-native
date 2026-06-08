@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ContentEditable } from '../../../atoms/ContentEditable'
+import { PlainEditable } from '../../../atoms/PlainEditable'
 import { highlight, LANG_LABELS } from '../../../lib/highlight'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block, CodeLang } from '../../../types'
@@ -41,7 +41,7 @@ export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
          )}
          {!readOnly && codeEditing ? (
             <pre>
-               <ContentEditable
+               <PlainEditable
                   tag="code"
                   content={block.code ?? ''}
                   spellCheck={false}

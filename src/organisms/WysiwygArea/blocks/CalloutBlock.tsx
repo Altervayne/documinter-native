@@ -1,7 +1,7 @@
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { CalloutStylePicker } from '../../../molecules/CalloutStylePicker'
 import { useLang } from '../../../contexts/LangContext'
-import type { Block, CalloutStyle } from '../../../types'
+import type { Block, CalloutStyle, InlineContent } from '../../../types'
 
 interface CalloutBlockProps {
    block: Block
@@ -11,6 +11,7 @@ interface CalloutBlockProps {
 
 export function CalloutBlock({ block, patch, readOnly }: CalloutBlockProps) {
    const { t } = useLang()
+   const content: InlineContent = block.richText ?? []
    return (
       <>
          {!readOnly && (
@@ -22,9 +23,8 @@ export function CalloutBlock({ block, patch, readOnly }: CalloutBlockProps) {
          <ContentEditable
             tag="p"
             className={`callout ${block.style ?? 'info'}`}
-            content={block.text ?? ''}
-            onBlur={value => patch({ text: value })}
-            rich
+            content={content}
+            onCommit={richText => patch({ richText })}
             placeholder={t.clickToEdit}
             readOnly={readOnly}
          />

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { AlignLeft, AlignCenter, AlignRight, GripHorizontal } from 'lucide-react'
-import { ContentEditable } from '../../../atoms/ContentEditable'
+import { PlainEditable } from '../../../atoms/PlainEditable'
 import { compressImage } from '../../../lib/image'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
@@ -103,7 +103,7 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
             </div>
 
             {/* Controls: full-width, below the aligned figure */}
-            <ContentEditable
+            <PlainEditable
                tag="p"
                className="image-field image-alt"
                content={block.alt ?? ''}
@@ -113,7 +113,7 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                spellCheck={false}
                readOnly={readOnly}
             />
-            <ContentEditable
+            <PlainEditable
                tag="p"
                className="image-field image-caption"
                content={block.caption ?? ''}

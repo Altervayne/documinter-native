@@ -14,7 +14,7 @@ import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { ContentEditable } from '../../atoms/ContentEditable'
+import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { WysiwygSection } from './WysiwygSection'
 
@@ -79,7 +79,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
          <div className="doc-render">
             {/* Page header */}
             <div className="page-header">
-               <ContentEditable
+               <PlainEditable
                   tag="div"
                   className="page-module"
                   content={meta.module || t.placeholderModule}
@@ -87,7 +87,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                   singleLine
                   readOnly={readOnly}
                />
-               <ContentEditable
+               <PlainEditable
                   tag="h1"
                   content={meta.title || t.placeholderTitle}
                   onBlur={value => onUpdateMeta({ title: value.trim() })}
@@ -95,14 +95,14 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                   readOnly={readOnly}
                />
                <div className="page-meta">
-                  <ContentEditable
+                  <PlainEditable
                      tag="span"
                      content={meta.env || t.placeholderEnv}
                      onBlur={value => onUpdateMeta({ env: value.trim() })}
                      singleLine
                      readOnly={readOnly}
                   />
-                  <ContentEditable
+                  <PlainEditable
                      tag="span"
                      content={meta.date ? `${t.prefixUpdated} ${meta.date}` : t.placeholderDate}
                      onBlur={value => {
@@ -114,7 +114,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                      singleLine
                      readOnly={readOnly}
                   />
-                  <ContentEditable
+                  <PlainEditable
                      tag="span"
                      content={meta.author ? `${t.prefixAuthor} ${meta.author}` : t.placeholderAuthor}
                      onBlur={value => {
