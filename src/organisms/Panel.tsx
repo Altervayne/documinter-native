@@ -115,7 +115,7 @@ export function Panel({
                </div>
 
                {/* Scrollable section tree — add-section button flows inside as sticky last child */}
-               <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-10">
+               <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-4">
                   {sections.length === 0 ? (
                      <button
                         onClick={onAddSection}
@@ -175,7 +175,7 @@ export function Panel({
                   {/* Sticky add-section button — only shown when sections already exist */}
                   {/* The empty-state card above handles the zero-section case */}
                   {sections.length > 0 && (
-                     <div className="sticky bottom-0 bg-raised pt-1">
+                     <div className="sticky bottom-0 bg-raised mt-4">
                         <button
                            onClick={onAddSection}
                            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium text-accent/50 hover:text-accent hover:bg-accent/8 rounded-md border border-dashed border-accent/25 hover:border-accent/50 transition-colors cursor-pointer"
