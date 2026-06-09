@@ -1,5 +1,5 @@
 // -- Library Imports --
-import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, Image, Columns2 } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // -- Type Imports --
@@ -18,7 +18,8 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
    { type: 'list',      icon: List      },
    { type: 'table',     icon: Table     },
    { type: 'image',     icon: Image     },
-   { type: 'container', icon: Columns2  },
+   { type: 'container', icon: Columns2            },
+   { type: 'hr',        icon: SeparatorHorizontal },
 ]
 
 /** Keyed by BlockType — useful for O(1) icon lookups. */

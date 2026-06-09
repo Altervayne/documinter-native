@@ -53,6 +53,7 @@ export const translations = {
       blockTable:     'Table',
       blockImage:     'Image',
       blockContainer: 'Two columns',
+      blockHr:        'Divider',
       // Block type descriptions
       blockParagraphDesc: 'Rich text — bold, italic, links',
       blockH3Desc:        'Large section sub-heading',
@@ -63,6 +64,7 @@ export const translations = {
       blockTableDesc:     'Rows and columns with headers',
       blockImageDesc:     'Photo or graphic with caption',
       blockContainerDesc: 'Side-by-side blocks with adjustable ratio',
+      blockHrDesc:        'Full-width line between content blocks',
       add:            'add',
       // Image block
       dropImageHere:  'Drop image or click to select',
@@ -228,6 +230,7 @@ export const translations = {
       blockTable:     'Tableau',
       blockImage:     'Image',
       blockContainer: 'Deux colonnes',
+      blockHr:        'Séparateur',
       // Block type descriptions
       blockParagraphDesc: 'Texte enrichi — gras, italique, liens',
       blockH3Desc:        'Grand sous-titre de section',
@@ -238,6 +241,7 @@ export const translations = {
       blockTableDesc:     'Lignes et colonnes avec en-têtes',
       blockImageDesc:     'Photo ou graphique avec légende',
       blockContainerDesc: 'Blocs côte à côte avec ratio ajustable',
+      blockHrDesc:        'Trait pleine largeur entre les blocs',
       add:            'ajouter',
       // Image block
       dropImageHere:  'Déposer une image ou cliquer pour sélectionner',

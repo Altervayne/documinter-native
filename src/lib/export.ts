@@ -65,6 +65,7 @@ function exportBlock(block: Block): string {
          ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
       </figure>`)
    }
+   if (block.type === 'hr') return withHandle(block, '<hr>')
    if (block.type === 'container') {
       const ratio    = block.ratio ?? 0.5
       const leftHtml  = (block.left  ?? []).map(exportBlock).join('\n')
@@ -349,7 +350,7 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
             <div class="doc-section" id="section-${sec.id}">
                   <h2>${sectionIndex + 1}. ${esc(sec.title)}</h2>
 ${blocksHTML}
-            </div>${sectionIndex < sections.length - 1 ? '\n        <hr>' : ''}`
+            </div>`
    }).join('\n')
 
    return `<!DOCTYPE html>

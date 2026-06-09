@@ -19,6 +19,7 @@ import { ListBlock }        from './blocks/ListBlock'
 import { TableBlock }       from './blocks/TableBlock'
 import { ImageBlock }       from './blocks/ImageBlock'
 import { ContainerBlock }   from './blocks/ContainerBlock'
+import { HrBlock }          from './blocks/HrBlock'
 import { AnchorEditor }     from './blocks/AnchorEditor'
 import { BlockContextMenu, type ListItemContextActions, type TableCellContextActions } from '../../molecules/BlockContextMenu'
 import { BlockTypePicker }  from '../../molecules/BlockTypePicker'
@@ -217,6 +218,8 @@ export function WysiwygBlock({
          return <ImageBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'container' && (containerMutations || readOnly))
          return <ContainerBlock block={block} patch={patch} containerMutations={containerMutations!} secId={secId} readOnly={readOnly} />
+      if (block.type === 'hr')
+         return <HrBlock block={block} patch={patch} readOnly={readOnly} />
       return null
    }
 

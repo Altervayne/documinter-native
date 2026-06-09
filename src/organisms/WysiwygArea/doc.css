@@ -210,6 +210,11 @@
    These classes are used by React components rendered ON the canvas.
    They respond to the document theme (.doc-dark), not the app theme.       */
 
+/* HR block edit-mode wrapper — gives the 1 px rule a hoverable surface area */
+.hr-edit-wrap {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 25%, transparent);
+}
+
 /* Block hover highlight — React-controlled (WysiwygBlock hovered state) */
 .doc-block-hover {
   background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 5%, transparent);

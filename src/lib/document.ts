@@ -70,6 +70,7 @@ export function mkBlock(type: BlockType): Block {
       }
       case 'image':     return { id, type, src: '', alt: '', caption: '' }
       case 'container': return { id, type, ratio: 0.5, left: [], right: [] }
+      case 'hr':        return { id, type }
    }
 }
 
@@ -131,6 +132,7 @@ export function blkPreview(block: Block): string {
       const pct = Math.round((block.ratio ?? 0.5) * 100)
       return `Container (${pct}/${100 - pct})`
    }
+   if (block.type === 'hr') return '———————————————'
    return ''
 }
 

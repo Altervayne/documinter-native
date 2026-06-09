@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, Image, Columns2 } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, List, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { BlockType } from '../types'
 import { useLang } from '../contexts/LangContext'
 
@@ -36,7 +36,8 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       { type: 'list',      Icon: List,      label: t.blockList,       description: t.blockListDesc },
       { type: 'table',     Icon: Table,     label: t.blockTable,      description: t.blockTableDesc },
       { type: 'image',     Icon: Image,     label: t.blockImage,      description: t.blockImageDesc },
-      { type: 'container', Icon: Columns2,  label: t.blockContainer,  description: t.blockContainerDesc },
+      { type: 'container', Icon: Columns2,           label: t.blockContainer, description: t.blockContainerDesc },
+      { type: 'hr',        Icon: SeparatorHorizontal, label: t.blockHr,        description: t.blockHrDesc },
    ]
 
    const items = insideContainer ? allItems.filter(item => item.type !== 'container') : allItems

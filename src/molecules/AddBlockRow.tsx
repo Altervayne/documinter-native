@@ -21,7 +21,7 @@ export function AddBlockRow({ onAdd, insideContainer }: AddBlockRowProps) {
    }
 
    return (
-      <div className="pt-2 mt-1.5 border-t border-border/40">
+      <div className="pt-2 mt-1.5">
          <button
             ref={buttonRef}
             onClick={handleOpen}

@@ -148,6 +148,9 @@ function serializeBlock(block: Block): string {
          return `<!-- image: ${attrs.join(' ')} -->`
       }
 
+      case 'hr':
+         return '---'
+
       case 'container': {
          const parts: string[] = ['<!-- container-start -->']
 
@@ -693,6 +696,14 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
             src:  imageAMatch[2],
          }
          commitBlock(block)
+         continue
+      }
+
+      // ── Thematic break: --- → hr block ───────────────────
+      if (line === '---') {
+         commitBlock(flushAccum())
+         commitBlock({ id: crypto.randomUUID(), type: 'hr' })
+         pendingImageBlock = null
          continue
       }
 
