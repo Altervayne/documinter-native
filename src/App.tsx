@@ -23,15 +23,44 @@ import { MarkdownPanel } from './organisms/MarkdownPanel'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { ToastContainer } from './atoms/ToastContainer'
 
+// -- Markdown Imports --
+import { importMarkdownFile } from './lib/markdown'
+
 // -- Type Imports --
-import type { DocMeta, DocState, Mode, SaveStatus, Section, ViewLayout } from './types'
+import type { BlockType, DocMeta, DocState, Mode, PaneId, PaneNode, PaneSplit, SaveStatus, Section, ViewLayout } from './types'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
+
+const DEFAULT_SPLIT: PaneSplit = {
+   kind:        'split',
+   orientation: 'h',
+   ratio:       0.5,
+   children: [
+      { kind: 'leaf', paneId: 'wysiwyg' },
+      { kind: 'leaf', paneId: 'markdown' },
+   ],
+}
 
 export default function App() {
    const [sections, setSections] = useState<Section[]>(() => readAutosave()?.sections ?? [mkSection()])
    const [meta, setMeta]         = useState<DocMeta>(() => readAutosave()?.meta ?? EMPTY_META)
-   const [panelOpen, setPanelOpen] = useState(true)
+   const [panelOpen, setPanelOpen] = useState(
+      () => localStorage.getItem('documinter-panel-open') !== 'false'
+   )
+   useEffect(() => {
+      localStorage.setItem('documinter-panel-open', String(panelOpen))
+   }, [panelOpen])
+
+   const [panelDockSide, setPanelDockSide] = useState<'left' | 'right'>(
+      () => (localStorage.getItem('documinter-panel-dock') as 'left' | 'right') ?? 'left'
+   )
+   useEffect(() => {
+      localStorage.setItem('documinter-panel-dock', panelDockSide)
+   }, [panelDockSide])
+
+   const handleTogglePanelDockSide = useCallback(() => {
+      setPanelDockSide(current => current === 'left' ? 'right' : 'left')
+   }, [])
 
    // Theme
    const [theme, setTheme] = useState<'dark' | 'light'>(
@@ -110,30 +139,93 @@ export default function App() {
       setMode(newMode)
    }
 
-   // View layout system (wysiwyg / split / markdown)
-   const [viewLayout,  setViewLayout]  = useState<ViewLayout>('wysiwyg')
-   const [splitRatio,  setSplitRatio]  = useState(0.5)
+   // ============================================================
+   // Pane layout system
+   // ============================================================
 
-   // Ctrl+\ / Cmd+\ cycles through view layout states.
+   const [paneLayout, setPaneLayout] = useState<PaneNode>(() => {
+      try {
+         const stored = localStorage.getItem('documinter-pane-layout')
+         if (stored) {
+            const parsed = JSON.parse(stored)
+            if (parsed && typeof parsed === 'object' && 'kind' in parsed) {
+               return parsed as PaneNode
+            }
+         }
+      } catch {}
+      return { kind: 'leaf', paneId: 'wysiwyg' }
+   })
+
+   // Tracks the last known split config so Ctrl+\ can restore it when cycling back.
+   const lastSplitRef = useRef<PaneSplit>(
+      paneLayout.kind === 'split' ? (paneLayout as PaneSplit) : DEFAULT_SPLIT
+   )
+
+   // Keep lastSplitRef current whenever the layout is a split.
+   useEffect(() => {
+      if (paneLayout.kind === 'split') lastSplitRef.current = paneLayout as PaneSplit
+   }, [paneLayout])
+
+   // Persist pane layout to localStorage.
+   useEffect(() => {
+      localStorage.setItem('documinter-pane-layout', JSON.stringify(paneLayout))
+   }, [paneLayout])
+
+   // Ctrl+\ / Cmd+\ cycles through the three layout modes.
    useEffect(() => {
       const VIEW_CYCLE: ViewLayout[] = ['wysiwyg', 'split', 'markdown']
-      function handleKeyDown(event: KeyboardEvent) {
+
+      function handleKeyDown(event: KeyboardEvent): void {
          if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
             event.preventDefault()
-            setViewLayout(current => {
-               const currentIndex = VIEW_CYCLE.indexOf(current)
-               return VIEW_CYCLE[(currentIndex + 1) % VIEW_CYCLE.length]
+            setPaneLayout(currentLayout => {
+               const currentViewLayout: ViewLayout =
+                  currentLayout.kind === 'split' ? 'split' :
+                  currentLayout.paneId === 'wysiwyg' ? 'wysiwyg' : 'markdown'
+               const nextViewLayout = VIEW_CYCLE[(VIEW_CYCLE.indexOf(currentViewLayout) + 1) % VIEW_CYCLE.length]
+               if (nextViewLayout === 'split') return lastSplitRef.current
+               const paneId: PaneId = nextViewLayout === 'wysiwyg' ? 'wysiwyg' : 'markdown'
+               return { kind: 'leaf', paneId }
             })
          }
       }
+
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [])
+
+   // Converts a ViewLayout enum (from the ViewMenu) into a PaneNode.
+   const handleViewLayoutChange = useCallback((layout: ViewLayout) => {
+      if (layout === 'split') {
+         setPaneLayout(lastSplitRef.current)
+      } else {
+         const paneId: PaneId = layout === 'wysiwyg' ? 'wysiwyg' : 'markdown'
+         setPaneLayout({ kind: 'leaf', paneId })
+      }
+   }, [])
+
+   // ============================================================
+   // Document-level callbacks
+   // ============================================================
 
    // Commit from the MarkdownPanel back into document state.
    const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {
       setSections(newSections)
       setMeta(newMeta)
+   }, [])
+
+   // Wipe document and start fresh.
+   const handleNewDocument = useCallback(() => {
+      setSections([mkSection()])
+      setMeta(EMPTY_META)
+   }, [])
+
+   // Import a Markdown file, parse it, replace the document.
+   const handleImportMarkdown = useCallback((file: File): Promise<void> => {
+      return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
+         setSections(newSections)
+         setMeta(newMeta)
+      })
    }, [])
 
    // Meta
@@ -161,13 +253,19 @@ export default function App() {
                docTheme={docTheme}
                docAccent={docAccent}
                mode={mode}
-               viewLayout={viewLayout}
+               paneLayout={paneLayout}
                saveStatus={saveStatus}
                onLoad={handleLoad}
                onToggleTheme={toggleTheme}
                onSetMode={handleSetMode}
-               onViewLayoutChange={setViewLayout}
+               onViewLayoutChange={handleViewLayoutChange}
                onManualSave={handleManualSave}
+               onNewDocument={handleNewDocument}
+               onImportMarkdown={handleImportMarkdown}
+               onDocThemeChange={setDocTheme}
+               onDocAccentChange={setDocAccent}
+               onAddSection={sectionMutations.addSection}
+               onAddBlock={(sectionId: string, type: BlockType) => blockMutations.addBlock(sectionId, type)}
             />
 
             <DocumentMutationsContext.Provider value={{
@@ -194,30 +292,21 @@ export default function App() {
                <div className="flex flex-1 min-h-0 overflow-hidden">
                   <Panel
                      open={panelOpen}
-                     docTheme={docTheme}
-                     docAccent={docAccent}
-                     onDocThemeChange={setDocTheme}
-                     onDocAccentChange={setDocAccent}
-                     onToggle={() => setPanelOpen(currentlyOpen => !currentlyOpen)}
+                     onToggle={() => setPanelOpen(current => !current)}
+                     dockSide={panelDockSide}
+                     onToggleDockSide={handleTogglePanelDockSide}
                      sections={sections}
                      onAddSection={sectionMutations.addSection}
                      onToggleSec={sectionMutations.toggleSec}
-                     onMoveSecUp={sectionMutations.moveSecUp}
-                     onMoveSecDown={sectionMutations.moveSecDown}
                      onDuplicateSec={sectionMutations.duplicateSec}
                      onRemoveSec={sectionMutations.removeSec}
-                     onAddBlock={blockMutations.addBlock}
-                     onMoveBlkUp={blockMutations.moveBlkUp}
-                     onMoveBlkDown={blockMutations.moveBlkDown}
-                     onRemoveBlk={blockMutations.removeBlk}
                      onReorderSections={sectionMutations.reorderSections}
                      onReorderBlocks={blockMutations.reorderBlocks}
                   />
 
                   <WorkspaceLayout
-                     viewLayout={viewLayout}
-                     splitRatio={splitRatio}
-                     onSplitRatio={setSplitRatio}
+                     paneLayout={paneLayout}
+                     onPaneLayoutChange={setPaneLayout}
                      wysiwygPane={
                         <WysiwygArea
                            meta={meta}

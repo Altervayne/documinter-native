@@ -1,10 +1,14 @@
 import { useRef, useState } from 'react'
-import type { DocMeta, DocState, Mode, SaveStatus, Section, ViewLayout } from '../types'
+import type { BlockType, DocMeta, DocState, Mode, PaneNode, SaveStatus, Section, ViewLayout } from '../types'
 import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
 import { ViewMenu } from '../molecules/ViewMenu'
+import { FileMenu } from '../molecules/FileMenu'
+import { InsertMenu } from '../molecules/InsertMenu'
+import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { downloadJSON, loadJSONFile } from '../lib/storage'
-import { Upload, Save, Download, Sun, Moon, Eye, CircleDot, Loader2, CircleCheck } from 'lucide-react'
+import { documentToMarkdown } from '../lib/markdown'
+import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
@@ -14,7 +18,7 @@ import { useToast } from '../contexts/ToastContext'
 // ============================================================
 
 interface SaveStatusIndicatorProps {
-   status:     SaveStatus
+   status:      SaveStatus
    labelDirty:  string
    labelSaving: string
    labelSaved:  string
@@ -35,9 +39,9 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
          displayed === 'saving' ? 'text-muted'  :
          'text-green'
       }`}>
-         {displayed === 'dirty'  && <CircleDot    size={12} />}
-         {displayed === 'saving' && <Loader2      size={12} className="animate-spin" />}
-         {displayed === 'saved'  && <CircleCheck  size={12} />}
+         {displayed === 'dirty'  && <CircleDot   size={12} />}
+         {displayed === 'saving' && <Loader2     size={12} className="animate-spin" />}
+         {displayed === 'saved'  && <CircleCheck size={12} />}
          <span>
             {displayed === 'dirty'  ? labelDirty  :
              displayed === 'saving' ? labelSaving :
@@ -47,49 +51,124 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
    )
 }
 
-interface TopbarProps {
-   meta:                DocMeta
-   sections:            Section[]
-   theme:               'dark' | 'light'
-   docTheme:            'light' | 'dark'
-   docAccent:           string
-   mode:                Mode
-   viewLayout:          ViewLayout
-   saveStatus:          SaveStatus
-   onLoad:              (state: DocState) => void
-   onToggleTheme:       () => void
-   onSetMode:           (mode: Mode) => void
-   onViewLayoutChange:  (layout: ViewLayout) => void
-   onManualSave:        () => void
+// ============================================================
+// Helper — derive ViewLayout from PaneNode
+// ============================================================
+
+function deriveViewLayout(paneLayout: PaneNode): ViewLayout {
+   if (paneLayout.kind === 'split') return 'split'
+   return paneLayout.paneId === 'wysiwyg' ? 'wysiwyg' : 'markdown'
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, viewLayout, saveStatus, onLoad, onToggleTheme, onSetMode, onViewLayoutChange, onManualSave }: TopbarProps) {
-   const [exportOpen, setExportOpen] = useState(false)
-   const { t, lang, setLang } = useLang()
-   const { showToast } = useToast()
+// ============================================================
+// Props
+// ============================================================
 
-   function handleDownloadJSON() {
+interface TopbarProps {
+   meta:               DocMeta
+   sections:           Section[]
+   theme:              'dark' | 'light'
+   docTheme:           'light' | 'dark'
+   docAccent:          string
+   mode:               Mode
+   paneLayout:         PaneNode
+   saveStatus:         SaveStatus
+   onLoad:             (state: DocState) => void
+   onToggleTheme:      () => void
+   onSetMode:          (mode: Mode) => void
+   onViewLayoutChange: (layout: ViewLayout) => void
+   onManualSave:       () => void
+   onNewDocument:      () => void
+   onImportMarkdown:   (file: File) => Promise<void>
+   onDocThemeChange:   (theme: 'light' | 'dark') => void
+   onDocAccentChange:  (hex: string) => void
+   onAddSection:       () => void
+   onAddBlock:         (sectionId: string, type: BlockType) => void
+}
+
+// ============================================================
+// Component
+// ============================================================
+
+export function Topbar({
+   meta, sections, theme, docTheme, docAccent, mode, paneLayout, saveStatus,
+   onLoad, onToggleTheme, onSetMode, onViewLayoutChange, onManualSave,
+   onNewDocument, onImportMarkdown, onDocThemeChange, onDocAccentChange,
+   onAddSection, onAddBlock,
+}: TopbarProps) {
+   const [exportOpen, setExportOpen] = useState(false)
+   const { t, lang, setLang }        = useLang()
+   const { showToast }               = useToast()
+
+   const viewLayout      = deriveViewLayout(paneLayout)
+   const lastSectionId   = sections.at(-1)?.id ?? null
+   const isMarkdownOnly  = paneLayout.kind === 'leaf' && paneLayout.paneId === 'markdown'
+
+   // ── File actions ────────────────────────────────────────────
+
+   function handleLoadJSON() {
+      loadJSONFile(
+         (state: DocState) => { onLoad(state); showToast(t.docLoaded, { type: 'success' }) },
+         (message: string) => showToast(message, { type: 'error' }),
+      )
+   }
+
+   function handleSaveJSON() {
       downloadJSON(meta, sections)
       onManualSave()
       showToast(t.jsonSaved, { type: 'success' })
    }
 
-   function handleLoadJSON() {
-      loadJSONFile(
-         (state: DocState) => { onLoad(state); showToast(t.docLoaded, { type: 'success' }) },
-         (msg: string) => showToast(msg, { type: 'error' }),
-      )
+   function handleNewDocument() {
+      if (!window.confirm(t.newDocumentConfirm)) return
+      onNewDocument()
    }
 
-   const MODE_BUTTONS = [
-      { value: 'preview' as Mode, icon: <Eye size={14} />, label: t.previewMode },
-   ] as const
+   function handleImportMarkdownClick() {
+      const input = document.createElement('input')
+      input.type   = 'file'
+      input.accept = '.md,.markdown,.txt'
+      input.onchange = async () => {
+         const file = input.files?.[0]
+         if (!file) return
+         try {
+            await onImportMarkdown(file)
+            showToast(t.markdownImported, { type: 'success' })
+         } catch {
+            showToast('Import failed', { type: 'error' })
+         }
+      }
+      input.click()
+   }
+
+   function handleExportMarkdownClick() {
+      // Reuse the markdown serialiser — produce a data-URI download
+      const markdownContent  = documentToMarkdown(sections, meta)
+      const blob             = new Blob([markdownContent], { type: 'text/markdown' })
+      const url              = URL.createObjectURL(blob)
+      const anchor           = document.createElement('a')
+      const filename         = (meta.title || 'document').replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
+      anchor.href            = url
+      anchor.download        = `${filename}.md`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      showToast(t.markdownExported, { type: 'success' })
+   }
+
+   // ── Preview toggle ───────────────────────────────────────────
+
+   function handlePreviewClick() {
+      onSetMode(mode === 'preview' ? 'wysiwyg' : 'preview')
+   }
+
+   // ── Render ──────────────────────────────────────────────────
 
    return (
       <>
-         <header className="h-12 shrink-0 flex items-center justify-between gap-4 px-5 bg-raised border-b border-border z-200">
+         <header className="h-12 shrink-0 flex items-center gap-2 px-4 bg-raised border-b border-border z-200">
+
             {/* Brand */}
-            <div className="flex items-center gap-2 shrink-0 select-none">
+            <div className="flex items-center gap-2 shrink-0 select-none mr-1">
                {theme === 'dark'
                   ? <LogoColor className="h-7 w-auto" />
                   : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
@@ -97,12 +176,45 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, viewL
                <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
             </div>
 
-            {/* Doc title + save status */}
-            <div className="flex-1 relative flex items-center justify-center">
+            {/* Menu bar */}
+            <FileMenu
+               onNewDocument={handleNewDocument}
+               onLoadJSON={handleLoadJSON}
+               onSaveJSON={handleSaveJSON}
+               onImportMarkdown={handleImportMarkdownClick}
+               onExportMarkdown={handleExportMarkdownClick}
+               onOpenExportModal={() => setExportOpen(true)}
+               t={t}
+            />
+            <ViewMenu
+               viewLayout={viewLayout}
+               onChange={onViewLayoutChange}
+               t={t}
+            />
+            <InsertMenu
+               lastSectionId={lastSectionId}
+               onAddSection={onAddSection}
+               onAddBlock={onAddBlock}
+               t={t}
+            />
+            <AppearanceMenu
+               theme={theme}
+               onToggleTheme={onToggleTheme}
+               lang={lang}
+               onLangChange={setLang}
+               docTheme={docTheme}
+               onDocThemeChange={onDocThemeChange}
+               docAccent={docAccent}
+               onDocAccentChange={onDocAccentChange}
+               t={t}
+            />
+
+            {/* Centre — title + save status */}
+            <div className="flex-1 relative flex items-center justify-center min-w-0 px-4">
                <span className="font-mono text-xs text-muted/70 truncate select-none">
                   {meta.title || t.untitledDoc}
                </span>
-               <div className="absolute right-0 inset-y-0 flex items-center">
+               <div className="absolute right-4 inset-y-0 flex items-center">
                   <SaveStatusIndicator
                      status={saveStatus}
                      labelDirty={t.unsavedChanges}
@@ -112,41 +224,21 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, viewL
                </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2 items-center shrink-0">
-               <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />{t.load}</Button>
-               <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />{t.save}</Button>
-               <ViewMenu viewLayout={viewLayout} onChange={onViewLayoutChange} t={t} />
-               {MODE_BUTTONS.map(({ value, icon, label }) => (
-                  <Button
-                     key={value}
-                     variant="ghost"
-                     size="icon"
-                     onClick={() => onSetMode(value)}
-                     title={label}
-                     disabled={viewLayout === 'markdown'}
-                     style={mode === value && viewLayout !== 'markdown' ? { color: 'var(--color-accent)' } : undefined}
-                  >
-                     {icon}
-                  </Button>
-               ))}
-               <div className="w-px h-5 bg-border mx-1" />
-               <Button variant="ghost" size="icon" onClick={onToggleTheme} title={theme === 'dark' ? t.toLightMode : t.toDarkMode}>
-                  {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            {/* Quick actions */}
+            <div className="flex items-center gap-2 shrink-0">
+               <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handlePreviewClick}
+                  title={t.previewMode}
+                  disabled={isMarkdownOnly}
+                  style={mode === 'preview' && !isMarkdownOnly ? { color: 'var(--color-accent)' } : undefined}
+               >
+                  <Eye size={14} />
                </Button>
-               <div className="flex gap-0.5">
-                  {(['en', 'fr'] as const).map(language => (
-                     <button
-                        key={language}
-                        onClick={() => setLang(language)}
-                        className={`px-2 py-1 rounded-md text-xs font-mono font-semibold uppercase transition-colors border
-                           ${lang === language ? 'bg-accent/10 border-accent/50 text-accent' : 'border-border text-muted hover:text-text'}`}
-                     >
-                        {language}
-                     </button>
-                  ))}
-               </div>
-               <Button variant="primary" onClick={() => setExportOpen(true)}><Download size={14} />{t.export}</Button>
+               <Button variant="primary" onClick={() => setExportOpen(true)}>
+                  <Download size={14} />{t.export}
+               </Button>
             </div>
          </header>
 

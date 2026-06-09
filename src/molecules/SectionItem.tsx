@@ -1,44 +1,58 @@
-import { useState } from 'react'
+// -- React Imports --
+import { useRef, useState } from 'react'
+
+// -- Type Imports --
 import type { Block, BlockType, Section } from '../types'
-import { Badge } from '../atoms/Badge'
-import { Button } from '../atoms/Button'
+
+// -- Lib / Util Imports --
+import { scrollAndFlash } from '../lib/treeNavigation'
+
+// -- Library Imports --
 import { BlockItem } from './BlockItem'
-import { AddBlockRow } from './AddBlockRow'
+import { BlockTypePicker } from './BlockTypePicker'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { GripVertical, ArrowUp, ArrowDown, Copy, Trash2, ChevronRight, ChevronDown } from 'lucide-react'
+import { GripVertical, Copy, Trash2, ChevronRight, ChevronDown, Plus } from 'lucide-react'
+
+// -- Context / Hook Imports --
+import { useDocumentMutations } from '../contexts/DocumentMutationsContext'
 import { useLang } from '../contexts/LangContext'
 
+// ============================================================
+// Types
+// ============================================================
+
 interface SectionItemProps {
-   section:    Section
-   index:      number
-   onToggle:   () => void
-   onMoveUp:   () => void
-   onMoveDown: () => void
-   onDuplicate:() => void
-   onRemove:   () => void
-   onAddBlock: (type: BlockType) => void
-   onMoveBlkUp:     (blkId: string) => void
-   onMoveBlkDown:   (blkId: string) => void
-   onRemoveBlk:     (blkId: string) => void
+   section:         Section
+   onToggle:        () => void
+   onDuplicate:     () => void
+   onRemove:        () => void
    onReorderBlocks: (oldIdx: number, newIdx: number) => void
 }
 
+// ============================================================
+// Component
+// ============================================================
+
 export function SectionItem({
-   section, index,
-   onToggle, onMoveUp, onMoveDown, onDuplicate, onRemove,
-   onAddBlock, onMoveBlkUp, onMoveBlkDown, onRemoveBlk, onReorderBlocks,
+   section,
+   onToggle,
+   onDuplicate,
+   onRemove,
+   onReorderBlocks,
 }: SectionItemProps) {
-   const { t } = useLang()
+   const { t }   = useLang()
+   const ctx     = useDocumentMutations()
    const [hovered, setHovered] = useState(false)
+   const [pickerOpen, setPickerOpen] = useState(false)
+   const addBlockButtonRef = useRef<HTMLButtonElement>(null)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
 
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-   const isEmpty = section.blocks.length === 0
 
    function handleDragEnd(event: DragEndEvent) {
       const { active, over } = event
@@ -48,78 +62,107 @@ export function SectionItem({
       if (oldIdx !== -1 && newIdx !== -1) onReorderBlocks(oldIdx, newIdx)
    }
 
+   function handleTitleClick() {
+      scrollAndFlash(`[data-section-id="${section.id}"]`, 'start')
+   }
+
    return (
       <div
          ref={setNodeRef} style={style} {...attributes}
-         className="shrink-0 rounded-lg overflow-hidden border border-border bg-el"
          onMouseEnter={() => setHovered(true)}
          onMouseLeave={() => setHovered(false)}
       >
-         {/* Header — fixed height, always visible */}
-         <div
-            className="flex items-center gap-2 px-3 h-10 cursor-pointer select-none hover:bg-accent/10 transition-colors"
-            onClick={onToggle}
-         >
-            {/* Drag handle */}
+         {/* ── Section header row ── */}
+         <div className="flex items-center gap-1 h-8 rounded-md hover:bg-accent/8 transition-colors group/header">
+
+            {/* Drag grip */}
             <span
                {...listeners}
-               className={`shrink-0 transition-colors cursor-grab ${hovered ? 'text-muted/60' : 'text-muted/25'}`}
-               onClick={event => event.stopPropagation()}
+               className="shrink-0 px-0.5 text-muted/50 group-hover/header:text-muted/90 cursor-grab transition-colors"
                title={t.dragToReorder}
+               onClick={event => event.stopPropagation()}
             >
-               <GripVertical size={14} />
+               <GripVertical size={16} />
             </span>
 
-            <Badge label={String(index + 1).padStart(2, '0')} dim={isEmpty} />
+            {/* Collapse chevron — click toggles only */}
+            <button
+               onClick={(event) => { event.stopPropagation(); onToggle() }}
+               className="shrink-0 p-0.5 text-muted/50 hover:text-muted transition-colors cursor-pointer"
+               title={section.collapsed ? t.emptySection : t.structure}
+            >
+               {section.collapsed
+                  ? <ChevronRight size={12} />
+                  : <ChevronDown size={12} />
+               }
+            </button>
 
-            <span className={`flex-1 min-w-0 text-sm font-medium truncate ${isEmpty ? 'text-muted/60' : 'text-text'}`}>
-               {section.title}
+            {/* Title — click scrolls to section on canvas */}
+            <span
+               className={`flex-1 min-w-0 truncate text-xs font-medium cursor-pointer select-none
+                  ${section.title ? 'text-text/80' : 'text-muted/50 italic'}`}
+               onClick={handleTitleClick}
+               title={section.title || t.noSections}
+            >
+               {section.title || t.untitledDoc}
             </span>
 
-            {/* Expand chevron */}
-            <span className={`shrink-0 transition-colors ${hovered ? 'text-muted/70' : 'text-muted/40'}`}>
-               {section.collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-            </span>
-         </div>
-
-         {/* Action bar — revealed on hover via grid-rows transition */}
-         <div className={`grid transition-[grid-template-rows] duration-150 ${hovered ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-            <div className="overflow-hidden">
-               <div className="flex items-center gap-0.5 p-1 justify-end">
-                  <Button variant="ghost" size="icon" onClick={onMoveUp}   title={t.moveUp}>
-                     <ArrowUp size={13} />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={onMoveDown} title={t.moveDown}>
-                     <ArrowDown size={13} />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={onDuplicate} title={t.duplicateSection}>
-                     <Copy size={13} />
-                  </Button>
-                  <Button variant="danger" size="icon" onClick={onRemove}  title={t.deleteSection}>
-                     <Trash2 size={13} />
-                  </Button>
-               </div>
+            {/* Hover-revealed: add block + duplicate + delete */}
+            <div className={`flex items-center gap-0.5 shrink-0 pr-1 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+               <button
+                  ref={addBlockButtonRef}
+                  onClick={() => setPickerOpen(true)}
+                  title={t.addBlock}
+                  className="p-1 text-muted hover:text-accent rounded transition-colors cursor-pointer"
+               >
+                  <Plus size={11} />
+               </button>
+               <button
+                  onClick={onDuplicate}
+                  title={t.duplicateSection}
+                  className="p-1 text-muted hover:text-accent rounded transition-colors cursor-pointer"
+               >
+                  <Copy size={11} />
+               </button>
+               <button
+                  onClick={onRemove}
+                  title={t.deleteSection}
+                  className="p-1 text-muted hover:text-red-500 rounded transition-colors cursor-pointer"
+               >
+                  <Trash2 size={11} />
+               </button>
             </div>
          </div>
 
-         {/* Block body */}
+         {/* ── Block list / empty stub ── */}
          {!section.collapsed && (
-            <div className="border-t border-border/60 px-3 py-3 flex flex-col gap-1">
-               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={section.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}>
-                     {section.blocks.map((block: Block) => (
-                        <BlockItem
-                           key={block.id}
-                           block={block}
-                           onMoveUp={() => onMoveBlkUp(block.id)}
-                           onMoveDown={() => onMoveBlkDown(block.id)}
-                           onRemove={() => onRemoveBlk(block.id)}
-                        />
-                     ))}
-                  </SortableContext>
-               </DndContext>
-               <AddBlockRow onAdd={onAddBlock} />
+            <div className="ml-5 flex flex-col">
+               {section.blocks.length === 0 ? (
+                  <div className="h-7 flex items-center pl-2 text-xs text-muted/40 italic select-none">
+                     {t.emptySection}
+                  </div>
+               ) : (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                     <SortableContext items={section.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}>
+                        {section.blocks.map((block: Block) => (
+                           <BlockItem key={block.id} block={block} secId={section.id} />
+                        ))}
+                     </SortableContext>
+                  </DndContext>
+               )}
             </div>
+         )}
+
+         {/* Block type picker — opened by the + button in the hover bar */}
+         {pickerOpen && (
+            <BlockTypePicker
+               anchorRect={addBlockButtonRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0)}
+               onSelect={(type: BlockType) => {
+                  ctx.addBlock(section.id, type)
+                  setPickerOpen(false)
+               }}
+               onClose={() => setPickerOpen(false)}
+            />
          )}
       </div>
    )

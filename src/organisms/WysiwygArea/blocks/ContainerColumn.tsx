@@ -1,3 +1,14 @@
+// -- React Imports --
+import { useRef, useState } from 'react'
+
+// -- Library Imports --
+import {
+   DndContext, DragOverlay, closestCenter,
+   type DragEndEvent, type DragStartEvent,
+   useSensor, useSensors, PointerSensor,
+} from '@dnd-kit/core'
+import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
+
 // -- Context / Hook Imports --
 import { useLang } from '../../../contexts/LangContext'
 
@@ -5,12 +16,20 @@ import { useLang } from '../../../contexts/LangContext'
 // NOTE: WysiwygBlock is imported here creating a circular dep (ContainerColumn → WysiwygBlock → ContainerBlock → ContainerColumn).
 // This is intentional and safe: both references are inside function bodies, never at module-evaluation time.
 import { WysiwygBlock } from '../WysiwygBlock'
-
-// -- Component Imports --
 import { AddBlockRow } from '../../../molecules/AddBlockRow'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
+
+// ============================================================
+// DnD strategy — items stay in place; DragOverlay provides the ghost
+// ============================================================
+
+const noopStrategy: SortingStrategy = () => null
+
+// ============================================================
+// Types
+// ============================================================
 
 interface ContainerColumnProps {
    secId:     string
@@ -21,14 +40,51 @@ interface ContainerColumnProps {
    readOnly?: boolean
 }
 
+// ============================================================
+// Component
+// ============================================================
+
 export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: ContainerColumnProps) {
    const { t } = useLang()
+
+   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
+   const [dragWidth, setDragWidth] = useState<number | null>(null)
+   const containerRef = useRef<HTMLDivElement>(null)
+
+   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+   function handleDragStart(event: DragStartEvent) {
+      setActiveBlockId(String(event.active.id))
+      setDragWidth(containerRef.current?.offsetWidth ?? null)
+   }
+
+   function handleDragEnd(event: DragEndEvent) {
+      setActiveBlockId(null)
+      setDragWidth(null)
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const oldIdx = blocks.findIndex(block => block.id === active.id)
+      const newIdx = blocks.findIndex(block => block.id === over.id)
+      if (oldIdx !== -1 && newIdx !== -1) {
+         const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
+         cm.moveBlock(secId, blkId, side, oldIdx, adjustedIdx)
+      }
+   }
+
+   function handleDragCancel() {
+      setActiveBlockId(null)
+      setDragWidth(null)
+   }
+
+   // ── Build inner-block prop set ─────────────────────────────
 
    function makeInnerProps(innerBlock: Block, idx: number) {
       return {
          secId,
-         block: innerBlock,
-         inner: true as const,
+         block:    innerBlock,
+         inner:    true as const,
+         draggable: true,
+         activeBlockId,
          onUpdate: (_sid: string, innerBlkId: string, patch: Partial<Block>) =>
             cm.updateBlock(secId, blkId, side, innerBlkId, patch),
          onRemove:        () => cm.removeBlock(secId, blkId, side, innerBlock.id),
@@ -48,12 +104,50 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       }
    }
 
+   // ── Render ─────────────────────────────────────────────────
+
    return (
       <div className="container-col">
          <div className="container-col-label">{side === 'left' ? t.leftColumn : t.rightColumn}</div>
-         {blocks.map((block, idx) => (
-            <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly={readOnly} />
-         ))}
+
+         {readOnly ? (
+            blocks.map((block, idx) => (
+               <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly />
+            ))
+         ) : (
+            <DndContext
+               sensors={sensors}
+               collisionDetection={closestCenter}
+               onDragStart={handleDragStart}
+               onDragEnd={handleDragEnd}
+               onDragCancel={handleDragCancel}
+            >
+               <div ref={containerRef}>
+                  <SortableContext items={blocks.map(block => block.id)} strategy={noopStrategy}>
+                     {blocks.map((block, idx) => (
+                        <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
+                     ))}
+                  </SortableContext>
+               </div>
+               <DragOverlay>
+                  {activeBlockId && (() => {
+                     const activeBlock = blocks.find(block => block.id === activeBlockId)
+                     return activeBlock ? (
+                        <div style={{ width: dragWidth ?? undefined, pointerEvents: 'none', opacity: 0.9 }}>
+                           <WysiwygBlock
+                              secId={secId}
+                              block={activeBlock}
+                              inner
+                              onUpdate={() => {}}
+                              onRemove={() => {}}
+                           />
+                        </div>
+                     ) : null
+                  })()}
+               </DragOverlay>
+            </DndContext>
+         )}
+
          {!readOnly && <AddBlockRow insideContainer onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />}
       </div>
    )

@@ -41,8 +41,10 @@ interface WysiwygBlockProps {
    secId:  string
    block:  Block
    containerMutations?: ContainerMutations
-   /** Inner block inside a container — uses ↑↓ instead of DnD */
+   /** Inner block inside a container — routes mutations through passed props */
    inner?:    boolean
+   /** When inner=true, also enables DnD drag-to-reorder for this block */
+   draggable?: boolean
    /** Static read-only view — no editing, no interactions */
    readOnly?: boolean
    /** ID of the block currently being dragged (for insertion indicator) */
@@ -70,7 +72,7 @@ interface WysiwygBlockProps {
 
 export function WysiwygBlock({
    secId, block, containerMutations, activeBlockId,
-   inner, readOnly,
+   inner, draggable, readOnly,
    onInsertBefore, onInsertAfter,
    onMoveUp, onMoveDown,
    onUpdate, onRemove, onDuplicate,
@@ -155,15 +157,17 @@ export function WysiwygBlock({
    }
 
    // ── DnD ────────────────────────────────────────────────────
-   const sortable   = useSortable({ id: block.id, disabled: !!inner || !!readOnly })
-   const dndStyle   = inner || readOnly
+   // isDraggable: outer blocks always participate; inner blocks only when draggable=true
+   const isDraggable = !!draggable || !inner
+   const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly })
+   const dndStyle    = !isDraggable || readOnly
       ? {}
       : {
          transform:  CSS.Transform.toString(sortable.transform),
          transition: sortable.isDragging ? undefined : sortable.transition,
          opacity:    sortable.isDragging ? 0 : 1,
       }
-   const showInsertLine = !readOnly && !inner && sortable.isOver && activeBlockId !== block.id
+   const showInsertLine = !readOnly && isDraggable && sortable.isOver && activeBlockId !== block.id
 
    // ── Mutation handlers ──────────────────────────────────────
    function patch(partialBlock: Partial<Block>) {
@@ -190,10 +194,10 @@ export function WysiwygBlock({
    // ── Ref merge (DnD + blockDivRef) ──────────────────────────
    function setWrapRef(node: HTMLDivElement | null) {
       blockDivRef.current = node
-      if (!inner && !readOnly) sortable.setNodeRef(node)
+      if (isDraggable && !readOnly) sortable.setNodeRef(node)
    }
 
-   const wrapAttr = inner || readOnly ? {} : sortable.attributes
+   const wrapAttr = !isDraggable || readOnly ? {} : sortable.attributes
 
    // ── Content renderer ───────────────────────────────────────
    function renderBlockContent() {
@@ -217,6 +221,7 @@ export function WysiwygBlock({
    return (
       <div
          ref={setWrapRef} style={dndStyle} {...wrapAttr}
+         data-block-id={block.id}
          className={[
             'relative rounded-md transition-colors my-4',
             !readOnly && hovered ? 'doc-block-hover' : '',
@@ -232,14 +237,14 @@ export function WysiwygBlock({
                style={{ background: 'var(--doc-accent, var(--color-accent))' }} />
          )}
 
-         {/* DnD grip — outer blocks only, appears on hover */}
-         {!inner && !readOnly && (
+         {/* DnD grip — outer blocks always, inner blocks when draggable=true */}
+         {isDraggable && !readOnly && (
             <div
                {...sortable.listeners}
                className={[
                   'absolute -left-12 inset-y-0 flex items-center justify-center w-6',
                   'cursor-grab active:cursor-grabbing transition-opacity',
-                  'text-muted/40 hover:text-muted/80',
+                  'text-muted/60 hover:text-muted',
                   hovered ? 'opacity-100' : 'opacity-0',
                ].join(' ')}
                title={t.dragToReorder}

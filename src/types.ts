@@ -87,6 +87,34 @@ export type Mode = 'wysiwyg' | 'preview'
 
 export type ViewLayout = 'wysiwyg' | 'split' | 'markdown'
 
+// ============================================================
+// Pane tree — workspace layout model
+// ============================================================
+
+/** Which content lives in a leaf pane. */
+export type PaneId = 'wysiwyg' | 'markdown'
+
+/** A leaf pane — shows one editor surface. */
+export interface PaneLeaf {
+   kind:   'leaf'
+   paneId: PaneId
+}
+
+/**
+ * A split pane — two children separated by a resizable divider.
+ * `orientation: 'h'` → children sit left / right (horizontal divider)
+ * `orientation: 'v'` → children sit top / bottom (vertical divider)
+ * `ratio` is children[0]'s fraction of the total axis length, clamped [0.15, 0.85].
+ */
+export interface PaneSplit {
+   kind:        'split'
+   orientation: 'h' | 'v'
+   ratio:       number
+   children:    [PaneNode, PaneNode]
+}
+
+export type PaneNode = PaneLeaf | PaneSplit
+
 export type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved'
 
 export interface ContainerMutations {

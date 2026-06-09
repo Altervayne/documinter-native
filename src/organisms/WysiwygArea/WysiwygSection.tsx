@@ -72,6 +72,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
          ref={readOnly ? undefined : setNodeRef}
          style={style}
          className="sec-wrap"
+         data-section-id={section.id}
          {...(readOnly ? {} : attributes)}
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
