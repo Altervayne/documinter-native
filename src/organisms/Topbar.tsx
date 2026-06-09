@@ -1,16 +1,31 @@
-import { useRef, useState } from 'react'
+// -- React Imports --
+import { useEffect, useRef, useState } from 'react'
+
+// -- Type Imports --
 import type { BlockType, DocMeta, DocState, Mode, PaneNode, SaveStatus, Section, ViewLayout } from '../types'
+
+// -- Atom Imports --
 import { Button } from '../atoms/Button'
+import { LogoColor, LogoMono } from '../atoms/Logo'
+
+// -- Organism Imports --
 import { ExportModal } from './ExportModal'
+
+// -- Molecule Imports --
 import { ViewMenu } from '../molecules/ViewMenu'
 import { FileMenu } from '../molecules/FileMenu'
 import { InsertMenu } from '../molecules/InsertMenu'
 import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
+
+// -- Lib Imports --
 import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { documentToMarkdown } from '../lib/markdown'
+
+// -- Icon Imports --
 import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'
-import { LogoColor, LogoMono } from '../atoms/Logo'
+
+// -- Context Imports --
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
 
@@ -30,7 +45,7 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
    if (status !== 'clean') lastNonCleanRef.current = status
 
    const displayed = lastNonCleanRef.current
-   const isVisible = status !== 'clean'
+   const isVisible  = status !== 'clean'
 
    return (
       <div className={`flex items-center gap-1.5 font-mono text-xs select-none pointer-events-none transition-opacity duration-500 ${
@@ -85,6 +100,7 @@ interface TopbarProps {
    onDocAccentChange:  (hex: string) => void
    onAddSection:       () => void
    onAddBlock:         (sectionId: string, type: BlockType) => void
+   onMetaChange:       (patch: Partial<DocMeta>) => void
 }
 
 // ============================================================
@@ -95,17 +111,61 @@ export function Topbar({
    meta, sections, theme, docTheme, docAccent, mode, paneLayout, saveStatus,
    onLoad, onToggleTheme, onSetMode, onViewLayoutChange, onManualSave,
    onNewDocument, onImportMarkdown, onDocThemeChange, onDocAccentChange,
-   onAddSection, onAddBlock,
+   onAddSection, onAddBlock, onMetaChange,
 }: TopbarProps) {
-   const [exportOpen, setExportOpen] = useState(false)
-   const { t, lang, setLang }        = useLang()
-   const { showToast }               = useToast()
+   const [exportOpen,    setExportOpen]    = useState(false)
+   const [titleEditing,  setTitleEditing]  = useState(false)
+   const [titleDraft,    setTitleDraft]    = useState('')
+   const titleInputRef                     = useRef<HTMLInputElement>(null)
+   const suppressNextBlurRef               = useRef(false)
+   const { t, lang, setLang }              = useLang()
+   const { showToast }                     = useToast()
 
-   const viewLayout      = deriveViewLayout(paneLayout)
-   const lastSectionId   = sections.at(-1)?.id ?? null
-   const isMarkdownOnly  = paneLayout.kind === 'leaf' && paneLayout.paneId === 'markdown'
+   const viewLayout     = deriveViewLayout(paneLayout)
+   const lastSectionId  = sections.at(-1)?.id ?? null
+   const isMarkdownOnly = paneLayout.kind === 'leaf' && paneLayout.paneId === 'markdown'
 
-   // ── File actions ────────────────────────────────────────────
+   // ── Title editing ────────────────────────────────────────────
+
+   function handleTitleClick() {
+      setTitleDraft(meta.title)
+      setTitleEditing(true)
+   }
+
+   // Select all text once the input mounts
+   useEffect(() => {
+      if (titleEditing) titleInputRef.current?.select()
+   }, [titleEditing])
+
+   function commitTitle(value: string) {
+      const trimmed = value.trim()
+      // Empty value → keep current title (no change)
+      onMetaChange({ title: trimmed || meta.title })
+      setTitleEditing(false)
+   }
+
+   function handleTitleBlur() {
+      if (suppressNextBlurRef.current) {
+         suppressNextBlurRef.current = false
+         return
+      }
+      commitTitle(titleDraft)
+   }
+
+   function handleTitleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+      if (event.key === 'Enter') {
+         event.preventDefault()
+         suppressNextBlurRef.current = true   // prevent double-commit on the resulting blur
+         commitTitle(titleDraft)
+         titleInputRef.current?.blur()
+      } else if (event.key === 'Escape') {
+         suppressNextBlurRef.current = true
+         setTitleEditing(false)
+         titleInputRef.current?.blur()
+      }
+   }
+
+   // ── File actions ─────────────────────────────────────────────
 
    function handleLoadJSON() {
       loadJSONFile(
@@ -126,9 +186,9 @@ export function Topbar({
    }
 
    function handleImportMarkdownClick() {
-      const input = document.createElement('input')
-      input.type   = 'file'
-      input.accept = '.md,.markdown,.txt'
+      const input    = document.createElement('input')
+      input.type     = 'file'
+      input.accept   = '.md,.markdown,.txt'
       input.onchange = async () => {
          const file = input.files?.[0]
          if (!file) return
@@ -143,80 +203,72 @@ export function Topbar({
    }
 
    function handleExportMarkdownClick() {
-      // Reuse the markdown serialiser — produce a data-URI download
-      const markdownContent  = documentToMarkdown(sections, meta)
-      const blob             = new Blob([markdownContent], { type: 'text/markdown' })
-      const url              = URL.createObjectURL(blob)
-      const anchor           = document.createElement('a')
-      const filename         = (meta.title || 'document').replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
-      anchor.href            = url
-      anchor.download        = `${filename}.md`
+      const markdownContent = documentToMarkdown(sections, meta)
+      const blob            = new Blob([markdownContent], { type: 'text/markdown' })
+      const url             = URL.createObjectURL(blob)
+      const anchor          = document.createElement('a')
+      const filename        = (meta.title || 'document').replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
+      anchor.href           = url
+      anchor.download       = `${filename}.md`
       anchor.click()
       URL.revokeObjectURL(url)
       showToast(t.markdownExported, { type: 'success' })
    }
 
-   // ── Preview toggle ───────────────────────────────────────────
+   // ── Preview toggle ────────────────────────────────────────────
 
    function handlePreviewClick() {
       onSetMode(mode === 'preview' ? 'wysiwyg' : 'preview')
    }
 
-   // ── Render ──────────────────────────────────────────────────
+   // ── Render ───────────────────────────────────────────────────
 
    return (
       <>
-         <header className="h-12 shrink-0 flex items-center gap-2 px-4 bg-raised border-b border-border z-200">
+         <div className="shrink-0 flex flex-col z-200">
 
-            {/* Brand */}
-            <div className="flex items-center gap-2 shrink-0 select-none mr-1">
-               {theme === 'dark'
-                  ? <LogoColor className="h-7 w-auto" />
-                  : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
-               }
-               <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
-            </div>
+            {/* ════════════════════════════════════════════════════
+                Top strip — brand · document title · save status
+                ════════════════════════════════════════════════ */}
+            <div className="h-11 relative flex items-center px-4 bg-raised border-b border-border">
 
-            {/* Menu bar */}
-            <FileMenu
-               onNewDocument={handleNewDocument}
-               onLoadJSON={handleLoadJSON}
-               onSaveJSON={handleSaveJSON}
-               onImportMarkdown={handleImportMarkdownClick}
-               onExportMarkdown={handleExportMarkdownClick}
-               onOpenExportModal={() => setExportOpen(true)}
-               t={t}
-            />
-            <ViewMenu
-               viewLayout={viewLayout}
-               onChange={onViewLayoutChange}
-               t={t}
-            />
-            <InsertMenu
-               lastSectionId={lastSectionId}
-               onAddSection={onAddSection}
-               onAddBlock={onAddBlock}
-               t={t}
-            />
-            <AppearanceMenu
-               theme={theme}
-               onToggleTheme={onToggleTheme}
-               lang={lang}
-               onLangChange={setLang}
-               docTheme={docTheme}
-               onDocThemeChange={onDocThemeChange}
-               docAccent={docAccent}
-               onDocAccentChange={onDocAccentChange}
-               t={t}
-            />
-            <AboutMenu theme={theme} t={t} />
+               {/* Brand — left anchor */}
+               <div className="flex items-center gap-2 shrink-0 select-none">
+                  {theme === 'dark'
+                     ? <LogoColor className="h-7 w-auto" />
+                     : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
+                  }
+                  <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
+               </div>
 
-            {/* Centre — title + save status */}
-            <div className="flex-1 relative flex items-center justify-center min-w-0 px-4">
-               <span className="font-mono text-xs text-muted/70 truncate select-none">
-                  {meta.title || t.untitledDoc}
-               </span>
-               <div className="absolute right-4 inset-y-0 flex items-center">
+               {/* Document title — absolutely centered
+                   max-w-[40%] is the collision guard: the title can never
+                   overlap the brand area or save indicator at any viewport width. */}
+               <div className="absolute left-1/2 -translate-x-1/2 inset-y-0 flex items-center min-w-0 max-w-[40%]">
+                  {titleEditing ? (
+                     <input
+                        ref={titleInputRef}
+                        type="text"
+                        aria-label={t.docTitle}
+                        value={titleDraft}
+                        onChange={event => setTitleDraft(event.target.value)}
+                        onBlur={handleTitleBlur}
+                        onKeyDown={handleTitleKeyDown}
+                        className="font-mono text-sm bg-transparent border-0 border-b border-accent/60 outline-none w-full text-center text-text"
+                     />
+                  ) : (
+                     <span
+                        onClick={handleTitleClick}
+                        title={meta.title || t.untitledDoc}
+                        className="font-mono text-sm text-text/60 truncate cursor-text hover:text-text/90 select-none transition-colors"
+                     >
+                        {meta.title || t.untitledDoc}
+                     </span>
+                  )}
+               </div>
+
+               {/* Save status indicator — right anchor */}
+               <div className="ml-auto shrink-0 flex items-center">
                   <SaveStatusIndicator
                      status={saveStatus}
                      labelDirty={t.unsavedChanges}
@@ -226,23 +278,62 @@ export function Topbar({
                </div>
             </div>
 
-            {/* Quick actions */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* ════════════════════════════════════════════════════
+                Bottom strip — menus · actions
+                ════════════════════════════════════════════════ */}
+            <div className="flex items-center gap-2 p-2 bg-raised border-b border-border">
+
+               {/* Menu bar */}
+               <FileMenu
+                  onNewDocument={handleNewDocument}
+                  onLoadJSON={handleLoadJSON}
+                  onSaveJSON={handleSaveJSON}
+                  onImportMarkdown={handleImportMarkdownClick}
+                  onExportMarkdown={handleExportMarkdownClick}
+                  onOpenExportModal={() => setExportOpen(true)}
+                  t={t}
+               />
+               <ViewMenu
+                  viewLayout={viewLayout}
+                  onChange={onViewLayoutChange}
+                  t={t}
+               />
+               <InsertMenu
+                  lastSectionId={lastSectionId}
+                  onAddSection={onAddSection}
+                  onAddBlock={onAddBlock}
+                  t={t}
+               />
+               <AppearanceMenu
+                  theme={theme}
+                  onToggleTheme={onToggleTheme}
+                  lang={lang}
+                  onLangChange={setLang}
+                  docTheme={docTheme}
+                  onDocThemeChange={onDocThemeChange}
+                  docAccent={docAccent}
+                  onDocAccentChange={onDocAccentChange}
+                  t={t}
+               />
+               <AboutMenu theme={theme} t={t} />
+
+               {/* Spacer — pushes actions to the far right */}
+               <div className="flex-1" />
+
+               {/* Quick actions */}
                <Button
                   variant="ghost"
-                  size="icon"
                   onClick={handlePreviewClick}
-                  title={t.previewMode}
                   disabled={isMarkdownOnly}
                   style={mode === 'preview' && !isMarkdownOnly ? { color: 'var(--color-accent)' } : undefined}
                >
-                  <Eye size={14} />
+                  <Eye size={14} />{t.previewMode}
                </Button>
                <Button variant="primary" onClick={() => setExportOpen(true)}>
                   <Download size={14} />{t.export}
                </Button>
             </div>
-         </header>
+         </div>
 
          {exportOpen && (
             <ExportModal

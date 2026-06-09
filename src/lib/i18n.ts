@@ -168,6 +168,8 @@ export const translations = {
       menuAbout:       'About',
       aboutTagline:    'Personal documentation builder',
       aboutLicense:    'Apache License 2.0',
+      // Title bar
+      docTitle:        'Document title',
       // Export HTML
       docFallback:    'Documentation',
    },
@@ -338,6 +340,8 @@ export const translations = {
       menuAbout:       'À propos',
       aboutTagline:    'Éditeur de documentation personnel',
       aboutLicense:    'Licence Apache 2.0',
+      // Title bar
+      docTitle:        'Titre du document',
       // Export HTML
       docFallback:    'Documentation',
    },

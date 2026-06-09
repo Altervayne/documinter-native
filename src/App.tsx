@@ -266,6 +266,7 @@ export default function App() {
                onDocAccentChange={setDocAccent}
                onAddSection={sectionMutations.addSection}
                onAddBlock={(sectionId: string, type: BlockType) => blockMutations.addBlock(sectionId, type)}
+               onMetaChange={handleMetaChange}
             />
 
             <DocumentMutationsContext.Provider value={{
