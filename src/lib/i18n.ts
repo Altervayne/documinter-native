@@ -138,7 +138,11 @@ export const translations = {
       linkPanelApply:           'Apply',
       linkPanelSectionFallback: 'Section',
       // View mode toggles
-      previewMode: 'Preview',
+      previewMode:  'Preview',
+      viewLayout:   'View layout',
+      viewWysiwyg:  'Editor',
+      viewSplit:    'Split',
+      viewMarkdown: 'Markdown',
       // Save status indicator
       unsavedChanges: 'Unsaved changes',
       autosaving:     'Autosaving...',
@@ -283,7 +287,11 @@ export const translations = {
       linkPanelApply:           'Appliquer',
       linkPanelSectionFallback: 'Section',
       // View mode toggles
-      previewMode: 'Aperçu',
+      previewMode:  'Aperçu',
+      viewLayout:   'Disposition',
+      viewWysiwyg:  'Éditeur',
+      viewSplit:    'Divisé',
+      viewMarkdown: 'Markdown',
       // Save status indicator
       unsavedChanges: 'Modifications non sauvegardées',
       autosaving:     'Sauvegarde...',

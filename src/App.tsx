@@ -19,10 +19,12 @@ import { LangProvider } from './contexts/LangContext'
 import { Topbar } from './organisms/Topbar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
+import { MarkdownPanel } from './organisms/MarkdownPanel'
+import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { ToastContainer } from './atoms/ToastContainer'
 
 // -- Type Imports --
-import type { DocMeta, DocState, Mode, SaveStatus, Section } from './types'
+import type { DocMeta, DocState, Mode, SaveStatus, Section, ViewLayout } from './types'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
 
@@ -108,6 +110,32 @@ export default function App() {
       setMode(newMode)
    }
 
+   // View layout system (wysiwyg / split / markdown)
+   const [viewLayout,  setViewLayout]  = useState<ViewLayout>('wysiwyg')
+   const [splitRatio,  setSplitRatio]  = useState(0.5)
+
+   // Ctrl+\ / Cmd+\ cycles through view layout states.
+   useEffect(() => {
+      const VIEW_CYCLE: ViewLayout[] = ['wysiwyg', 'split', 'markdown']
+      function handleKeyDown(event: KeyboardEvent) {
+         if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
+            event.preventDefault()
+            setViewLayout(current => {
+               const currentIndex = VIEW_CYCLE.indexOf(current)
+               return VIEW_CYCLE[(currentIndex + 1) % VIEW_CYCLE.length]
+            })
+         }
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+   }, [])
+
+   // Commit from the MarkdownPanel back into document state.
+   const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {
+      setSections(newSections)
+      setMeta(newMeta)
+   }, [])
+
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
       setMeta(currentMeta => ({ ...currentMeta, ...patch }))
@@ -133,10 +161,12 @@ export default function App() {
                docTheme={docTheme}
                docAccent={docAccent}
                mode={mode}
+               viewLayout={viewLayout}
                saveStatus={saveStatus}
                onLoad={handleLoad}
                onToggleTheme={toggleTheme}
                onSetMode={handleSetMode}
+               onViewLayoutChange={setViewLayout}
                onManualSave={handleManualSave}
             />
 
@@ -184,13 +214,27 @@ export default function App() {
                      onReorderBlocks={blockMutations.reorderBlocks}
                   />
 
-                  <WysiwygArea
-                     meta={meta}
-                     sections={sections}
-                     docTheme={docTheme}
-                     docAccent={docAccent}
-                     onUpdateMeta={handleMetaChange}
-                     readOnly={mode === 'preview'}
+                  <WorkspaceLayout
+                     viewLayout={viewLayout}
+                     splitRatio={splitRatio}
+                     onSplitRatio={setSplitRatio}
+                     wysiwygPane={
+                        <WysiwygArea
+                           meta={meta}
+                           sections={sections}
+                           docTheme={docTheme}
+                           docAccent={docAccent}
+                           onUpdateMeta={handleMetaChange}
+                           readOnly={mode === 'preview'}
+                        />
+                     }
+                     markdownPane={
+                        <MarkdownPanel
+                           sections={sections}
+                           meta={meta}
+                           onCommit={handleMarkdownCommit}
+                        />
+                     }
                   />
                </div>
             </DocumentMutationsContext.Provider>

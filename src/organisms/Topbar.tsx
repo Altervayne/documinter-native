@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import type { DocMeta, DocState, Mode, SaveStatus, Section } from '../types'
+import type { DocMeta, DocState, Mode, SaveStatus, Section, ViewLayout } from '../types'
 import { Button } from '../atoms/Button'
 import { ExportModal } from './ExportModal'
+import { ViewMenu } from '../molecules/ViewMenu'
 import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { Upload, Save, Download, Sun, Moon, Eye, CircleDot, Loader2, CircleCheck } from 'lucide-react'
 import { LogoColor, LogoMono } from '../atoms/Logo'
@@ -47,20 +48,22 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
 }
 
 interface TopbarProps {
-   meta:          DocMeta
-   sections:      Section[]
-   theme:         'dark' | 'light'
-   docTheme:      'light' | 'dark'
-   docAccent:     string
-   mode:          Mode
-   saveStatus:    SaveStatus
-   onLoad:        (state: DocState) => void
-   onToggleTheme: () => void
-   onSetMode:     (mode: Mode) => void
-   onManualSave:  () => void
+   meta:                DocMeta
+   sections:            Section[]
+   theme:               'dark' | 'light'
+   docTheme:            'light' | 'dark'
+   docAccent:           string
+   mode:                Mode
+   viewLayout:          ViewLayout
+   saveStatus:          SaveStatus
+   onLoad:              (state: DocState) => void
+   onToggleTheme:       () => void
+   onSetMode:           (mode: Mode) => void
+   onViewLayoutChange:  (layout: ViewLayout) => void
+   onManualSave:        () => void
 }
 
-export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, saveStatus, onLoad, onToggleTheme, onSetMode, onManualSave }: TopbarProps) {
+export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, viewLayout, saveStatus, onLoad, onToggleTheme, onSetMode, onViewLayoutChange, onManualSave }: TopbarProps) {
    const [exportOpen, setExportOpen] = useState(false)
    const { t, lang, setLang } = useLang()
    const { showToast } = useToast()
@@ -113,6 +116,7 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, saveS
             <div className="flex gap-2 items-center shrink-0">
                <Button variant="ghost" onClick={handleLoadJSON}><Upload size={14} />{t.load}</Button>
                <Button variant="ghost" onClick={handleDownloadJSON}><Save size={14} />{t.save}</Button>
+               <ViewMenu viewLayout={viewLayout} onChange={onViewLayoutChange} t={t} />
                {MODE_BUTTONS.map(({ value, icon, label }) => (
                   <Button
                      key={value}
@@ -120,7 +124,8 @@ export function Topbar({ meta, sections, theme, docTheme, docAccent, mode, saveS
                      size="icon"
                      onClick={() => onSetMode(value)}
                      title={label}
-                     style={mode === value ? { color: 'var(--color-accent)' } : undefined}
+                     disabled={viewLayout === 'markdown'}
+                     style={mode === value && viewLayout !== 'markdown' ? { color: 'var(--color-accent)' } : undefined}
                   >
                      {icon}
                   </Button>

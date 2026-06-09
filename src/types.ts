@@ -85,6 +85,8 @@ export interface DocState {
 
 export type Mode = 'wysiwyg' | 'preview'
 
+export type ViewLayout = 'wysiwyg' | 'split' | 'markdown'
+
 export type SaveStatus = 'clean' | 'dirty' | 'saving' | 'saved'
 
 export interface ContainerMutations {
