@@ -9,7 +9,7 @@ import type { Lang, T } from '../lib/i18n'
 // ============================================================
 
 interface AppearanceMenuProps {
-   theme:             'dark' | 'light'
+   theme:             'light' | 'dark'
    onToggleTheme:     () => void
    lang:              Lang
    onLangChange:      (language: Lang) => void
@@ -53,7 +53,7 @@ export function AppearanceMenu({
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   function handleAppThemeClick(targetTheme: 'dark' | 'light') {
+   function handleAppThemeClick(targetTheme: 'light' | 'dark') {
       if (theme !== targetTheme) onToggleTheme()
    }
 
@@ -83,11 +83,11 @@ export function AppearanceMenu({
                <ToggleRow
                   label={t.appLabel}
                   options={[
-                     { value: 'dark',  label: t.dark  },
                      { value: 'light', label: t.light },
+                     { value: 'dark',  label: t.dark  },
                   ]}
                   active={theme}
-                  onChange={(value) => handleAppThemeClick(value as 'dark' | 'light')}
+                  onChange={(value) => handleAppThemeClick(value as 'light'| 'dark')}
                />
 
                {/* Language */}
