@@ -67,7 +67,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
    return (
       <DocumentHandlesProvider handles={allHandles}>
       {!readOnly && <FormatToolbar sections={sections} />}
-      <div className="flex-1 overflow-y-auto" style={{ background: 'var(--color-canvas)' }}>
+      <div className="flex-1 overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
          <div
             className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
             style={{

@@ -17,6 +17,7 @@ import { useLang } from '../../../contexts/LangContext'
 // This is intentional and safe: both references are inside function bodies, never at module-evaluation time.
 import { WysiwygBlock } from '../WysiwygBlock'
 import { AddBlockRow } from '../../../molecules/AddBlockRow'
+import { BottomDropZone } from '../../../atoms/BottomDropZone'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
@@ -64,11 +65,16 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       const { active, over } = event
       if (!over || active.id === over.id) return
       const oldIdx = blocks.findIndex(block => block.id === active.id)
+      if (oldIdx === -1) return
       const newIdx = blocks.findIndex(block => block.id === over.id)
-      if (oldIdx !== -1 && newIdx !== -1) {
-         const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
-         cm.moveBlock(secId, blkId, side, oldIdx, adjustedIdx)
+      if (newIdx === -1) {
+         // Dropped on the bottom zone — move item to the last position
+         const lastIdx = blocks.length - 1
+         if (oldIdx !== lastIdx) cm.moveBlock(secId, blkId, side, oldIdx, lastIdx)
+         return
       }
+      const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
+      cm.moveBlock(secId, blkId, side, oldIdx, adjustedIdx)
    }
 
    function handleDragCancel() {
@@ -84,6 +90,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
          block:    innerBlock,
          inner:    true as const,
          draggable: true,
+         gripSide:  side === 'right' ? 'right' as const : 'left' as const,
          activeBlockId,
          onUpdate: (_sid: string, innerBlkId: string, patch: Partial<Block>) =>
             cm.updateBlock(secId, blkId, side, innerBlkId, patch),
@@ -128,6 +135,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
                         <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
                      ))}
                   </SortableContext>
+                  {activeBlockId !== null && <BottomDropZone id={`${blkId}-${side}-bottom`} />}
                </div>
                <DragOverlay>
                   {activeBlockId && (() => {

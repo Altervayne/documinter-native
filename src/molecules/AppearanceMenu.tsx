@@ -77,7 +77,7 @@ export function AppearanceMenu({
 
          {/* Dropdown */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2">
+            <div className="absolute top-full mt-1.5 left-0 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
 
                {/* App theme */}
                <ToggleRow

@@ -45,6 +45,8 @@ interface WysiwygBlockProps {
    inner?:    boolean
    /** When inner=true, also enables DnD drag-to-reorder for this block */
    draggable?: boolean
+   /** Which side the drag grip renders on — defaults to 'left' */
+   gripSide?: 'left' | 'right'
    /** Static read-only view — no editing, no interactions */
    readOnly?: boolean
    /** ID of the block currently being dragged (for insertion indicator) */
@@ -72,7 +74,7 @@ interface WysiwygBlockProps {
 
 export function WysiwygBlock({
    secId, block, containerMutations, activeBlockId,
-   inner, draggable, readOnly,
+   inner, draggable, gripSide = 'left', readOnly,
    onInsertBefore, onInsertAfter,
    onMoveUp, onMoveDown,
    onUpdate, onRemove, onDuplicate,
@@ -208,7 +210,7 @@ export function WysiwygBlock({
       if (block.type === 'code')
          return <CodeBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
-         return <ListBlock block={block} patch={patch} onAddItem={handleListAdd} readOnly={readOnly} />
+         return <ListBlock block={block} patch={patch} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'table')
          return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} readOnly={readOnly} />
       if (block.type === 'image')
@@ -242,7 +244,9 @@ export function WysiwygBlock({
             <div
                {...sortable.listeners}
                className={[
-                  'absolute -left-12 inset-y-0 flex items-center justify-center w-6',
+                  gripSide === 'right'
+                     ? 'absolute -right-12 inset-y-0 flex items-center justify-center w-6'
+                     : 'absolute -left-12 inset-y-0 flex items-center justify-center w-6',
                   'cursor-grab active:cursor-grabbing transition-opacity',
                   'text-muted/60 hover:text-muted',
                   hovered ? 'opacity-100' : 'opacity-0',

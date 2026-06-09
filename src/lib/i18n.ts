@@ -164,6 +164,10 @@ export const translations = {
       appLabel:            'App',
       dockToRight:         'Move panel to right',
       dockToLeft:          'Move panel to left',
+      // About menu
+      menuAbout:       'About',
+      aboutTagline:    'Personal documentation builder',
+      aboutLicense:    'Apache License 2.0',
       // Export HTML
       docFallback:    'Documentation',
    },
@@ -330,6 +334,10 @@ export const translations = {
       appLabel:            'App',
       dockToRight:         'Déplacer le panneau à droite',
       dockToLeft:          'Déplacer le panneau à gauche',
+      // About menu
+      menuAbout:       'À propos',
+      aboutTagline:    'Éditeur de documentation personnel',
+      aboutLicense:    'Licence Apache 2.0',
       // Export HTML
       docFallback:    'Documentation',
    },

@@ -16,6 +16,7 @@ import { useLang } from '../../contexts/LangContext'
 // -- Component Imports --
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { AddBlockRow } from '../../molecules/AddBlockRow'
+import { BottomDropZone } from '../../atoms/BottomDropZone'
 import { WysiwygBlock } from './WysiwygBlock'
 
 // -- Type Imports --
@@ -55,11 +56,16 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
       const { active, over } = event
       if (!over || active.id === over.id) return
       const oldIdx = section.blocks.findIndex(block => block.id === active.id)
+      if (oldIdx === -1) return
       const newIdx = section.blocks.findIndex(block => block.id === over.id)
-      if (oldIdx !== -1 && newIdx !== -1) {
-         const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
-         reorderBlocks(section.id, oldIdx, adjustedIdx)
+      if (newIdx === -1) {
+         // Dropped on the bottom zone — move item to the last position
+         const lastIdx = section.blocks.length - 1
+         if (oldIdx !== lastIdx) reorderBlocks(section.id, oldIdx, lastIdx)
+         return
       }
+      const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
+      reorderBlocks(section.id, oldIdx, adjustedIdx)
    }
 
    function handleTitleBlur(raw: string) {
@@ -164,6 +170,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                            />
                         ))}
                      </SortableContext>
+                     {activeBlockId !== null && <BottomDropZone id={`${section.id}-bottom`} />}
                   </div>
                   <DragOverlay>
                      {activeBlockId && (() => {

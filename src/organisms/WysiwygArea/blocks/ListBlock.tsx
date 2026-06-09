@@ -51,17 +51,18 @@ function isCursorAtStart(element: HTMLElement): boolean {
 // ============================================================
 
 interface ListItemRowProps {
-   item:          ListItem
-   depth:         number
-   rootItems:     ListItem[]
-   onUpdateItems: (newItems: ListItem[]) => void
-   readOnly?:     boolean
-   isDragOverlay?:boolean
+   item:           ListItem
+   depth:          number
+   rootItems:      ListItem[]
+   onUpdateItems:  (newItems: ListItem[]) => void
+   readOnly?:      boolean
+   isDragOverlay?: boolean
+   gripSide?:      'left' | 'right'
 }
 
 const BULLETS = ['•', '◦', '▸', '▹']
 
-function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOverlay }: ListItemRowProps) {
+function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
    const [hovered, setHovered] = useState(false)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -135,14 +136,20 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
       >
          {/* Item row */}
          <div className="flex items-baseline gap-1.5 py-0.5 min-h-[1.5rem]">
-            {/* Drag handle — always in DOM when editable, opacity toggled on hover */}
+            {/* Drag handle — uses negative margin to float outside the content area.
+                Left column (default): marginLeft -16 places it before the bullet.
+                Right column: order:3 sends it to the flex end; marginRight -16 floats it right. */}
             {!readOnly && !isDragOverlay && (
                <span
                   {...listeners}
                   className={`shrink-0 cursor-grab active:cursor-grabbing text-muted transition-opacity ${hovered ? 'opacity-50' : 'opacity-0'}`}
-                  style={{ marginLeft: -16, marginRight: 0, width: 14 }}
+                  style={
+                     gripSide === 'right'
+                        ? { order: 3, marginRight: -16, marginLeft: 4, width: 14 }
+                        : { marginLeft: -16, marginRight: 0, width: 14 }
+                  }
                >
-                  <GripVertical size={12} />
+                  <GripVertical size={16} />
                </span>
             )}
 
@@ -173,6 +180,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
                   rootItems={rootItems}
                   onUpdateItems={onUpdateItems}
                   readOnly={readOnly}
+                  gripSide={gripSide}
                />
             </div>
          )}
@@ -191,9 +199,10 @@ interface ListLevelProps {
    rootItems:     ListItem[]
    onUpdateItems: (newItems: ListItem[]) => void
    readOnly?:     boolean
+   gripSide?:     'left' | 'right'
 }
 
-function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readOnly }: ListLevelProps) {
+function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readOnly, gripSide = 'left' }: ListLevelProps) {
    const [activeDragId, setActiveDragId] = useState<string | null>(null)
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const activeItem = activeDragId ? items.find(item => item.id === activeDragId) ?? null : null
@@ -224,6 +233,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                   rootItems={rootItems}
                   onUpdateItems={onUpdateItems}
                   readOnly
+                  gripSide={gripSide}
                />
             ))}
          </>
@@ -246,6 +256,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                   depth={depth}
                   rootItems={rootItems}
                   onUpdateItems={onUpdateItems}
+                  gripSide={gripSide}
                />
             ))}
          </SortableContext>
@@ -260,6 +271,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                      onUpdateItems={() => {}}
                      readOnly
                      isDragOverlay
+                     gripSide={gripSide}
                   />
                </div>
             )}
@@ -277,9 +289,10 @@ interface ListBlockProps {
    patch:     (partial: Partial<Block>) => void
    onAddItem: () => void
    readOnly?: boolean
+   gripSide?: 'left' | 'right'
 }
 
-export function ListBlock({ block, patch, onAddItem, readOnly }: ListBlockProps) {
+export function ListBlock({ block, patch, onAddItem, readOnly, gripSide = 'left' }: ListBlockProps) {
    const { t } = useLang()
    const rootItems = block.items ?? []
 
@@ -296,6 +309,7 @@ export function ListBlock({ block, patch, onAddItem, readOnly }: ListBlockProps)
             rootItems={rootItems}
             onUpdateItems={onUpdateItems}
             readOnly={readOnly}
+            gripSide={gripSide}
          />
 
          {!readOnly && (

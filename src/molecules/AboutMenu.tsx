@@ -1,0 +1,98 @@
+// -- React Imports --
+import { useEffect, useRef, useState } from 'react'
+
+// -- Library Imports --
+import { ExternalLink } from 'lucide-react'
+
+// -- Atom Imports --
+import { LogoColor, LogoMono } from '../atoms/Logo'
+
+// -- Type Imports --
+import type { T } from '../lib/i18n'
+
+// ============================================================
+// Constants
+// ============================================================
+
+const COPYRIGHT = '© 2026 Florian Douay'
+const LICENSE_URL = 'https://www.apache.org/licenses/LICENSE-2.0'
+
+// ============================================================
+// Types
+// ============================================================
+
+interface AboutMenuProps {
+   theme: 'dark' | 'light'
+   t:     T
+}
+
+// ============================================================
+// Component
+// ============================================================
+
+export function AboutMenu({ theme, t }: AboutMenuProps) {
+   const [open, setOpen] = useState(false)
+   const containerRef     = useRef<HTMLDivElement>(null)
+
+   useEffect(() => {
+      if (!open) return
+      function handleOutsideMouseDown(event: MouseEvent) {
+         if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+      }
+      document.addEventListener('mousedown', handleOutsideMouseDown)
+      return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
+   }, [open])
+
+   // ── Render ─────────────────────────────────────────────────
+
+   return (
+      <div ref={containerRef} className="relative">
+         {/* Trigger */}
+         <button
+            onClick={() => setOpen(wasOpen => !wasOpen)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
+               border transition-colors cursor-pointer
+               ${open
+                  ? 'bg-accent/10 border-accent/50 text-accent'
+                  : 'border-border text-muted hover:text-text hover:border-border'
+               }`}
+         >
+            {t.menuAbout}
+         </button>
+
+         {/* Dropdown */}
+         {open && (
+            <div
+               className="absolute top-full mt-1.5 left-0 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden"
+               style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
+            >
+               {/* App identity */}
+               <div className="px-4 py-3 flex items-center gap-3 border-b border-border">
+                  {theme === 'dark'
+                     ? <LogoColor className="h-6 w-auto shrink-0" />
+                     : <LogoMono className="h-6 w-auto shrink-0" style={{ color: 'var(--color-accent)' }} />
+                  }
+                  <div>
+                     <div className="font-mono text-xs font-bold text-accent">documinter</div>
+                     <div className="text-[10px] text-muted leading-tight">{t.aboutTagline}</div>
+                  </div>
+               </div>
+
+               {/* Legal */}
+               <div className="px-4 py-3 flex flex-col gap-1.5">
+                  <p className="text-[11px] text-muted select-all">{COPYRIGHT}</p>
+                  <a
+                     href={LICENSE_URL}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-accent transition-colors"
+                  >
+                     {t.aboutLicense}
+                     <ExternalLink size={10} className="shrink-0" />
+                  </a>
+               </div>
+            </div>
+         )}
+      </div>
+   )
+}

@@ -6,6 +6,7 @@ import { ViewMenu } from '../molecules/ViewMenu'
 import { FileMenu } from '../molecules/FileMenu'
 import { InsertMenu } from '../molecules/InsertMenu'
 import { AppearanceMenu } from '../molecules/AppearanceMenu'
+import { AboutMenu } from '../molecules/AboutMenu'
 import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { documentToMarkdown } from '../lib/markdown'
 import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'
@@ -208,6 +209,7 @@ export function Topbar({
                onDocAccentChange={onDocAccentChange}
                t={t}
             />
+            <AboutMenu theme={theme} t={t} />
 
             {/* Centre — title + save status */}
             <div className="flex-1 relative flex items-center justify-center min-w-0 px-4">

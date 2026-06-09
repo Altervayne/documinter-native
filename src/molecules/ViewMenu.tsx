@@ -73,7 +73,7 @@ export function ViewMenu({ viewLayout, onChange, t }: ViewMenuProps) {
 
          {/* Dropdown panel */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 w-44 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-1">
+            <div className="absolute top-full mt-1.5 left-0 w-44 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-1" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
                {VIEW_OPTIONS.map(({ value, icon, labelKey }) => {
                   const isActive = viewLayout === value
                   return (
