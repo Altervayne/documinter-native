@@ -17,6 +17,7 @@ import { useLang } from '../../contexts/LangContext'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { AddBlockRow } from '../../molecules/AddBlockRow'
 import { BottomDropZone } from '../../atoms/BottomDropZone'
+import { DropIndicator } from '../../atoms/DropIndicator'
 import { WysiwygBlock } from './WysiwygBlock'
 
 // -- Type Imports --
@@ -84,9 +85,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
          {/* DnD section insertion indicator */}
-         {!readOnly && isOver && activeSectionId !== section.id && (
-            <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none" style={{ background: 'var(--doc-accent, var(--color-accent))' }} />
-         )}
+         {!readOnly && isOver && activeSectionId !== section.id && <DropIndicator />}
 
          {/* Drag handle — always in DOM to hold the 2rem gutter */}
          <div

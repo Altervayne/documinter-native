@@ -1,9 +1,12 @@
+import { useState } from 'react'
+
 import type { Section } from '../types'
 import { SectionItem } from '../molecules/SectionItem'
-import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
+import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import {
-   Plus,
+   Plus, SquareDashed,
+   GripVertical, ChevronDown,
    PanelLeft, PanelRight,
    PanelLeftClose, PanelRightClose,
    PanelLeftOpen, PanelRightOpen,
@@ -41,16 +44,21 @@ export function Panel({
 }: PanelProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
-   const isLeft        = dockSide === 'left'
-   const borderClass   = isLeft ? 'border-r' : 'border-l'
-   const orderStyle    = { order: isLeft ? 0 : 2 }
+   const isLeft         = dockSide === 'left'
+   const borderClass    = isLeft ? 'border-r' : 'border-l'
    const DockToggleIcon = isLeft ? PanelRight : PanelLeft
    const CloseIcon      = isLeft ? PanelLeftClose : PanelRightClose
    const OpenIcon       = isLeft ? PanelLeftOpen  : PanelRightOpen
    const dockLabel      = isLeft ? t.dockToRight : t.dockToLeft
 
+   function handleDragStart(event: DragStartEvent) {
+      setActiveSectionId(String(event.active.id))
+   }
+
    function handleDragEnd(event: DragEndEvent) {
+      setActiveSectionId(null)
       const { active, over } = event
       if (!over || active.id === over.id) return
       const oldIdx = sections.findIndex(section => section.id === active.id)
@@ -58,93 +66,128 @@ export function Panel({
       if (oldIdx !== -1 && newIdx !== -1) onReorderSections(oldIdx, newIdx)
    }
 
-   // ── Collapsed rail ─────────────────────────────────────────
-
-   if (!open) {
-      return (
-         <aside
-            style={orderStyle}
-            className={`w-12 shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col items-center p-2 h-full overflow-hidden`}
-         >
-            <button
-               onClick={onToggle}
-               title={t.openPanel}
-               className="text-muted hover:text-accent p-2 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
-            >
-               <OpenIcon size={18} />
-            </button>
-         </aside>
-      )
+   function handleDragCancel() {
+      setActiveSectionId(null)
    }
 
-   // ── Expanded panel ─────────────────────────────────────────
+   // ── Always-mounted aside — width transitions between rail (3rem) and full (18rem) ──
 
    return (
       <aside
-         style={orderStyle}
-         className={`w-72 shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col h-full overflow-hidden`}
+         style={{ order: isLeft ? 0 : 2, width: open ? '18rem' : '3rem' }}
+         className={`shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col h-full overflow-hidden transition-[width] duration-[180ms] ease-in-out motion-reduce:transition-none`}
       >
-         {/* Header */}
-         <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-            <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold select-none">
-               {t.structure}
-            </span>
-            <div className="flex items-center gap-0.5">
-               <button
-                  onClick={onToggleDockSide}
-                  title={dockLabel}
-                  className="text-muted hover:text-accent p-1.5 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
-               >
-                  <DockToggleIcon size={15} />
-               </button>
+         {!open ? (
+            // ── Collapsed rail ──────────────────────────────────
+            <div className="flex flex-col items-center p-2">
                <button
                   onClick={onToggle}
-                  title={t.collapsePanel}
-                  className="text-muted hover:text-accent p-1.5 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+                  title={t.openPanel}
+                  className="text-muted hover:text-accent p-2 rounded-lg hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
                >
-                  <CloseIcon size={15} />
+                  <OpenIcon size={18} />
                </button>
             </div>
-         </div>
-
-         {/* Scrollable section tree — add-section button flows inside as sticky last child */}
-         <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-10">
-            {sections.length === 0 ? (
-               <div className="flex flex-col items-center justify-center gap-3 py-16 px-4 text-center">
-                  <div className="text-muted/15 text-5xl leading-none select-none">⊞</div>
-                  <p className="text-muted text-xs font-mono leading-relaxed">
-                     {t.noSections}<br />
-                     <span className="text-accent/60">{t.noSectionsHint}</span>
-                  </p>
+         ) : (
+            // ── Expanded panel ──────────────────────────────────
+            <>
+               {/* Header */}
+               <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+                  <span className="font-mono text-xs uppercase tracking-widest text-accent/70 font-semibold select-none">
+                     {t.structure}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                     <button
+                        onClick={onToggleDockSide}
+                        title={dockLabel}
+                        className="text-muted hover:text-accent p-1.5 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+                     >
+                        <DockToggleIcon size={15} />
+                     </button>
+                     <button
+                        onClick={onToggle}
+                        title={t.collapsePanel}
+                        className="text-muted hover:text-accent p-1.5 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+                     >
+                        <CloseIcon size={15} />
+                     </button>
+                  </div>
                </div>
-            ) : (
-               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
-                     {sections.map(section => (
-                        <SectionItem
-                           key={section.id}
-                           section={section}
-                           onToggle={()     => onToggleSec(section.id)}
-                           onDuplicate={() => onDuplicateSec(section.id)}
-                           onRemove={()    => onRemoveSec(section.id)}
-                           onReorderBlocks={(oldIdx, newIdx) => onReorderBlocks(section.id, oldIdx, newIdx)}
-                        />
-                     ))}
-                  </SortableContext>
-               </DndContext>
-            )}
 
-            {/* Sticky add-section button — flows below short lists, sticks at bottom when scrollable */}
-            <div className="sticky bottom-0 bg-raised pt-1">
-               <button
-                  onClick={onAddSection}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted hover:text-text hover:bg-accent/8 rounded-md transition-colors cursor-pointer"
-               >
-                  <Plus size={13} />
-                  {t.addSection}
-               </button>
-            </div>
-         </div>
+               {/* Scrollable section tree — add-section button flows inside as sticky last child */}
+               <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-10">
+                  {sections.length === 0 ? (
+                     <button
+                        onClick={onAddSection}
+                        className="w-full flex flex-col items-center gap-2 mt-1 py-5 px-3 rounded-lg border border-dashed border-accent/25 bg-accent/[0.03] hover:bg-accent/[0.07] hover:border-accent/40 text-center cursor-pointer transition-colors select-none"
+                     >
+                        <SquareDashed size={20} className="text-accent/35" />
+                        <div className="flex flex-col gap-0.5">
+                           <span className="text-xs font-medium text-muted/60">{t.panelNoSections}</span>
+                           <span className="text-xs font-medium text-accent/55">{t.panelNoSectionsHint}</span>
+                        </div>
+                     </button>
+                  ) : (
+                     <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        onDragCancel={handleDragCancel}
+                     >
+                        <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
+                           {sections.map(section => (
+                              <SectionItem
+                                 key={section.id}
+                                 section={section}
+                                 onToggle={()     => onToggleSec(section.id)}
+                                 onDuplicate={() => onDuplicateSec(section.id)}
+                                 onRemove={()    => onRemoveSec(section.id)}
+                                 onReorderBlocks={(oldIdx, newIdx) => onReorderBlocks(section.id, oldIdx, newIdx)}
+                              />
+                           ))}
+                        </SortableContext>
+
+                        <DragOverlay>
+                           {activeSectionId && (() => {
+                              const activeSection = sections.find(section => section.id === activeSectionId)
+                              return activeSection ? (
+                                 <div
+                                    className="flex items-center gap-1 h-8 rounded-md bg-raised border border-border shadow-lg px-0.5 pointer-events-none"
+                                    style={{ opacity: 0.92 }}
+                                 >
+                                    <span className="shrink-0 px-0.5 text-muted/50">
+                                       <GripVertical size={16} />
+                                    </span>
+                                    <span className="shrink-0 p-0.5 text-muted/50">
+                                       <ChevronDown size={12} />
+                                    </span>
+                                    <span className="flex-1 min-w-0 truncate text-xs font-medium text-text/80 select-none">
+                                       {activeSection.title || t.untitledDoc}
+                                    </span>
+                                 </div>
+                              ) : null
+                           })()}
+                        </DragOverlay>
+                     </DndContext>
+                  )}
+
+                  {/* Sticky add-section button — only shown when sections already exist */}
+                  {/* The empty-state card above handles the zero-section case */}
+                  {sections.length > 0 && (
+                     <div className="sticky bottom-0 bg-raised pt-1">
+                        <button
+                           onClick={onAddSection}
+                           className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium text-accent/50 hover:text-accent hover:bg-accent/8 rounded-md border border-dashed border-accent/25 hover:border-accent/50 transition-colors cursor-pointer"
+                        >
+                           <Plus size={13} />
+                           {t.addSection}
+                        </button>
+                     </div>
+                  )}
+               </div>
+            </>
+         )}
       </aside>
    )
 }

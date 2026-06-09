@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { GripVertical } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import type { PaneId, PaneLeaf, PaneSplit, PaneNode } from '../types'
@@ -93,19 +93,52 @@ function PaneHeader({ label, onPointerDown, onPointerMove, onPointerUp }: PaneHe
 // ============================================================
 
 const ZONE_STYLES: Record<DropZone, React.CSSProperties> = {
-   left:   { position: 'absolute', left: 0,   top: 0,    width: '50%',  height: '100%' },
-   right:  { position: 'absolute', right: 0,  top: 0,    width: '50%',  height: '100%' },
-   top:    { position: 'absolute', left: 0,   top: 0,    width: '100%', height: '50%'  },
-   bottom: { position: 'absolute', left: 0,   bottom: 0, width: '100%', height: '50%'  },
+   left:   { position: 'absolute', left: 4,  top: 4,    bottom: 4,  width: 'calc(50% - 8px)' },
+   right:  { position: 'absolute', right: 4, top: 4,    bottom: 4,  width: 'calc(50% - 8px)' },
+   top:    { position: 'absolute', left: 4,  top: 4,    right: 4,   height: 'calc(50% - 8px)' },
+   bottom: { position: 'absolute', left: 4,  bottom: 4, right: 4,   height: 'calc(50% - 8px)' },
+}
+
+// Fades in each time the hovered zone changes — keyed by zone so a new
+// zone always mounts a fresh element and runs the two-frame sequence again.
+function ZoneHighlight({ zone }: { zone: DropZone }) {
+   const [isVisible, setIsVisible] = useState(false)
+
+   useEffect(() => {
+      const frameId = requestAnimationFrame(() => setIsVisible(true))
+      return () => cancelAnimationFrame(frameId)
+   }, [])
+
+   return (
+      <div
+         className={[
+            'absolute bg-accent/20 rounded-lg',
+            'transition-opacity duration-150 ease-out motion-reduce:transition-none',
+            isVisible ? 'opacity-100' : 'opacity-0',
+         ].join(' ')}
+         style={ZONE_STYLES[zone]}
+      />
+   )
 }
 
 function DropZoneOverlay({ hoveredZone }: { hoveredZone: DropZone | null }) {
+   const [isVisible, setIsVisible] = useState(false)
+
+   useEffect(() => {
+      const frameId = requestAnimationFrame(() => setIsVisible(true))
+      return () => cancelAnimationFrame(frameId)
+   }, [])
+
    return (
-      <div className="absolute inset-0 z-40 pointer-events-none">
+      <div
+         className={[
+            'absolute inset-0 z-40 pointer-events-none',
+            'transition-opacity duration-150 ease-out motion-reduce:transition-none',
+            isVisible ? 'opacity-100' : 'opacity-0',
+         ].join(' ')}
+      >
          <div className="absolute inset-1 rounded-md border-2 border-dashed border-accent/40" />
-         {hoveredZone !== null && (
-            <div className="absolute bg-accent/20" style={ZONE_STYLES[hoveredZone]} />
-         )}
+         {hoveredZone !== null && <ZoneHighlight key={hoveredZone} zone={hoveredZone} />}
       </div>
    )
 }
@@ -155,6 +188,7 @@ export function WorkspaceLayout({
 
    const [draggingPaneId, setDraggingPaneId]   = useState<PaneId | null>(null)
    const [hoveredDropZone, setHoveredDropZone] = useState<DropZone | null>(null)
+   const [dragPosition, setDragPosition]       = useState<{ x: number; y: number } | null>(null)
 
    const isSplit = paneLayout.kind === 'split'
    const split   = isSplit ? (paneLayout as PaneSplit) : null
@@ -220,6 +254,7 @@ export function WorkspaceLayout({
       event.preventDefault()
       event.currentTarget.setPointerCapture(event.pointerId)
       setDraggingPaneId(paneId)
+      setDragPosition({ x: event.clientX, y: event.clientY })
       document.body.style.userSelect = 'none'
    }
 
@@ -228,6 +263,7 @@ export function WorkspaceLayout({
       paneId: PaneId,
    ): void {
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+      setDragPosition({ x: event.clientX, y: event.clientY })
       const otherRef = paneId === 'wysiwyg' ? markdownWrapperRef : wysiwygWrapperRef
       const otherEl  = otherRef.current
       if (!otherEl) return
@@ -245,6 +281,7 @@ export function WorkspaceLayout({
       }
       setDraggingPaneId(null)
       setHoveredDropZone(null)
+      setDragPosition(null)
    }
 
    // ── Divider ratio-resize handlers ─────────────────────────
@@ -330,6 +367,25 @@ export function WorkspaceLayout({
                {markdownPane}
             </div>
          </div>
+
+         {/* ── Drag ghost — follows the cursor while a pane header is being dragged ── */}
+         {draggingPaneId !== null && dragPosition !== null && (
+            <div
+               className="fixed z-50 pointer-events-none"
+               style={{
+                  left:      dragPosition.x,
+                  top:       dragPosition.y,
+                  transform: 'translate(-50%, -50%)',
+               }}
+            >
+               <div className="flex items-center gap-2.5 px-3 h-9 bg-raised border border-border shadow-xl rounded-md select-none opacity-90">
+                  <GripVertical size={14} className="text-muted/60 shrink-0" />
+                  <span className="text-xs font-mono text-muted/70 uppercase tracking-wider whitespace-nowrap">
+                     {draggingPaneId === 'wysiwyg' ? t.paneEditor : t.paneMarkdown}
+                  </span>
+               </div>
+            </div>
+         )}
       </div>
    )
 }

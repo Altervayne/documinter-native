@@ -315,6 +315,7 @@ export default function App() {
                            docTheme={docTheme}
                            docAccent={docAccent}
                            onUpdateMeta={handleMetaChange}
+                           onAddSection={sectionMutations.addSection}
                            readOnly={mode === 'preview'}
                         />
                      }

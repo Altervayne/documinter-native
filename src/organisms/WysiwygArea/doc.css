@@ -38,7 +38,7 @@
 /* Page header */
 .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e5e7eb; }
 .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--doc-accent, var(--color-accent)); margin-bottom: 0.4rem; }
-.doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: #111827; }
+.doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: #111827; word-break: break-word; overflow-wrap: break-word; }
 .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #6b7280; display: flex; gap: 1.5rem; flex-wrap: wrap; }
 
 /* Section */

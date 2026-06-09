@@ -14,6 +14,7 @@ import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
+import { SquareDashed } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { WysiwygSection } from './WysiwygSection'
@@ -28,11 +29,12 @@ interface WysiwygAreaProps {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
-   onUpdateMeta: (patch: Partial<DocMeta>) => void
+   onUpdateMeta:  (patch: Partial<DocMeta>) => void
+   onAddSection?: () => void
    readOnly?: boolean
 }
 
-export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta, readOnly }: WysiwygAreaProps) {
+export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta, onAddSection, readOnly }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
 
@@ -67,9 +69,9 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
    return (
       <DocumentHandlesProvider handles={allHandles}>
       {!readOnly && <FormatToolbar sections={sections} />}
-      <div className="flex-1 overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
+      <div className="flex-1 h-full w-full overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
          <div
-            className={`max-w-215 mx-auto my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
+            className={`max-w-215 mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
             style={{
                background: 'var(--doc-canvas-bg)',
                borderTopColor: docAccent,
@@ -131,10 +133,23 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
 
             {/* Empty state */}
             {sections.length === 0 && (
-               <div className="wysiwyg-empty">
-                  <strong>{t.nothingYet}</strong>
-                  <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, var(--doc-canvas-bg))`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ {t.addSection}</code> {t.nothingYetHint}
-               </div>
+               !readOnly && onAddSection ? (
+                  <div
+                     onClick={onAddSection}
+                     className="doc-empty-section w-full flex flex-col items-center gap-3 py-16 px-6 rounded-xl border border-dashed text-center mt-4 cursor-pointer select-none"
+                  >
+                     <SquareDashed size={32} style={{ color: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 30%, transparent)' }} />
+                     <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium opacity-60">{t.panelNoSections}</p>
+                        <p className="text-xs font-medium" style={{ color: 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 60%, transparent)' }}>{t.panelNoSectionsHint}</p>
+                     </div>
+                  </div>
+               ) : (
+                  <div className="wysiwyg-empty">
+                     <strong>{t.nothingYet}</strong>
+                     <code style={{ background: `color-mix(in srgb, ${docAccent} 10%, var(--doc-canvas-bg))`, color: docAccent, padding: '0.1em 0.35em', borderRadius: 3, fontSize: '0.85em' }}>+ {t.addSection}</code> {t.nothingYetHint}
+                  </div>
+               )
             )}
 
             {/* Sections */}

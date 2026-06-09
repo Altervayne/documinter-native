@@ -47,6 +47,7 @@ export function SectionItem({
    const ctx     = useDocumentMutations()
    const [hovered, setHovered] = useState(false)
    const [pickerOpen, setPickerOpen] = useState(false)
+   const [pickerAnchorRect, setPickerAnchorRect] = useState<DOMRect | null>(null)
    const addBlockButtonRef = useRef<HTMLButtonElement>(null)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
@@ -111,7 +112,10 @@ export function SectionItem({
             <div className={`flex items-center gap-0.5 shrink-0 pr-1 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                <button
                   ref={addBlockButtonRef}
-                  onClick={() => setPickerOpen(true)}
+                  onClick={() => {
+                     setPickerAnchorRect(addBlockButtonRef.current?.getBoundingClientRect() ?? null)
+                     setPickerOpen(true)
+                  }}
                   title={t.addBlock}
                   className="p-1 text-muted hover:text-accent rounded transition-colors cursor-pointer"
                >
@@ -138,9 +142,16 @@ export function SectionItem({
          {!section.collapsed && (
             <div className="ml-5 flex flex-col">
                {section.blocks.length === 0 ? (
-                  <div className="h-7 flex items-center pl-2 text-xs text-muted/40 italic select-none">
-                     {t.emptySection}
-                  </div>
+                  <button
+                     onClick={(event) => {
+                        setPickerAnchorRect(event.currentTarget.getBoundingClientRect())
+                        setPickerOpen(true)
+                     }}
+                     className="h-7 w-full flex items-center gap-1.5 pl-2 rounded-md border border-dashed border-accent/20 text-xs text-accent/45 hover:text-accent/75 hover:bg-accent/8 hover:border-accent/35 transition-colors cursor-pointer select-none"
+                  >
+                     <Plus size={10} className="shrink-0" />
+                     {t.panelEmptyBlocks}
+                  </button>
                ) : (
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                      <SortableContext items={section.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}>
@@ -156,7 +167,7 @@ export function SectionItem({
          {/* Block type picker — opened by the + button in the hover bar */}
          {pickerOpen && (
             <BlockTypePicker
-               anchorRect={addBlockButtonRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0)}
+               anchorRect={pickerAnchorRect ?? new DOMRect(0, 0, 0, 0)}
                onSelect={(type: BlockType) => {
                   ctx.addBlock(section.id, type)
                   setPickerOpen(false)
