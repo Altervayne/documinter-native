@@ -55,7 +55,7 @@ export function InlineColorPicker({
 
    return (
       <div
-         className="absolute w-[168px] rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
+         className="absolute w-42.5 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
          style={{
             top:       'calc(100% + 6px)',
             left:      '50%',
