@@ -22,16 +22,16 @@ export function useBlockMutations(
    const { showToast, dismissToast } = useToast()
 
    const addBlock = useCallback((secId: string, type: BlockType) => {
-      mutateSec(setSections, secId, sec => ({ ...sec, blocks: [...sec.blocks, mkBlock(type)] }))
-   }, [setSections])
+      mutateSec(setSections, secId, sec => ({ ...sec, blocks: [...sec.blocks, mkBlock(type, t)] }))
+   }, [setSections, t])
 
    const insertBlockAt = useCallback((secId: string, index: number, type: BlockType) => {
       mutateSec(setSections, secId, sec => {
          const next = [...sec.blocks]
-         next.splice(index, 0, mkBlock(type))
+         next.splice(index, 0, mkBlock(type, t))
          return { ...sec, blocks: next }
       })
-   }, [setSections])
+   }, [setSections, t])
 
    const updateBlock = useCallback((secId: string, blkId: string, patch: Partial<Block>) => {
       mutateSec(setSections, secId, sec => ({

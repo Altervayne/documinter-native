@@ -97,7 +97,7 @@ export function ViewMenu({ viewLayout, onChange, t }: ViewMenuProps) {
                {/* Keyboard shortcut hint */}
                <div className="border-t border-border mt-1 px-3 py-1.5">
                   <span className="text-[10px] text-muted font-mono">
-                     Ctrl+\ &nbsp;cycle views
+                     {t.viewCycleHint}
                   </span>
                </div>
             </div>

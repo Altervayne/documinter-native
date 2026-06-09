@@ -42,7 +42,12 @@ const DEFAULT_SPLIT: PaneSplit = {
 }
 
 export default function App() {
-   const [sections, setSections] = useState<Section[]>(() => readAutosave()?.sections ?? [mkSection()])
+   const [sections, setSections] = useState<Section[]>(() => {
+      const saved = readAutosave()
+      if (saved) return saved.sections
+      const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
+      return [mkSection(translations[initialLang].defaultSectionTitle)]
+   })
    const [meta, setMeta]         = useState<DocMeta>(() => readAutosave()?.meta ?? EMPTY_META)
    const [panelOpen, setPanelOpen] = useState(
       () => localStorage.getItem('documinter-panel-open') !== 'false'
@@ -156,7 +161,7 @@ export default function App() {
       return { kind: 'leaf', paneId: 'wysiwyg' }
    })
 
-   // Tracks the last known split config so Ctrl+\ can restore it when cycling back.
+   // Tracks the last known split config so Ctrl+Shift+E can restore it when cycling back.
    const lastSplitRef = useRef<PaneSplit>(
       paneLayout.kind === 'split' ? (paneLayout as PaneSplit) : DEFAULT_SPLIT
    )
@@ -171,12 +176,12 @@ export default function App() {
       localStorage.setItem('documinter-pane-layout', JSON.stringify(paneLayout))
    }, [paneLayout])
 
-   // Ctrl+\ / Cmd+\ cycles through the three layout modes.
+   // Ctrl+Shift+E / Cmd+Shift+E cycles through the three layout modes.
    useEffect(() => {
       const VIEW_CYCLE: ViewLayout[] = ['wysiwyg', 'split', 'markdown']
 
       function handleKeyDown(event: KeyboardEvent): void {
-         if ((event.ctrlKey || event.metaKey) && event.key === '\\') {
+         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
             event.preventDefault()
             setPaneLayout(currentLayout => {
                const currentViewLayout: ViewLayout =
@@ -216,9 +221,9 @@ export default function App() {
 
    // Wipe document and start fresh.
    const handleNewDocument = useCallback(() => {
-      setSections([mkSection()])
+      setSections([mkSection(t.defaultSectionTitle)])
       setMeta(EMPTY_META)
-   }, [])
+   }, [t])
 
    // Import a Markdown file, parse it, replace the document.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {

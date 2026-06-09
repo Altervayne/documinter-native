@@ -15,6 +15,7 @@
 import { arrayMove } from '@dnd-kit/sortable'
 import type { Dispatch, SetStateAction } from 'react'
 import type { Block, BlockType, ListItem, Section } from '../types'
+import type { T } from './i18n'
 
 
 // ============================================================
@@ -22,7 +23,7 @@ import type { Block, BlockType, ListItem, Section } from '../types'
 // ============================================================
 
 /** Create a new section with a fresh UUID and empty block list. */
-export function mkSection(title = 'New section'): Section {
+export function mkSection(title: string): Section {
    return { id: crypto.randomUUID(), title, collapsed: false, blocks: [] }
 }
 
@@ -47,20 +48,20 @@ export function cloneBlock(block: Block): Block {
    return base
 }
 
-/** Create a new block of the given type with sensible default content. */
-export function mkBlock(type: BlockType): Block {
+/** Create a new block of the given type with localised default content. */
+export function mkBlock(type: BlockType, t: T): Block {
    const id = crypto.randomUUID()
    switch (type) {
-      case 'p':       return { id, type, richText: [{ text: 'Your paragraph here.' }] }
-      case 'h3':      return { id, type, richText: [{ text: 'Heading H3' }] }
-      case 'h4':      return { id, type, richText: [{ text: 'Heading H4' }] }
-      case 'callout': return { id, type, style: 'info', richText: [{ text: 'Your note here.' }] }
-      case 'code':      return { id, type, code: '// Code here', lang: 'windev' }
+      case 'p':       return { id, type, richText: [{ text: t.blockDefaultP }] }
+      case 'h3':      return { id, type, richText: [{ text: t.blockDefaultH3 }] }
+      case 'h4':      return { id, type, richText: [{ text: t.blockDefaultH4 }] }
+      case 'callout': return { id, type, style: 'info', richText: [{ text: t.blockDefaultCallout }] }
+      case 'code':      return { id, type, code: t.blockDefaultCode, lang: 'windev' }
       case 'list':      return {
          id, type,
          items: [
-            { id: crypto.randomUUID(), richText: [{ text: 'First item' }],  children: [] },
-            { id: crypto.randomUUID(), richText: [{ text: 'Second item' }], children: [] },
+            { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem1 }], children: [] },
+            { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem2 }], children: [] },
          ],
       }
       case 'table': return {

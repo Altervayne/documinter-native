@@ -45,7 +45,6 @@ export function SectionItem({
 }: SectionItemProps) {
    const { t }   = useLang()
    const ctx     = useDocumentMutations()
-   const [hovered, setHovered] = useState(false)
    const [pickerOpen, setPickerOpen] = useState(false)
    const [pickerAnchorRect, setPickerAnchorRect] = useState<DOMRect | null>(null)
    const addBlockButtonRef = useRef<HTMLButtonElement>(null)
@@ -70,11 +69,10 @@ export function SectionItem({
    return (
       <div
          ref={setNodeRef} style={style} {...attributes}
-         onMouseEnter={() => setHovered(true)}
-         onMouseLeave={() => setHovered(false)}
+         className="group/section"
       >
          {/* ── Section header row ── */}
-         <div className="flex items-center gap-1 h-8 rounded-md hover:bg-accent/8 transition-colors group/header">
+         <div className="flex items-center gap-1 h-8 mb-1 rounded-md hover:bg-accent/8 transition-colors group/header">
 
             {/* Drag grip */}
             <span
@@ -109,7 +107,7 @@ export function SectionItem({
             </span>
 
             {/* Hover-revealed: add block + duplicate + delete */}
-            <div className={`flex items-center gap-0.5 shrink-0 pr-1 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className="flex items-center gap-0.5 shrink-0 pr-1 transition-opacity opacity-0 pointer-events-none group-hover/section:opacity-100 group-hover/section:pointer-events-auto">
                <button
                   ref={addBlockButtonRef}
                   onClick={() => {

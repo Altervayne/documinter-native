@@ -22,8 +22,8 @@ export function useSectionMutations(
    const { showToast, dismissToast } = useToast()
 
    const addSection = useCallback(() => {
-      setSections(sections => [...sections, mkSection()])
-   }, [setSections])
+      setSections(sections => [...sections, mkSection(t.defaultSectionTitle)])
+   }, [setSections, t])
 
    const toggleSec = useCallback((secId: string) => {
       setSections(sections => sections.map(sec => sec.id === secId ? { ...sec, collapsed: !sec.collapsed } : sec))

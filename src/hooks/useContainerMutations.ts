@@ -37,16 +37,16 @@ export function useContainerMutations(
       }, [setSections]),
 
       addBlock: useCallback((secId, blkId, side, type: BlockType) => {
-         mutateContainer(setSections, secId, blkId, side, blocks => [...blocks, mkBlock(type)])
-      }, [setSections]),
+         mutateContainer(setSections, secId, blkId, side, blocks => [...blocks, mkBlock(type, t)])
+      }, [setSections, t]),
 
       insertBlockAt: useCallback((secId, blkId, side, index, type: BlockType) => {
          mutateContainer(setSections, secId, blkId, side, blocks => {
             const next = [...blocks]
-            next.splice(index, 0, mkBlock(type))
+            next.splice(index, 0, mkBlock(type, t))
             return next
          })
-      }, [setSections]),
+      }, [setSections, t]),
 
       duplicateBlock: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks => {

@@ -63,6 +63,7 @@ interface ListItemRowProps {
 const BULLETS = ['•', '◦', '▸', '▹']
 
 function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
+   const { t } = useLang()
    const [hovered, setHovered] = useState(false)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -164,7 +165,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
                content={(item.richText ?? []) as InlineContent}
                onCommit={richText => onUpdateItems(updateListItemRichText(rootItems, item.id, richText))}
                onKeyDown={readOnly ? undefined : handleKeyDown}
-               placeholder="Item"
+               placeholder={t.listItemPlaceholder}
                style={{ flex: 1 }}
                readOnly={readOnly}
             />
