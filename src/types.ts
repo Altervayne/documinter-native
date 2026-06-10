@@ -85,14 +85,12 @@ export interface DocState {
 
 export type Mode = 'wysiwyg' | 'preview'
 
-export type ViewLayout = 'wysiwyg' | 'split' | 'markdown'
-
 // ============================================================
 // Pane tree — workspace layout model
 // ============================================================
 
 /** Which content lives in a leaf pane. */
-export type PaneId = 'wysiwyg' | 'markdown'
+export type PaneId = 'wysiwyg' | 'mintdown' | 'markdown'
 
 /** A leaf pane — shows one editor surface. */
 export interface PaneLeaf {

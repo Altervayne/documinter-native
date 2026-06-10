@@ -12,6 +12,8 @@ interface FileMenuProps {
    onSaveJSON:        () => void
    onImportMarkdown:  () => void
    onExportMarkdown:  () => void
+   onImportMintdown:  () => void
+   onExportMintdown:  () => void
    onOpenExportModal: () => void
    t: T
 }
@@ -26,6 +28,8 @@ export function FileMenu({
    onSaveJSON,
    onImportMarkdown,
    onExportMarkdown,
+   onImportMintdown,
+   onExportMintdown,
    onOpenExportModal,
    t,
 }: FileMenuProps) {
@@ -66,7 +70,7 @@ export function FileMenu({
 
          {/* Dropdown */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 min-w-48 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-1" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
+            <div className="absolute top-full mt-1.5 left-0 min-w-48 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
                <MenuItem
                   icon={<FilePlus size={13} />}
                   label={t.newDocument}
@@ -93,6 +97,18 @@ export function FileMenu({
                   label={t.exportMarkdown}
                   onClick={() => handleItemClick(onExportMarkdown)}
                />
+               <MenuSeparator />
+               <MenuItem
+                  icon={<FileUp size={13} />}
+                  label={t.importMintdown}
+                  onClick={() => handleItemClick(onImportMintdown)}
+               />
+               <MenuItem
+                  icon={<FileDown size={13} />}
+                  label={t.exportMintdown}
+                  onClick={() => handleItemClick(onExportMintdown)}
+               />
+               <MenuSeparator />
                <MenuItem
                   icon={<Download size={13} />}
                   label={t.exportHtml}

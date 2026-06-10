@@ -1,12 +1,12 @@
 import type { DocMeta, Section } from '../types'
-import { documentToMarkdown, markdownToDocument } from '../lib/markdown'
+import { documentToMintdown, mintdownToDocument } from '../lib/mintdown'
 import { useRawEditor } from '../hooks/useRawEditor'
 
 // ============================================================
 // Types
 // ============================================================
 
-interface MarkdownPanelProps {
+interface MintdownEditorProps {
    sections: Section[]
    meta:     DocMeta
    onCommit: (sections: Section[], meta: DocMeta) => void
@@ -16,13 +16,13 @@ interface MarkdownPanelProps {
 // Component
 // ============================================================
 
-export function MarkdownPanel({ sections, meta, onCommit }: MarkdownPanelProps) {
+export function MintdownEditor({ sections, meta, onCommit }: MintdownEditorProps) {
    const { text, handleChange, handleFocus, handleBlur, handleKeyDown } = useRawEditor({
       sections,
       meta,
       onCommit,
-      serialize: documentToMarkdown,
-      parse:     markdownToDocument,
+      serialize: documentToMintdown,
+      parse:     mintdownToDocument,
    })
 
    return (
@@ -43,7 +43,7 @@ export function MarkdownPanel({ sections, meta, onCommit }: MarkdownPanelProps) 
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
-            placeholder="# Markdown…"
+            placeholder="# Mintdown…"
          />
       </div>
    )

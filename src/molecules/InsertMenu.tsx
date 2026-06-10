@@ -81,7 +81,7 @@ export function InsertMenu({ lastSectionId, onAddSection, onAddBlock, t }: Inser
 
          {/* Dropdown */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 min-w-48 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-1" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
+            <div className="absolute top-full mt-1.5 left-0 min-w-48 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
                <button
                   onClick={handleAddSectionClick}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left

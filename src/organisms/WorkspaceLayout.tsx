@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { GripVertical } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import type { PaneId, PaneLeaf, PaneSplit, PaneNode } from '../types'
+import { countVisiblePanels, relocatePanel, setSplitRatio } from '../lib/paneTree'
 
 // ============================================================
 // Internal types
@@ -14,8 +15,7 @@ type DropZone = 'left' | 'right' | 'top' | 'bottom'
 // ============================================================
 
 /**
- * Determines which quadrant of `rect` the pointer falls in, using the
- * diagonal method (compare |dx| vs |dy| from the centre).
+ * Returns which quadrant of `rect` the pointer falls in.
  * Returns null when the pointer is outside the rect.
  */
 function computeDropZone(
@@ -33,32 +33,6 @@ function computeDropZone(
 
    if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'left' : 'right'
    return dy < 0 ? 'top' : 'bottom'
-}
-
-/**
- * Returns a new PaneSplit that results from the user dropping `draggedId`
- * onto the given `zone` of the other pane.
- * - left / right  → horizontal split; dragged pane goes left / right
- * - top  / bottom → vertical split;   dragged pane goes top  / bottom
- * Ratio resets to 0.5 when orientation changes.
- */
-function applyDropZone(
-   split: PaneSplit,
-   draggedId: PaneId,
-   zone: DropZone,
-): PaneSplit {
-   const newOrientation: 'h' | 'v' = (zone === 'left' || zone === 'right') ? 'h' : 'v'
-   const isFirst  = zone === 'left' || zone === 'top'
-   const other    = split.children.find(child => (child as PaneLeaf).paneId !== draggedId)! as PaneLeaf
-   const dragged: PaneLeaf = { kind: 'leaf', paneId: draggedId }
-   const newRatio = newOrientation !== split.orientation ? 0.5 : split.ratio
-
-   return {
-      kind:        'split',
-      orientation: newOrientation,
-      ratio:       newRatio,
-      children:    isFirst ? [dragged, other] : [other, dragged],
-   }
 }
 
 // ============================================================
@@ -99,8 +73,6 @@ const ZONE_STYLES: Record<DropZone, React.CSSProperties> = {
    bottom: { position: 'absolute', left: 4,  bottom: 4, right: 4,   height: 'calc(50% - 8px)' },
 }
 
-// Fades in each time the hovered zone changes — keyed by zone so a new
-// zone always mounts a fresh element and runs the two-frame sequence again.
 function ZoneHighlight({ zone }: { zone: DropZone }) {
    const [isVisible, setIsVisible] = useState(false)
 
@@ -150,8 +122,7 @@ function DropZoneOverlay({ hoveredZone }: { hoveredZone: DropZone | null }) {
 interface WorkspaceLayoutProps {
    paneLayout:         PaneNode
    onPaneLayoutChange: (layout: PaneNode) => void
-   wysiwygPane:        React.ReactNode
-   markdownPane:       React.ReactNode
+   panels:             Record<PaneId, React.ReactNode>
 }
 
 // ============================================================
@@ -159,93 +130,53 @@ interface WorkspaceLayoutProps {
 // ============================================================
 
 /**
- * Renders the workspace based on a PaneNode tree.
+ * Renders the workspace as a recursive PaneNode tree.
  *
- * ALWAYS-MOUNTED: both panes stay in the DOM at all times — the
- * wysiwyg wrapper is always the first DOM child, the markdown wrapper
- * always the second. CSS `order` values control the visual position in
- * split mode so pane reordering never unmounts either surface.
+ * Each PaneSplit renders two children in a flex container separated by a
+ * resizable divider. Each PaneLeaf renders the panel content with an optional
+ * draggable PaneHeader (shown only when multiple panels are visible).
  *
- * In SPLIT mode each pane shows a draggable header strip. Grabbing it
- * and dragging to one of the four quadrants of the other pane
- * simultaneously controls orientation and order. Pointer capture is
- * used so fast drags stay reliable.
+ * Drag-to-reposition: grabbing a PaneHeader and releasing over a quadrant of
+ * another panel calls `relocatePanel` to move the leaf to its new position.
  *
- * The DIVIDER between the panes supports ratio resizing, also via
- * pointer capture.
+ * Divider resize: each split's divider handles its own pointer capture and
+ * calls `setSplitRatio` to update only its own ratio.
+ *
+ * Panels are mounted and unmounted as their leaves appear and disappear from
+ * the tree (not always-mounted). Components re-derive content from props on mount.
  */
 export function WorkspaceLayout({
    paneLayout,
    onPaneLayoutChange,
-   wysiwygPane,
-   markdownPane,
+   panels,
 }: WorkspaceLayoutProps) {
    const { t } = useLang()
 
-   const containerRef       = useRef<HTMLDivElement>(null)
-   const wysiwygWrapperRef  = useRef<HTMLDivElement>(null)
-   const markdownWrapperRef = useRef<HTMLDivElement>(null)
-
+   // ── Drag state ─────────────────────────────────────────────
    const [draggingPaneId, setDraggingPaneId]   = useState<PaneId | null>(null)
-   const [hoveredDropZone, setHoveredDropZone] = useState<DropZone | null>(null)
+   const [hoveredDropInfo, setHoveredDropInfo] = useState<{ paneId: PaneId; zone: DropZone } | null>(null)
    const [dragPosition, setDragPosition]       = useState<{ x: number; y: number } | null>(null)
 
-   const isSplit = paneLayout.kind === 'split'
-   const split   = isSplit ? (paneLayout as PaneSplit) : null
+   // Refs to each leaf wrapper div — used to compute drop zones during drag
+   const leafRefsMap = useRef<Map<PaneId, HTMLDivElement | null>>(new Map())
 
-   // ── Derived CSS values ─────────────────────────────────────
+   // Always-current paneLayout for pointer event handlers (avoids stale closures mid-drag)
+   const paneLayoutRef = useRef(paneLayout)
+   paneLayoutRef.current = paneLayout
 
-   /** paneId of children[0] when in split mode, null otherwise. */
-   const firstPaneId: PaneId | null = split ? (split.children[0] as PaneLeaf).paneId : null
+   const totalPanels = countVisiblePanels(paneLayout)
 
-   /** Container flex direction. */
-   const containerDirection = split?.orientation === 'v' ? 'column' : 'row'
+   // ── Pane label lookup ─────────────────────────────────────
 
-   /** Build the inline style for the wysiwyg wrapper div. */
-   function getWysiwygStyle(): React.CSSProperties {
-      if (!split) {
-         const isActive = (paneLayout as PaneLeaf).paneId === 'wysiwyg'
-         return { display: isActive ? undefined : 'none', flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' }
-      }
-      const isFirst    = firstPaneId === 'wysiwyg'
-      const ratioValue = `${split.ratio * 100}%`
-      return {
-         order:     isFirst ? 0 : 2,
-         flex:      isFirst ? `0 0 ${ratioValue}` : '1 1 0',
-         minWidth:  0,
-         minHeight: 0,
-         overflow:  'hidden',
-         position:  'relative',
+   function getPaneLabel(paneId: PaneId): string {
+      switch (paneId) {
+         case 'wysiwyg':  return t.paneEditor
+         case 'mintdown': return t.paneMintdown
+         case 'markdown': return t.paneMarkdown
       }
    }
 
-   /** Build the inline style for the markdown wrapper div. */
-   function getMarkdownStyle(): React.CSSProperties {
-      if (!split) {
-         const isActive = (paneLayout as PaneLeaf).paneId === 'markdown'
-         return { display: isActive ? undefined : 'none', flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' }
-      }
-      const isFirst    = firstPaneId === 'markdown'
-      const ratioValue = `${split.ratio * 100}%`
-      return {
-         order:     isFirst ? 0 : 2,
-         flex:      isFirst ? `0 0 ${ratioValue}` : '1 1 0',
-         minWidth:  0,
-         minHeight: 0,
-         overflow:  'hidden',
-         position:  'relative',
-      }
-   }
-
-   /** Build the inline style for the divider bar. */
-   function getDividerStyle(): React.CSSProperties {
-      if (!split) return { display: 'none' }
-      return split.orientation === 'h'
-         ? { order: 1, flexShrink: 0, width: '4px', alignSelf: 'stretch', cursor: 'col-resize' }
-         : { order: 1, flexShrink: 0, height: '4px', alignSelf: 'stretch', cursor: 'row-resize' }
-   }
-
-   // ── Pane-header drag handlers ──────────────────────────────
+   // ── Pane-header drag handlers ─────────────────────────────
 
    function handlePaneHeaderPointerDown(
       event: React.PointerEvent<HTMLDivElement>,
@@ -264,10 +195,14 @@ export function WorkspaceLayout({
    ): void {
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
       setDragPosition({ x: event.clientX, y: event.clientY })
-      const otherRef = paneId === 'wysiwyg' ? markdownWrapperRef : wysiwygWrapperRef
-      const otherEl  = otherRef.current
-      if (!otherEl) return
-      setHoveredDropZone(computeDropZone(event.clientX, event.clientY, otherEl.getBoundingClientRect()))
+
+      let foundDropInfo: { paneId: PaneId; zone: DropZone } | null = null
+      for (const [leafPaneId, leafElement] of leafRefsMap.current) {
+         if (leafPaneId === paneId || !leafElement) continue
+         const zone = computeDropZone(event.clientX, event.clientY, leafElement.getBoundingClientRect())
+         if (zone !== null) { foundDropInfo = { paneId: leafPaneId, zone }; break }
+      }
+      setHoveredDropInfo(foundDropInfo)
    }
 
    function handlePaneHeaderPointerUp(
@@ -276,116 +211,145 @@ export function WorkspaceLayout({
    ): void {
       event.currentTarget.releasePointerCapture(event.pointerId)
       document.body.style.userSelect = ''
-      if (hoveredDropZone !== null && split !== null) {
-         onPaneLayoutChange(applyDropZone(split, paneId, hoveredDropZone))
+
+      if (hoveredDropInfo !== null) {
+         onPaneLayoutChange(relocatePanel(paneLayoutRef.current, paneId, hoveredDropInfo.paneId, hoveredDropInfo.zone))
       }
       setDraggingPaneId(null)
-      setHoveredDropZone(null)
+      setHoveredDropInfo(null)
       setDragPosition(null)
    }
 
-   // ── Divider ratio-resize handlers ─────────────────────────
+   // ── Divider resize handlers ───────────────────────────────
 
    function handleDividerPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
       event.preventDefault()
       event.currentTarget.setPointerCapture(event.pointerId)
    }
 
-   function handleDividerPointerMove(event: React.PointerEvent<HTMLDivElement>): void {
+   function handleDividerPointerMove(
+      event:       React.PointerEvent<HTMLDivElement>,
+      path:        number[],
+      orientation: 'h' | 'v',
+   ): void {
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
-      if (!split) return
-      const container = containerRef.current
-      if (!container) return
-      const rect = container.getBoundingClientRect()
-      const rawRatio = split.orientation === 'h'
-         ? (event.clientX - rect.left)  / rect.width
-         : (event.clientY - rect.top)   / rect.height
-      onPaneLayoutChange({ ...split, ratio: Math.max(0.15, Math.min(0.85, rawRatio)) })
+      const rect     = event.currentTarget.parentElement!.getBoundingClientRect()
+      const rawRatio = orientation === 'h'
+         ? (event.clientX - rect.left) / rect.width
+         : (event.clientY - rect.top)  / rect.height
+      onPaneLayoutChange(setSplitRatio(paneLayoutRef.current, path, Math.max(0.15, Math.min(0.85, rawRatio))))
    }
 
    function handleDividerPointerUp(event: React.PointerEvent<HTMLDivElement>): void {
       event.currentTarget.releasePointerCapture(event.pointerId)
    }
 
+   // ── Recursive tree renderer ───────────────────────────────
+
+   function renderNode(node: PaneNode, path: number[]): React.ReactElement {
+      if (node.kind === 'leaf') return renderLeaf(node as PaneLeaf)
+      return renderSplit(node as PaneSplit, path)
+   }
+
+   function renderLeaf(node: PaneLeaf): React.ReactElement {
+      const isDragging      = draggingPaneId !== null
+      const isBeingDragged  = draggingPaneId === node.paneId
+      const isDragTarget    = isDragging && !isBeingDragged && hoveredDropInfo?.paneId === node.paneId
+
+      return (
+         <div
+            ref={(element) => {
+               if (element) { leafRefsMap.current.set(node.paneId, element) }
+               else         { leafRefsMap.current.delete(node.paneId) }
+            }}
+            className="relative flex flex-col"
+            style={{ flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' }}
+         >
+            {totalPanels > 1 && (
+               <PaneHeader
+                  label={getPaneLabel(node.paneId)}
+                  onPointerDown={(event) => handlePaneHeaderPointerDown(event, node.paneId)}
+                  onPointerMove={(event) => handlePaneHeaderPointerMove(event, node.paneId)}
+                  onPointerUp={(event)   => handlePaneHeaderPointerUp(event, node.paneId)}
+               />
+            )}
+            {isDragging && !isBeingDragged && (
+               <DropZoneOverlay hoveredZone={isDragTarget ? hoveredDropInfo!.zone : null} />
+            )}
+            <div className="flex-1 min-h-0 overflow-auto">
+               {panels[node.paneId]}
+            </div>
+         </div>
+      )
+   }
+
+   function renderSplit(node: PaneSplit, path: number[]): React.ReactElement {
+      const isHorizontal = node.orientation === 'h'
+
+      return (
+         <div
+            className="flex"
+            style={{
+               flexDirection: isHorizontal ? 'row' : 'column',
+               flex:          '1 1 0',
+               minWidth:      0,
+               minHeight:     0,
+               overflow:      'hidden',
+            }}
+         >
+            {/* children[0] */}
+            <div
+               className="flex flex-col"
+               style={{ flex: `0 0 ${node.ratio * 100}%`, minWidth: 0, minHeight: 0, overflow: 'hidden' }}
+            >
+               {renderNode(node.children[0], [...path, 0])}
+            </div>
+
+            {/* Divider */}
+            <div
+               className="flex-none bg-border hover:bg-accent/60 transition-colors select-none touch-none"
+               style={isHorizontal
+                  ? { width: '4px', alignSelf: 'stretch', cursor: 'col-resize' }
+                  : { height: '4px', alignSelf: 'stretch', cursor: 'row-resize' }
+               }
+               onPointerDown={handleDividerPointerDown}
+               onPointerMove={(event) => handleDividerPointerMove(event, path, node.orientation)}
+               onPointerUp={handleDividerPointerUp}
+            />
+
+            {/* children[1] */}
+            <div
+               className="flex flex-col"
+               style={{ flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' }}
+            >
+               {renderNode(node.children[1], [...path, 1])}
+            </div>
+         </div>
+      )
+   }
+
    // ── Render ─────────────────────────────────────────────────
 
    return (
-      <div
-         ref={containerRef}
-         className="flex flex-1 min-h-0 overflow-hidden"
-         style={{ flexDirection: containerDirection }}
-      >
-         {/* ── WYSIWYG pane wrapper (always first in DOM) ── */}
-         <div
-            ref={wysiwygWrapperRef}
-            style={getWysiwygStyle()}
-            className="flex flex-col"
-         >
-            {isSplit && (
-               <PaneHeader
-                  label={t.paneEditor}
-                  onPointerDown={(event) => handlePaneHeaderPointerDown(event, 'wysiwyg')}
-                  onPointerMove={(event) => handlePaneHeaderPointerMove(event, 'wysiwyg')}
-                  onPointerUp={(event)   => handlePaneHeaderPointerUp(event, 'wysiwyg')}
-               />
-            )}
-            {isSplit && draggingPaneId === 'markdown' && (
-               <DropZoneOverlay hoveredZone={hoveredDropZone} />
-            )}
-            <div className="flex-1 min-h-0 overflow-auto">
-               {wysiwygPane}
-            </div>
+      <>
+         <div className="flex flex-1 min-h-0 overflow-hidden">
+            {renderNode(paneLayout, [])}
          </div>
 
-         {/* ── Split divider ── */}
-         <div
-            style={getDividerStyle()}
-            className="flex-none bg-border hover:bg-accent/60 transition-colors select-none touch-none"
-            onPointerDown={handleDividerPointerDown}
-            onPointerMove={handleDividerPointerMove}
-            onPointerUp={handleDividerPointerUp}
-         />
-
-         {/* ── Markdown pane wrapper (always second in DOM) ── */}
-         <div
-            ref={markdownWrapperRef}
-            style={getMarkdownStyle()}
-            className="flex flex-col"
-         >
-            {isSplit && (
-               <PaneHeader
-                  label={t.paneMarkdown}
-                  onPointerDown={(event) => handlePaneHeaderPointerDown(event, 'markdown')}
-                  onPointerMove={(event) => handlePaneHeaderPointerMove(event, 'markdown')}
-                  onPointerUp={(event)   => handlePaneHeaderPointerUp(event, 'markdown')}
-               />
-            )}
-            {isSplit && draggingPaneId === 'wysiwyg' && (
-               <DropZoneOverlay hoveredZone={hoveredDropZone} />
-            )}
-            <div className="flex-1 min-h-0 overflow-auto">
-               {markdownPane}
-            </div>
-         </div>
-
-         {/* ── Drag ghost — follows the cursor while a pane header is being dragged ── */}
+         {/* Drag ghost — follows cursor while a pane header is being dragged */}
          {draggingPaneId !== null && dragPosition !== null && (
             <div
                className="fixed z-50 pointer-events-none"
-               style={{
-                  left:      dragPosition.x,
-                  top:       dragPosition.y,
-                  transform: 'translate(-50%, -50%)',
-               }}
+               style={{ left: dragPosition.x, top: dragPosition.y, transform: 'translate(-50%, -50%)' }}
             >
                <div className="flex items-center gap-2.5 px-3 h-9 bg-raised border border-border shadow-xl rounded-md select-none opacity-90">
                   <GripVertical size={14} className="text-muted/60 shrink-0" />
                   <span className="text-xs font-mono text-muted/70 uppercase tracking-wider whitespace-nowrap">
-                     {draggingPaneId === 'wysiwyg' ? t.paneEditor : t.paneMarkdown}
+                     {getPaneLabel(draggingPaneId)}
                   </span>
                </div>
             </div>
          )}
-      </div>
+      </>
    )
 }

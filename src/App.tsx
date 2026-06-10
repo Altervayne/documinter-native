@@ -20,26 +20,19 @@ import { Topbar } from './organisms/Topbar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
+import { MintdownEditor } from './organisms/MintdownEditor'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { ToastContainer } from './atoms/ToastContainer'
 
 // -- Markdown Imports --
 import { importMarkdownFile } from './lib/markdown'
+import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
-import type { BlockType, DocMeta, DocState, Mode, PaneId, PaneNode, PaneSplit, SaveStatus, Section, ViewLayout } from './types'
+import type { BlockType, DocMeta, DocState, Mode, PaneId, SaveStatus, Section } from './types'
+import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
-
-const DEFAULT_SPLIT: PaneSplit = {
-   kind:        'split',
-   orientation: 'h',
-   ratio:       0.5,
-   children: [
-      { kind: 'leaf', paneId: 'wysiwyg' },
-      { kind: 'leaf', paneId: 'markdown' },
-   ],
-}
 
 export default function App() {
    const [sections, setSections] = useState<Section[]>(() => {
@@ -148,66 +141,20 @@ export default function App() {
    // Pane layout system
    // ============================================================
 
-   const [paneLayout, setPaneLayout] = useState<PaneNode>(() => {
-      try {
-         const stored = localStorage.getItem('documinter-pane-layout')
-         if (stored) {
-            const parsed = JSON.parse(stored)
-            if (parsed && typeof parsed === 'object' && 'kind' in parsed) {
-               return parsed as PaneNode
-            }
-         }
-      } catch {}
-      return { kind: 'leaf', paneId: 'wysiwyg' }
-   })
+   const { paneLayout, togglePanel, setPaneLayout } = useWorkspaceState()
 
-   // Tracks the last known split config so Ctrl+Shift+E can restore it when cycling back.
-   const lastSplitRef = useRef<PaneSplit>(
-      paneLayout.kind === 'split' ? (paneLayout as PaneSplit) : DEFAULT_SPLIT
-   )
-
-   // Keep lastSplitRef current whenever the layout is a split.
+   // Per-panel keyboard shortcuts: Ctrl+Shift+D/M/K
    useEffect(() => {
-      if (paneLayout.kind === 'split') lastSplitRef.current = paneLayout as PaneSplit
-   }, [paneLayout])
-
-   // Persist pane layout to localStorage.
-   useEffect(() => {
-      localStorage.setItem('documinter-pane-layout', JSON.stringify(paneLayout))
-   }, [paneLayout])
-
-   // Ctrl+Shift+E / Cmd+Shift+E cycles through the three layout modes.
-   useEffect(() => {
-      const VIEW_CYCLE: ViewLayout[] = ['wysiwyg', 'split', 'markdown']
-
       function handleKeyDown(event: KeyboardEvent): void {
-         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'e') {
-            event.preventDefault()
-            setPaneLayout(currentLayout => {
-               const currentViewLayout: ViewLayout =
-                  currentLayout.kind === 'split' ? 'split' :
-                  currentLayout.paneId === 'wysiwyg' ? 'wysiwyg' : 'markdown'
-               const nextViewLayout = VIEW_CYCLE[(VIEW_CYCLE.indexOf(currentViewLayout) + 1) % VIEW_CYCLE.length]
-               if (nextViewLayout === 'split') return lastSplitRef.current
-               const paneId: PaneId = nextViewLayout === 'wysiwyg' ? 'wysiwyg' : 'markdown'
-               return { kind: 'leaf', paneId }
-            })
-         }
+         if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return
+         const key = event.key.toLowerCase()
+         if (key === 'd') { event.preventDefault(); togglePanel('wysiwyg') }
+         else if (key === 'm') { event.preventDefault(); togglePanel('mintdown') }
+         else if (key === 'k') { event.preventDefault(); togglePanel('markdown') }
       }
-
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
-   }, [])
-
-   // Converts a ViewLayout enum (from the ViewMenu) into a PaneNode.
-   const handleViewLayoutChange = useCallback((layout: ViewLayout) => {
-      if (layout === 'split') {
-         setPaneLayout(lastSplitRef.current)
-      } else {
-         const paneId: PaneId = layout === 'wysiwyg' ? 'wysiwyg' : 'markdown'
-         setPaneLayout({ kind: 'leaf', paneId })
-      }
-   }, [])
+   }, [togglePanel])
 
    // ============================================================
    // Document-level callbacks
@@ -228,6 +175,14 @@ export default function App() {
    // Import a Markdown file, parse it, replace the document.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
       return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
+         setSections(newSections)
+         setMeta(newMeta)
+      })
+   }, [])
+
+   // Import a Mintdown file, parse it, replace the document.
+   const handleImportMintdown = useCallback((file: File): Promise<void> => {
+      return importMintdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
          setSections(newSections)
          setMeta(newMeta)
       })
@@ -263,10 +218,11 @@ export default function App() {
                onLoad={handleLoad}
                onToggleTheme={toggleTheme}
                onSetMode={handleSetMode}
-               onViewLayoutChange={handleViewLayoutChange}
+               onTogglePanel={togglePanel}
                onManualSave={handleManualSave}
                onNewDocument={handleNewDocument}
                onImportMarkdown={handleImportMarkdown}
+               onImportMintdown={handleImportMintdown}
                onDocThemeChange={setDocTheme}
                onDocAccentChange={setDocAccent}
                onAddSection={sectionMutations.addSection}
@@ -313,24 +269,33 @@ export default function App() {
                   <WorkspaceLayout
                      paneLayout={paneLayout}
                      onPaneLayoutChange={setPaneLayout}
-                     wysiwygPane={
-                        <WysiwygArea
-                           meta={meta}
-                           sections={sections}
-                           docTheme={docTheme}
-                           docAccent={docAccent}
-                           onUpdateMeta={handleMetaChange}
-                           onAddSection={sectionMutations.addSection}
-                           readOnly={mode === 'preview'}
-                        />
-                     }
-                     markdownPane={
-                        <MarkdownPanel
-                           sections={sections}
-                           meta={meta}
-                           onCommit={handleMarkdownCommit}
-                        />
-                     }
+                     panels={{
+                        wysiwyg: (
+                           <WysiwygArea
+                              meta={meta}
+                              sections={sections}
+                              docTheme={docTheme}
+                              docAccent={docAccent}
+                              onUpdateMeta={handleMetaChange}
+                              onAddSection={sectionMutations.addSection}
+                              readOnly={mode === 'preview'}
+                           />
+                        ),
+                        mintdown: (
+                           <MintdownEditor
+                              sections={sections}
+                              meta={meta}
+                              onCommit={handleMarkdownCommit}
+                           />
+                        ),
+                        markdown: (
+                           <MarkdownPanel
+                              sections={sections}
+                              meta={meta}
+                              onCommit={handleMarkdownCommit}
+                           />
+                        ),
+                     }}
                   />
                </div>
             </DocumentMutationsContext.Provider>

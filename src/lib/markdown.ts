@@ -63,7 +63,7 @@ function serializeListItems(items: ListItem[], depth: number): string {
  *  For h3/h4 blocks that carry a handle, the handle is emitted inline as {#slug}.
  *  For all other block types, the caller is responsible for emitting the
  *  <!-- handle: slug --> comment BEFORE this function's output. */
-function serializeBlock(block: Block): string {
+export function serializeBlock(block: Block): string {
    switch (block.type) {
       case 'p': {
          return serializeInline(block.richText)
@@ -196,7 +196,7 @@ function normalizeFenceLang(tag: string): CodeLang {
 
 /** Splits a Markdown pipe-table row into trimmed cell strings,
  *  correctly handling backslash-escaped pipes (\|). */
-function parsePipeTableRow(line: string): string[] {
+export function parsePipeTableRow(line: string): string[] {
    // Strip leading/trailing pipe and surrounding whitespace.
    const inner = line.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
    const cells: string[] = []
@@ -221,7 +221,7 @@ function parsePipeTableRow(line: string): string[] {
 }
 
 /** Builds a nested ListItem tree from indented `- text` lines. */
-function buildListTree(lines: string[]): ListItem[] {
+export function buildListTree(lines: string[]): ListItem[] {
    interface StackEntry { depth: number; item: ListItem }
 
    const roots: ListItem[]   = []
@@ -261,7 +261,7 @@ function buildListTree(lines: string[]): ListItem[] {
 }
 
 /** Builds a table Block from accumulated pipe-table lines (header, separator, body rows). */
-function buildTableBlock(lines: string[]): Block {
+export function buildTableBlock(lines: string[]): Block {
    const tableLines = lines.filter(line => line.trimStart().startsWith('|'))
 
    if (tableLines.length < 2) {

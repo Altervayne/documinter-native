@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 
 // -- Type Imports --
-import type { BlockType, DocMeta, DocState, Mode, PaneNode, SaveStatus, Section, ViewLayout } from '../types'
+import type { BlockType, DocMeta, DocState, Mode, PaneId, PaneNode, SaveStatus, Section } from '../types'
+import { isPanelVisible } from '../lib/paneTree'
 
 // -- Atom Imports --
 import { Button } from '../atoms/Button'
@@ -21,6 +22,7 @@ import { AboutMenu } from '../molecules/AboutMenu'
 // -- Lib Imports --
 import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { documentToMarkdown } from '../lib/markdown'
+import { importMintdownFile, exportMintdownFile } from '../lib/mintdown'
 
 // -- Icon Imports --
 import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'
@@ -68,39 +70,31 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
 }
 
 // ============================================================
-// Helper — derive ViewLayout from PaneNode
-// ============================================================
-
-function deriveViewLayout(paneLayout: PaneNode): ViewLayout {
-   if (paneLayout.kind === 'split') return 'split'
-   return paneLayout.paneId === 'wysiwyg' ? 'wysiwyg' : 'markdown'
-}
-
-// ============================================================
 // Props
 // ============================================================
 
 interface TopbarProps {
-   meta:               DocMeta
-   sections:           Section[]
-   theme:              'dark' | 'light'
-   docTheme:           'light' | 'dark'
-   docAccent:          string
-   mode:               Mode
-   paneLayout:         PaneNode
-   saveStatus:         SaveStatus
-   onLoad:             (state: DocState) => void
-   onToggleTheme:      () => void
-   onSetMode:          (mode: Mode) => void
-   onViewLayoutChange: (layout: ViewLayout) => void
-   onManualSave:       () => void
-   onNewDocument:      () => void
-   onImportMarkdown:   (file: File) => Promise<void>
-   onDocThemeChange:   (theme: 'light' | 'dark') => void
-   onDocAccentChange:  (hex: string) => void
-   onAddSection:       () => void
-   onAddBlock:         (sectionId: string, type: BlockType) => void
-   onMetaChange:       (patch: Partial<DocMeta>) => void
+   meta:             DocMeta
+   sections:         Section[]
+   theme:            'dark' | 'light'
+   docTheme:         'light' | 'dark'
+   docAccent:        string
+   mode:             Mode
+   paneLayout:       PaneNode
+   saveStatus:       SaveStatus
+   onLoad:           (state: DocState) => void
+   onToggleTheme:    () => void
+   onSetMode:        (mode: Mode) => void
+   onTogglePanel:    (id: PaneId) => void
+   onManualSave:     () => void
+   onNewDocument:    () => void
+   onImportMarkdown: (file: File) => Promise<void>
+   onImportMintdown: (file: File) => Promise<void>
+   onDocThemeChange: (theme: 'light' | 'dark') => void
+   onDocAccentChange:(hex: string) => void
+   onAddSection:     () => void
+   onAddBlock:       (sectionId: string, type: BlockType) => void
+   onMetaChange:     (patch: Partial<DocMeta>) => void
 }
 
 // ============================================================
@@ -109,8 +103,8 @@ interface TopbarProps {
 
 export function Topbar({
    meta, sections, theme, docTheme, docAccent, mode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onViewLayoutChange, onManualSave,
-   onNewDocument, onImportMarkdown, onDocThemeChange, onDocAccentChange,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave,
+   onNewDocument, onImportMarkdown, onImportMintdown, onDocThemeChange, onDocAccentChange,
    onAddSection, onAddBlock, onMetaChange,
 }: TopbarProps) {
    const [exportOpen,    setExportOpen]    = useState(false)
@@ -121,9 +115,8 @@ export function Topbar({
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
 
-   const viewLayout     = deriveViewLayout(paneLayout)
    const lastSectionId  = sections.at(-1)?.id ?? null
-   const isMarkdownOnly = paneLayout.kind === 'leaf' && paneLayout.paneId === 'markdown'
+   const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
 
    // ── Title editing ────────────────────────────────────────────
 
@@ -215,6 +208,28 @@ export function Topbar({
       showToast(t.markdownExported, { type: 'success' })
    }
 
+   function handleImportMintdownClick() {
+      const input    = document.createElement('input')
+      input.type     = 'file'
+      input.accept   = '.mintd,.txt'
+      input.onchange = async () => {
+         const file = input.files?.[0]
+         if (!file) return
+         try {
+            await onImportMintdown(file)
+            showToast(t.mintdownImported, { type: 'success' })
+         } catch {
+            showToast('Import failed', { type: 'error' })
+         }
+      }
+      input.click()
+   }
+
+   function handleExportMintdownClick() {
+      exportMintdownFile(sections, meta)
+      showToast(t.mintdownExported, { type: 'success' })
+   }
+
    // ── Preview toggle ────────────────────────────────────────────
 
    function handlePreviewClick() {
@@ -290,12 +305,14 @@ export function Topbar({
                   onSaveJSON={handleSaveJSON}
                   onImportMarkdown={handleImportMarkdownClick}
                   onExportMarkdown={handleExportMarkdownClick}
+                  onImportMintdown={handleImportMintdownClick}
+                  onExportMintdown={handleExportMintdownClick}
                   onOpenExportModal={() => setExportOpen(true)}
                   t={t}
                />
                <ViewMenu
-                  viewLayout={viewLayout}
-                  onChange={onViewLayoutChange}
+                  paneLayout={paneLayout}
+                  onTogglePanel={onTogglePanel}
                   t={t}
                />
                <InsertMenu
