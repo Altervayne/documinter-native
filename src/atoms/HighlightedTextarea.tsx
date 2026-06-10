@@ -89,7 +89,7 @@ export function HighlightedTextarea({
              caret-color: restores a visible caret despite text-transparent.
              border-0: no border to avoid shifting the content box vs backdrop. */}
          <textarea
-            className={`${METRIC_CLASSES} absolute inset-0 w-full h-full overflow-auto bg-transparent text-transparent [caret-color:var(--color-text)] resize-none border-0 focus:outline-none placeholder:text-muted/40`}
+            className={`${METRIC_CLASSES} absolute inset-0 w-full h-full overflow-auto [scrollbar-gutter:stable] bg-transparent text-transparent [caret-color:var(--color-text)] resize-none border-0 focus:outline-none placeholder:text-muted/40`}
             value={value}
             onChange={onChange}
             onFocus={onFocus}
