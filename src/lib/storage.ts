@@ -10,8 +10,8 @@
  */
 
 import { slugify } from './text'
-import { parseInlineContent } from './inline'
-import type { Block, DocMeta, DocState, ListItem, Section } from '../types'
+import { parseInlineContent, stripTrailingNewlines } from './inline'
+import type { Block, DocMeta, DocState, InlineContent, ListItem, Section } from '../types'
 
 // Fields present in JSON files saved before the InlineContent migration.
 // Not part of the canonical types, kept here only for migration reads.
@@ -30,7 +30,9 @@ function migrateListItem(raw: unknown): ListItem {
    const id         = typeof obj.id === 'string'   ? obj.id       : crypto.randomUUID()
    const legacyText = typeof obj.text === 'string' ? obj.text     : ''
    const children   = Array.isArray(obj.children)  ? obj.children : []
-   const richText   = Array.isArray(obj.richText)  ? obj.richText : parseInlineContent(legacyText)
+   const richText   = Array.isArray(obj.richText)
+      ? stripTrailingNewlines(obj.richText as InlineContent)
+      : parseInlineContent(legacyText)
    return { id, richText, children: children.map(migrateListItem) }
 }
 
@@ -60,8 +62,13 @@ function migrateBlock(rawBlock: LegacyRawBlock): Block {
          const { text: _text, ...clean } = base
          return { ...clean, richText: parseInlineContent(_text ?? '') }
       }
+      // richText is already an array — strip any trailing newline runs that may
+      // have been saved before stripTrailingNewlines was added to domToInlineContent.
+      // Without this, a stored [{ text: '\n' }] renders to '<br>' and the element
+      // matches the :has(> br:only-child) placeholder CSS rule, showing the
+      // placeholder on a block the user considers to have content.
       const { text: _text, ...clean } = base
-      return clean
+      return { ...clean, richText: stripTrailingNewlines(base.richText) }
    }
 
    // Table — populate richHeaders and richRows from legacy string fields if absent

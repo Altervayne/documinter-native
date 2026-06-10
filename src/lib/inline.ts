@@ -7,6 +7,7 @@
  *   domToInlineContent       — live HTMLElement → InlineContent (called on commit)
  *   inlineContentToMintdown  — InlineContent → Mintdown string
  *   mintdownToInlineContent  — Mintdown string → InlineContent
+ *   stripTrailingNewlines    — remove trailing newline-only runs (exposed for migration)
  *   isEmptyContent           — true if array is empty or all-whitespace
  *   inlineContentEquals      — deep equality check
  *   computeCursorPosition    — derive CursorPosition from the browser Selection API
@@ -107,8 +108,14 @@ function appendRun(runs: InlineRun[], text: string, flags: ParseFlags): void {
    runs.push(run)
 }
 
-/** Strip trailing '\n' runs from the end of a run list (mirrors sanitizeRichText trailing-<br> removal). */
-function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
+/**
+ * Strip trailing '\n' runs from the end of a run list.
+ * Exported so that migrateBlock / migrateListItem in storage.ts can sanitize
+ * richText arrays loaded from older save files that predate this normalisation.
+ * All current write paths (domToInlineContent, mintdownToInlineContent,
+ * parseInlineContent) already call this before returning.
+ */
+export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
    const result = [...runs]
    while (result.length > 0) {
       const last = result[result.length - 1]

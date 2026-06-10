@@ -3,6 +3,7 @@ import {
    computeCursorPosition,
    domToInlineContent,
    inlineContentEquals,
+   isEmptyContent,
    renderInlineContent,
 } from '../lib/inline'
 import type { CursorPosition, InlineContent } from '../types'
@@ -108,7 +109,7 @@ export function RichEditable({
          suppressContentEditableWarning
          spellCheck={spellCheck}
          data-rich="true"
-         {...(placeholder ? { 'data-placeholder': placeholder } : {})}
+         {...(placeholder && isEmptyContent(content) ? { 'data-placeholder': placeholder } : {})}
          onClick={onClick}
          onFocus={() => {
             editing.current = true
