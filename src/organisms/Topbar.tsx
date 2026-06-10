@@ -22,7 +22,7 @@ import { AboutMenu } from '../molecules/AboutMenu'
 // -- Lib Imports --
 import { downloadJSON, loadJSONFile } from '../lib/storage'
 import { documentToMarkdown } from '../lib/markdown'
-import { importMintdownFile, exportMintdownFile } from '../lib/mintdown'
+import { exportMintdownFile } from '../lib/mintdown'
 
 // -- Icon Imports --
 import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'

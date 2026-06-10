@@ -29,7 +29,7 @@ import { importMarkdownFile } from './lib/markdown'
 import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
-import type { BlockType, DocMeta, DocState, Mode, PaneId, SaveStatus, Section } from './types'
+import type { BlockType, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
