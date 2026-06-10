@@ -101,3 +101,84 @@ html[data-theme="light"] {
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--color-raised); }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* ##############################################################################
+   Syntax highlight — editor panel token colours
+   ##############################################################################
+
+   Variables are defined here; rules below read from them.
+   To tweak a colour, change the variable — the rule updates automatically.
+
+   Scoping: every rule is prefixed with .tok-backdrop, which is the class on
+   the backdrop <div> inside HighlightedTextarea. This keeps these styles
+   isolated from the code-block tok-* rules in WysiwygArea/doc.css.
+
+   Token inventory
+   ---------------
+   tok-kw    headings (# through ######), ^anchor declarations
+   tok-fm    YAML front matter block (--- fence + key: value lines)
+   tok-code  fenced code block body (entire ```lang ... ``` block)
+   tok-str   inline code (`...`), link URLs
+   tok-cmt   HTML comments (<!-- ... -->)
+   tok-op    structural delimiters: HR ---, list bullets, table |, blockquote >,
+             container { }, color/highlight closers
+   tok-fn    links and images ([label](url), ![alt](url))
+   tok-type  callout type tags ([info], [!NOTE] etc.), code fence language tags
+   tok-num   ordered list numbers (1. 2. ...)
+   tok-bold  bold spans (**text** / __text__)       — also font-weight: 600
+   tok-em    italic spans (*text*)                  — also font-style: italic
+   tok-del   strikethrough spans (~~text~~)         — also text-decoration: line-through
+   ############################################################################## */
+
+/* ============================================================
+   Colour variables
+   ============================================================ */
+
+/* Dark theme (default — no data-theme attribute) */
+:root {
+  --tok-kw:   #2dcea8;  /* app accent teal         9.1:1  */
+  --tok-fm:   #738f85;  /* muted                   5.1:1  */
+  --tok-code: #92b9ac;  /* desaturated teal        6.2:1  */
+  --tok-str:  #f4a261;  /* warm amber              7.5:1  */
+  --tok-cmt:  #74c388;  /* soft green              5.9:1  */
+  --tok-op:   #738f85;  /* muted (same as fm)      5.1:1  */
+  --tok-fn:   #a5b4fc;  /* indigo-300              8.2:1  */
+  --tok-type: #fbbf24;  /* amber-400               9.6:1  */
+  --tok-num:  #67e8f9;  /* cyan-300                9.8:1  */
+  --tok-bold: #f1f8f5;  /* near-white             17.0:1  */
+  --tok-em:   #c5e0d8;  /* cool off-white          9.3:1  */
+  --tok-del:  #f87171;  /* red (--color-red)       7.8:1  */
+}
+
+/* Light theme overrides */
+html[data-theme="light"] {
+  --tok-kw:   #0a855f;  /* app accent dark teal    4.8:1  */
+  --tok-fm:   #587a6c;  /* muted                   4.6:1  */
+  --tok-code: #3d7060;  /* dark teal               5.3:1  */
+  --tok-str:  #9a4012;  /* dark amber              5.8:1  */
+  --tok-cmt:  #166534;  /* --color-green           7.1:1  */
+  --tok-op:   #587a6c;  /* muted (same as fm)      4.6:1  */
+  --tok-fn:   #4338ca;  /* indigo-700             10.8:1  */
+  --tok-type: #b45309;  /* amber-700               6.2:1  */
+  --tok-num:  #0f766e;  /* teal-700                5.4:1  */
+  --tok-bold: #0a1208;  /* near-black             20.1:1  */
+  --tok-em:   #2a4d3c;  /* dark muted green        6.7:1  */
+  --tok-del:  #b91c1c;  /* red (--color-red)       9.1:1  */
+}
+
+/* ============================================================
+   Rules
+   ============================================================ */
+
+.tok-backdrop .tok-kw   { color: var(--tok-kw);   }
+.tok-backdrop .tok-fm   { color: var(--tok-fm);   }
+.tok-backdrop .tok-code { color: var(--tok-code); }
+.tok-backdrop .tok-str  { color: var(--tok-str);  }
+.tok-backdrop .tok-cmt  { color: var(--tok-cmt);  }
+.tok-backdrop .tok-op   { color: var(--tok-op);   }
+.tok-backdrop .tok-fn   { color: var(--tok-fn);   }
+.tok-backdrop .tok-type { color: var(--tok-type); }
+.tok-backdrop .tok-num  { color: var(--tok-num);  }
+.tok-backdrop .tok-bold { color: var(--tok-bold); font-weight: 600; }
+.tok-backdrop .tok-em   { color: var(--tok-em);   font-style: italic; }
+.tok-backdrop .tok-del  { color: var(--tok-del);  text-decoration: line-through; }

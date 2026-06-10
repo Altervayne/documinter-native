@@ -1,6 +1,7 @@
 import type { DocMeta, Section } from '../types'
 import { documentToMarkdown, markdownToDocument } from '../lib/markdown'
 import { useRawEditor } from '../hooks/useRawEditor'
+import { HighlightedTextarea } from '../atoms/HighlightedTextarea'
 
 // ============================================================
 // Types
@@ -27,22 +28,13 @@ export function MarkdownPanel({ sections, meta, onCommit }: MarkdownPanelProps) 
 
    return (
       <div className="h-full flex flex-col bg-surface overflow-hidden">
-         <textarea
-            className={[
-               'flex-1 w-full h-full resize-none',
-               'bg-transparent text-text text-sm font-mono leading-relaxed',
-               'p-5 focus:outline-none',
-               'placeholder:text-muted/40',
-            ].join(' ')}
+         <HighlightedTextarea
             value={text}
+            language="markdown"
             onChange={handleChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
             placeholder="# Markdown…"
          />
       </div>
