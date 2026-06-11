@@ -18,7 +18,7 @@ export default defineConfig({
         description:      'Personal documentation builder — write, preview, and export structured HTML docs.',
         display:          'standalone',
         background_color: '#0a0f0d',
-        theme_color:      '#2dcea8',
+        theme_color:      '#BDFFF0',
         start_url:        '/',
         orientation:      'any',
         icons: [
