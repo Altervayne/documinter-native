@@ -13,12 +13,12 @@ export default defineConfig({
       registerType: 'prompt',
 
       manifest: {
-        name:             'Documint',
-        short_name:       'Documint',
-        description:      'Personal documentation builder — write, preview, and export structured HTML docs.',
+        name:             'Documinter',
+        short_name:       'Documinter',
+        description:      'Personal documentation builder. Write, preview, and export structured HTML docs.',
         display:          'standalone',
         background_color: '#0a0f0d',
-        theme_color:      '#BDFFF0',
+        theme_color:      '#0B5E4A',
         start_url:        '/',
         orientation:      'any',
         icons: [
