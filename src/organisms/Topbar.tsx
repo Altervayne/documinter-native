@@ -43,11 +43,14 @@ interface SaveStatusIndicatorProps {
 }
 
 function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: SaveStatusIndicatorProps) {
-   const lastNonCleanRef = useRef<'dirty' | 'saving' | 'saved'>('dirty')
-   if (status !== 'clean') lastNonCleanRef.current = status
+   // Remember the last non-clean status so the pill keeps showing that label
+   // while it fades out after the status returns to 'clean'. This uses React's
+   // "adjust state during render" pattern so we never read/write a ref in render.
+   const [displayed, setDisplayed] = useState<'dirty' | 'saving' | 'saved'>('dirty')
 
-   const displayed = lastNonCleanRef.current
-   const isVisible  = status !== 'clean'
+   if (status !== 'clean' && status !== displayed) setDisplayed(status)
+
+   const isVisible = status !== 'clean'
 
    return (
       <div className={`flex items-center gap-1.5 font-mono text-xs select-none pointer-events-none transition-opacity duration-500 ${
@@ -162,7 +165,7 @@ export function Topbar({
 
    function handleLoadJSON() {
       loadJSONFile(
-         (state: DocState) => { onLoad(state); showToast(t.docLoaded, { type: 'success' }) },
+         (state: DocState) => { onLoad(state); showToast(t.jsonBackupImported, { type: 'success' }) },
          (message: string) => showToast(message, { type: 'error' }),
       )
    }
@@ -170,7 +173,7 @@ export function Topbar({
    function handleSaveJSON() {
       downloadJSON(meta, sections)
       onManualSave()
-      showToast(t.jsonSaved, { type: 'success' })
+      showToast(t.jsonBackupExported, { type: 'success' })
    }
 
    function handleNewDocument() {

@@ -3,14 +3,14 @@ export type Lang = 'en' | 'fr'
 export const translations = {
    en: {
       // Topbar
-      load:         'Load',
-      save:         'Save',
+      importJsonBackup: 'Import from JSON backup',
+      exportJsonBackup: 'Export as JSON backup',
       export:       'Export',
       toLightMode:  'Switch to light mode',
       toDarkMode:   'Switch to dark mode',
       untitledDoc:  'Untitled document',
-      jsonSaved:    'JSON saved!',
-      docLoaded:    'Document loaded!',
+      jsonBackupExported: 'JSON backup exported!',
+      jsonBackupImported: 'JSON backup imported!',
       // Panel
       openPanel:    'Open panel',
       collapsePanel:'Collapse panel',
@@ -199,14 +199,14 @@ export const translations = {
    },
    fr: {
       // Topbar
-      load:         'Charger',
-      save:         'Enregistrer',
+      importJsonBackup: 'Importer depuis une sauvegarde JSON',
+      exportJsonBackup: 'Exporter en sauvegarde JSON',
       export:       'Exporter',
       toLightMode:  'Passer en mode clair',
       toDarkMode:   'Passer en mode sombre',
       untitledDoc:  'Document sans titre',
-      jsonSaved:    'JSON enregistré !',
-      docLoaded:    'Document chargé !',
+      jsonBackupExported: 'Sauvegarde JSON exportée !',
+      jsonBackupImported: 'Sauvegarde JSON importée !',
       // Panel
       openPanel:    'Ouvrir le panneau',
       collapsePanel:'Réduire le panneau',

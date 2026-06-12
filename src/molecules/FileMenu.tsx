@@ -78,12 +78,12 @@ export function FileMenu({
                />
                <MenuItem
                   icon={<Upload size={13} />}
-                  label={t.load}
+                  label={t.importJsonBackup}
                   onClick={() => handleItemClick(onLoadJSON)}
                />
                <MenuItem
                   icon={<Save size={13} />}
-                  label={t.save}
+                  label={t.exportJsonBackup}
                   onClick={() => handleItemClick(onSaveJSON)}
                />
                <MenuSeparator />
