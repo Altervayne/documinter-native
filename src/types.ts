@@ -33,6 +33,21 @@ export interface CursorPosition {
 }
 
 // ============================================================
+// Editor UI state
+// ============================================================
+
+/** Active inline-formatting state shown by the FormatToolbar for the current selection.
+ *  Shared between the toolbar and the inline-color picker hook. */
+export interface FormatState {
+   bold:           boolean
+   italic:         boolean
+   underline:      boolean
+   strikethrough:  boolean
+   fontColor:      string | undefined
+   highlightColor: string | undefined
+}
+
+// ============================================================
 // Document model
 // ============================================================
 

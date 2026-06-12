@@ -3,321 +3,29 @@ import {
    Bold, Italic, Underline, Strikethrough,
    Link, Link2Off, Baseline, Highlighter, CornerDownLeft,
 } from 'lucide-react'
-import type { Block, InlineContent, InlineRun, Section } from '../types'
+import type { FormatState, Section } from '../types'
 import { blockAnchor } from '../lib/document'
-import { domToInlineContent, renderInlineContent } from '../lib/inline'
+import { deriveActiveColorsAt } from '../lib/inline'
+import { execFormatCommand } from '../lib/execCommand'
+import { FONT_COLOR_PALETTE, HIGHLIGHT_COLOR_PALETTE } from '../lib/constants'
 import { useLang } from '../contexts/LangContext'
-import { readRecentColors, pushRecentColor } from '../lib/recentColors'
-import { ColorPicker } from './ColorPicker'
+import { useLinkMode, getAnchoredBlocks } from '../hooks/useLinkMode'
+import { useInlineColorPicker } from '../hooks/useInlineColorPicker'
+import { InlineColorPopover } from './InlineColorPopover'
 
 // ============================================================
-// Color palettes
+// execCommand helper
 // ============================================================
-
-/** Curated font-color palette — base/light pairs across the hue wheel plus neutrals. */
-const FONT_COLOR_PALETTE = [
-   '#111111', // Black
-   '#6b6b6b', // Dark Gray
-   '#ffffff', // White
-   '#d0d0d0', // Light Gray
-   '#1a5fa8', // Blue
-   '#5ba3e0', // Light Blue
-   '#1a7a4a', // Green
-   '#5dbf8a', // Light Green
-   '#b83232', // Red
-   '#e07a7a', // Light Red
-   '#c47a00', // Amber
-   '#f0b84a', // Light Amber
-   '#7b3db8', // Purple
-   '#b885e8', // Light Purple
-   '#b8365a', // Pink
-   '#e882a4', // Light Pink
-   '#1a8c8c', // Teal
-   '#62c4c4', // Light Teal
-] as const
-
-/** Curated highlight-color palette — soft pastels that keep dark text legible on the swatch. */
-const HIGHLIGHT_COLOR_PALETTE = [
-   '#fff9c4', // Yellow
-   '#ffe0b2', // Peach
-   '#ffcdd2', // Rose
-   '#f8bbd9', // Pink
-   '#e8d5f5', // Lavender
-   '#d4e4f7', // Sky
-   '#c8edf5', // Ice
-   '#c8f0e4', // Mint
-   '#d8f0c4', // Sage
-   '#fff0c4', // Cream
-   '#ffe4c4', // Apricot
-   '#ffd6d6', // Blush
-   '#edd5f0', // Lilac
-   '#d5e8ff', // Periwinkle
-   '#d5f0f0', // Aqua
-   '#e8f5d5', // Lime
-   '#f5e8d5', // Sand
-   '#e8e8e8', // Mist
-] as const
-
-// ============================================================
-// Pure helpers — color application
-// ============================================================
-
-/** Returns true when two InlineRun objects have identical formatting flags (ignoring text). */
-function runsHaveSameFlags(runA: InlineRun, runB: InlineRun): boolean {
-   return !!runA.bold          === !!runB.bold
-       && !!runA.italic        === !!runB.italic
-       && !!runA.underline     === !!runB.underline
-       && !!runA.strikethrough === !!runB.strikethrough
-       && (runA.link      ?? '') === (runB.link      ?? '')
-       && (runA.color     ?? '') === (runB.color     ?? '')
-       && (runA.highlight ?? '') === (runB.highlight ?? '')
-}
-
-/** Merge adjacent runs that have identical flags. Called after splitting to normalise. */
-function mergeAdjacentRuns(runs: InlineRun[]): InlineRun[] {
-   if (runs.length === 0) return runs
-   const merged: InlineRun[] = [{ ...runs[0] }]
-   for (let index = 1; index < runs.length; index++) {
-      const previous = merged[merged.length - 1]
-      const current  = runs[index]
-      if (runsHaveSameFlags(previous, current)) {
-         previous.text += current.text
-      } else {
-         merged.push({ ...current })
-      }
-   }
-   return merged
-}
-
-/**
- * Walk the DOM, counting characters until the given `targetNode` / `targetOffset`.
- * Returns the flat character offset from the element's start. Returns -1 on failure.
- *
- * '\n' from <br> counts as 1 character (matches walkNodes behaviour in inline.ts).
- */
-function countCharsToPosition(
-   root:         HTMLElement,
-   targetNode:   Node,
-   targetOffset: number,
-): number {
-   let count = 0
-   let found = false
-
-   function walk(node: Node): void {
-      if (found) return
-      if (node === targetNode) {
-         count += targetOffset
-         found = true
-         return
-      }
-      if (node.nodeType === Node.TEXT_NODE) {
-         count += (node.textContent ?? '').length
-         return
-      }
-      if (node.nodeType === Node.ELEMENT_NODE) {
-         const tag = (node as Element).tagName.toLowerCase()
-         if (tag === 'br') {
-            count += 1
-            return
-         }
-         for (const child of Array.from(node.childNodes)) walk(child)
-      }
-   }
-
-   for (const child of Array.from(root.childNodes)) walk(child)
-   return found ? count : -1
-}
-
-/**
- * Apply a color (or clear it) to runs that overlap the character range [start, end).
- *
- * - `field`  — `'color'` for font color, `'highlight'` for background highlight.
- * - `value`  — hex string to set, or `undefined` to clear the field.
- *
- * Strategy:
- *   1. Build a flat array of (run, startOffset, endOffset) segments.
- *   2. For each segment that overlaps [start, end):
- *      a. Split the run at the selection boundaries if needed.
- *      b. Apply or clear the field on the interior piece.
- *   3. Merge adjacent identical-flag runs.
- */
-function applyColorToRange(
-   content:  InlineContent,
-   start:    number,
-   end:      number,
-   field:    'color' | 'highlight',
-   value:    string | undefined,
-): InlineContent {
-   // Expand each run into individual characters with their flags, apply the field,
-   // then re-collapse into runs. This is the simplest correct approach and handles
-   // all edge-cases (selection spanning multiple runs, partial first/last run, etc.)
-   type CharEntry = { char: string; run: InlineRun }
-   const chars: CharEntry[] = []
-   for (const run of content) {
-      for (const char of run.text) {
-         chars.push({ char, run })
-      }
-   }
-
-   // Apply the color field to chars in [start, end)
-   const modifiedChars: CharEntry[] = chars.map((entry, index) => {
-      if (index < start || index >= end) return entry
-      const newRun: InlineRun = { ...entry.run }
-      if (value === undefined) {
-         delete newRun[field]
-      } else {
-         newRun[field] = value
-      }
-      return { char: entry.char, run: newRun }
-   })
-
-   // Re-collapse chars into runs
-   if (modifiedChars.length === 0) return []
-   const resultRuns: InlineRun[] = []
-   let currentRun: InlineRun = { ...modifiedChars[0].run, text: modifiedChars[0].char }
-   for (let index = 1; index < modifiedChars.length; index++) {
-      const entry = modifiedChars[index]
-      const testRun: InlineRun = { ...entry.run, text: '' }
-      const previousTest: InlineRun = { ...currentRun, text: '' }
-      if (runsHaveSameFlags(testRun, previousTest)) {
-         currentRun = { ...currentRun, text: currentRun.text + entry.char }
-      } else {
-         resultRuns.push(currentRun)
-         currentRun = { ...entry.run, text: entry.char }
-      }
-   }
-   resultRuns.push(currentRun)
-
-   return mergeAdjacentRuns(resultRuns)
-}
-
-/**
- * After rewriting an element's innerHTML, restore a text selection described by
- * flat character offsets [start, end). Walks the new DOM to find the right nodes.
- */
-function restoreSelectionRange(element: HTMLElement, start: number, end: number): void {
-   function resolveOffset(target: number): { node: Node; offset: number } | null {
-      let count = 0
-      function walk(node: Node): { node: Node; offset: number } | null {
-         if (node.nodeType === Node.TEXT_NODE) {
-            const length = (node.textContent ?? '').length
-            if (count + length >= target) return { node, offset: target - count }
-            count += length
-            return null
-         }
-         if (node.nodeType === Node.ELEMENT_NODE) {
-            const tag = (node as Element).tagName.toLowerCase()
-            if (tag === 'br') {
-               if (count + 1 >= target) return { node: node.parentNode ?? node, offset: target - count }
-               count += 1
-               return null
-            }
-            for (const child of Array.from(node.childNodes)) {
-               const result = walk(child)
-               if (result) return result
-            }
-         }
-         return null
-      }
-      for (const child of Array.from(element.childNodes)) {
-         const result = walk(child)
-         if (result) return result
-      }
-      // Fallback: place cursor at end of element
-      return { node: element, offset: element.childNodes.length }
-   }
-
-   const startResult = resolveOffset(start)
-   const endResult   = resolveOffset(end)
-   if (!startResult || !endResult) return
-
-   try {
-      const range = document.createRange()
-      range.setStart(startResult.node, startResult.offset)
-      range.setEnd(endResult.node, endResult.offset)
-      const sel = window.getSelection()
-      sel?.removeAllRanges()
-      sel?.addRange(range)
-   } catch {
-      // If the range is invalid (e.g. after a complex split), silently skip.
-   }
-}
-
-/**
- * Derive the active font + highlight colors for the selection position described
- * by (node, offset), relative to the rich element's current InlineContent.
- *
- * Boundary handling mirrors computeCursorPosition (inline.ts): when the position
- * lands exactly on a run boundary, the run that STARTS at the boundary wins. This
- * is what makes a freshly-applied color read back correctly — after a color pick the
- * selection start sits on the new run's leading boundary, and the covered (colored)
- * run must win over the preceding (uncolored) one. A naive `offset <= charCount`
- * test reads the preceding run and clears the indicator.
- */
-function deriveActiveColorsAt(
-   richElement: HTMLElement,
-   node:        Node,
-   offset:      number,
-): { fontColor: string | undefined; highlightColor: string | undefined } {
-   const content    = domToInlineContent(richElement)
-   const charOffset = countCharsToPosition(richElement, node, offset)
-   if (charOffset < 0 || content.length === 0) {
-      return { fontColor: undefined, highlightColor: undefined }
-   }
-   let remaining = charOffset
-   for (let runIndex = 0; runIndex < content.length; runIndex++) {
-      const run       = content[runIndex]
-      const runLength = run.text.length
-      if (remaining < runLength) {
-         return { fontColor: run.color, highlightColor: run.highlight }
-      }
-      if (remaining === runLength) {
-         const boundaryRun = runIndex + 1 < content.length ? content[runIndex + 1] : run
-         return { fontColor: boundaryRun.color, highlightColor: boundaryRun.highlight }
-      }
-      remaining -= runLength
-   }
-   const lastRun = content[content.length - 1]
-   return { fontColor: lastRun.color, highlightColor: lastRun.highlight }
-}
-
-// ============================================================
-// Helpers
-// ============================================================
-
-interface AnchoredBlock {
-   block:        Block
-   sectionIndex: number
-}
-
-function getAnchoredBlocks(sections: Section[]): AnchoredBlock[] {
-   const result: AnchoredBlock[] = []
-   for (const [sectionIndex, section] of sections.entries()) {
-      for (const block of section.blocks) {
-         if (block.handle) result.push({ block, sectionIndex })
-         for (const inner of [...(block.left ?? []), ...(block.right ?? [])]) {
-            if (inner.handle) result.push({ block: inner, sectionIndex })
-         }
-      }
-   }
-   return result
-}
-
-// execCommand is deprecated but remains the practical cross-browser solution
-// for formatting in contenteditable. All major browsers still support it.
-function cmd(command: string, value?: string) {
-   document.execCommand(command, false, value ?? undefined)
-}
 
 function applyBoldItalic() {
    const isBold   = document.queryCommandState('bold')
    const isItalic = document.queryCommandState('italic')
    if (isBold && isItalic) {
-      cmd('bold')
-      cmd('italic')
+      execFormatCommand('bold')
+      execFormatCommand('italic')
    } else {
-      if (!isBold)   cmd('bold')
-      if (!isItalic) cmd('italic')
+      if (!isBold)   execFormatCommand('bold')
+      if (!isItalic) execFormatCommand('italic')
    }
 }
 
@@ -326,15 +34,6 @@ function applyBoldItalic() {
 // ============================================================
 
 interface Pos { top: number; left: number }
-
-interface FormatState {
-   bold:          boolean
-   italic:        boolean
-   underline:     boolean
-   strikethrough: boolean
-   fontColor:     string | undefined
-   highlightColor: string | undefined
-}
 
 interface FormatToolbarProps {
    sections: Section[]
@@ -347,75 +46,30 @@ interface FormatToolbarProps {
 export function FormatToolbar({ sections }: FormatToolbarProps) {
    const { t } = useLang()
 
-   const [pos, setPos]             = useState<Pos>({ top: 0, left: 0 })
-   const [visible, setVisible]     = useState(false)
-   const [linkMode, setLinkMode]   = useState(false)
-   const [linkUrl, setLinkUrl]     = useState('')
+   const [pos, setPos]         = useState<Pos>({ top: 0, left: 0 })
+   const [visible, setVisible] = useState(false)
    const [formatState, setFormatState] = useState<FormatState>({
       bold: false, italic: false, underline: false, strikethrough: false,
       fontColor: undefined, highlightColor: undefined,
    })
-   const [isEditingExistingLink, setIsEditingExistingLink] = useState(false)
-   const [fontColorOpen,      setFontColorOpen]      = useState(false)
-   const [highlightColorOpen, setHighlightColorOpen] = useState(false)
-   const [recentColors, setRecentColors] = useState(() => readRecentColors())
 
-   const toolbarRef           = useRef<HTMLDivElement>(null)
-   const inputRef             = useRef<HTMLInputElement>(null)
-   const savedRange           = useRef<Range | null>(null)
-   const linkModeRef          = useRef(false)
-   const fontColorOpenRef     = useRef(false)
-   const highlightColorOpenRef = useRef(false)
-   const pendingLinkOpen      = useRef(false)
-   const pendingLinkAnchor    = useRef<HTMLAnchorElement | null>(null)
-   const debounceTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
-   const recentColorTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+   const toolbarRef       = useRef<HTMLDivElement>(null)
+   const savedRangeRef    = useRef<Range | null>(null)
+   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-   // ============================================================
-   // Link mode helpers
-   // ============================================================
+   const {
+      linkMode, linkUrl, setLinkUrl, isEditingExistingLink, inputRef,
+      linkModeRef, openLinkMode, closeLinkMode, applyLink, removeLink,
+   } = useLinkMode({ savedRangeRef, visible })
 
-   function openLinkMode() {
-      const sel = window.getSelection()
-      if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange()
-      const existingLink = pendingLinkAnchor.current
-         ?? sel?.anchorNode?.parentElement?.closest('a')
-      pendingLinkAnchor.current = null
-      setIsEditingExistingLink(!!existingLink)
-      setLinkUrl(existingLink?.getAttribute('href') ?? '')
-      linkModeRef.current = true
-      setLinkMode(true)
-   }
-
-   function closeLinkMode() {
-      linkModeRef.current = false
-      setLinkMode(false)
-      setLinkUrl('')
-      setIsEditingExistingLink(false)
-   }
-
-   function applyLink() {
-      const sel = window.getSelection()
-      if (savedRange.current) {
-         sel?.removeAllRanges()
-         sel?.addRange(savedRange.current)
-      }
-      if (linkUrl.trim()) cmd('createLink', linkUrl.trim())
-      closeLinkMode()
-   }
-
-   function removeLink() {
-      const sel = window.getSelection()
-      if (savedRange.current) {
-         sel?.removeAllRanges()
-         sel?.addRange(savedRange.current)
-      }
-      cmd('unlink')
-      closeLinkMode()
-   }
+   const {
+      fontColorOpen, highlightColorOpen, fontColorOpenRef, highlightColorOpenRef,
+      recentColors, openFontColorPicker, openHighlightColorPicker,
+      closeFontColorPicker, closeHighlightColorPicker, applyInlineColor,
+   } = useInlineColorPicker({ savedRangeRef, setFormatState })
 
    // ============================================================
-   // Effects
+   // Orchestrator effect — toolbar visibility, position, active-format read
    // ============================================================
 
    useEffect(() => {
@@ -472,57 +126,23 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
          }, 40)
       }
 
-      // Clicking on an <a> inside a rich contenteditable auto-selects the link
-      // and opens the link panel, so the user doesn't have to precisely drag-select.
-      function onDocClick(event: MouseEvent) {
-         const anchor = (event.target as Element).closest('a')
-         if (!anchor?.closest('[data-rich]')) return
-         event.preventDefault()
-         const range = document.createRange()
-         range.selectNodeContents(anchor)
-         const sel = window.getSelection()
-         sel?.removeAllRanges()
-         sel?.addRange(range)
-         pendingLinkAnchor.current = anchor as HTMLAnchorElement
-         pendingLinkOpen.current = true
-         // selectionchange fires next, sets pos, then useEffect([visible]) opens link mode
-      }
-
       // Dismiss link mode or color pickers when the user clicks outside the toolbar
       function onOutsideMouseDown(event: MouseEvent) {
          if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
             if (linkModeRef.current) closeLinkMode()
-            if (fontColorOpenRef.current)      { fontColorOpenRef.current = false;      setFontColorOpen(false) }
-            if (highlightColorOpenRef.current) { highlightColorOpenRef.current = false; setHighlightColorOpen(false) }
+            if (fontColorOpenRef.current)      closeFontColorPicker()
+            if (highlightColorOpenRef.current) closeHighlightColorPicker()
          }
       }
 
       document.addEventListener('selectionchange', onSelChange)
-      document.addEventListener('click', onDocClick)
       document.addEventListener('mousedown', onOutsideMouseDown)
       return () => {
          document.removeEventListener('selectionchange', onSelChange)
-         document.removeEventListener('click', onDocClick)
          document.removeEventListener('mousedown', onOutsideMouseDown)
          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-         if (recentColorTimerRef.current) clearTimeout(recentColorTimerRef.current)
       }
-   }, [])
-
-   // After a link-click sets pendingLinkOpen, wait for the toolbar to become visible,
-   // then open link mode so the panel appears with the href pre-filled.
-   useEffect(() => {
-      if (visible && pendingLinkOpen.current) {
-         pendingLinkOpen.current = false
-         // eslint-disable-next-line react-hooks/set-state-in-effect
-         openLinkMode()
-      }
-   }, [visible])
-
-   // Focus the URL input whenever link mode opens
-   useEffect(() => {
-      if (linkMode) inputRef.current?.focus()
-   }, [linkMode])
+   }, [linkModeRef, fontColorOpenRef, highlightColorOpenRef, closeLinkMode, closeFontColorPicker, closeHighlightColorPicker])
 
    // ============================================================
    // Format state helpers
@@ -539,127 +159,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
          highlightColor: previous.highlightColor,
       }))
    }
-
-   // ============================================================
-   // Color picker helpers
-   // ============================================================
-
-   function openFontColorPicker() {
-      const sel = window.getSelection()
-      if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange()
-      fontColorOpenRef.current = true
-      setFontColorOpen(true)
-      setHighlightColorOpen(false)
-      highlightColorOpenRef.current = false
-   }
-
-   function openHighlightColorPicker() {
-      const sel = window.getSelection()
-      if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange()
-      highlightColorOpenRef.current = true
-      setHighlightColorOpen(true)
-      setFontColorOpen(false)
-      fontColorOpenRef.current = false
-   }
-
-   function closeFontColorPicker() {
-      fontColorOpenRef.current = false
-      setFontColorOpen(false)
-   }
-
-   function closeHighlightColorPicker() {
-      highlightColorOpenRef.current = false
-      setHighlightColorOpen(false)
-   }
-
-   /**
-    * Apply or clear a color field on the current selection.
-    *
-    * Strategy:
-    *   1. Restore the saved range back into the selection.
-    *   2. Find the [data-rich] contenteditable element that owns the selection.
-    *   3. Read its current InlineContent via domToInlineContent.
-    *   4. Compute flat char offsets for the selection start and end.
-    *   5. Call applyColorToRange → produces a new InlineContent.
-    *   6. Rewrite element.innerHTML via renderInlineContent.
-    *   7. Restore the selection range in the new DOM.
-    *   8. The next blur event on RichEditable will commit the new content normally.
-    */
-   function applyInlineColor(field: 'color' | 'highlight', colorValue: string | undefined) {
-      // Restore selection
-      const sel = window.getSelection()
-      if (savedRange.current) {
-         sel?.removeAllRanges()
-         sel?.addRange(savedRange.current)
-      }
-
-      const currentSel = window.getSelection()
-      if (!currentSel || currentSel.rangeCount === 0) return
-
-      const range = currentSel.getRangeAt(0)
-      const richElement = range.commonAncestorContainer instanceof HTMLElement
-         ? range.commonAncestorContainer.closest<HTMLElement>('[data-rich]')
-         : range.commonAncestorContainer.parentElement?.closest<HTMLElement>('[data-rich]')
-      if (!richElement) return
-
-      const currentContent = domToInlineContent(richElement)
-      if (currentContent.length === 0) return
-
-      const startChar = countCharsToPosition(richElement, range.startContainer, range.startOffset)
-      const endChar   = countCharsToPosition(richElement, range.endContainer,   range.endOffset)
-      if (startChar < 0 || endChar < 0 || startChar === endChar) return
-
-      const updatedContent = applyColorToRange(currentContent, startChar, endChar, field, colorValue)
-
-      // Rewrite the element's innerHTML
-      richElement.innerHTML = renderInlineContent(updatedContent)
-
-      // Restore selection
-      restoreSelectionRange(richElement, startChar, endChar)
-
-      // Re-capture the now-current selection. The innerHTML rewrite above destroyed the
-      // nodes savedRange pointed at; refreshing it lets repeated applies (the ColorPicker
-      // emits onChange continuously while dragging) restore a valid range each time
-      // instead of a detached one. Closing the picker is left to the discrete callers
-      // (quick-pick swatch / remove) so a live drag stays open.
-      const restoredSelection = window.getSelection()
-      if (restoredSelection && restoredSelection.rangeCount > 0) {
-         savedRange.current = restoredSelection.getRangeAt(0).cloneRange()
-      }
-
-      // Re-derive the active colors from the settled selection so the button indicators
-      // reflect the committed model. Deferred to the next frame so the innerHTML rewrite
-      // and selection restore have committed — reading colorValue directly would be
-      // clobbered by the debounced selectionchange re-read that follows. Re-derives both
-      // fields so font and highlight indicators stay consistent regardless of which one
-      // was just picked.
-      requestAnimationFrame(() => {
-         const settledSelection = window.getSelection()
-         if (!settledSelection || settledSelection.rangeCount === 0) return
-         const settledRange = settledSelection.getRangeAt(0)
-         const activeColors = deriveActiveColorsAt(richElement, settledRange.startContainer, settledRange.startOffset)
-         setFormatState(previous => ({
-            ...previous,
-            fontColor:      activeColors.fontColor,
-            highlightColor: activeColors.highlightColor,
-         }))
-      })
-
-      // Record settled custom colors (those not in the curated palette) into the recents
-      // backlog. Debounced so dragging the ColorPicker — which emits onChange continuously
-      // — records only the final value the user lands on, not every intermediate hue.
-      const palette: readonly string[] = field === 'color' ? FONT_COLOR_PALETTE : HIGHLIGHT_COLOR_PALETTE
-      if (colorValue !== undefined && !palette.includes(colorValue)) {
-         if (recentColorTimerRef.current) clearTimeout(recentColorTimerRef.current)
-         recentColorTimerRef.current = setTimeout(() => {
-            setRecentColors(pushRecentColor(field, colorValue))
-         }, 400)
-      }
-   }
-
-   // ============================================================
-   // Button class helper
-   // ============================================================
 
    function formatButtonClass(active: boolean): string {
       return `w-7 h-7 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
@@ -693,10 +192,10 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             <div className="flex items-center gap-0.5 px-1.5 py-1">
 
                {/* Formatting group */}
-               <button className={formatButtonClass(formatState.bold)}   title={t.formatBold}         onClick={() => { cmd('bold');   refreshFormatState() }}>
+               <button className={formatButtonClass(formatState.bold)}   title={t.formatBold}         onClick={() => { execFormatCommand('bold');   refreshFormatState() }}>
                   <Bold size={13} />
                </button>
-               <button className={formatButtonClass(formatState.italic)} title={t.formatItalic}       onClick={() => { cmd('italic'); refreshFormatState() }}>
+               <button className={formatButtonClass(formatState.italic)} title={t.formatItalic}       onClick={() => { execFormatCommand('italic'); refreshFormatState() }}>
                   <Italic size={13} />
                </button>
                <button
@@ -710,10 +209,10 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
 
                <div className="w-px h-4 bg-border mx-1" />
 
-               <button className={formatButtonClass(formatState.underline)}     title={t.formatUnderline}     onClick={() => { cmd('underline');    refreshFormatState() }}>
+               <button className={formatButtonClass(formatState.underline)}     title={t.formatUnderline}     onClick={() => { execFormatCommand('underline');    refreshFormatState() }}>
                   <Underline size={13} />
                </button>
-               <button className={formatButtonClass(formatState.strikethrough)} title={t.formatStrikethrough} onClick={() => { cmd('strikeThrough'); refreshFormatState() }}>
+               <button className={formatButtonClass(formatState.strikethrough)} title={t.formatStrikethrough} onClick={() => { execFormatCommand('strikeThrough'); refreshFormatState() }}>
                   <Strikethrough size={13} />
                </button>
 
@@ -843,8 +342,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                                     }`}
                                     onClick={() => {
                                        const sel = window.getSelection()
-                                       if (savedRange.current) { sel?.removeAllRanges(); sel?.addRange(savedRange.current) }
-                                       cmd('createLink', `#${blockAnchor(block)}`)
+                                       if (savedRangeRef.current) { sel?.removeAllRanges(); sel?.addRange(savedRangeRef.current) }
+                                       execFormatCommand('createLink', `#${blockAnchor(block)}`)
                                        closeLinkMode()
                                     }}
                                  >
@@ -878,8 +377,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                                     }`}
                                     onClick={() => {
                                        const sel = window.getSelection()
-                                       if (savedRange.current) { sel?.removeAllRanges(); sel?.addRange(savedRange.current) }
-                                       cmd('createLink', `#section-${section.id}`)
+                                       if (savedRangeRef.current) { sel?.removeAllRanges(); sel?.addRange(savedRangeRef.current) }
+                                       execFormatCommand('createLink', `#section-${section.id}`)
                                        closeLinkMode()
                                     }}
                                  >
@@ -923,114 +422,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   </div>
                </div>
             )}
-         </div>
-      </div>
-   )
-}
-
-// ============================================================
-// Inline color popover (file-local)
-// ============================================================
-
-interface InlineColorPopoverProps {
-   /** Currently active color hex, or undefined when the field is unset. */
-   activeColor: string | undefined
-   /** Curated quick-pick palette (existing font/highlight values — no new colors). */
-   palette:     readonly string[]
-   /** Recently-used custom colors (most-recent-first), shown as a quick-pick row. */
-   recent:      readonly string[]
-   /** Localised label for the recent-colors row. */
-   recentLabel: string
-   /** Localised label for the "remove color" action. */
-   removeLabel: string
-   /** Apply a color to the selection (undefined clears the field). Does not close. */
-   onApply:     (color: string | undefined) => void
-   /** Close the popover — used by the discrete actions (quick-pick swatch / remove). */
-   onClose:     () => void
-}
-
-/** A single 22px color swatch button shared by the curated and recent rows. */
-function ColorSwatchButton({ color, isActive, onPick }: {
-   color:    string
-   isActive: boolean
-   onPick:   (color: string) => void
-}) {
-   return (
-      <button
-         title={color}
-         onClick={() => onPick(color)}
-         className="cursor-pointer rounded-md transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-         style={{
-            width:           22,
-            height:          22,
-            backgroundColor: color,
-            boxShadow:       isActive
-               ? `0 0 0 2px var(--color-raised), 0 0 0 4px ${color}`
-               : '0 0 0 1px rgba(0,0,0,0.18)',
-         }}
-      />
-   )
-}
-
-/**
- * Floating color popover shared by the font-color and highlight-color buttons.
- * Mirrors the accent-color picker in AppearanceMenu: a row of curated quick-pick
- * swatches plus the full ColorPicker for custom colors. The ColorPicker emits
- * onChange continuously while dragging, so it applies without closing; quick-pick
- * swatches and the remove action are discrete and close on selection.
- *
- * A "recent" row surfaces previously-used custom colors (those not in the curated
- * palette) so they can be re-applied in one click.
- */
-function InlineColorPopover({ activeColor, palette, recent, recentLabel, removeLabel, onApply, onClose }: InlineColorPopoverProps) {
-   const pickAndClose = (color: string) => { onApply(color); onClose() }
-
-   return (
-      <div
-         className="absolute w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
-         style={{
-            top:       'calc(100% + 6px)',
-            left:      '50%',
-            transform: 'translateX(-50%)',
-            animation: 'link-panel-in 120ms ease-out both',
-            zIndex:    10,
-         }}
-         onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
-      >
-         {/* Curated quick-pick swatches */}
-         <div className="flex flex-wrap gap-1 p-2">
-            {palette.map(color => (
-               <ColorSwatchButton key={color} color={color} isActive={activeColor === color} onPick={pickAndClose} />
-            ))}
-         </div>
-
-         {/* Recently-used custom colors */}
-         {recent.length > 0 && (
-            <div className="border-t border-border px-2 pt-1.5 pb-2">
-               <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-1 pb-1.5">
-                  {recentLabel}
-               </div>
-               <div className="flex flex-wrap gap-1">
-                  {recent.map(color => (
-                     <ColorSwatchButton key={color} color={color} isActive={activeColor === color} onPick={pickAndClose} />
-                  ))}
-               </div>
-            </div>
-         )}
-
-         {/* Full custom color picker — replaces the old native <input type="color"> */}
-         <div className="border-t border-border p-2">
-            <ColorPicker value={activeColor ?? palette[0]} onChange={color => onApply(color)} />
-         </div>
-
-         {/* Remove color */}
-         <div className="border-t border-border px-2 py-1.5">
-            <button
-               onClick={() => { onApply(undefined); onClose() }}
-               className="w-full text-left text-xs text-muted hover:text-text transition-colors cursor-pointer px-1 py-0.5 rounded"
-            >
-               {removeLabel}
-            </button>
          </div>
       </div>
    )
