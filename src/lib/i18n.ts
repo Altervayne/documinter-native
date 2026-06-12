@@ -144,6 +144,7 @@ export const translations = {
       formatHighlightColor: 'Highlight color',
       removeFontColor:      'Remove color',
       removeHighlightColor: 'Remove highlight',
+      recentColors:         'Recent',
       // Link panel
       linkPanelUrl:             'URL',
       linkPanelJumpToBlock:     'Jump to block',
@@ -339,6 +340,7 @@ export const translations = {
       formatHighlightColor: 'Couleur de surbrillance',
       removeFontColor:      'Supprimer la couleur',
       removeHighlightColor: 'Supprimer le surlignage',
+      recentColors:         'Récentes',
       // Link panel
       linkPanelUrl:             'URL',
       linkPanelJumpToBlock:     'Aller au bloc',
