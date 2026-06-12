@@ -14,34 +14,48 @@ import { ColorPicker } from './ColorPicker'
 // Color palettes
 // ============================================================
 
-/** Curated font-color palette — all pass WCAG AA on white (#ffffff) and dark (#1a1a1a) backgrounds. */
+/** Curated font-color palette — base/light pairs across the hue wheel plus neutrals. */
 const FONT_COLOR_PALETTE = [
-   '#dc2626', // red-600
-   '#ea580c', // orange-600
-   '#d97706', // amber-600
-   '#16a34a', // green-600
-   '#0891b2', // cyan-600
-   '#2563eb', // blue-600
-   '#7c3aed', // violet-600
-   '#db2777', // pink-600
-   '#000000', // black
-   '#374151', // gray-700
-   '#6b7280', // gray-500
-   '#ffffff', // white
+   '#111111', // Black
+   '#6b6b6b', // Dark Gray
+   '#ffffff', // White
+   '#d0d0d0', // Light Gray
+   '#1a5fa8', // Blue
+   '#5ba3e0', // Light Blue
+   '#1a7a4a', // Green
+   '#5dbf8a', // Light Green
+   '#b83232', // Red
+   '#e07a7a', // Light Red
+   '#c47a00', // Amber
+   '#f0b84a', // Light Amber
+   '#7b3db8', // Purple
+   '#b885e8', // Light Purple
+   '#b8365a', // Pink
+   '#e882a4', // Light Pink
+   '#1a8c8c', // Teal
+   '#62c4c4', // Light Teal
 ] as const
 
-/** Curated highlight-color palette — all pass WCAG AA for dark text (#1a1a1a) on the swatch itself. */
+/** Curated highlight-color palette — soft pastels that keep dark text legible on the swatch. */
 const HIGHLIGHT_COLOR_PALETTE = [
-   '#fef08a', // yellow-200
-   '#bbf7d0', // green-200
-   '#bae6fd', // sky-200
-   '#ddd6fe', // violet-200
-   '#fecdd3', // rose-200
-   '#fed7aa', // orange-200
-   '#e0f2fe', // sky-100
-   '#f3e8ff', // purple-100
-   '#fce7f3', // pink-100
-   '#ecfccb', // lime-100
+   '#fff9c4', // Yellow
+   '#ffe0b2', // Peach
+   '#ffcdd2', // Rose
+   '#f8bbd9', // Pink
+   '#e8d5f5', // Lavender
+   '#d4e4f7', // Sky
+   '#c8edf5', // Ice
+   '#c8f0e4', // Mint
+   '#d8f0c4', // Sage
+   '#fff0c4', // Cream
+   '#ffe4c4', // Apricot
+   '#ffd6d6', // Blush
+   '#edd5f0', // Lilac
+   '#d5e8ff', // Periwinkle
+   '#d5f0f0', // Aqua
+   '#e8f5d5', // Lime
+   '#f5e8d5', // Sand
+   '#e8e8e8', // Mist
 ] as const
 
 // ============================================================
