@@ -78,6 +78,15 @@ function exportBlock(block: Block): string {
    return ''
 }
 
+/**
+ * Render a block array to an HTML string using the same per-block logic as the full
+ * HTML export. Pure — no downloads, no DOM access. Used by the binder card preview
+ * iframe to render each preview section's blocks inside a `.doc-render` wrapper.
+ */
+export function renderBlocksToDocHtml(blocks: Block[]): string {
+   return blocks.map(exportBlock).join('\n')
+}
+
 interface Colors {
    bodyBg: string; cardBg: string; cardShadow: string
    text: string; textMuted: string; textH: string; textP: string

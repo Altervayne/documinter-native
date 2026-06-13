@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
-import { readAutosave, writeAutosave } from './lib/storage'
+import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, type LoadedDocument } from './lib/storage'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -14,6 +14,7 @@ import { useContainerMutations } from './hooks/useContainerMutations'
 // -- Context Imports --
 import { DocumentMutationsContext } from './contexts/DocumentMutationsContext'
 import { LangProvider } from './contexts/LangContext'
+import { useToast } from './contexts/ToastContext'
 
 // -- Component Imports --
 import { Topbar } from './organisms/Topbar'
@@ -22,6 +23,8 @@ import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
 import { MintdownEditor } from './organisms/MintdownEditor'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
+import { Binder } from './organisms/Binder'
+import { ConfirmDialog } from './molecules/ConfirmDialog'
 import { ToastContainer } from './atoms/ToastContainer'
 
 // -- Markdown Imports --
@@ -33,15 +36,17 @@ import type { BlockType, DocMeta, DocState, Mode, SaveStatus, Section } from './
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
+const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'
+const DEFAULT_DOC_ACCENT = '#2dcea8'
 
 export default function App() {
+   // Document state starts blank; the real document is hydrated asynchronously from
+   // IndexedDB on mount (see the hydration effect below).
    const [sections, setSections] = useState<Section[]>(() => {
-      const saved = readAutosave()
-      if (saved) return saved.sections
       const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
       return [mkSection(translations[initialLang].defaultSectionTitle)]
    })
-   const [meta, setMeta]         = useState<DocMeta>(() => readAutosave()?.meta ?? EMPTY_META)
+   const [meta, setMeta]         = useState<DocMeta>(EMPTY_META)
    const [panelOpen, setPanelOpen] = useState(
       () => localStorage.getItem('documinter-panel-open') !== 'false'
    )
@@ -77,34 +82,122 @@ export default function App() {
    useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
    const t = translations[lang]
 
-   // Document appearance (independent of app theme)
-   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>(() => readAutosave()?.docTheme  ?? 'light')
-   const [docAccent, setDocAccent] = useState(                 () => readAutosave()?.docAccent ?? '#2dcea8')
+   // Document appearance (independent of app theme; per-document, hydrated on mount)
+   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
+   const [docAccent, setDocAccent] = useState(DEFAULT_DOC_ACCENT)
 
    // ============================================================
-   // Save status
+   // Save status + autosave (IndexedDB)
    // ============================================================
 
    const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
+   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
+   const { showToast } = useToast()
 
-   const hasMountedRef    = useRef(false)
-   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-   const writeTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+   const currentDocumentIdRef = useRef<string | null>(null)
+   const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
+   const hasHydratedRef       = useRef(false)
+   const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+   // Captured during the first render so the pointer-persistence effect can't wipe it
+   // before the hydration effect reads it.
+   const initialPointerRef    = useRef<string | null>(localStorage.getItem(CURRENT_DOCUMENT_ID_KEY))
 
-   // Autosave on any document change — debounced 1.5 seconds
+   // Keep a stable, always-current notifier so the autosave effect doesn't depend on t/showToast.
+   const notifySaveFailedRef  = useRef<() => void>(() => {})
    useEffect(() => {
-      if (!hasMountedRef.current) { hasMountedRef.current = true; return }
+      notifySaveFailedRef.current = () => showToast(t.saveFailed, { type: 'error' })
+   })
+
+   // Apply a programmatically-loaded document without dirtying / re-saving it.
+   const applyLoadedDocument = useCallback((loaded: LoadedDocument, id: string | null) => {
+      skipNextAutosaveRef.current = true
+      setMeta(loaded.meta)
+      setSections(loaded.sections)
+      setDocTheme(loaded.docTheme)
+      setDocAccent(loaded.docAccent)
+      currentDocumentIdRef.current = id
+      setCurrentDocumentId(id)
+   }, [])
+
+   // Replace the in-editor document with fresh content that is NOT yet a binder record
+   // (new / JSON load / file import). Resets currentDocumentId to null so the next edit
+   // creates a new IndexedDB record rather than overwriting the previously-open document,
+   // and skips the autosave cycle this replacement triggers.
+   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[]) => {
+      skipNextAutosaveRef.current = true
+      setMeta(nextMeta)
+      setSections(nextSections)
+      currentDocumentIdRef.current = null
+      setCurrentDocumentId(null)
+   }, [])
+
+   // One-time async hydration: migrate any legacy localStorage autosave, then load the
+   // last-open document by pointer. The blank default shows until this resolves.
+   useEffect(() => {
+      let cancelled = false
+      async function hydrate() {
+         const pointer = initialPointerRef.current
+         const legacy  = readAutosave()
+         try {
+            if (!pointer && legacy) {
+               // Migrate legacy autosave → IndexedDB. Keep the old key until the write confirms.
+               const migratedId = await saveDocument(
+                  { meta: legacy.meta, sections: legacy.sections },
+                  { docTheme: legacy.docTheme, docAccent: legacy.docAccent },
+               )
+               clearLegacyAutosave()
+               if (cancelled) return
+               applyLoadedDocument({ ...legacy }, migratedId)
+            } else if (pointer) {
+               const loaded = await loadDocument(pointer)
+               if (cancelled) return
+               if (loaded) applyLoadedDocument(loaded, pointer)
+               else localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)   // stale pointer → stay blank
+            }
+         } catch {
+            // IndexedDB unavailable / write failed. If we have legacy data, keep showing it
+            // in-memory as an unsaved new document (legacy key left intact for a future retry).
+            if (!cancelled && legacy && !pointer) applyLoadedDocument({ ...legacy }, null)
+         } finally {
+            if (!cancelled) hasHydratedRef.current = true
+         }
+      }
+      hydrate()
+      return () => { cancelled = true }
+   }, [applyLoadedDocument])
+
+   // Mirror currentDocumentId into a ref + persist the pointer (only after hydration, so
+   // the initial blank state can't wipe the stored pointer before it has been read).
+   useEffect(() => {
+      currentDocumentIdRef.current = currentDocumentId
+      if (!hasHydratedRef.current) return
+      if (currentDocumentId) localStorage.setItem(CURRENT_DOCUMENT_ID_KEY, currentDocumentId)
+      else localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
+   }, [currentDocumentId])
+
+   // Autosave on any document change — debounced 1.5s, persisted to IndexedDB.
+   useEffect(() => {
+      if (skipNextAutosaveRef.current) { skipNextAutosaveRef.current = false; return }
       setSaveStatus('dirty')
       autosaveTimerRef.current = setTimeout(() => {
          setSaveStatus('saving')
-         writeTimerRef.current = setTimeout(() => {
-            writeAutosave({ meta, sections, docTheme, docAccent })
+         saveDocument(
+            { meta, sections },
+            { docTheme, docAccent },
+            currentDocumentIdRef.current ?? undefined,
+         ).then(savedId => {
+            if (currentDocumentIdRef.current === null) {
+               currentDocumentIdRef.current = savedId
+               setCurrentDocumentId(savedId)
+            }
             setSaveStatus('saved')
-         }, 400)
+         }).catch(() => {
+            setSaveStatus('dirty')
+            notifySaveFailedRef.current()
+         })
       }, 1500)
       return () => {
          if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
-         if (writeTimerRef.current    !== null) clearTimeout(writeTimerRef.current)
       }
    }, [meta, sections, docTheme, docAccent])
 
@@ -121,13 +214,103 @@ export default function App() {
       document.title  = saveStatus !== 'clean' ? `* ${baseTitle}` : baseTitle
    }, [saveStatus, meta.title])
 
-   // Manual save: cancel any pending autosave, write immediately, mark saved
-   const handleManualSave = useCallback(() => {
+   // Cancel any pending autosave and write the current document immediately. Awaitable
+   // so callers (manual save, opening the binder) can flush before continuing.
+   const persistNow = useCallback(async (): Promise<void> => {
       if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
-      if (writeTimerRef.current    !== null) { clearTimeout(writeTimerRef.current);    writeTimerRef.current    = null }
-      writeAutosave({ meta, sections, docTheme, docAccent })
-      setSaveStatus('saved')
-   }, [meta, sections, docTheme, docAccent])
+      setSaveStatus('saving')
+      try {
+         const savedId = await saveDocument(
+            { meta, sections },
+            { docTheme, docAccent },
+            currentDocumentIdRef.current ?? undefined,
+         )
+         if (currentDocumentIdRef.current === null) {
+            currentDocumentIdRef.current = savedId
+            setCurrentDocumentId(savedId)
+         }
+         setSaveStatus('saved')
+      } catch {
+         setSaveStatus('dirty')
+         showToast(t.saveFailed, { type: 'error' })
+      }
+   }, [meta, sections, docTheme, docAccent, showToast, t])
+
+   // Manual save
+   const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
+
+   // ============================================================
+   // Binder (document library)
+   // ============================================================
+
+   const [binderOpen, setBinderOpen] = useState(false)
+
+   // Open the binder — flush any pending changes first so the current document
+   // appears up-to-date in the list, then mount the binder in place of the editor.
+   const handleOpenBinder = useCallback(async () => {
+      if (saveStatus !== 'clean') await persistNow()
+      setBinderOpen(true)
+   }, [saveStatus, persistNow])
+
+   // Pending binder navigation awaiting unsaved-changes confirmation.
+   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'open'; id: string } | { kind: 'new' } | null>(null)
+
+   // True when the current document isn't durably saved (flush in-flight or failed).
+   const isNotDurablySaved = saveStatus === 'saving' || saveStatus === 'dirty'
+
+   // Load a stored document into the editor and close the binder.
+   const openDocumentNow = useCallback(async (id: string) => {
+      try {
+         const loaded = await loadDocument(id)
+         if (!loaded) { showToast(t.binderOpenFailed, { type: 'error' }); return }
+         applyLoadedDocument(loaded, id)
+         setBinderOpen(false)
+         showToast(t.binderDocumentOpened, { type: 'success' })
+      } catch {
+         // Leave the binder open; nothing was replaced.
+         showToast(t.binderOpenFailed, { type: 'error' })
+      }
+   }, [applyLoadedDocument, showToast, t])
+
+   // Create a blank document and close the binder (currentDocumentId reset to null,
+   // so the first edit creates a fresh IndexedDB record).
+   const newDocumentNow = useCallback(() => {
+      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
+      setBinderOpen(false)
+      showToast(t.binderDocumentCreated, { type: 'success' })
+   }, [t, replaceDocument, showToast])
+
+   // Open a document from the binder — guard against discarding unsaved changes
+   // (only fires when the open-binder flush is still in-flight or failed).
+   const handleOpenDocument = useCallback((id: string) => {
+      if (isNotDurablySaved) setPendingNavigation({ kind: 'open', id })
+      else void openDocumentNow(id)
+   }, [isNotDurablySaved, openDocumentNow])
+
+   // Create a new document from the binder — same unsaved guard.
+   const handleNewDocumentFromBinder = useCallback(() => {
+      if (isNotDurablySaved) setPendingNavigation({ kind: 'new' })
+      else newDocumentNow()
+   }, [isNotDurablySaved, newDocumentNow])
+
+   // Confirm the pending navigation (discard-and-open / discard-and-new per approved design).
+   const handleConfirmNavigation = useCallback(() => {
+      const pending = pendingNavigation
+      setPendingNavigation(null)
+      if (pending?.kind === 'open') void openDocumentNow(pending.id)
+      else if (pending?.kind === 'new') newDocumentNow()
+   }, [pendingNavigation, openDocumentNow, newDocumentNow])
+
+   const handleCancelNavigation = useCallback(() => setPendingNavigation(null), [])
+
+   // When the currently-open document is deleted from the binder, clear its id so the
+   // next edit creates a fresh record instead of resurrecting the deleted one (upsert).
+   const handleDocumentDeleted = useCallback((id: string) => {
+      if (currentDocumentIdRef.current === id) {
+         currentDocumentIdRef.current = null
+         setCurrentDocumentId(null)
+      }
+   }, [])
 
    // Mode system
    const [mode, setMode] = useState<Mode>('wysiwyg')
@@ -160,7 +343,7 @@ export default function App() {
    // Document-level callbacks
    // ============================================================
 
-   // Commit from the MarkdownPanel back into document state.
+   // Commit from the MarkdownPanel back into document state (live edit — autosaves normally).
    const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {
       setSections(newSections)
       setMeta(newMeta)
@@ -168,25 +351,22 @@ export default function App() {
 
    // Wipe document and start fresh.
    const handleNewDocument = useCallback(() => {
-      setSections([mkSection(t.defaultSectionTitle)])
-      setMeta(EMPTY_META)
-   }, [t])
+      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
+   }, [t, replaceDocument])
 
    // Import a Markdown file, parse it, replace the document.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
       return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         setSections(newSections)
-         setMeta(newMeta)
+         replaceDocument(newMeta, newSections)
       })
-   }, [])
+   }, [replaceDocument])
 
    // Import a Mintdown file, parse it, replace the document.
    const handleImportMintdown = useCallback((file: File): Promise<void> => {
       return importMintdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         setSections(newSections)
-         setMeta(newMeta)
+         replaceDocument(newMeta, newSections)
       })
-   }, [])
+   }, [replaceDocument])
 
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
@@ -195,9 +375,8 @@ export default function App() {
 
    // Load state from JSON
    const handleLoad = useCallback((state: DocState) => {
-      setMeta(state.meta)
-      setSections(state.sections)
-   }, [])
+      replaceDocument(state.meta, state.sections)
+   }, [replaceDocument])
 
    // Mutations — extracted into focused hooks
    const sectionMutations   = useSectionMutations(setSections, t)
@@ -206,6 +385,16 @@ export default function App() {
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
+         {binderOpen ? (
+            <Binder
+               currentDocumentId={currentDocumentId}
+               onClose={() => setBinderOpen(false)}
+               onOpenDocument={handleOpenDocument}
+               onNewDocument={handleNewDocumentFromBinder}
+               onDocumentDeleted={handleDocumentDeleted}
+            />
+         ) : (
+          <>
             <Topbar
                meta={meta}
                sections={sections}
@@ -220,6 +409,7 @@ export default function App() {
                onSetMode={handleSetMode}
                onTogglePanel={togglePanel}
                onManualSave={handleManualSave}
+               onOpenBinder={handleOpenBinder}
                onNewDocument={handleNewDocument}
                onImportMarkdown={handleImportMarkdown}
                onImportMintdown={handleImportMintdown}
@@ -299,6 +489,20 @@ export default function App() {
                   />
                </div>
             </DocumentMutationsContext.Provider>
+          </>
+         )}
+
+            {pendingNavigation && (
+               <ConfirmDialog
+                  title={t.binderUnsavedTitle}
+                  message={t.binderUnsavedMessage}
+                  confirmLabel={t.binderUnsavedProceed}
+                  cancelLabel={t.binderUnsavedCancel}
+                  danger
+                  onConfirm={handleConfirmNavigation}
+                  onCancel={handleCancelNavigation}
+               />
+            )}
 
             <ToastContainer />
          </LangProvider>

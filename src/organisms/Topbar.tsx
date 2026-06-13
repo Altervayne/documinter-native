@@ -90,6 +90,7 @@ interface TopbarProps {
    onSetMode:        (mode: Mode) => void
    onTogglePanel:    (id: PaneId) => void
    onManualSave:     () => void
+   onOpenBinder:     () => void
    onNewDocument:    () => void
    onImportMarkdown: (file: File) => Promise<void>
    onImportMintdown: (file: File) => Promise<void>
@@ -106,7 +107,7 @@ interface TopbarProps {
 
 export function Topbar({
    meta, sections, theme, docTheme, docAccent, mode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onOpenBinder,
    onNewDocument, onImportMarkdown, onImportMintdown, onDocThemeChange, onDocAccentChange,
    onAddSection, onAddBlock, onMetaChange,
 }: TopbarProps) {
@@ -303,6 +304,7 @@ export function Topbar({
 
                {/* Menu bar */}
                <FileMenu
+                  onOpenBinder={onOpenBinder}
                   onNewDocument={handleNewDocument}
                   onLoadJSON={handleLoadJSON}
                   onSaveJSON={handleSaveJSON}

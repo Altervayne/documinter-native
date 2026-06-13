@@ -19,5 +19,14 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Honor the `_`-prefix "intentionally unused" convention, and allow rest-sibling
+      // destructuring to discard fields (used by the migrate* helpers in lib/storage.ts).
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
+    },
   },
 ])

@@ -98,6 +98,37 @@ export interface DocState {
    sections: Section[]
 }
 
+// ============================================================
+// Binder — IndexedDB document library
+// ============================================================
+
+/** A section's title + a slice of its blocks, for the card preview (image src stripped). */
+export interface PreviewSection {
+   title:  string
+   blocks: Block[]
+}
+
+/** Lightweight binder record (the `documents` object store). Returned by
+ *  listDocuments(): everything a card needs, WITHOUT the heavy sections array. */
+export interface BinderDocumentRecord {
+   id:              string             // crypto.randomUUID()
+   meta:            DocMeta
+   createdAt:       string             // ISO 8601, set once
+   updatedAt:       string             // ISO 8601, rewritten on every save
+   sectionTitles:   string[]           // all section titles (cheap; count = .length)
+   previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped — no base64
+   docTheme:        'light' | 'dark'   // per-document presentation
+   docAccent:       string             // per-document presentation
+   schemaVersion:   number
+}
+
+/** Heavy binder content (the `documentContent` object store) — the full sections
+ *  array, base64 image src retained. Read only when a document is opened/exported. */
+export interface BinderDocumentContent {
+   id:       string
+   sections: Section[]
+}
+
 export type Mode = 'wysiwyg' | 'preview'
 
 // ============================================================
