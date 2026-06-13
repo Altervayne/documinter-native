@@ -9,7 +9,7 @@ interface DocumentCardMetaProps {
 /** Right-side metadata panel of a document card. Fed entirely from the light record. */
 export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
    const { t, lang } = useLang()
-   const { meta, sectionTitles, updatedAt } = record
+   const { meta, sectionTitles, updatedAt, lastOpenedAt } = record
 
    const metaParts     = [meta.module, meta.env, meta.author, meta.date].filter(Boolean)
    const sectionLabel  = sectionTitles.length === 1 ? t.binderSectionOne : t.binderSectionMany
@@ -46,8 +46,11 @@ export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
             </ul>
          )}
 
-         <div className="mt-auto pt-1 text-[0.7rem] text-muted/60">
-            {formatRelativeTime(updatedAt, lang)}
+         <div className="mt-auto pt-1 flex flex-col gap-0.5 text-[0.7rem] text-muted/60">
+            <span>{formatRelativeTime(updatedAt, lang)}</span>
+            <span className="text-muted/50">
+               {lastOpenedAt ? `${t.binderLastOpened}: ${formatRelativeTime(lastOpenedAt, lang)}` : t.binderNeverOpened}
+            </span>
          </div>
       </div>
    )

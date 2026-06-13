@@ -191,7 +191,8 @@ export default function App() {
                setCurrentDocumentId(savedId)
             }
             setSaveStatus('saved')
-         }).catch(() => {
+         }).catch(error => {
+            console.error('[autosave] saveDocument failed:', error)
             setSaveStatus('dirty')
             notifySaveFailedRef.current()
          })
@@ -230,7 +231,8 @@ export default function App() {
             setCurrentDocumentId(savedId)
          }
          setSaveStatus('saved')
-      } catch {
+      } catch (error) {
+         console.error('[persistNow] saveDocument failed:', error)
          setSaveStatus('dirty')
          showToast(t.saveFailed, { type: 'error' })
       }
@@ -387,6 +389,7 @@ export default function App() {
       <LangProvider lang={lang} setLang={setLang}>
          {binderOpen ? (
             <Binder
+               theme={theme}
                currentDocumentId={currentDocumentId}
                onClose={() => setBinderOpen(false)}
                onOpenDocument={handleOpenDocument}

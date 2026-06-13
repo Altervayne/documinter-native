@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import type { BinderDocumentRecord } from '../types'
 import {
-   listDocuments, deleteDocument, duplicateDocument, loadDocument, saveDocument,
+   listDocuments, deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
+   loadDocument, saveDocument, type DocumentListFilter,
 } from '../lib/storage'
 import { downloadHTML } from '../lib/export'
 import { exportMarkdownFile } from '../lib/markdown'
@@ -10,38 +11,40 @@ import { useToast } from '../contexts/ToastContext'
 import { useLang } from '../contexts/LangContext'
 
 /**
- * Loads the binder document list (updatedAt-descending, lightweight records only — no
- * sections/base64) and exposes the card actions: delete (with undo), duplicate, and the
- * three exports. Each export loads the full document on demand and runs a pure exporter.
+ * Loads the filtered/sorted document list for the current binder view (lightweight records
+ * only — no sections/base64) and exposes the card actions: delete (with undo), duplicate,
+ * the three exports, move, and reorder. Mutations bump the shared data version (onChanged)
+ * so the nav and grid refresh together. Re-reads when the filter or data version changes.
  */
-export function useBinderDocuments() {
+export function useBinderDocuments(filter: DocumentListFilter, dataVersion: number, onChanged: () => void) {
    const { showToast } = useToast()
    const { t, lang }   = useLang()
+
+   const { folderId, search, sortBy, sortDir } = filter
 
    const [documents, setDocuments] = useState<BinderDocumentRecord[]>([])
    const [isLoading, setIsLoading] = useState(true)
 
-   const refresh = useCallback(async () => {
-      const records = await listDocuments()
-      setDocuments(records)
-      setIsLoading(false)
-   }, [])
-
-   // Initial load (guarded against the binder closing mid-flight).
    useEffect(() => {
       let active = true
-      listDocuments()
+      listDocuments({ folderId, search, sortBy, sortDir })
          .then(records => { if (active) { setDocuments(records); setIsLoading(false) } })
-         .catch(() => { if (active) setIsLoading(false) })
+         .catch(error => {
+            if (!active) return
+            setIsLoading(false)
+            // Surfacing this (was silently swallowed): a throw here shows an empty binder.
+            console.error('[binder] listDocuments failed — grid will appear empty:', error)
+            showToast(t.binderActionFailed, { type: 'error' })
+         })
       return () => { active = false }
-   }, [])
+   }, [folderId, search, sortBy, sortDir, dataVersion, showToast, t])
 
    const handleDelete = useCallback(async (id: string) => {
       try {
-         // Snapshot the full document first so the toast can offer an undo.
-         const snapshot = await loadDocument(id)
+         // Snapshot the full document first so the toast can offer an undo (non-touching read).
+         const snapshot = await loadDocument(id, { touch: false })
          await deleteDocument(id)
-         await refresh()
+         onChanged()
          showToast(t.binderDocumentDeleted, {
             type: 'success',
             action: snapshot
@@ -52,7 +55,7 @@ export function useBinderDocuments() {
                           { meta: snapshot.meta, sections: snapshot.sections },
                           { docTheme: snapshot.docTheme, docAccent: snapshot.docAccent },
                           id,
-                       ).then(refresh)
+                       ).then(onChanged)
                     },
                  }
                : undefined,
@@ -60,21 +63,39 @@ export function useBinderDocuments() {
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [refresh, showToast, t])
+   }, [onChanged, showToast, t])
 
    const handleDuplicate = useCallback(async (id: string) => {
       try {
          await duplicateDocument(id)
-         await refresh()
+         onChanged()
          showToast(t.binderDocumentDuplicated, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [refresh, showToast, t])
+   }, [onChanged, showToast, t])
+
+   const handleMove = useCallback(async (id: string, targetFolderId: string) => {
+      try {
+         await moveDocument(id, targetFolderId)
+         onChanged()
+      } catch {
+         showToast(t.binderActionFailed, { type: 'error' })
+      }
+   }, [onChanged, showToast, t])
+
+   const handleReorder = useCallback(async (orderedIds: string[]) => {
+      try {
+         await reorderDocuments(orderedIds)
+         onChanged()
+      } catch {
+         showToast(t.binderActionFailed, { type: 'error' })
+      }
+   }, [onChanged, showToast, t])
 
    const handleExportHtml = useCallback(async (id: string) => {
       try {
-         const loaded = await loadDocument(id)
+         const loaded = await loadDocument(id, { touch: false })
          if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
          downloadHTML(loaded.meta, loaded.sections, { theme: loaded.docTheme, accent: loaded.docAccent, lang })
          showToast(t.downloaded, { type: 'success' })
@@ -85,7 +106,7 @@ export function useBinderDocuments() {
 
    const handleExportMarkdown = useCallback(async (id: string) => {
       try {
-         const loaded = await loadDocument(id)
+         const loaded = await loadDocument(id, { touch: false })
          if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
          exportMarkdownFile(loaded.sections, loaded.meta)
          showToast(t.markdownExported, { type: 'success' })
@@ -96,7 +117,7 @@ export function useBinderDocuments() {
 
    const handleExportMintdown = useCallback(async (id: string) => {
       try {
-         const loaded = await loadDocument(id)
+         const loaded = await loadDocument(id, { touch: false })
          if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
          exportMintdownFile(loaded.sections, loaded.meta)
          showToast(t.mintdownExported, { type: 'success' })
@@ -108,9 +129,10 @@ export function useBinderDocuments() {
    return {
       documents,
       isLoading,
-      refresh,
       handleDelete,
       handleDuplicate,
+      handleMove,
+      handleReorder,
       handleExportHtml,
       handleExportMarkdown,
       handleExportMintdown,

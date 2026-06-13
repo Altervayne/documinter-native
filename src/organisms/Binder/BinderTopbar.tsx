@@ -1,23 +1,26 @@
 import { ArrowLeft, FilePlus } from 'lucide-react'
-import { LogoColor } from '../../atoms/Logo'
+import { LogoColor, LogoMono } from '../../atoms/Logo'
 import { Button } from '../../atoms/Button'
 import { useLang } from '../../contexts/LangContext'
 
 interface BinderTopbarProps {
+   theme:                'light' | 'dark'
    onClose:              () => void
    onNewDocument:        () => void
-   /** New-document is wired in Step 5; rendered disabled until then. */
    newDocumentDisabled?: boolean
 }
 
-export function BinderTopbar({ onClose, onNewDocument, newDocumentDisabled }: BinderTopbarProps) {
+export function BinderTopbar({ theme, onClose, onNewDocument, newDocumentDisabled }: BinderTopbarProps) {
    const { t } = useLang()
 
    return (
       <div className="flex items-center justify-between gap-4 px-4 py-2.5 border-b border-border bg-raised">
-         {/* Left: logo */}
+         {/* Left: logo — matches the main workspace topbar exactly (theme-aware, h-7) */}
          <div className="flex items-center gap-2 w-48">
-            <LogoColor className="h-6 w-auto" />
+            {theme === 'dark'
+               ? <LogoColor className="h-7 w-auto" />
+               : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
+            }
          </div>
 
          {/* Center: title */}

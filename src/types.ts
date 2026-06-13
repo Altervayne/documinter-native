@@ -108,13 +108,28 @@ export interface PreviewSection {
    blocks: Block[]
 }
 
+/** A binder folder. parentId '0' = root. Folders nest to unlimited depth. */
+export interface BinderFolderRecord {
+   id:        string    // crypto.randomUUID()
+   name:      string
+   parentId:  string    // '0' = root
+   createdAt: string    // ISO 8601
+   updatedAt: string    // ISO 8601
+   sortOrder: number    // manual sort position among siblings
+}
+
 /** Lightweight binder record (the `documents` object store). Returned by
- *  listDocuments(): everything a card needs, WITHOUT the heavy sections array. */
+ *  listDocuments(): everything a card needs, WITHOUT the heavy sections array.
+ *  NOTE: lastOpenedAt / folderId / sortOrder are binder-only and are NEVER serialized
+ *  to any export format (HTML/MD/Mintdown/JSON) — exports operate on DocState only. */
 export interface BinderDocumentRecord {
    id:              string             // crypto.randomUUID()
    meta:            DocMeta
    createdAt:       string             // ISO 8601, set once
    updatedAt:       string             // ISO 8601, rewritten on every save
+   lastOpenedAt:    string | undefined // ISO 8601, undefined until first open
+   folderId:        string             // '0' = root (unfiled)
+   sortOrder:       number             // manual sort position within folder
    sectionTitles:   string[]           // all section titles (cheap; count = .length)
    previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped — no base64
    docTheme:        'light' | 'dark'   // per-document presentation

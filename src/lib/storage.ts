@@ -14,7 +14,7 @@ import { parseInlineContent, stripTrailingNewlines } from './inline'
 import { cloneBlock } from './document'
 import type {
    Block, DocMeta, DocState, InlineContent, ListItem, Section,
-   BinderDocumentRecord, BinderDocumentContent, PreviewSection,
+   BinderDocumentRecord, BinderDocumentContent, BinderFolderRecord, PreviewSection,
 } from '../types'
 
 // Fields present in JSON files saved before the InlineContent migration.
@@ -204,13 +204,17 @@ export function loadJSONFile(
 // deserializing base64, so the binder card grid stays cheap.
 // ============================================================
 
-const DATABASE_NAME         = 'documinter'
-const DATABASE_VERSION      = 1
-const DOCUMENTS_STORE       = 'documents'
+const DATABASE_NAME          = 'documinter'
+const DOCUMENTS_STORE        = 'documents'
 const DOCUMENT_CONTENT_STORE = 'documentContent'
-const UPDATED_AT_INDEX      = 'by_updatedAt'
-const PREVIEW_BLOCK_COUNT   = 8
-const RECORD_SCHEMA_VERSION = 1
+const FOLDERS_STORE          = 'folders'
+const UPDATED_AT_INDEX       = 'by_updatedAt'
+const FOLDER_ID_INDEX        = 'by_folderId'
+const SORT_ORDER_INDEX       = 'by_sortOrder'
+const PARENT_ID_INDEX        = 'by_parentId'
+const ROOT_FOLDER_ID         = '0'
+const PREVIEW_BLOCK_COUNT    = 8
+const RECORD_SCHEMA_VERSION  = 1
 
 /** Presentation settings persisted per-document alongside the DocState. */
 export interface DocPresentation {
@@ -226,47 +230,142 @@ export interface LoadedDocument {
    docAccent: string
 }
 
+export type DocumentSortBy = 'updatedAt' | 'createdAt' | 'lastOpenedAt' | 'title' | 'manual'
+
+/** Which timestamp a search date-range applies to. */
+export type DocumentDateField = 'updatedAt' | 'createdAt' | 'lastOpenedAt'
+
+/**
+ * Multi-criteria search. Every present criterion is ANDed together. A date range applies to
+ * the chosen dateField; bounds are inclusive 'YYYY-MM-DD' calendar days compared against the
+ * day portion of each record's ISO timestamp. hasNeverOpened keeps only documents that have
+ * no lastOpenedAt.
+ */
+export interface SearchCriteria {
+   text?:           string             // case-insensitive substring across meta + formatted dates
+   dateField?:      DocumentDateField   // default 'updatedAt'
+   dateFrom?:       string              // inclusive lower bound (YYYY-MM-DD)
+   dateTo?:         string              // inclusive upper bound (YYYY-MM-DD)
+   folderId?:       string              // scope to a specific folder (overrides the nav folder)
+   hasNeverOpened?: boolean             // keep only never-opened documents
+}
+
+/** Filter/sort/search options for listDocuments. */
+export interface DocumentListFilter {
+   folderId?: string                  // nav folder scope (undefined = all folders)
+   sortBy?:   DocumentSortBy          // default 'updatedAt'
+   sortDir?:  'asc' | 'desc'          // default 'desc'; ignored for 'manual'
+   criteria?: SearchCriteria          // multi-criteria search (all ANDed; additive to folderId)
+}
+
 // ── Internal: connection + promise wrappers ─────────────────
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
-/** Open (or create/upgrade) the binder database. Cached singleton; consumers never call this directly. */
-function openDatabase(): Promise<IDBDatabase> {
-   if (databasePromise) return databasePromise
-   databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+/**
+ * Create any missing store/index (idempotent). Called from onupgradeneeded — safe to run
+ * from any prior version; repairs partial schemas and handles fresh installs identically.
+ */
+function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void {
+   if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) {
+      database.createObjectStore(DOCUMENTS_STORE, { keyPath: 'id' })
+   }
+   if (!database.objectStoreNames.contains(DOCUMENT_CONTENT_STORE)) {
+      database.createObjectStore(DOCUMENT_CONTENT_STORE, { keyPath: 'id' })
+   }
+   if (!database.objectStoreNames.contains(FOLDERS_STORE)) {
+      database.createObjectStore(FOLDERS_STORE, { keyPath: 'id' })
+   }
+
+   const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
+   if (!documentsStore.indexNames.contains(UPDATED_AT_INDEX)) documentsStore.createIndex(UPDATED_AT_INDEX, 'updatedAt', { unique: false })
+   if (!documentsStore.indexNames.contains(FOLDER_ID_INDEX))  documentsStore.createIndex(FOLDER_ID_INDEX, 'folderId', { unique: false })
+   if (!documentsStore.indexNames.contains(SORT_ORDER_INDEX)) documentsStore.createIndex(SORT_ORDER_INDEX, 'sortOrder', { unique: false })
+
+   const foldersStore = transaction.objectStore(FOLDERS_STORE)
+   if (!foldersStore.indexNames.contains(PARENT_ID_INDEX)) foldersStore.createIndex(PARENT_ID_INDEX, 'parentId', { unique: false })
+
+   // Backfill folderId / sortOrder / lastOpenedAt on any documents that predate them.
+   const cursorRequest = documentsStore.openCursor()
+   cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result
+      if (!cursor) return
+      const record = cursor.value as Partial<BinderDocumentRecord>
+      let changed = false
+      if (record.folderId === undefined)  { record.folderId = ROOT_FOLDER_ID; changed = true }
+      if (record.sortOrder === undefined) { record.sortOrder = 0;             changed = true }
+      if (!('lastOpenedAt' in record))    { record.lastOpenedAt = undefined;  changed = true }
+      if (changed) cursor.update(record)
+      cursor.continue()
+   }
+}
+
+/** True when every required store + index exists in the live database. */
+function hasCompleteSchema(database: IDBDatabase): boolean {
+   if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) return false
+   if (!database.objectStoreNames.contains(DOCUMENT_CONTENT_STORE)) return false
+   if (!database.objectStoreNames.contains(FOLDERS_STORE)) return false
+   try {
+      const transaction     = database.transaction([DOCUMENTS_STORE, FOLDERS_STORE], 'readonly')
+      const documentIndexes = transaction.objectStore(DOCUMENTS_STORE).indexNames
+      const folderIndexes   = transaction.objectStore(FOLDERS_STORE).indexNames
+      return documentIndexes.contains(UPDATED_AT_INDEX)
+          && documentIndexes.contains(FOLDER_ID_INDEX)
+          && documentIndexes.contains(SORT_ORDER_INDEX)
+          && folderIndexes.contains(PARENT_ID_INDEX)
+   } catch {
+      return false
+   }
+}
+
+/** Open the database at a specific version, or (version omitted) at its current version. */
+function openAtVersion(version?: number): Promise<IDBDatabase> {
+   return new Promise<IDBDatabase>((resolve, reject) => {
       let request: IDBOpenDBRequest
       try {
-         request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
+         request = version === undefined ? indexedDB.open(DATABASE_NAME) : indexedDB.open(DATABASE_NAME, version)
       } catch (error) {
-         databasePromise = null
          reject(error instanceof Error ? error : new Error('IndexedDB is unavailable'))
          return
       }
       request.onupgradeneeded = () => {
-         const database = request.result
-         if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) {
-            const documentsStore = database.createObjectStore(DOCUMENTS_STORE, { keyPath: 'id' })
-            documentsStore.createIndex(UPDATED_AT_INDEX, 'updatedAt', { unique: false })
-         }
-         if (!database.objectStoreNames.contains(DOCUMENT_CONTENT_STORE)) {
-            database.createObjectStore(DOCUMENT_CONTENT_STORE, { keyPath: 'id' })
-         }
+         const transaction = request.transaction
+         if (transaction) ensureSchema(request.result, transaction)
       }
       request.onsuccess = () => {
          const database = request.result
-         // If another tab triggers a version upgrade, close so it isn't blocked.
+         // If another tab requests a version upgrade, close so it isn't blocked.
          database.onversionchange = () => { database.close(); databasePromise = null }
          resolve(database)
       }
-      request.onerror = () => {
-         databasePromise = null
-         reject(request.error ?? new Error('Failed to open IndexedDB'))
-      }
-      request.onblocked = () => {
-         databasePromise = null
-         reject(new Error('IndexedDB upgrade blocked by another open tab'))
-      }
+      request.onerror   = () => reject(request.error ?? new Error('Failed to open IndexedDB'))
+      request.onblocked = () => reject(new Error('IndexedDB upgrade blocked by another open tab'))
    })
+}
+
+/**
+ * Open the binder database, self-healing a partial/old schema. Opens at the current version
+ * first; if any required store/index is missing (e.g. a database left at a version without
+ * the folders store), reopens one version higher to force onupgradeneeded to repair it —
+ * independent of the version number, so it works even when the DB is already "current".
+ * Cached singleton; consumers never call this directly.
+ */
+function openDatabase(): Promise<IDBDatabase> {
+   if (databasePromise) return databasePromise
+   databasePromise = (async () => {
+      try {
+         let database = await openAtVersion()
+         if (!hasCompleteSchema(database)) {
+            const repairVersion = database.version + 1
+            database.close()
+            database = await openAtVersion(repairVersion)
+         }
+         return database
+      } catch (error) {
+         databasePromise = null
+         throw error instanceof Error ? error : new Error('Failed to open IndexedDB')
+      }
+   })()
    return databasePromise
 }
 
@@ -322,6 +421,51 @@ function buildPreviewSections(sections: Section[]): PreviewSection[] {
    return result
 }
 
+// ── Internal: ordering, folder fetch, search/sort ───────────
+
+/** Next manual sort position for a new document appended to the end of a folder. */
+async function nextDocumentSortOrder(documentsStore: IDBObjectStore, folderId: string): Promise<number> {
+   const siblings = await requestToPromise<BinderDocumentRecord[]>(documentsStore.index(FOLDER_ID_INDEX).getAll(folderId))
+   return siblings.reduce((max, sibling) => Math.max(max, sibling.sortOrder), -1) + 1
+}
+
+/** Read a single folder record by id (its own readonly transaction). */
+async function getFolder(id: string): Promise<BinderFolderRecord | undefined> {
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readonly')
+   return requestToPromise<BinderFolderRecord | undefined>(transaction.objectStore(FOLDERS_STORE).get(id))
+}
+
+/** Case-insensitive substring match across meta fields + ISO timestamps (which contain YYYY-MM-DD). */
+function matchesDocumentSearch(record: BinderDocumentRecord, needle: string): boolean {
+   const haystack = [
+      record.meta.title, record.meta.module, record.meta.env, record.meta.author, record.meta.date,
+      record.createdAt, record.updatedAt, record.lastOpenedAt ?? '',
+   ].join(' ').toLowerCase()
+   return haystack.includes(needle)
+}
+
+/** Comparator for the in-memory document sort. 'manual' ignores direction (always ascending). */
+function documentComparator(sortBy: DocumentSortBy, sortDir: 'asc' | 'desc'): (a: BinderDocumentRecord, b: BinderDocumentRecord) => number {
+   const direction = sortDir === 'asc' ? 1 : -1
+   return (a, b) => {
+      switch (sortBy) {
+         case 'manual':    return a.sortOrder - b.sortOrder
+         case 'title':     return direction * a.meta.title.localeCompare(b.meta.title)
+         case 'createdAt': return direction * a.createdAt.localeCompare(b.createdAt)
+         case 'lastOpenedAt': {
+            // Never-opened documents always sort last, regardless of direction.
+            if (!a.lastOpenedAt && !b.lastOpenedAt) return 0
+            if (!a.lastOpenedAt) return 1
+            if (!b.lastOpenedAt) return -1
+            return direction * a.lastOpenedAt.localeCompare(b.lastOpenedAt)
+         }
+         case 'updatedAt':
+         default:          return direction * a.updatedAt.localeCompare(b.updatedAt)
+      }
+   }
+}
+
 // ── Public API ──────────────────────────────────────────────
 
 /**
@@ -342,17 +486,24 @@ export async function saveDocument(
    const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
    const contentStore   = transaction.objectStore(DOCUMENT_CONTENT_STORE)
 
-   // Preserve createdAt across updates. Upsert if existingId was passed but is gone.
+   // Preserve createdAt / folder placement / lastOpenedAt across updates.
+   // Upsert if existingId was passed but is gone. New records land unfiled (root), appended.
    const existing = existingId
       ? await requestToPromise<BinderDocumentRecord | undefined>(documentsStore.get(existingId))
       : undefined
-   const createdAt = existing?.createdAt ?? now
+   const createdAt    = existing?.createdAt ?? now
+   const folderId     = existing?.folderId ?? ROOT_FOLDER_ID
+   const lastOpenedAt = existing?.lastOpenedAt
+   const sortOrder    = existing?.sortOrder ?? await nextDocumentSortOrder(documentsStore, ROOT_FOLDER_ID)
 
    const record: BinderDocumentRecord = {
       id,
       meta:          state.meta,
       createdAt,
       updatedAt:     now,
+      lastOpenedAt,
+      folderId,
+      sortOrder,
       sectionTitles: state.sections.map(section => section.title),
       previewSections: buildPreviewSections(state.sections),
       docTheme:      presentation.docTheme,
@@ -367,8 +518,8 @@ export async function saveDocument(
    return id
 }
 
-/** Load the full editable document (DocState + presentation) by id, or null if absent. */
-export async function loadDocument(id: string): Promise<LoadedDocument | null> {
+/** Read the full editable document without side effects. Internal — loadDocument wraps it. */
+async function readDocument(id: string): Promise<LoadedDocument | null> {
    const database = await openDatabase()
    const transaction = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readonly')
    const recordRequest  = transaction.objectStore(DOCUMENTS_STORE).get(id)
@@ -380,25 +531,49 @@ export async function loadDocument(id: string): Promise<LoadedDocument | null> {
    return { meta: migrated.meta, sections: migrated.sections, docTheme: record.docTheme, docAccent: record.docAccent }
 }
 
-/** All stored records ordered by updatedAt descending. Light store only — no sections/base64. */
-export async function listDocuments(): Promise<BinderDocumentRecord[]> {
+/**
+ * Load the full editable document (DocState + presentation) by id, or null if absent.
+ * Records the open in lastOpenedAt by default; pass { touch: false } for non-open reads
+ * (e.g. exporting a document from the binder, which shouldn't count as opening it).
+ */
+export async function loadDocument(id: string, options?: { touch?: boolean }): Promise<LoadedDocument | null> {
+   const document = await readDocument(id)
+   if (document && options?.touch !== false) await touchDocument(id)
+   return document
+}
+
+/** Set lastOpenedAt to now. Called by loadDocument automatically (unless touch:false). */
+export async function touchDocument(id: string): Promise<void> {
+   const database = await openDatabase()
+   const transaction = database.transaction(DOCUMENTS_STORE, 'readwrite')
+   const store = transaction.objectStore(DOCUMENTS_STORE)
+   const record = await requestToPromise<BinderDocumentRecord | undefined>(store.get(id))
+   if (record) {
+      record.lastOpenedAt = new Date().toISOString()
+      store.put(record)
+   }
+   await transactionDone(transaction)
+}
+
+/**
+ * List document records (light store only — no sections/base64), filtered by folder,
+ * searched in-memory, and sorted. Defaults to all folders, updatedAt descending.
+ */
+export async function listDocuments(filter?: DocumentListFilter): Promise<BinderDocumentRecord[]> {
    const database = await openDatabase()
    const transaction = database.transaction(DOCUMENTS_STORE, 'readonly')
-   const index = transaction.objectStore(DOCUMENTS_STORE).index(UPDATED_AT_INDEX)
-   const records: BinderDocumentRecord[] = []
-   return new Promise<BinderDocumentRecord[]>((resolve, reject) => {
-      const cursorRequest = index.openCursor(null, 'prev')
-      cursorRequest.onsuccess = () => {
-         const cursor = cursorRequest.result
-         if (cursor) {
-            records.push(cursor.value as BinderDocumentRecord)
-            cursor.continue()
-         } else {
-            resolve(records)
-         }
-      }
-      cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error('Failed to list documents'))
-   })
+   const store = transaction.objectStore(DOCUMENTS_STORE)
+
+   const sourceRequest = filter?.folderId !== undefined
+      ? store.index(FOLDER_ID_INDEX).getAll(filter.folderId)
+      : store.getAll()
+   let records = await requestToPromise<BinderDocumentRecord[]>(sourceRequest)
+
+   const search = filter?.search?.trim().toLowerCase()
+   if (search) records = records.filter(record => matchesDocumentSearch(record, search))
+
+   records.sort(documentComparator(filter?.sortBy ?? 'updatedAt', filter?.sortDir ?? 'desc'))
+   return records
 }
 
 /** Permanently delete a document from both stores. Idempotent (absent id is a no-op). */
@@ -431,12 +606,17 @@ export async function duplicateDocument(id: string): Promise<string> {
       id:     crypto.randomUUID(),
       blocks: section.blocks.map(cloneBlock),
    }))
+   // The copy lands in the same folder, appended to the end, never-opened.
+   const sortOrder = await nextDocumentSortOrder(documentsStore, sourceRecord.folderId)
 
    const newRecord: BinderDocumentRecord = {
       id:            newId,
       meta:          sourceRecord.meta,
       createdAt:     now,
       updatedAt:     now,
+      lastOpenedAt:  undefined,
+      folderId:      sourceRecord.folderId,
+      sortOrder,
       sectionTitles: clonedSections.map(section => section.title),
       previewSections: buildPreviewSections(clonedSections),
       docTheme:      sourceRecord.docTheme,
@@ -449,4 +629,159 @@ export async function duplicateDocument(id: string): Promise<string> {
    contentStore.put(newContent)
    await transactionDone(transaction)
    return newId
+}
+
+// ============================================================
+// Folders
+// ============================================================
+
+/** Create a folder under parentId ('0' = root), appended after existing siblings. Returns its id. */
+export async function createFolder(name: string, parentId: string): Promise<string> {
+   const database = await openDatabase()
+   const id  = crypto.randomUUID()
+   const now = new Date().toISOString()
+   const transaction = database.transaction(FOLDERS_STORE, 'readwrite')
+   const store = transaction.objectStore(FOLDERS_STORE)
+   const siblings = await requestToPromise<BinderFolderRecord[]>(store.index(PARENT_ID_INDEX).getAll(parentId))
+   const sortOrder = siblings.reduce((max, folder) => Math.max(max, folder.sortOrder), -1) + 1
+   store.put({ id, name, parentId, createdAt: now, updatedAt: now, sortOrder })
+   await transactionDone(transaction)
+   return id
+}
+
+/** Rename a folder. No-op if the folder is gone. */
+export async function renameFolder(id: string, name: string): Promise<void> {
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readwrite')
+   const store = transaction.objectStore(FOLDERS_STORE)
+   const folder = await requestToPromise<BinderFolderRecord | undefined>(store.get(id))
+   if (folder) {
+      folder.name = name
+      folder.updatedAt = new Date().toISOString()
+      store.put(folder)
+   }
+   await transactionDone(transaction)
+}
+
+/**
+ * Delete a folder and all descendant folders. Documents in any deleted folder are moved
+ * to root (folderId '0'), appended to the end of root in their discovered order.
+ */
+export async function deleteFolder(id: string): Promise<void> {
+   const database = await openDatabase()
+
+   // Phase 1 — collect the folder and all descendants (iterative breadth-first).
+   const toDelete: string[] = [id]
+   for (let index = 0; index < toDelete.length; index++) {
+      const children = await getFolderChildren(toDelete[index])
+      for (const child of children) toDelete.push(child.id)
+   }
+
+   // Phase 2 — move orphaned documents to root, then delete the folders.
+   const transaction    = database.transaction([FOLDERS_STORE, DOCUMENTS_STORE], 'readwrite')
+   const foldersStore   = transaction.objectStore(FOLDERS_STORE)
+   const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
+   const folderIndex    = documentsStore.index(FOLDER_ID_INDEX)
+
+   let nextRootSort = await nextDocumentSortOrder(documentsStore, ROOT_FOLDER_ID)
+   for (const folderId of toDelete) {
+      const documents = await requestToPromise<BinderDocumentRecord[]>(folderIndex.getAll(folderId))
+      for (const document of documents) {
+         document.folderId = ROOT_FOLDER_ID
+         document.sortOrder = nextRootSort++
+         documentsStore.put(document)
+      }
+      foldersStore.delete(folderId)
+   }
+   await transactionDone(transaction)
+}
+
+/** Direct children of a folder, sorted by sortOrder ascending. */
+export async function getFolderChildren(parentId: string): Promise<BinderFolderRecord[]> {
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readonly')
+   const children = await requestToPromise<BinderFolderRecord[]>(
+      transaction.objectStore(FOLDERS_STORE).index(PARENT_ID_INDEX).getAll(parentId),
+   )
+   return children.sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+/**
+ * Folder ancestors from the root-most ancestor down to the immediate parent (excludes
+ * the folder itself; empty for a top-level folder). Iterative walk of the parentId chain.
+ */
+export async function getFolderAncestors(id: string): Promise<BinderFolderRecord[]> {
+   const chain: BinderFolderRecord[] = []
+   const self = await getFolder(id)
+   if (!self) return chain
+   let parentId = self.parentId
+   while (parentId !== ROOT_FOLDER_ID) {
+      const parent = await getFolder(parentId)
+      if (!parent) break
+      chain.unshift(parent)
+      parentId = parent.parentId
+   }
+   return chain
+}
+
+// ============================================================
+// Document moves + ordering
+// ============================================================
+
+/** Move a document into targetFolderId, appended to the end of that folder. */
+export async function moveDocument(id: string, targetFolderId: string): Promise<void> {
+   const database = await openDatabase()
+   const transaction = database.transaction(DOCUMENTS_STORE, 'readwrite')
+   const store = transaction.objectStore(DOCUMENTS_STORE)
+   const record = await requestToPromise<BinderDocumentRecord | undefined>(store.get(id))
+   if (record) {
+      const siblings = await requestToPromise<BinderDocumentRecord[]>(store.index(FOLDER_ID_INDEX).getAll(targetFolderId))
+      const maxSort  = siblings.reduce((max, sibling) => sibling.id === id ? max : Math.max(max, sibling.sortOrder), -1)
+      record.folderId = targetFolderId
+      record.sortOrder = maxSort + 1
+      store.put(record)
+   }
+   await transactionDone(transaction)
+}
+
+/** Assign sortOrder by array position. All ids must belong to the same folder (validated). */
+export async function reorderDocuments(orderedIds: string[]): Promise<void> {
+   if (orderedIds.length === 0) return
+   const database = await openDatabase()
+   const transaction = database.transaction(DOCUMENTS_STORE, 'readwrite')
+   const store = transaction.objectStore(DOCUMENTS_STORE)
+   const records = await Promise.all(
+      orderedIds.map(id => requestToPromise<BinderDocumentRecord | undefined>(store.get(id))),
+   )
+   const present = records.filter((record): record is BinderDocumentRecord => record !== undefined)
+   const folderId = present[0]?.folderId
+   if (present.length !== orderedIds.length || present.some(record => record.folderId !== folderId)) {
+      transaction.abort()
+      throw new Error('reorderDocuments: all ids must belong to the same folder')
+   }
+   present.forEach((record, index) => { record.sortOrder = index; store.put(record) })
+   await transactionDone(transaction)
+}
+
+// ============================================================
+// Folder reordering
+// ============================================================
+
+/** Assign sortOrder by array position. All ids must be siblings (same parentId; validated). */
+export async function reorderFolders(orderedIds: string[]): Promise<void> {
+   if (orderedIds.length === 0) return
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readwrite')
+   const store = transaction.objectStore(FOLDERS_STORE)
+   const folders = await Promise.all(
+      orderedIds.map(id => requestToPromise<BinderFolderRecord | undefined>(store.get(id))),
+   )
+   const present = folders.filter((folder): folder is BinderFolderRecord => folder !== undefined)
+   const parentId = present[0]?.parentId
+   if (present.length !== orderedIds.length || present.some(folder => folder.parentId !== parentId)) {
+      transaction.abort()
+      throw new Error('reorderFolders: all ids must be siblings')
+   }
+   present.forEach((folder, index) => { folder.sortOrder = index; store.put(folder) })
+   await transactionDone(transaction)
 }
