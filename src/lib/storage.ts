@@ -497,10 +497,20 @@ async function nextDocumentSortOrder(documentsStore: IDBObjectStore, folderId: s
 }
 
 /** Read a single folder record by id (its own readonly transaction). */
-async function getFolder(id: string): Promise<BinderFolderRecord | undefined> {
+export async function getFolder(id: string): Promise<BinderFolderRecord | undefined> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readonly')
    return requestToPromise<BinderFolderRecord | undefined>(transaction.objectStore(FOLDERS_STORE).get(id))
+}
+
+/** Read just a document's folder placement (light record), or null if the document is gone. */
+export async function getDocumentFolderId(id: string): Promise<string | null> {
+   const database = await openDatabase()
+   const transaction = database.transaction(DOCUMENTS_STORE, 'readonly')
+   const record = await requestToPromise<BinderDocumentRecord | undefined>(
+      transaction.objectStore(DOCUMENTS_STORE).get(id),
+   )
+   return record ? record.folderId : null
 }
 
 /** Global full-text match: all metadata fields + section titles + flattened block contents. */

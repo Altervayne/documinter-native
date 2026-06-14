@@ -48,6 +48,8 @@ export interface BinderProps {
    theme:             'light' | 'dark'
    /** id of the document currently open in the editor (pinned + badged in its folder). */
    currentDocumentId: string | null
+   /** Folder to open into (the current document's folder); null = root. Seeds the initial view. */
+   initialFolder:     BinderFolderRecord | null
    /** Close the binder and return to the editor. */
    onClose:           () => void
    /** Open a stored document in the editor. */
@@ -72,14 +74,15 @@ function parseDragId(raw: string): DragItem | null {
  * Binder root — the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
+export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
 
    // ============================
    //  Navigation + shared refresh
    // ============================
-   const [currentFolderId, setCurrentFolderId] = useState(ROOT_FOLDER_ID)
-   const [currentFolder, setCurrentFolder]     = useState<BinderFolderRecord | null>(null)
+   // Seeded from initialFolder so the binder opens directly into the current document's folder.
+   const [currentFolderId, setCurrentFolderId] = useState(initialFolder?.id ?? ROOT_FOLDER_ID)
+   const [currentFolder, setCurrentFolder]     = useState<BinderFolderRecord | null>(initialFolder)
    const [dataVersion, setDataVersion]         = useState(0)
    const bumpData = useCallback(() => setDataVersion(version => version + 1), [])
 

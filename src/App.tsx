@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
-import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, type LoadedDocument } from './lib/storage'
+import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, getDocumentFolderId, getFolder, type LoadedDocument } from './lib/storage'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -33,7 +33,7 @@ import { importMarkdownFile } from './lib/markdown'
 import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
-import type { BlockType, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
+import type { BinderFolderRecord, BlockType, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
@@ -256,11 +256,23 @@ export default function App() {
    // #############################
 
    const [binderOpen, setBinderOpen] = useState(false)
+   // The folder the binder should open into — the current document's folder, resolved before the
+   // binder mounts so it lands there directly (no root-then-folder flash). null = root.
+   const [binderInitialFolder, setBinderInitialFolder] = useState<BinderFolderRecord | null>(null)
 
-   // Open the binder — flush any pending changes first so the current document
-   // appears up-to-date in the list, then mount the binder in place of the editor.
+   // Open the binder — flush any pending changes first so the current document appears up-to-date
+   // in the list, resolve which folder it lives in, then mount the binder in place of the editor.
    const handleOpenBinder = useCallback(async () => {
       if (saveStatus !== 'clean') await persistNow()
+      let folder: BinderFolderRecord | null = null
+      const openId = currentDocumentIdRef.current
+      if (openId) {
+         try {
+            const folderId = await getDocumentFolderId(openId)
+            if (folderId && folderId !== '0') folder = (await getFolder(folderId)) ?? null
+         } catch { /* fall back to root */ }
+      }
+      setBinderInitialFolder(folder)
       setBinderOpen(true)
    }, [saveStatus, persistNow])
 
@@ -402,6 +414,7 @@ export default function App() {
             <Binder
                theme={theme}
                currentDocumentId={currentDocumentId}
+               initialFolder={binderInitialFolder}
                onClose={() => setBinderOpen(false)}
                onOpenDocument={handleOpenDocument}
                onNewDocument={handleNewDocumentFromBinder}
