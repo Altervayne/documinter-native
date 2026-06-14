@@ -52,7 +52,7 @@ export function BinderContextMenu({
    return createPortal(
       <div
          ref={menuRef}
-         className="fixed z-[10000] min-w-[200px] rounded-lg border border-border bg-raised shadow-xl overflow-hidden py-1"
+         className="fixed z-[10000] min-w-[200px] rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
          style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
       >
          <MenuItem icon={<FolderOpen size={13} />} label={t.binderOpenAction} onClick={() => run(onOpen)} />

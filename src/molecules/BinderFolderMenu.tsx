@@ -46,7 +46,7 @@ export function BinderFolderMenu({ x, y, onClose, onRename, onNewSubfolder, onDe
    return createPortal(
       <div
          ref={menuRef}
-         className="fixed z-[10000] min-w-[180px] rounded-lg border border-border bg-raised shadow-xl overflow-hidden py-1"
+         className="fixed z-[10000] min-w-[180px] rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
          style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
       >
          <button onClick={() => run(onRename)}       className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-text hover:bg-border/50 transition-colors cursor-pointer">
