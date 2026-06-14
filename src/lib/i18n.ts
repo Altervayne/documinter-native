@@ -220,6 +220,7 @@ export const translations = {
       binderLastOpened:         'Last opened',
       binderNeverOpened:        'Never opened',
       binderMoveToFolder:       'Move to folder',
+      binderMoveHere:           'Move here',
       // Advanced search / filters
       binderFilters:            'Filters',
       binderFilterFrom:         'From',
@@ -483,6 +484,7 @@ export const translations = {
       binderLastOpened:         'Dernière ouverture',
       binderNeverOpened:        'Jamais ouvert',
       binderMoveToFolder:       'Déplacer dans un dossier',
+      binderMoveHere:           'Déplacer ici',
       // Advanced search / filters
       binderFilters:            'Filtres',
       binderFilterFrom:         'Du',

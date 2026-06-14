@@ -23,7 +23,7 @@ function withHandle(block: Block, html: string): string {
    return `<div id="${blockAnchor(block)}" style="scroll-margin-top:1.5rem">${html}</div>`
 }
 
-function exportBlock(block: Block): string {
+function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): string {
    if (block.type === 'p')       return withHandle(block, `<p>${richToHtml(block.richText)}</p>`)
    if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
    if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
@@ -50,7 +50,13 @@ function exportBlock(block: Block): string {
          ).join('')
       return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
-   if (block.type === 'image' && block.src) {
+   if (block.type === 'image') {
+      if (!block.src) {
+         // Preview snapshots strip image src. With imagePlaceholder on (binder mini preview),
+         // render a muted placeholder; otherwise (full export) emit nothing, as before.
+         if (!options?.imagePlaceholder) return ''
+         return withHandle(block, `<div class="doc-image-placeholder" role="img" aria-label="${esc(block.alt) || 'Image'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>`)
+      }
       const align = block.align ?? 'center'
       const figureMargin = align === 'left'
          ? 'margin-left:0;margin-right:auto'
@@ -68,8 +74,8 @@ function exportBlock(block: Block): string {
    if (block.type === 'hr') return withHandle(block, '<hr>')
    if (block.type === 'container') {
       const ratio    = block.ratio ?? 0.5
-      const leftHtml  = (block.left  ?? []).map(exportBlock).join('\n')
-      const rightHtml = (block.right ?? []).map(exportBlock).join('\n')
+      const leftHtml  = (block.left  ?? []).map(inner => exportBlock(inner, options)).join('\n')
+      const rightHtml = (block.right ?? []).map(inner => exportBlock(inner, options)).join('\n')
       return `<div class="doc-container" style="display:flex;gap:1.5rem;align-items:flex-start">
          <div style="flex:${ratio}">${leftHtml}</div>
          <div style="flex:${1 - ratio}">${rightHtml}</div>
@@ -80,11 +86,12 @@ function exportBlock(block: Block): string {
 
 /**
  * Render a block array to an HTML string using the same per-block logic as the full
- * HTML export. Pure — no downloads, no DOM access. Used by the binder card preview
- * iframe to render each preview section's blocks inside a `.doc-render` wrapper.
+ * HTML export. Pure — no downloads, no DOM access. Used by the binder document mini
+ * preview to render each preview section's blocks inside a `.doc-render` wrapper.
+ * Pass `{ imagePlaceholder: true }` to render src-less images as a muted placeholder.
  */
-export function renderBlocksToDocHtml(blocks: Block[]): string {
-   return blocks.map(exportBlock).join('\n')
+export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean }): string {
+   return blocks.map(block => exportBlock(block, options)).join('\n')
 }
 
 interface Colors {

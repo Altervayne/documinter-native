@@ -11,6 +11,10 @@ interface BinderNavProps {
    selectedFolderId:     string | null
    editingFolderId:      string | null
    isDocumentDragging:   boolean
+   draggingDocFolderId:  string | null   // folderId of the doc being dragged (its own folder isn't a drop target)
+   rootRef?:             React.RefObject<HTMLDivElement | null>      // for drag-over-nav detection
+   backRef?:             React.RefObject<HTMLButtonElement | null>   // Back button — up-drop hit target
+   isUpTarget?:          boolean   // a dragged card is hovering the Back button (up-drop)
    onNavigateUp:         () => void                  // go up one level (to the parent folder)
    onSelectFolder:       (id: string | null) => void
    onEnterFolder:        (folder: BinderFolderRecord) => void
@@ -27,18 +31,21 @@ interface BinderNavProps {
  */
 export function BinderNav({
    currentFolder, subfolders, folderDocumentCounts, selectedFolderId, editingFolderId, isDocumentDragging,
-   onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
+   draggingDocFolderId, rootRef, backRef, isUpTarget, onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
 }: BinderNavProps) {
    const { t } = useLang()
 
    return (
-      <div className="w-60 shrink-0 flex flex-col min-h-0 border-r border-border bg-raised/40">
-         {/* Header: at root, a static label; inside a folder, a Back button to the parent. */}
+      <div ref={rootRef} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-border bg-raised/40">
+         {/* Header: at root, a static label; inside a folder, a Back button (also an up-drop target). */}
          {currentFolder ? (
             <button
+               ref={backRef}
                type="button"
                onClick={onNavigateUp}
-               className="flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold text-muted hover:text-text hover:bg-accent/10 transition-colors cursor-pointer"
+               className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
+                  isUpTarget ? 'bg-accent/15 ring-1 ring-inset ring-accent text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
+               }`}
             >
                <ChevronLeft size={14} className="shrink-0" />
                <span className="truncate">{currentFolder.name}</span>
@@ -59,6 +66,7 @@ export function BinderNav({
                      isSelected={selectedFolderId === folder.id}
                      isEditing={editingFolderId === folder.id}
                      isDocumentDragging={isDocumentDragging}
+                     isSourceFolder={draggingDocFolderId === folder.id}
                      onSelect={() => onSelectFolder(folder.id)}
                      onEnter={() => onEnterFolder(folder)}
                      onContextMenu={event => onFolderMenu(folder, event)}

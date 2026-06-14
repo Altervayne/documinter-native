@@ -89,11 +89,22 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
    }, [onChanged, showToast, t])
 
    const handleReorder = useCallback(async (orderedIds: string[]) => {
+      // Optimistic reorder: reflect the new order in the same frame as the drop. The persist +
+      // re-read are async, so without this the grid shows the old order for a frame or two
+      // (and the drop animation lands on the stale position).
+      setDocuments(current => {
+         const byId = new Map(current.map(record => [record.id, record]))
+         const next = orderedIds
+            .map(id => byId.get(id))
+            .filter((record): record is BinderDocumentRecord => record !== undefined)
+         return next.length === current.length ? next : current
+      })
       try {
          await reorderDocuments(orderedIds)
          onChanged()
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
+         onChanged()   // re-read restores the persisted order on failure
       }
    }, [onChanged, showToast, t])
 
