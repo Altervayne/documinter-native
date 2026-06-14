@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import docCssText from '../WysiwygArea/doc.css?raw'
 import { renderBlocksToDocHtml } from '../../lib/export'
 import { esc } from '../../lib/text'
+import { useLang } from '../../contexts/LangContext'
 import type { DocMeta, PreviewSection } from '../../types'
 
 interface DocumentCardPreviewProps {
@@ -9,6 +11,7 @@ interface DocumentCardPreviewProps {
    previewSections: PreviewSection[]
    docTheme:        'light' | 'dark'
    docAccent:       string
+   eager?:          boolean   // skip the loading spinner (drag overlay — a spinner flash there is jarring)
 }
 
 // Box = the visible preview area. The paper is inset by MARGIN on the top/sides so it
@@ -33,11 +36,18 @@ const FONT_LINK =
  * page, the page header (module/title/meta) and section-grouped previewSections — all scaled
  * down. Faithful to each document's own theme + accent. Static HTML only — sandbox="".
  */
-export function DocumentCardPreview({ meta, previewSections, docTheme, docAccent }: DocumentCardPreviewProps) {
+export function DocumentCardPreview({ meta, previewSections, docTheme, docAccent, eager = false }: DocumentCardPreviewProps) {
+   const { t } = useLang()
+   const [loaded, setLoaded] = useState(eager)
+
+   // Backdrop colour behind the iframe. Painting it on the wrapper means a freshly-mounted
+   // iframe (e.g. the drag overlay) shows the correct canvas colour for its blank first frame
+   // instead of flashing the card background — killing the perceived flicker on drag start.
+   const canvasBg = docTheme === 'dark' ? '#0d1117' : '#e9ebef'
+
    const srcDoc = useMemo(() => {
       const isDark    = docTheme === 'dark'
       const docDark   = isDark ? ' doc-dark' : ''
-      const canvasBg  = isDark ? '#0d1117' : '#e9ebef'   // backdrop around the sheet
 
       const pageHeader = `<div class="page-header">
 ${meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''}
@@ -64,18 +74,30 @@ ${pageHeader}
 ${sectionsHtml}
 </div>
 </body></html>`
-   }, [meta, previewSections, docTheme, docAccent])
+   }, [meta, previewSections, docTheme, docAccent, canvasBg])
 
    return (
-      <iframe
-         sandbox=""
-         srcDoc={srcDoc}
-         title=""
-         aria-hidden="true"
-         tabIndex={-1}
-         scrolling="no"
-         className="shrink-0 block pointer-events-none"
-         style={{ width: BOX_WIDTH, height: BOX_HEIGHT, border: 'none', borderRight: '1px solid var(--color-border)' }}
-      />
+      <div
+         className="relative shrink-0"
+         style={{ width: BOX_WIDTH, height: BOX_HEIGHT, background: canvasBg, borderRight: '1px solid var(--color-border)' }}
+      >
+         <iframe
+            sandbox=""
+            srcDoc={srcDoc}
+            title=""
+            aria-hidden="true"
+            tabIndex={-1}
+            scrolling="no"
+            onLoad={() => setLoaded(true)}
+            className="block pointer-events-none"
+            style={{ width: BOX_WIDTH, height: BOX_HEIGHT, border: 'none' }}
+         />
+         {!loaded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-raised text-muted">
+               <Loader2 size={18} className="animate-spin" />
+               <span className="text-[0.7rem]">{t.binderLoadingPreview}</span>
+            </div>
+         )}
+      </div>
    )
 }

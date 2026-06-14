@@ -1,8 +1,8 @@
 import type { Language } from '../types'
 
-// ============================================================
-// Python keyword list (all reserved words as of 3.x)
-// ============================================================
+// ######################################################
+// # PYTHON KEYWORD LIST (ALL RESERVED WORDS AS OF 3.X) #
+// ######################################################
 
 const KEYWORDS = [
    'False', 'None', 'True',

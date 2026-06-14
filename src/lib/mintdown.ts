@@ -3,9 +3,9 @@ import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { slugify } from './text'
 
-// ############################################################
-// Constants
-// ############################################################
+// #############
+// # CONSTANTS #
+// #############
 
 /** Maps fence language tags (lower-cased) to CodeLang for import. */
 const FENCE_TO_CODE_LANG: Record<string, CodeLang> = {
@@ -29,9 +29,9 @@ const FENCE_TO_CODE_LANG: Record<string, CodeLang> = {
    sass:       'css',
 }
 
-// ############################################################
-// Private helpers
-// ############################################################
+// ###################
+// # PRIVATE HELPERS #
+// ###################
 
 /** Resolves a ratio shorthand or explicit leftPct|rightPct token to a 0–1 fraction. */
 function parseRatioToken(token: string): number {
@@ -151,7 +151,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
       const line = lines[index]
       index++
 
-      // ── Inside code fence ─────────────────────────────────
+      // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
             const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
@@ -163,7 +163,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── h4 heading (check before h3) ─────────────────────
+      // h4 heading (check before h3)
       const h4Match = line.match(/^#### (.*)$/)
       if (h4Match) {
          commitBlock(flushAccum())
@@ -171,7 +171,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── h3 heading ───────────────────────────────────────
+      // h3 heading
       const h3Match = line.match(/^### (.*)$/)
       if (h3Match) {
          commitBlock(flushAccum())
@@ -179,7 +179,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Opening code fence ───────────────────────────────
+      // Opening code fence
       const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
@@ -188,7 +188,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Blockquote / callout ─────────────────────────────
+      // Blockquote / callout
       if (line.startsWith('> ') || line === '>') {
          if ((accumKind as AccumKind | null) === 'blockquote') {
             accumLines.push(line)
@@ -198,7 +198,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Handle anchor ────────────────────────────────────
+      // Handle anchor
       const handleMatch = line.match(/^\^([a-z0-9-]+)\s*$/)
       if (handleMatch) {
          commitBlock(flushAccum())
@@ -207,7 +207,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── List item ────────────────────────────────────────
+      // List item
       if (/^\s*- /.test(line)) {
          if ((accumKind as AccumKind | null) === 'list') {
             accumLines.push(line)
@@ -217,7 +217,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Pipe table ───────────────────────────────────────
+      // Pipe table
       if (line.startsWith('|')) {
          if ((accumKind as AccumKind | null) === 'table') {
             accumLines.push(line)
@@ -227,7 +227,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── HR block ─────────────────────────────────────────
+      // HR block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
@@ -235,7 +235,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Image (URL form) ─────────────────────────────────
+      // Image (URL form)
       const imageAMatch = line.match(/^!\[([^\]]*)\]\(([^)]*)\)/)
       if (imageAMatch) {
          commitBlock(flushAccum())
@@ -243,7 +243,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── HTML comments (image metadata round-trip) ─────────
+      // HTML comments (image metadata round-trip)
       if (line.startsWith('<!--')) {
          const captionTarget = pendingImageBlock as Block | null
          const captionMatch  = line.match(/^<!-- image-caption: (.+) -->$/)
@@ -281,14 +281,14 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // ── Blank line ────────────────────────────────────────
+      // Blank line
       if (line.trim() === '') {
          if (accumKind !== null) commitBlock(flushAccum())
          pendingImageBlock = null
          continue
       }
 
-      // ── Default: paragraph ───────────────────────────────
+      // Default: paragraph
       if (accumKind === 'p') {
          accumLines.push(line)
       } else {
@@ -313,9 +313,9 @@ function parseBodyBlocks(lines: string[]): Block[] {
    return blocks
 }
 
-// ############################################################
-// Private helpers — serialisation
-// ############################################################
+// ###################################
+// # PRIVATE HELPERS — SERIALISATION #
+// ###################################
 
 /** Serialises a callout block in Mintdown format (`> [style]` not `> [!style]`). */
 function serializeCallout(block: Block): string {
@@ -385,9 +385,9 @@ function serializeTopLevelBlock(block: Block): string {
    return serializeBlock(block)
 }
 
-// ############################################################
-// Public API — documentToMintdown
-// ############################################################
+// ###################################
+// # PUBLIC API — DOCUMENTTOMINTDOWN #
+// ###################################
 
 /**
  * Serialises the full document state to a UTF-8 Mintdown string.
@@ -396,7 +396,9 @@ function serializeTopLevelBlock(block: Block): string {
 export function documentToMintdown(sections: Section[], meta: DocMeta): string {
    const parts: string[] = []
 
-   // ── YAML front matter ────────────────────────────────────
+   // ==================
+   //  YAML front matter
+   // ==================
    parts.push('---')
    parts.push(`title: ${meta.title}`)
    parts.push(`module: ${meta.module}`)
@@ -405,7 +407,9 @@ export function documentToMintdown(sections: Section[], meta: DocMeta): string {
    parts.push(`author: ${meta.author}`)
    parts.push('---')
 
-   // ── Sections ─────────────────────────────────────────────
+   // =========
+   //  Sections
+   // =========
    for (const section of sections) {
       parts.push('')
       parts.push(`## ${section.title}`)
@@ -421,9 +425,9 @@ export function documentToMintdown(sections: Section[], meta: DocMeta): string {
    return parts.join('\n') + '\n'
 }
 
-// ############################################################
-// Public API — mintdownToDocument
-// ############################################################
+// ###################################
+// # PUBLIC API — MINTDOWNTODOCUMENT #
+// ###################################
 
 /**
  * Parses a Mintdown string into document state.
@@ -437,7 +441,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
 
    let lineIndex = 0
 
-   // ── Phase 1: Front matter ─────────────────────────────────
+   // ======================
+   //  Phase 1: Front matter
+   // ======================
 
    while (lineIndex < lines.length && lines[lineIndex].trim() === '') lineIndex++
 
@@ -485,7 +491,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       if (lineIndex < lines.length && lines[lineIndex] === '---') lineIndex++
    }
 
-   // ── Phase 2: Body scan ────────────────────────────────────
+   // ===================
+   //  Phase 2: Body scan
+   // ===================
 
    let currentSection:    Section | null = null
    let pendingHandle:     string  | null = null
@@ -504,7 +512,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    let containerLines: string[] = []
    let containerRatio  = 0.5
 
-   // ── Accumulator flush helpers ────────────────────────────
+   // ==========================
+   //  Accumulator flush helpers
+   // ==========================
 
    function flushAccum(): Block | null {
       const kind = accumKind
@@ -547,13 +557,15 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       pendingImageBlock = null
    }
 
-   // ── Main scan loop ────────────────────────────────────────
+   // ===============
+   //  Main scan loop
+   // ===============
 
    while (lineIndex < lines.length) {
       const line = lines[lineIndex]
       lineIndex++
 
-      // ── Inside code fence ─────────────────────────────────
+      // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
             const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
@@ -565,7 +577,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Inside container collection ───────────────────────
+      // Inside container collection
       if (inContainer) {
          if (line === '}') {
             const sepIndex    = containerLines.findIndex(collected => collected === '---')
@@ -587,7 +599,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Section boundary: ## heading ─────────────────────
+      // Section boundary: ## heading
       const sectionMatch = line.match(/^## (.*)$/)
       if (sectionMatch) {
          commitBlock(flushAccum())
@@ -603,7 +615,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── h4 heading (check before h3) ─────────────────────
+      // h4 heading (check before h3)
       const h4Match = line.match(/^#### (.*)$/)
       if (h4Match) {
          commitBlock(flushAccum())
@@ -611,7 +623,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── h3 heading ───────────────────────────────────────
+      // h3 heading
       const h3Match = line.match(/^### (.*)$/)
       if (h3Match) {
          commitBlock(flushAccum())
@@ -619,7 +631,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Opening code fence ───────────────────────────────
+      // Opening code fence
       const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
@@ -628,7 +640,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Blockquote / callout ─────────────────────────────
+      // Blockquote / callout
       if (line.startsWith('> ') || line === '>') {
          if ((accumKind as AccumKind | null) === 'blockquote') {
             accumLines.push(line)
@@ -638,7 +650,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Handle anchor ────────────────────────────────────
+      // Handle anchor
       const handleMatch = line.match(/^\^([a-z0-9-]+)\s*$/)
       if (handleMatch) {
          commitBlock(flushAccum())
@@ -647,7 +659,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── List item ────────────────────────────────────────
+      // List item
       if (/^\s*- /.test(line)) {
          if ((accumKind as AccumKind | null) === 'list') {
             accumLines.push(line)
@@ -657,7 +669,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Pipe table ───────────────────────────────────────
+      // Pipe table
       if (line.startsWith('|')) {
          if ((accumKind as AccumKind | null) === 'table') {
             accumLines.push(line)
@@ -667,7 +679,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── HR block ─────────────────────────────────────────
+      // HR block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
@@ -675,7 +687,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Multi-line container opener ───────────────────────
+      // Multi-line container opener
       // Matches `{` optionally followed by a ratio token and nothing else.
       // e.g. `{`, `{2`, `{-3`, `{60|40` — but NOT `{some prose text`
       const containerOpenMatch = line.match(/^\{(2|3|4|-3|-4|\d+\|\d+)?\s*$/)
@@ -688,7 +700,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Single-line container ─────────────────────────────
+      // Single-line container
       // e.g. `{2: Left content | Right content}` or `{60|40: Left | Right}`
       const singleLineMatch = line.match(/^\{([^:]*?):\s*(.*)\}$/)
       if (singleLineMatch) {
@@ -709,7 +721,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Image (URL form) ─────────────────────────────────
+      // Image (URL form)
       const imageAMatch = line.match(/^!\[([^\]]*)\]\(([^)]*)\)/)
       if (imageAMatch) {
          commitBlock(flushAccum())
@@ -717,7 +729,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── HTML comments (image metadata round-trip) ─────────
+      // HTML comments (image metadata round-trip)
       if (line.startsWith('<!--')) {
          const captionTarget = pendingImageBlock as Block | null
          const captionMatch  = line.match(/^<!-- image-caption: (.+) -->$/)
@@ -755,14 +767,14 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Blank line ────────────────────────────────────────
+      // Blank line
       if (line.trim() === '') {
          if (accumKind !== null) commitBlock(flushAccum())
          pendingImageBlock = null
          continue
       }
 
-      // ── Default: paragraph ───────────────────────────────
+      // Default: paragraph
       if (accumKind === 'p') {
          accumLines.push(line)
       } else {
@@ -773,7 +785,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       }
    }
 
-   // ── End-of-file flush ─────────────────────────────────────
+   // ==================
+   //  End-of-file flush
+   // ==================
    commitBlock(flushAccum())
 
    if (inCodeFence && codeLines.length > 0) {
@@ -790,9 +804,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    return { sections, meta }
 }
 
-// ############################################################
-// Public API — importMintdownFile / exportMintdownFile
-// ############################################################
+// ########################################################
+// # PUBLIC API — IMPORTMINTDOWNFILE / EXPORTMINTDOWNFILE #
+// ########################################################
 
 /**
  * Reads a .mintd File object and parses it into document state.

@@ -7,9 +7,9 @@
  * and persisted to localStorage so the backlog survives reloads.
  */
 
-// ============================================================
-// Types & constants
-// ============================================================
+// #####################
+// # TYPES & CONSTANTS #
+// #####################
 
 /** Which inline color field a recents list belongs to. Mirrors InlineRun field names. */
 export type RecentColorKind = 'color' | 'highlight'
@@ -24,18 +24,18 @@ const MAX_RECENTS  = 9
 
 const EMPTY_STORE: RecentColorsStore = { color: [], highlight: [] }
 
-// ============================================================
-// Helpers
-// ============================================================
+// ###########
+// # HELPERS #
+// ###########
 
 /** True when value is an array of strings (defensive parse guard). */
 function isStringArray(value: unknown): value is string[] {
    return Array.isArray(value) && value.every(entry => typeof entry === 'string')
 }
 
-// ============================================================
-// Public API
-// ============================================================
+// ##############
+// # PUBLIC API #
+// ##############
 
 /**
  * Read both recent-color lists from localStorage.

@@ -20,14 +20,16 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
    const { showToast } = useToast()
    const { t, lang }   = useLang()
 
-   const { folderId, search, sortBy, sortDir } = filter
+   const { folderId, sortBy, sortDir, criteria } = filter
+   // Serialize criteria for a stable effect dependency (the object identity changes each render).
+   const criteriaKey = JSON.stringify(criteria ?? null)
 
    const [documents, setDocuments] = useState<BinderDocumentRecord[]>([])
    const [isLoading, setIsLoading] = useState(true)
 
    useEffect(() => {
       let active = true
-      listDocuments({ folderId, search, sortBy, sortDir })
+      listDocuments({ folderId, sortBy, sortDir, criteria })
          .then(records => { if (active) { setDocuments(records); setIsLoading(false) } })
          .catch(error => {
             if (!active) return
@@ -37,7 +39,9 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
             showToast(t.binderActionFailed, { type: 'error' })
          })
       return () => { active = false }
-   }, [folderId, search, sortBy, sortDir, dataVersion, showToast, t])
+      // criteria is covered by criteriaKey (its serialized form); listing it too would re-run on identity churn.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [folderId, sortBy, sortDir, criteriaKey, dataVersion, showToast, t])
 
    const handleDelete = useCallback(async (id: string) => {
       try {

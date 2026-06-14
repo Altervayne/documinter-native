@@ -18,9 +18,9 @@ import type { Block, BlockType, ListItem, Section } from '../types'
 import type { T } from './i18n'
 
 
-// ============================================================
-// Factories
-// ============================================================
+// #############
+// # FACTORIES #
+// #############
 
 /** Create a new section with a fresh UUID and empty block list. */
 export function mkSection(title: string): Section {
@@ -75,9 +75,9 @@ export function mkBlock(type: BlockType, t: T): Block {
    }
 }
 
-// ============================================================
-// Block display utilities
-// ============================================================
+// ###########################
+// # BLOCK DISPLAY UTILITIES #
+// ###########################
 
 /** Return the HTML anchor id for a block — just the user-defined handle slug. */
 export function blockAnchor(block: { handle?: string }): string {
@@ -137,9 +137,9 @@ export function blkPreview(block: Block): string {
    return ''
 }
 
-// ============================================================
-// Mutation helpers — shared by the three mutation hooks
-// ============================================================
+// #########################################################
+// # MUTATION HELPERS — SHARED BY THE THREE MUTATION HOOKS #
+// #########################################################
 
 /**
  * Swap two items in an array by index. Returns the original array unchanged
@@ -164,9 +164,9 @@ export function mutateSec(
    setSections(sections => sections.map(sec => sec.id === secId ? fn(sec) : sec))
 }
 
-// ============================================================
-// List item tree helpers — pure functions used by WysiwygBlock
-// ============================================================
+// ################################################################
+// # LIST ITEM TREE HELPERS — PURE FUNCTIONS USED BY WYSIWYGBLOCK #
+// ################################################################
 
 /** Walk the tree and apply a transform to the matching item. Returning null removes the item. */
 export function mutateListItem(

@@ -31,9 +31,9 @@ import { Eye, Download, CircleDot, Loader2, CircleCheck } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
 
-// ============================================================
-// Save status indicator
-// ============================================================
+// #########################
+// # SAVE STATUS INDICATOR #
+// #########################
 
 interface SaveStatusIndicatorProps {
    status:      SaveStatus
@@ -72,9 +72,9 @@ function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: Sa
    )
 }
 
-// ============================================================
-// Props
-// ============================================================
+// #########
+// # PROPS #
+// #########
 
 interface TopbarProps {
    meta:             DocMeta
@@ -101,9 +101,9 @@ interface TopbarProps {
    onMetaChange:     (patch: Partial<DocMeta>) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function Topbar({
    meta, sections, theme, docTheme, docAccent, mode, paneLayout, saveStatus,
@@ -122,7 +122,9 @@ export function Topbar({
    const lastSectionId  = sections.at(-1)?.id ?? null
    const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
 
-   // ── Title editing ────────────────────────────────────────────
+   // ==============
+   //  Title editing
+   // ==============
 
    function handleTitleClick() {
       setTitleDraft(meta.title)
@@ -162,7 +164,9 @@ export function Topbar({
       }
    }
 
-   // ── File actions ─────────────────────────────────────────────
+   // =============
+   //  File actions
+   // =============
 
    function handleLoadJSON() {
       loadJSONFile(
@@ -234,21 +238,25 @@ export function Topbar({
       showToast(t.mintdownExported, { type: 'success' })
    }
 
-   // ── Preview toggle ────────────────────────────────────────────
+   // ===============
+   //  Preview toggle
+   // ===============
 
    function handlePreviewClick() {
       onSetMode(mode === 'preview' ? 'wysiwyg' : 'preview')
    }
 
-   // ── Render ───────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <>
          <div className="shrink-0 flex flex-col z-200">
 
-            {/* ════════════════════════════════════════════════════
-                Top strip — brand · document title · save status
-                ════════════════════════════════════════════════ */}
+            {/* ================================================= */}
+            {/*  Top strip — brand · document title · save status */}
+            {/* ================================================= */}
             <div className="h-11 relative flex items-center px-4 bg-raised border-b border-border">
 
                {/* Brand — left anchor */}
@@ -297,9 +305,9 @@ export function Topbar({
                </div>
             </div>
 
-            {/* ════════════════════════════════════════════════════
-                Bottom strip — menus · actions
-                ════════════════════════════════════════════════ */}
+            {/* =============================== */}
+            {/*  Bottom strip — menus · actions */}
+            {/* =============================== */}
             <div className="flex items-center gap-1 p-1 bg-raised border-b border-border">
 
                {/* Menu bar */}

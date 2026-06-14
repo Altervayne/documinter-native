@@ -13,9 +13,9 @@ import { useLinkMode, getAnchoredBlocks } from '../hooks/useLinkMode'
 import { useInlineColorPicker } from '../hooks/useInlineColorPicker'
 import { InlineColorPopover } from './InlineColorPopover'
 
-// ============================================================
-// execCommand helper
-// ============================================================
+// ######################
+// # EXECCOMMAND HELPER #
+// ######################
 
 function applyBoldItalic() {
    const isBold   = document.queryCommandState('bold')
@@ -29,9 +29,9 @@ function applyBoldItalic() {
    }
 }
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface Pos { top: number; left: number }
 
@@ -39,9 +39,9 @@ interface FormatToolbarProps {
    sections: Section[]
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function FormatToolbar({ sections }: FormatToolbarProps) {
    const { t } = useLang()
@@ -68,9 +68,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       closeFontColorPicker, closeHighlightColorPicker, applyInlineColor,
    } = useInlineColorPicker({ savedRangeRef, setFormatState })
 
-   // ============================================================
-   // Orchestrator effect — toolbar visibility, position, active-format read
-   // ============================================================
+   // ##########################################################################
+   // # ORCHESTRATOR EFFECT — TOOLBAR VISIBILITY, POSITION, ACTIVE-FORMAT READ #
+   // ##########################################################################
 
    useEffect(() => {
       function onSelChange() {
@@ -144,9 +144,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       }
    }, [linkModeRef, fontColorOpenRef, highlightColorOpenRef, closeLinkMode, closeFontColorPicker, closeHighlightColorPicker])
 
-   // ============================================================
-   // Format state helpers
-   // ============================================================
+   // ########################
+   // # FORMAT STATE HELPERS #
+   // ########################
 
    function refreshFormatState() {
       setFormatState(previous => ({
@@ -168,9 +168,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       }`
    }
 
-   // ============================================================
-   // Render
-   // ============================================================
+   // ##########
+   // # RENDER #
+   // ##########
 
    return (
       // Outer div: handles fixed positioning only.
@@ -188,7 +188,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                visible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.97]'
             }`}
          >
-            {/* ── Toolbar buttons row ─────────────────────────── */}
+            {/* ==================== */}
+            {/*  Toolbar buttons row */}
+            {/* ==================== */}
             <div className="flex items-center gap-0.5 px-1.5 py-1">
 
                {/* Formatting group */}
@@ -292,7 +294,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                </div>
             </div>
 
-            {/* ── Link creator panel ──────────────────────────── */}
+            {/* =================== */}
+            {/*  Link creator panel */}
+            {/* =================== */}
             {linkMode && (
                <div
                   className="absolute w-72 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"

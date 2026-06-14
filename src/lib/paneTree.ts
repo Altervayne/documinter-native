@@ -1,8 +1,8 @@
 import type { PaneId, PaneLeaf, PaneNode } from '../types'
 
-// ############################################################
-// Read-only queries
-// ############################################################
+// #####################
+// # READ-ONLY QUERIES #
+// #####################
 
 /** Returns the set of all PaneIds present as leaves in the tree. */
 export function visiblePanels(tree: PaneNode): Set<PaneId> {
@@ -38,9 +38,9 @@ export function hasExactPanels(tree: PaneNode, expected: Set<PaneId>): boolean {
    return true
 }
 
-// ############################################################
-// Immutable tree mutations
-// ############################################################
+// ############################
+// # IMMUTABLE TREE MUTATIONS #
+// ############################
 
 /**
  * Remove the leaf with paneId from the tree.
@@ -112,9 +112,9 @@ export function setSplitRatio(tree: PaneNode, path: number[], ratio: number): Pa
    return { ...tree, children: newChildren }
 }
 
-// ############################################################
-// Internal helpers
-// ############################################################
+// ####################
+// # INTERNAL HELPERS #
+// ####################
 
 /** Recursively finds the leaf with targetId and wraps it in a new split
  *  containing `newLeaf` on the side indicated by `zone`. */

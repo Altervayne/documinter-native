@@ -13,9 +13,9 @@ import {
 } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface PanelProps {
    open:              boolean
@@ -31,9 +31,9 @@ interface PanelProps {
    onReorderBlocks:   (secId: string, oldIdx: number, newIdx: number) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function Panel({
    open, onToggle,
@@ -70,7 +70,9 @@ export function Panel({
       setActiveSectionId(null)
    }
 
-   // ── Always-mounted aside — width transitions between rail (3rem) and full (18rem) ──
+   // ==============================================================================
+   //  Always-mounted aside — width transitions between rail (3rem) and full (18rem)
+   // ==============================================================================
 
    return (
       <aside
@@ -78,7 +80,9 @@ export function Panel({
          className={`shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col h-full overflow-hidden transition-[width] duration-[180ms] ease-in-out motion-reduce:transition-none`}
       >
          {!open ? (
-            // ── Collapsed rail ──────────────────────────────────
+            // ===============
+            //  Collapsed rail
+            // ===============
             <div className="flex flex-col items-center p-2">
                <button
                   onClick={onToggle}
@@ -89,7 +93,9 @@ export function Panel({
                </button>
             </div>
          ) : (
-            // ── Expanded panel ──────────────────────────────────
+            // ===============
+            //  Expanded panel
+            // ===============
             <>
                {/* Header */}
                <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">

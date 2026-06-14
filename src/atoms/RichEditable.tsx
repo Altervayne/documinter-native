@@ -55,7 +55,9 @@ export function RichEditable({
    const editing         = useRef(false)
    const snapshotOnFocus = useRef<InlineContent>([])
 
-   // ── Mount + readOnly toggle ────────────────────────────────────────────────
+   // ========================
+   //  Mount + readOnly toggle
+   // ========================
    // Re-runs when readOnly changes because React removes managed children when
    // switching readOnly=true → false, leaving the element blank.
    useLayoutEffect(() => {
@@ -63,7 +65,9 @@ export function RichEditable({
       ref.current.innerHTML = renderInlineContent(content)
    }, [readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
-   // ── External content sync ─────────────────────────────────────────────────
+   // ======================
+   //  External content sync
+   // ======================
    // Sync from prop only when not actively editing, to avoid clobbering mid-edit.
    useEffect(() => {
       if (!ref.current || editing.current) return
@@ -73,7 +77,9 @@ export function RichEditable({
       }
    }, [content])
 
-   // ── Cursor change listener ─────────────────────────────────────────────────
+   // =======================
+   //  Cursor change listener
+   // =======================
    useEffect(() => {
       if (!onCursorChange || !ref.current) return
       const element = ref.current
@@ -88,7 +94,9 @@ export function RichEditable({
       return () => document.removeEventListener('selectionchange', handleSelectionChange)
    }, [onCursorChange])
 
-   // ── Read-only path ────────────────────────────────────────────────────────
+   // ===============
+   //  Read-only path
+   // ===============
    if (readOnly) {
       return (
          <Tag
@@ -99,7 +107,9 @@ export function RichEditable({
       )
    }
 
-   // ── Editable path ─────────────────────────────────────────────────────────
+   // ==============
+   //  Editable path
+   // ==============
    return (
       <Tag
          ref={ref}

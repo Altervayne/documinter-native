@@ -86,9 +86,9 @@ export default function App() {
    const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
    const [docAccent, setDocAccent] = useState(DEFAULT_DOC_ACCENT)
 
-   // ============================================================
-   // Save status + autosave (IndexedDB)
-   // ============================================================
+   // ######################################
+   // # SAVE STATUS + AUTOSAVE (INDEXEDDB) #
+   // ######################################
 
    const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
    const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
@@ -241,9 +241,9 @@ export default function App() {
    // Manual save
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
 
-   // ============================================================
-   // Binder (document library)
-   // ============================================================
+   // #############################
+   // # BINDER (DOCUMENT LIBRARY) #
+   // #############################
 
    const [binderOpen, setBinderOpen] = useState(false)
 
@@ -322,9 +322,9 @@ export default function App() {
       setMode(newMode)
    }
 
-   // ============================================================
-   // Pane layout system
-   // ============================================================
+   // ######################
+   // # PANE LAYOUT SYSTEM #
+   // ######################
 
    const { paneLayout, togglePanel, setPaneLayout } = useWorkspaceState()
 
@@ -341,9 +341,9 @@ export default function App() {
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [togglePanel])
 
-   // ============================================================
-   // Document-level callbacks
-   // ============================================================
+   // ############################
+   // # DOCUMENT-LEVEL CALLBACKS #
+   // ############################
 
    // Commit from the MarkdownPanel back into document state (live edit — autosaves normally).
    const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {

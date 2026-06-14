@@ -1,6 +1,6 @@
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface ColorSwatchButtonProps {
    /** Hex color the swatch represents and applies when clicked. */
@@ -11,9 +11,9 @@ interface ColorSwatchButtonProps {
    onPick:   (color: string) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 /** A single 22px color swatch button shared by the curated and recent color rows. */
 export function ColorSwatchButton({ color, isActive, onPick }: ColorSwatchButtonProps) {

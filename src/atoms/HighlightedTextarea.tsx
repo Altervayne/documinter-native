@@ -3,9 +3,9 @@ import { tokenize } from '../lib/highlight/tokenize'
 import { markdownRules } from '../lib/highlight/languages/markdown'
 import { mintdown } from '../lib/highlight/languages/mintdown'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface HighlightedTextareaProps {
    value:        string
@@ -19,9 +19,9 @@ interface HighlightedTextareaProps {
    placeholder?: string
 }
 
-// ============================================================
-// Shared font metrics
-// ============================================================
+// #######################
+// # SHARED FONT METRICS #
+// #######################
 // These classes are applied identically to BOTH the backdrop div and the
 // textarea. They cover every CSS property that affects glyph position:
 // font-family, font-size, line-height, padding, white-space, overflow-wrap,
@@ -34,9 +34,9 @@ interface HighlightedTextareaProps {
 const METRIC_CLASSES =
    'font-mono text-sm leading-relaxed p-5 whitespace-pre-wrap break-words [tab-size:4]'
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function HighlightedTextarea({
    value,
@@ -70,7 +70,7 @@ export function HighlightedTextarea({
    return (
       <div className="relative flex-1 overflow-hidden">
 
-         {/* ── Backdrop ────────────────────────────────────────────────────
+         {/* Backdrop
              Sits underneath the textarea. Receives the tokenized HTML.
              pointer-events-none + aria-hidden: purely visual, never interactive.
              scroll position is driven by handleScroll on the textarea above.  */}
@@ -81,7 +81,7 @@ export function HighlightedTextarea({
             dangerouslySetInnerHTML={{ __html: highlightedHtml }}
          />
 
-         {/* ── Textarea ────────────────────────────────────────────────────
+         {/* Textarea
              Sits on top of the backdrop.
              bg-transparent: the backdrop's coloured spans show through.
              text-transparent: the textarea's own text is invisible; the

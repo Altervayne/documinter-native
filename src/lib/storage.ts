@@ -107,9 +107,9 @@ function migrateIds(state: DocState): DocState {
    }
 }
 
-// ============================================================
-// Autosave
-// ============================================================
+// ############
+// # AUTOSAVE #
+// ############
 
 const AUTOSAVE_KEY = 'documinter-autosave'
 
@@ -149,9 +149,9 @@ export function clearLegacyAutosave(): void {
    localStorage.removeItem(AUTOSAVE_KEY)
 }
 
-// ============================================================
-// JSON file (manual backup)
-// ============================================================
+// #############################
+// # JSON FILE (MANUAL BACKUP) #
+// #############################
 
 /** Trigger a browser download of the document as a .documinter.json file. */
 export function downloadJSON(meta: DocMeta, sections: Section[]): void {
@@ -194,7 +194,7 @@ export function loadJSONFile(
    input.click()
 }
 
-// ============================================================
+// ############################################################
 // IndexedDB — binder document library
 //
 // Two stores keyed by the same id:
@@ -202,7 +202,7 @@ export function loadJSONFile(
 //   documentContent  — heavy BinderDocumentContent (full sections, base64 images)
 // Splitting them lets listDocuments() read only the light store, never
 // deserializing base64, so the binder card grid stays cheap.
-// ============================================================
+// ############################################################
 
 const DATABASE_NAME          = 'documinter'
 const DOCUMENTS_STORE        = 'documents'
@@ -214,7 +214,7 @@ const SORT_ORDER_INDEX       = 'by_sortOrder'
 const PARENT_ID_INDEX        = 'by_parentId'
 const ROOT_FOLDER_ID         = '0'
 const PREVIEW_BLOCK_COUNT    = 8
-const RECORD_SCHEMA_VERSION  = 1
+const RECORD_SCHEMA_VERSION  = 2   // v2 adds contentText (flattened block text for full-text search)
 
 /** Presentation settings persisted per-document alongside the DocState. */
 export interface DocPresentation {
@@ -232,33 +232,57 @@ export interface LoadedDocument {
 
 export type DocumentSortBy = 'updatedAt' | 'createdAt' | 'lastOpenedAt' | 'title' | 'manual'
 
-/** Which timestamp a search date-range applies to. */
+/** Per-field targeted text queries (each an independent case-insensitive substring, all ANDed). */
+export interface FieldQuery {
+   title?:         string
+   module?:        string
+   env?:           string
+   author?:        string
+   date?:          string
+   sectionTitles?: string
+   content?:       string
+}
+
+/** The three timestamps a search can constrain. */
 export type DocumentDateField = 'updatedAt' | 'createdAt' | 'lastOpenedAt'
 
+/** The three date fields in display order — also drives matching iteration. */
+export const DOCUMENT_DATE_FIELDS: DocumentDateField[] = ['updatedAt', 'createdAt', 'lastOpenedAt']
+
 /**
- * Multi-criteria search. Every present criterion is ANDed together. A date range applies to
- * the chosen dateField; bounds are inclusive 'YYYY-MM-DD' calendar days compared against the
- * day portion of each record's ISO timestamp. hasNeverOpened keeps only documents that have
- * no lastOpenedAt.
+ * A single date-field constraint. An inclusive lower bound (from) expresses "after", an
+ * inclusive upper bound (to) expresses "before", and both together express a "between" range.
+ * Bounds are 'YYYY-MM-DD' calendar days compared against the day portion of the ISO timestamp.
+ */
+export interface DateFilter {
+   from?: string
+   to?:   string
+}
+
+/**
+ * Multi-criteria search. Every present criterion is ANDed together. Each of the three date
+ * fields may carry its own independent constraint simultaneously. hasNeverOpened keeps only
+ * documents that have no lastOpenedAt. Folder scoping is handled by DocumentListFilter.folderId,
+ * not here.
  */
 export interface SearchCriteria {
-   text?:           string             // case-insensitive substring across meta + formatted dates
-   dateField?:      DocumentDateField   // default 'updatedAt'
-   dateFrom?:       string              // inclusive lower bound (YYYY-MM-DD)
-   dateTo?:         string              // inclusive upper bound (YYYY-MM-DD)
-   folderId?:       string              // scope to a specific folder (overrides the nav folder)
-   hasNeverOpened?: boolean             // keep only never-opened documents
+   text?:           string                                   // global full-text: meta + section titles + contents
+   fields?:         FieldQuery                               // targeted per-field substrings
+   dates?:          Partial<Record<DocumentDateField, DateFilter>>
+   hasNeverOpened?: boolean
 }
 
 /** Filter/sort/search options for listDocuments. */
 export interface DocumentListFilter {
-   folderId?: string                  // nav folder scope (undefined = all folders)
+   folderId?: string                  // folder scope (undefined = all folders)
    sortBy?:   DocumentSortBy          // default 'updatedAt'
    sortDir?:  'asc' | 'desc'          // default 'desc'; ignored for 'manual'
-   criteria?: SearchCriteria          // multi-criteria search (all ANDed; additive to folderId)
+   criteria?: SearchCriteria          // multi-criteria search (all ANDed; within folderId scope)
 }
 
-// ── Internal: connection + promise wrappers ─────────────────
+// ========================================
+//  Internal: connection + promise wrappers
+// ========================================
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
@@ -386,7 +410,9 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
    })
 }
 
-// ── Internal: preview snapshot builders (pure) ──────────────
+// ===========================================
+//  Internal: preview snapshot builders (pure)
+// ===========================================
 
 /** Structural copy of a block with image src removed (recurses into containers). */
 function stripImageSource(block: Block): Block {
@@ -421,7 +447,48 @@ function buildPreviewSections(sections: Section[]): PreviewSection[] {
    return result
 }
 
-// ── Internal: ordering, folder fetch, search/sort ───────────
+// ======================================
+//  Internal: full-text extraction (pure)
+// ======================================
+
+/** Concatenate an InlineContent array's run text (formatting dropped). */
+function inlineText(content?: InlineContent): string {
+   return content ? content.map(run => run.text).join('') : ''
+}
+
+/** All searchable plain text within a single block (recurses lists + container columns). */
+function blockText(block: Block): string {
+   const parts: string[] = []
+   if (block.richText) parts.push(inlineText(block.richText))
+   if (block.code)     parts.push(block.code)
+   if (block.alt)      parts.push(block.alt)
+   if (block.caption)  parts.push(block.caption)
+   if (block.items) {
+      const walkItems = (items: ListItem[]) => {
+         for (const item of items) {
+            parts.push(inlineText(item.richText))
+            if (item.children.length > 0) walkItems(item.children)
+         }
+      }
+      walkItems(block.items)
+   }
+   if (block.richHeaders) for (const header of block.richHeaders) parts.push(inlineText(header))
+   if (block.richRows)    for (const row of block.richRows) for (const cell of row) parts.push(inlineText(cell))
+   if (block.left)  for (const inner of block.left)  parts.push(blockText(inner))
+   if (block.right) for (const inner of block.right) parts.push(blockText(inner))
+   return parts.filter(Boolean).join(' ')
+}
+
+/** Flattened plain text of every block across every section (section titles excluded — stored separately). */
+function extractDocumentText(sections: Section[]): string {
+   const parts: string[] = []
+   for (const section of sections) for (const block of section.blocks) parts.push(blockText(block))
+   return parts.filter(Boolean).join(' ')
+}
+
+// ==============================================
+//  Internal: ordering, folder fetch, search/sort
+// ==============================================
 
 /** Next manual sort position for a new document appended to the end of a folder. */
 async function nextDocumentSortOrder(documentsStore: IDBObjectStore, folderId: string): Promise<number> {
@@ -436,13 +503,61 @@ async function getFolder(id: string): Promise<BinderFolderRecord | undefined> {
    return requestToPromise<BinderFolderRecord | undefined>(transaction.objectStore(FOLDERS_STORE).get(id))
 }
 
-/** Case-insensitive substring match across meta fields + ISO timestamps (which contain YYYY-MM-DD). */
-function matchesDocumentSearch(record: BinderDocumentRecord, needle: string): boolean {
+/** Global full-text match: all metadata fields + section titles + flattened block contents. */
+function matchesText(record: BinderDocumentRecord, needle: string): boolean {
    const haystack = [
       record.meta.title, record.meta.module, record.meta.env, record.meta.author, record.meta.date,
-      record.createdAt, record.updatedAt, record.lastOpenedAt ?? '',
-   ].join(' ').toLowerCase()
+      record.sectionTitles.join(' '),
+      record.contentText ?? '',
+   ].join(' ').toLowerCase()
    return haystack.includes(needle)
+}
+
+/** True when needle is empty/whitespace, or is a case-insensitive substring of haystack. */
+function fieldMatches(needle: string | undefined, haystack: string): boolean {
+   const trimmed = needle?.trim().toLowerCase()
+   return !trimmed || haystack.toLowerCase().includes(trimmed)
+}
+
+/** The day portion (YYYY-MM-DD) of the record's chosen date field, or undefined if unset. */
+function recordDateDay(record: BinderDocumentRecord, field: DocumentDateField): string | undefined {
+   const value = field === 'createdAt' ? record.createdAt
+      : field === 'lastOpenedAt'        ? record.lastOpenedAt
+      :                                   record.updatedAt
+   return value ? value.slice(0, 10) : undefined
+}
+
+/** True when the record satisfies every present criterion (all ANDed). */
+function matchesCriteria(record: BinderDocumentRecord, criteria: SearchCriteria): boolean {
+   const text = criteria.text?.trim().toLowerCase()
+   if (text && !matchesText(record, text)) return false
+
+   if (criteria.fields) {
+      const fields = criteria.fields
+      if (!fieldMatches(fields.title,         record.meta.title))            return false
+      if (!fieldMatches(fields.module,        record.meta.module))           return false
+      if (!fieldMatches(fields.env,           record.meta.env))              return false
+      if (!fieldMatches(fields.author,        record.meta.author))           return false
+      if (!fieldMatches(fields.date,          record.meta.date))             return false
+      if (!fieldMatches(fields.sectionTitles, record.sectionTitles.join(' '))) return false
+      if (!fieldMatches(fields.content,       record.contentText ?? ''))     return false
+   }
+
+   if (criteria.hasNeverOpened && record.lastOpenedAt !== undefined) return false
+
+   if (criteria.dates) {
+      for (const field of DOCUMENT_DATE_FIELDS) {
+         const dateFilter = criteria.dates[field]
+         if (!dateFilter) continue
+         const day = recordDateDay(record, field)
+         // A never-opened document has no lastOpenedAt day, so any constraint on it excludes it.
+         if (!day) return false
+         if (dateFilter.from && day < dateFilter.from) return false
+         if (dateFilter.to   && day > dateFilter.to)   return false
+      }
+   }
+
+   return true
 }
 
 /** Comparator for the in-memory document sort. 'manual' ignores direction (always ascending). */
@@ -466,7 +581,9 @@ function documentComparator(sortBy: DocumentSortBy, sortDir: 'asc' | 'desc'): (a
    }
 }
 
-// ── Public API ──────────────────────────────────────────────
+// ===========
+//  Public API
+// ===========
 
 /**
  * Save a document to IndexedDB. With existingId, updates that record (preserving
@@ -505,6 +622,7 @@ export async function saveDocument(
       folderId,
       sortOrder,
       sectionTitles: state.sections.map(section => section.title),
+      contentText:   extractDocumentText(state.sections),
       previewSections: buildPreviewSections(state.sections),
       docTheme:      presentation.docTheme,
       docAccent:     presentation.docAccent,
@@ -569,8 +687,7 @@ export async function listDocuments(filter?: DocumentListFilter): Promise<Binder
       : store.getAll()
    let records = await requestToPromise<BinderDocumentRecord[]>(sourceRequest)
 
-   const search = filter?.search?.trim().toLowerCase()
-   if (search) records = records.filter(record => matchesDocumentSearch(record, search))
+   if (filter?.criteria) records = records.filter(record => matchesCriteria(record, filter.criteria!))
 
    records.sort(documentComparator(filter?.sortBy ?? 'updatedAt', filter?.sortDir ?? 'desc'))
    return records
@@ -618,6 +735,7 @@ export async function duplicateDocument(id: string): Promise<string> {
       folderId:      sourceRecord.folderId,
       sortOrder,
       sectionTitles: clonedSections.map(section => section.title),
+      contentText:   extractDocumentText(clonedSections),
       previewSections: buildPreviewSections(clonedSections),
       docTheme:      sourceRecord.docTheme,
       docAccent:     sourceRecord.docAccent,
@@ -631,9 +749,35 @@ export async function duplicateDocument(id: string): Promise<string> {
    return newId
 }
 
-// ============================================================
-// Folders
-// ============================================================
+/**
+ * Populate contentText on any pre-v2 records that lack it (one-time, idempotent). Reads each
+ * stale document's content to flatten its block text, then rewrites the light record. Returns
+ * how many records were updated so the caller can refresh the view. A no-op once all records
+ * carry contentText, so it is cheap to call on every binder open.
+ */
+export async function backfillSearchText(): Promise<number> {
+   const database = await openDatabase()
+   const readTransaction = database.transaction(DOCUMENTS_STORE, 'readonly')
+   const allRecords = await requestToPromise<BinderDocumentRecord[]>(readTransaction.objectStore(DOCUMENTS_STORE).getAll())
+   const staleRecords = allRecords.filter(record => record.contentText === undefined)
+   if (staleRecords.length === 0) return 0
+
+   const transaction    = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readwrite')
+   const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
+   const contentStore   = transaction.objectStore(DOCUMENT_CONTENT_STORE)
+   for (const record of staleRecords) {
+      const content = await requestToPromise<BinderDocumentContent | undefined>(contentStore.get(record.id))
+      record.contentText   = content ? extractDocumentText(content.sections) : ''
+      record.schemaVersion = RECORD_SCHEMA_VERSION
+      documentsStore.put(record)
+   }
+   await transactionDone(transaction)
+   return staleRecords.length
+}
+
+// ###########
+// # FOLDERS #
+// ###########
 
 /** Create a folder under parentId ('0' = root), appended after existing siblings. Returns its id. */
 export async function createFolder(name: string, parentId: string): Promise<string> {
@@ -724,9 +868,9 @@ export async function getFolderAncestors(id: string): Promise<BinderFolderRecord
    return chain
 }
 
-// ============================================================
-// Document moves + ordering
-// ============================================================
+// #############################
+// # DOCUMENT MOVES + ORDERING #
+// #############################
 
 /** Move a document into targetFolderId, appended to the end of that folder. */
 export async function moveDocument(id: string, targetFolderId: string): Promise<void> {
@@ -763,9 +907,9 @@ export async function reorderDocuments(orderedIds: string[]): Promise<void> {
    await transactionDone(transaction)
 }
 
-// ============================================================
-// Folder reordering
-// ============================================================
+// #####################
+// # FOLDER REORDERING #
+// #####################
 
 /** Assign sortOrder by array position. All ids must be siblings (same parentId; validated). */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {

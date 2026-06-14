@@ -1,9 +1,9 @@
 import type { Language, TokenRule } from '../types'
 import { markdownRules } from './markdown'
 
-// ##############################################################################
-// Mintdown language — extends Markdown with Documint-specific syntax
-// ##############################################################################
+// ######################################################################
+// # MINTDOWN LANGUAGE — EXTENDS MARKDOWN WITH DOCUMINT-SPECIFIC SYNTAX #
+// ######################################################################
 //
 // No Markdown rule is duplicated here. markdownRules is imported and spread
 // between the Mintdown block rules (prepended) and inline rules (appended).
@@ -29,9 +29,9 @@ import { markdownRules } from './markdown'
 // - E/F target {color:...} braces; no Markdown rule matches bare { characters,
 //   so appending these rules is safe.
 
-// ============================================================
-// Mintdown block rules (prepended)
-// ============================================================
+// ####################################
+// # MINTDOWN BLOCK RULES (PREPENDED) #
+// ####################################
 
 const mintdownBlockRules: TokenRule[] = [
 
@@ -49,9 +49,9 @@ const mintdownBlockRules: TokenRule[] = [
    { type: 'kw',  pattern: /^\^[\w-]+/m },
 ]
 
-// ============================================================
-// Mintdown inline rules (appended)
-// ============================================================
+// ####################################
+// # MINTDOWN INLINE RULES (APPENDED) #
+// ####################################
 
 const mintdownInlineRules: TokenRule[] = [
 
@@ -69,9 +69,9 @@ const mintdownInlineRules: TokenRule[] = [
    { type: 'op',   pattern: /\{\/(?:color|highlight)\}/ },
 ]
 
-// ============================================================
-// Language export
-// ============================================================
+// ###################
+// # LANGUAGE EXPORT #
+// ###################
 
 export const mintdown: Language = {
    name: 'mintdown',

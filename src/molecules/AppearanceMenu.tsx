@@ -4,9 +4,9 @@ import { ColorPicker } from './ColorPicker'
 import { ACCENT_PRESETS } from '../lib/constants'
 import type { Lang, T } from '../lib/i18n'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface AppearanceMenuProps {
    theme:             'light' | 'dark'
@@ -20,9 +20,9 @@ interface AppearanceMenuProps {
    t: T
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function AppearanceMenu({
    theme,
@@ -57,7 +57,9 @@ export function AppearanceMenu({
       if (theme !== targetTheme) onToggleTheme()
    }
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <div ref={containerRef} className="relative">
@@ -161,9 +163,9 @@ export function AppearanceMenu({
    )
 }
 
-// ============================================================
-// Shared primitive (file-local)
-// ============================================================
+// #################################
+// # SHARED PRIMITIVE (FILE-LOCAL) #
+// #################################
 
 interface ToggleOption {
    value: string

@@ -28,9 +28,9 @@ import {
 // -- Type Imports --
 import type { Block, InlineContent, ListItem } from '../../../types'
 
-// ============================================================
-// Utilities
-// ============================================================
+// #############
+// # UTILITIES #
+// #############
 
 /**
  * Returns true when the cursor (selection) is at the very start of the element's
@@ -46,9 +46,9 @@ function isCursorAtStart(element: HTMLElement): boolean {
    return preRange.toString().length === 0
 }
 
-// ============================================================
-// ListItemRow — one sortable row at a given nesting level
-// ============================================================
+// ###########################################################
+// # LISTITEMROW — ONE SORTABLE ROW AT A GIVEN NESTING LEVEL #
+// ###########################################################
 
 interface ListItemRowProps {
    item:           ListItem
@@ -189,9 +189,9 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
    )
 }
 
-// ============================================================
-// ListLevel — one isolated DnD context for a sibling group
-// ============================================================
+// ############################################################
+// # LISTLEVEL — ONE ISOLATED DND CONTEXT FOR A SIBLING GROUP #
+// ############################################################
 
 interface ListLevelProps {
    items:         ListItem[]
@@ -281,9 +281,9 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
    )
 }
 
-// ============================================================
-// ListBlock — public component
-// ============================================================
+// ################################
+// # LISTBLOCK — PUBLIC COMPONENT #
+// ################################
 
 interface ListBlockProps {
    block:     Block

@@ -98,7 +98,9 @@ export function WysiwygBlock({
    const [anchorPos,     setAnchorPos]     = useState<{ top: number; right: number } | null>(null)
    const blockDivRef = useRef<HTMLDivElement>(null)
 
-   // ── Anchor editor ──────────────────────────────────────────
+   // ==============
+   //  Anchor editor
+   // ==============
    function openAnchorEditor() {
       setAnchorDraft(block.handle ?? generateHandle(block))
       setAnchorEditing(true)
@@ -122,7 +124,9 @@ export function WysiwygBlock({
       }
    }, [anchorEditing])
 
-   // ── Context menu ───────────────────────────────────────────
+   // =============
+   //  Context menu
+   // =============
    function handleContextMenu(event: React.MouseEvent) {
       event.preventDefault()
       const target = event.target as Element
@@ -159,7 +163,9 @@ export function WysiwygBlock({
       setContextMenu({ x: event.clientX, y: event.clientY })
    }
 
-   // ── DnD ────────────────────────────────────────────────────
+   // ====
+   //  DnD
+   // ====
    // isDraggable: outer blocks always participate; inner blocks only when draggable=true
    const isDraggable = !!draggable || !inner
    const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly })
@@ -172,7 +178,9 @@ export function WysiwygBlock({
       }
    const showInsertLine = !readOnly && isDraggable && sortable.isOver && activeBlockId !== block.id
 
-   // ── Mutation handlers ──────────────────────────────────────
+   // ==================
+   //  Mutation handlers
+   // ==================
    function patch(partialBlock: Partial<Block>) {
       if (inner && onUpdate) onUpdate(secId, block.id, partialBlock)
       else ctx.updateBlock(secId, block.id, partialBlock)
@@ -189,12 +197,16 @@ export function WysiwygBlock({
    const handleInsertTableColAt = inner ? onInsertTableColAt!  : (colIndex: number) => ctx.insertTableColAt(secId, block.id, colIndex)
    const handleDeleteTableColAt = inner ? onDeleteTableColAt!  : (colIndex: number) => ctx.deleteTableColAt(secId, block.id, colIndex)
 
-   // ── Block picker anchorRect ────────────────────────────────
+   // ========================
+   //  Block picker anchorRect
+   // ========================
    function getBlockRect(): DOMRect {
       return blockDivRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0)
    }
 
-   // ── Ref merge (DnD + blockDivRef) ──────────────────────────
+   // ==============================
+   //  Ref merge (DnD + blockDivRef)
+   // ==============================
    function setWrapRef(node: HTMLDivElement | null) {
       blockDivRef.current = node
       if (isDraggable && !readOnly) sortable.setNodeRef(node)
@@ -202,7 +214,9 @@ export function WysiwygBlock({
 
    const wrapAttr = !isDraggable || readOnly ? {} : sortable.attributes
 
-   // ── Content renderer ───────────────────────────────────────
+   // =================
+   //  Content renderer
+   // =================
    function renderBlockContent() {
       if (block.type === 'p' || block.type === 'h3' || block.type === 'h4')
          return <ParagraphBlock block={block} patch={patch} readOnly={readOnly} />

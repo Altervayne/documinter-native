@@ -68,7 +68,9 @@ export function BinderContextMenu({
    )
 }
 
-// ── File-local primitives ───────────────────────────────────
+// ======================
+//  File-local primitives
+// ======================
 
 interface MenuItemProps {
    icon:    React.ReactNode

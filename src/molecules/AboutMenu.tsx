@@ -10,25 +10,25 @@ import { LogoColor, LogoMono } from '../atoms/Logo'
 // -- Type Imports --
 import type { T } from '../lib/i18n'
 
-// ============================================================
-// Constants
-// ============================================================
+// #############
+// # CONSTANTS #
+// #############
 
 const COPYRIGHT = '© 2026 Florian Douay'
 const LICENSE_URL = 'https://www.apache.org/licenses/LICENSE-2.0'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface AboutMenuProps {
    theme: 'dark' | 'light'
    t:     T
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function AboutMenu({ theme, t }: AboutMenuProps) {
    const [open, setOpen] = useState(false)
@@ -43,7 +43,9 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <div ref={containerRef} className="relative">

@@ -8,7 +8,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChannelRow } from './ChannelRow'
 
 // ##############
-// # Color math #
+// # COLOR MATH #
 // ##############
 
 function hsvToRgb(hue: number, saturation: number, value: number): [number, number, number] {
@@ -99,7 +99,7 @@ function rgbToHex(red: number, green: number, blue: number): string {
 }
 
 // ##################
-// # Main component #
+// # MAIN COMPONENT #
 // ##################
 
 type ColorMode = 'hex' | 'rgb' | 'hsl' | 'cmyk'
@@ -113,7 +113,9 @@ interface ColorPickerProps {
 export function ColorPicker({ value, onChange }: ColorPickerProps) {
    const [mode, setMode] = useState<ColorMode>('hex')
 
-   // ============ Internal RGB state ============
+   // ===================
+   //  Internal RGB state
+   // ===================
    // Source of truth. Avoids the prop→hex→derive feedback loop that causes
    // degenerate color conversions (e.g. hsl(*, *, 100%) always → [0,0,100]).
    const emittedHex = useRef(value)
@@ -124,7 +126,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
    const [,, hslLightness]      = rgbToHsl(red, green, blue)
    const [cyan, magenta, yellow, black] = rgbToCmyk(red, green, blue)
 
-   // ============ Sticky refs ============
+   // ============
+   //  Sticky refs
+   // ============
    // Preserve hue/saturation through degenerate colors (black, white, gray).
    // Only updated explicitly in onChange handlers and on external value changes —
    // never from derived RGB round-trips, which introduce rounding drift.
@@ -161,7 +165,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       onChange(hex)
    }, [onChange])
 
-   // ============ SV square & hue bar ============
+   // ====================
+   //  SV square & hue bar
+   // ====================
    const svRef  = useRef<HTMLDivElement>(null)
    const hueRef = useRef<HTMLDivElement>(null)
 
@@ -181,7 +187,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
       emit(hsvToRgb(newHue, hsvSaturation, hsvValue))
    }
 
-   // ============ Hex input ============
+   // ==========
+   //  Hex input
+   // ==========
    const currentHex = rgbToHex(red, green, blue)
    const [hexRaw, setHexRaw] = useState(currentHex.replace('#', ''))
    useEffect(() => { setHexRaw(currentHex.replace('#', '')) }, [currentHex])
@@ -189,7 +197,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
    return (
       <div className="flex flex-col gap-2.5 select-none">
 
-         {/* ============ SV square ============ */}
+         {/* ========== */}
+         {/*  SV square */}
+         {/* ========== */}
          <div
             ref={svRef}
             className="relative w-full rounded-md overflow-hidden cursor-crosshair touch-none"
@@ -206,7 +216,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             />
          </div>
 
-         {/* ============ Hue bar ============ */}
+         {/* ======== */}
+         {/*  Hue bar */}
+         {/* ======== */}
          <div
             ref={hueRef}
             className="relative w-full h-3 rounded-full cursor-pointer touch-none"
@@ -220,7 +232,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             />
          </div>
 
-         {/* ============ Mode tabs ============ */}
+         {/* ========== */}
+         {/*  Mode tabs */}
+         {/* ========== */}
          <div className="flex gap-0.5 bg-bg rounded-lg p-0.5 border border-border/60">
             {MODES.map(colorMode => (
                <button
@@ -234,7 +248,9 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
             ))}
          </div>
 
-         {/* ============ Mode content ============ */}
+         {/* ============= */}
+         {/*  Mode content */}
+         {/* ============= */}
          <div className="flex flex-col gap-2">
 
             {mode === 'hex' && (

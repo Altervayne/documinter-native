@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DocMeta, Section } from '../types'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 export interface RawEditorOptions {
    sections:  Section[]
@@ -23,9 +23,9 @@ export interface RawEditorResult {
    handleKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void
 }
 
-// ============================================================
-// Hook
-// ============================================================
+// ########
+// # HOOK #
+// ########
 
 /**
  * Shared debounce + sync contract for raw text editors (Markdown, Mintdown).
@@ -63,7 +63,9 @@ export function useRawEditor({
    // Handle for the pending debounce timer.
    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-   // ── External sync ──────────────────────────────────────────
+   // ==============
+   //  External sync
+   // ==============
    // Re-derive text from parent state whenever sections/meta change,
    // provided the user is not currently focused in the textarea.
    // serialize/parse are stable module-level refs, intentionally omitted from deps.
@@ -74,7 +76,9 @@ export function useRawEditor({
       setLocalText(fresh)
    }, [sections, meta]) // eslint-disable-line react-hooks/exhaustive-deps
 
-   // ── Cleanup on unmount ─────────────────────────────────────
+   // ===================
+   //  Cleanup on unmount
+   // ===================
    // Cancels any pending debounce so it does not fire after the component unmounts.
    useEffect(() => {
       return () => {
@@ -84,7 +88,9 @@ export function useRawEditor({
       }
    }, [])
 
-   // ── Event handlers ─────────────────────────────────────────
+   // ===============
+   //  Event handlers
+   // ===============
 
    function handleFocus(): void {
       isActiveWriterRef.current = true

@@ -3,9 +3,9 @@ import { documentToMarkdown, markdownToDocument } from '../lib/markdown'
 import { useRawEditor } from '../hooks/useRawEditor'
 import { HighlightedTextarea } from '../atoms/HighlightedTextarea'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface MarkdownPanelProps {
    sections: Section[]
@@ -13,9 +13,9 @@ interface MarkdownPanelProps {
    onCommit: (sections: Section[], meta: DocMeta) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function MarkdownPanel({ sections, meta, onCommit }: MarkdownPanelProps) {
    const { text, handleChange, handleFocus, handleBlur, handleKeyDown } = useRawEditor({

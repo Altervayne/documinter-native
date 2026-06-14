@@ -20,9 +20,9 @@ import { GripVertical, Copy, Trash2, ChevronRight, ChevronDown, Plus } from 'luc
 import { useDocumentMutations } from '../contexts/DocumentMutationsContext'
 import { useLang } from '../contexts/LangContext'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface SectionItemProps {
    section:         Section
@@ -32,9 +32,9 @@ interface SectionItemProps {
    onReorderBlocks: (oldIdx: number, newIdx: number) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function SectionItem({
    section,
@@ -71,7 +71,9 @@ export function SectionItem({
          ref={setNodeRef} style={style} {...attributes}
          className="group/section"
       >
-         {/* ── Section header row ── */}
+         {/* =================== */}
+         {/*  Section header row */}
+         {/* =================== */}
          <div className="flex items-center gap-1 h-8 mb-1 rounded-md hover:bg-accent/8 transition-colors group/header">
 
             {/* Drag grip */}
@@ -136,7 +138,9 @@ export function SectionItem({
             </div>
          </div>
 
-         {/* ── Block list / empty stub ── */}
+         {/* ======================== */}
+         {/*  Block list / empty stub */}
+         {/* ======================== */}
          {!section.collapsed && (
             <div className="ml-5 flex flex-col">
                {section.blocks.length === 0 ? (

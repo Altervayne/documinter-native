@@ -2,9 +2,9 @@ import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, S
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { slugify } from './text'
 
-// ############################################################
-// Constants
-// ############################################################
+// #############
+// # CONSTANTS #
+// #############
 
 /** Maps CodeLang values to the fence language tag used on export. */
 const CODE_LANG_TO_FENCE: Record<CodeLang, string> = {
@@ -37,9 +37,9 @@ const FENCE_LANG_TO_CODE_LANG: Record<string, CodeLang> = {
    sass:       'css',
 }
 
-// ############################################################
-// Private helpers — serialisation
-// ############################################################
+// ###################################
+// # PRIVATE HELPERS — SERIALISATION #
+// ###################################
 
 /** Serialises InlineContent to Mintdown inline syntax. */
 function serializeInline(content: InlineContent | undefined): string {
@@ -185,9 +185,9 @@ export function serializeBlock(block: Block): string {
    }
 }
 
-// ############################################################
-// Private helpers — parsing
-// ############################################################
+// #############################
+// # PRIVATE HELPERS — PARSING #
+// #############################
 
 /** Maps a fence language tag string to a CodeLang (falls back to 'plain'). */
 function normalizeFenceLang(tag: string): CodeLang {
@@ -286,9 +286,9 @@ export function buildTableBlock(lines: string[]): Block {
    return { id: crypto.randomUUID(), type: 'table', richHeaders, richRows }
 }
 
-// ############################################################
-// Public API — documentToMarkdown
-// ############################################################
+// ###################################
+// # PUBLIC API — DOCUMENTTOMARKDOWN #
+// ###################################
 
 /**
  * Serialises the full document state to a UTF-8 Markdown string.
@@ -303,7 +303,9 @@ export function buildTableBlock(lines: string[]): Block {
 export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
    const parts: string[] = []
 
-   // ── Metadata block ──────────────────────────────────────────
+   // ===============
+   //  Metadata block
+   // ===============
    parts.push(`# ${meta.title}`)
    parts.push(`**Module:** ${meta.module}`)
    parts.push(`**Environment:** ${meta.env}`)
@@ -311,7 +313,9 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
    parts.push(`**Author:** ${meta.author}`)
    parts.push('---')
 
-   // ── Sections ────────────────────────────────────────────────
+   // =========
+   //  Sections
+   // =========
    for (const section of sections) {
       parts.push('')
       parts.push(`<!-- section-id: ${section.id} -->`)
@@ -332,9 +336,9 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
    return parts.join('\n') + '\n'
 }
 
-// ############################################################
-// Public API — markdownToDocument
-// ############################################################
+// ###################################
+// # PUBLIC API — MARKDOWNTODOCUMENT #
+// ###################################
 
 /**
  * Parses a Markdown string produced by `documentToMarkdown` (or hand-authored
@@ -355,7 +359,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 
    let lineIndex = 0
 
-   // ── Phase 1: Metadata scan ────────────────────────────────
+   // =======================
+   //  Phase 1: Metadata scan
+   // =======================
    // Read until '---' divider or end of input.
    while (lineIndex < lines.length) {
       const line = lines[lineIndex]
@@ -384,7 +390,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       }
    }
 
-   // ── Phase 2: Body scan ────────────────────────────────────
+   // ===================
+   //  Phase 2: Body scan
+   // ===================
 
    let currentSection:    Section | null = null
    let pendingSectionId:  string  | null = null
@@ -403,7 +411,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    let fenceLangTag  = ''    // raw language identifier after the opening fence
    let codeLines:      string[] = []
 
-   // ── Accumulator flush helpers ────────────────────────────
+   // ==========================
+   //  Accumulator flush helpers
+   // ==========================
 
    function flushAccum(): Block | null {
       const kind = accumKind
@@ -462,7 +472,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       }
    }
 
-   // ── Block commit helper ──────────────────────────────────
+   // ====================
+   //  Block commit helper
+   // ====================
 
    function commitBlock(block: Block | null): void {
       if (!block) return
@@ -491,13 +503,15 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       pendingImageBlock = null
    }
 
-   // ── Main scan loop ───────────────────────────────────────
+   // ===============
+   //  Main scan loop
+   // ===============
 
    while (lineIndex < lines.length) {
       const line = lines[lineIndex]
       lineIndex++
 
-      // ── Inside a code fence: accumulate verbatim ──────────
+      // Inside a code fence: accumulate verbatim
       if (inCodeFence) {
          // Closing fence: line is only backticks with at least fenceMark.length of them.
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
@@ -514,7 +528,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Section boundary: ## heading ──────────────────────
+      // Section boundary: ## heading
       const sectionMatch = line.match(/^## (.*)$/)
       if (sectionMatch) {
          commitBlock(flushAccum())
@@ -532,7 +546,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── h4 heading (check before h3 to avoid prefix ambiguity) ──
+      // h4 heading (check before h3 to avoid prefix ambiguity)
       const h4Match = line.match(/^#### (.*)$/)
       if (h4Match) {
          commitBlock(flushAccum())
@@ -554,7 +568,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── h3 heading ────────────────────────────────────────
+      // h3 heading
       const h3Match = line.match(/^### (.*)$/)
       if (h3Match) {
          commitBlock(flushAccum())
@@ -576,7 +590,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Opening code fence ────────────────────────────────
+      // Opening code fence
       const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
@@ -588,7 +602,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Blockquote line ───────────────────────────────────
+      // Blockquote line
       if (line.startsWith('> ') || line === '>') {
          // Cast: TypeScript over-narrows accumKind within the loop body.
          if ((accumKind as AccumKind | null) === 'blockquote') {
@@ -599,7 +613,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── List item ─────────────────────────────────────────
+      // List item
       if (/^\s*- /.test(line)) {
          if ((accumKind as AccumKind | null) === 'list') {
             accumLines.push(line)
@@ -609,7 +623,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Pipe-table row ────────────────────────────────────
+      // Pipe-table row
       if (line.startsWith('|')) {
          if ((accumKind as AccumKind | null) === 'table') {
             accumLines.push(line)
@@ -619,7 +633,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── HTML comment lines ────────────────────────────────
+      // HTML comment lines
       if (line.startsWith('<!--')) {
 
          // section-id: preserve UUID for the next ## heading.
@@ -685,7 +699,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Markdown image link: ![alt](src) ──────────────────
+      // Markdown image link: ![alt](src)
       const imageAMatch = line.match(/^!\[([^\]]*)\]\(([^)]*)\)/)
       if (imageAMatch) {
          commitBlock(flushAccum())
@@ -699,7 +713,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Thematic break: --- → hr block ───────────────────
+      // Thematic break: --- → hr block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
@@ -707,14 +721,14 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // ── Blank line: flush accumulator ─────────────────────
+      // Blank line: flush accumulator
       if (line.trim() === '') {
          if (accumKind !== null) commitBlock(flushAccum())
          pendingImageBlock = null
          continue
       }
 
-      // ── Default: paragraph text accumulation ──────────────
+      // Default: paragraph text accumulation
       if (accumKind === 'p') {
          accumLines.push(line)
       } else {
@@ -741,9 +755,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    return { sections, meta }
 }
 
-// ############################################################
-// Public API — importMarkdownFile / exportMarkdownFile
-// ############################################################
+// ########################################################
+// # PUBLIC API — IMPORTMARKDOWNFILE / EXPORTMARKDOWNFILE #
+// ########################################################
 
 /**
  * Reads a .md File object and parses it via markdownToDocument.

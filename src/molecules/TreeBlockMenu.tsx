@@ -9,9 +9,9 @@ import { Copy, Trash2 } from 'lucide-react'
 import { useDocumentMutations } from '../contexts/DocumentMutationsContext'
 import { useLang } from '../contexts/LangContext'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface TreeBlockMenuProps {
    secId:    string
@@ -20,16 +20,16 @@ interface TreeBlockMenuProps {
    onClose:  () => void
 }
 
-// ============================================================
-// Constants
-// ============================================================
+// #############
+// # CONSTANTS #
+// #############
 
 const MENU_WIDTH  = 160
 const MENU_HEIGHT = 80   // 2 items × ~32px + 16px padding
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function TreeBlockMenu({ secId, blockId, position, onClose }: TreeBlockMenuProps) {
    const ctx     = useDocumentMutations()

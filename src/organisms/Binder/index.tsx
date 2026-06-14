@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-   DndContext, DragOverlay, closestCenter, PointerSensor, useSensor, useSensors,
+   DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors,
    type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { Folder } from 'lucide-react'
-import type { BinderFolderRecord } from '../../types'
-import type { DocumentSortBy } from '../../lib/storage'
+import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
+import { DOCUMENT_DATE_FIELDS, backfillSearchText } from '../../lib/storage'
+import type { DocumentSortBy, DocumentDateField, SearchCriteria, DateFilter, FieldQuery } from '../../lib/storage'
 import { useBinderDocuments } from '../../hooks/useBinderDocuments'
 import { useBinderNav } from '../../hooks/useBinderNav'
 import { useLang } from '../../contexts/LangContext'
@@ -14,7 +15,11 @@ import { BinderTopbar } from './BinderTopbar'
 import { BinderNav } from './BinderNav'
 import { BinderBreadcrumb } from './BinderBreadcrumb'
 import { BinderControls } from './BinderControls'
+import { EMPTY_DATE_FILTER, EMPTY_FIELD_QUERY, dateDraftToFilter, fieldQueryDraftToCriteria } from './searchFilters'
+import type { DateFilterDraft, SearchScope, FieldQueryDraft, FieldQueryKey } from './searchFilters'
 import { DocumentCard } from './DocumentCard'
+import { DocumentCardPreview } from './DocumentCardPreview'
+import { DocumentCardMeta } from './DocumentCardMeta'
 import { BinderFolderMenu } from '../../molecules/BinderFolderMenu'
 import { ConfirmDialog } from '../../molecules/ConfirmDialog'
 
@@ -50,30 +55,90 @@ function parseDragId(raw: string): DragItem | null {
 export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
 
-   // ── Navigation + shared refresh ───────────────────────────
+   // ============================
+   //  Navigation + shared refresh
+   // ============================
    const [currentFolderId, setCurrentFolderId] = useState(ROOT_FOLDER_ID)
    const [currentFolder, setCurrentFolder]     = useState<BinderFolderRecord | null>(null)
    const [dataVersion, setDataVersion]         = useState(0)
    const bumpData = useCallback(() => setDataVersion(version => version + 1), [])
 
-   // ── Search + sort (session-local; search is global, escaping the current folder) ──
+   // =======================================================================================
+   //  Search + sort (session-local; an active search is global, escaping the current folder)
+   // =======================================================================================
    const [searchInput, setSearchInput]         = useState('')
    const [debouncedSearch, setDebouncedSearch] = useState('')
    const [sortBy, setSortBy]                   = useState<DocumentSortBy>('updatedAt')
    const [sortDir, setSortDir]                 = useState<'asc' | 'desc'>('desc')
+
+   // Advanced filters: targeted per-field queries, an independent date constraint per field,
+   // never-opened, and search scope.
+   const [fieldQueries, setFieldQueries]               = useState<FieldQueryDraft>(EMPTY_FIELD_QUERY)
+   const [debouncedFieldQueries, setDebouncedFieldQueries] = useState<FieldQueryDraft>(EMPTY_FIELD_QUERY)
+   const [dateFilters, setDateFilters] = useState<Record<DocumentDateField, DateFilterDraft>>({
+      updatedAt:    EMPTY_DATE_FILTER,
+      createdAt:    EMPTY_DATE_FILTER,
+      lastOpenedAt: EMPTY_DATE_FILTER,
+   })
+   const [hasNeverOpened, setHasNeverOpened] = useState(false)
+   const [scope, setScope]                   = useState<SearchScope>('global')
+
+   const setFieldQuery = useCallback((key: FieldQueryKey, value: string) => {
+      setFieldQueries(previous => ({ ...previous, [key]: value }))
+   }, [])
+   const setDateFilter = useCallback((field: DocumentDateField, next: DateFilterDraft) => {
+      setDateFilters(previous => ({ ...previous, [field]: next }))
+   }, [])
 
    useEffect(() => {
       const timer = setTimeout(() => setDebouncedSearch(searchInput), 250)
       return () => clearTimeout(timer)
    }, [searchInput])
 
-   const isSearching = debouncedSearch.trim().length > 0
+   useEffect(() => {
+      const timer = setTimeout(() => setDebouncedFieldQueries(fieldQueries), 250)
+      return () => clearTimeout(timer)
+   }, [fieldQueries])
+
+   const criteria = useMemo<SearchCriteria>(() => {
+      const dates: Partial<Record<DocumentDateField, DateFilter>> = {}
+      for (const field of DOCUMENT_DATE_FIELDS) {
+         const filter = dateDraftToFilter(dateFilters[field])
+         if (filter) dates[field] = filter
+      }
+      const fields: FieldQuery | undefined = fieldQueryDraftToCriteria(debouncedFieldQueries)
+      return {
+         text:           debouncedSearch.trim() || undefined,
+         fields,
+         dates:          Object.keys(dates).length > 0 ? dates : undefined,
+         hasNeverOpened: hasNeverOpened || undefined,
+      }
+   }, [debouncedSearch, debouncedFieldQueries, dateFilters, hasNeverOpened])
+
+   const hasActiveCriteria = Boolean(criteria.text || criteria.fields || criteria.dates || criteria.hasNeverOpened)
+
+   const clearFilters = useCallback(() => {
+      setFieldQueries(EMPTY_FIELD_QUERY)
+      setDateFilters({ updatedAt: EMPTY_DATE_FILTER, createdAt: EMPTY_DATE_FILTER, lastOpenedAt: EMPTY_DATE_FILTER })
+      setHasNeverOpened(false)
+      setScope('global')
+   }, [])
+
+   // One-time: backfill contentText on documents saved before full-text search existed.
+   useEffect(() => {
+      let active = true
+      backfillSearchText()
+         .then(updated => { if (active && updated > 0) bumpData() })
+         .catch(error => console.error('[binder] search-text backfill failed:', error))
+      return () => { active = false }
+   }, [bumpData])
 
    const nav  = useBinderNav(currentFolderId, dataVersion, bumpData)
    const docs = useBinderDocuments(
       {
-         folderId: isSearching ? undefined : currentFolderId,
-         search:   isSearching ? debouncedSearch : undefined,
+         // An active search spans the whole binder unless the scope switch limits it to this folder.
+         folderId: hasActiveCriteria && scope === 'global' ? undefined : currentFolderId,
+         criteria: hasActiveCriteria ? criteria : undefined,
          sortBy,
          sortDir,
       },
@@ -81,7 +146,9 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       bumpData,
    )
 
-   // ── Selection / editing / menus ───────────────────────────
+   // ============================
+   //  Selection / editing / menus
+   // ============================
    const [selectedFolderId, setSelectedFolderId]     = useState<string | null>(null)
    const [editingFolderId, setEditingFolderId]       = useState<string | null>(null)
    const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
@@ -95,9 +162,12 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       setSelectedDocumentId(null)
       setSearchInput('')          // navigating exits a global search
       setDebouncedSearch('')
-   }, [])
+      clearFilters()              // …and clears any advanced filters
+   }, [clearFilters])
 
-   // ── Folder actions ────────────────────────────────────────
+   // ===============
+   //  Folder actions
+   // ===============
    const handleNewFolder = useCallback(async () => {
       const id = await nav.createFolder(currentFolderId, t.binderNewFolder)
       setEditingFolderId(id)
@@ -120,20 +190,27 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       }
    }, [folderPendingDelete, nav, currentFolderId, navigateTo])
 
-   // ── Drag & drop ───────────────────────────────────────────
-   // Cards are draggable only with manual sort (and not while searching); folders always.
-   const manualSortActive = sortBy === 'manual' && !isSearching
+   // ============
+   //  Drag & drop
+   // ============
+   // Cards are always grabbable (whole card), but card-on-card reordering only persists in
+   // manual sort; in any other sort, only dropping a card onto a folder (a move) does anything.
+   const manualSortActive = sortBy === 'manual' && !hasActiveCriteria
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-   const [activeDrag, setActiveDrag] = useState<{ type: 'doc' | 'folder'; label: string } | null>(null)
+   const [activeDrag, setActiveDrag] =
+      useState<{ type: 'doc'; record: BinderDocumentRecord } | { type: 'folder'; label: string } | null>(null)
 
    const handleDragStart = useCallback((event: DragStartEvent) => {
       const item = parseDragId(String(event.active.id))
       if (!item) return
-      const label = item.type === 'doc'
-         ? (docs.documents.find(record => record.id === item.id)?.meta.title || t.untitledDoc)
-         : (nav.subfolders.find(folder => folder.id === item.id)?.name ?? '')
-      setActiveDrag({ type: item.type, label })
-   }, [docs.documents, nav.subfolders, t])
+      if (item.type === 'doc') {
+         const record = docs.documents.find(record => record.id === item.id)
+         if (record) setActiveDrag({ type: 'doc', record })
+      } else {
+         const folder = nav.subfolders.find(folder => folder.id === item.id)
+         setActiveDrag({ type: 'folder', label: folder?.name ?? '' })
+      }
+   }, [docs.documents, nav.subfolders])
 
    const handleDragEnd = useCallback((event: DragEndEvent) => {
       setActiveDrag(null)
@@ -144,13 +221,14 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       if (!source || !target) return
 
       if (source.type === 'doc' && target.type === 'doc') {
-         // Reorder documents within the current folder.
+         // Reorder documents — only meaningful (and only persisted) under manual sort.
+         if (!manualSortActive) return
          const ids = docs.documents.map(record => record.id)
          const oldIndex = ids.indexOf(source.id)
          const newIndex = ids.indexOf(target.id)
          if (oldIndex !== -1 && newIndex !== -1) void docs.handleReorder(arrayMove(ids, oldIndex, newIndex))
       } else if (source.type === 'doc' && target.type === 'folder') {
-         // Move the document into the dropped-on folder.
+         // Move the document into the dropped-on folder (works in any sort).
          void docs.handleMove(source.id, target.id)
          setSelectedDocumentId(null)
       } else if (source.type === 'folder' && target.type === 'folder') {
@@ -161,13 +239,15 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
          const newIndex = ids.indexOf(target.id)
          if (oldIndex !== -1 && newIndex !== -1) void nav.reorderFolders(arrayMove(ids, oldIndex, newIndex))
       }
-   }, [docs, nav])
+   }, [docs, nav, manualSortActive])
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
          <BinderTopbar theme={theme} onClose={onClose} onNewDocument={onNewDocument} />
 
-         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+         {/* pointerWithin: the drop target is whatever sits directly under the cursor — so a card
+             dropped onto a folder unambiguously lands in that folder, not the nearest-center one. */}
+         <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
          <div className="flex flex-1 min-h-0">
             <BinderNav
                currentFolder={currentFolder}
@@ -195,6 +275,15 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                      onSortByChange={setSortBy}
                      sortDir={sortDir}
                      onSortDirToggle={() => setSortDir(direction => direction === 'asc' ? 'desc' : 'asc')}
+                     fieldQueries={fieldQueries}
+                     onFieldQueryChange={setFieldQuery}
+                     dateFilters={dateFilters}
+                     onDateFilterChange={setDateFilter}
+                     hasNeverOpened={hasNeverOpened}
+                     onHasNeverOpenedToggle={() => setHasNeverOpened(value => !value)}
+                     scope={scope}
+                     onScopeChange={setScope}
+                     onClearFilters={clearFilters}
                   />
                </div>
 
@@ -203,7 +292,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                      <div className="text-muted text-sm">…</div>
                   ) : docs.documents.length === 0 ? (
                      <div className="flex h-full items-center justify-center text-muted text-sm">
-                        {currentFolder ? t.binderEmptyFolder : t.binderEmpty}
+                        {hasActiveCriteria ? t.binderNoResults : currentFolder ? t.binderEmptyFolder : t.binderEmpty}
                      </div>
                   ) : (
                      <SortableContext items={docs.documents.map(record => `doc:${record.id}`)} strategy={rectSortingStrategy}>
@@ -214,7 +303,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                                  record={record}
                                  isCurrent={record.id === currentDocumentId}
                                  isSelected={record.id === selectedDocumentId}
-                                 isDraggable={manualSortActive}
+                                 reorderable={manualSortActive}
                                  onSelect={() => setSelectedDocumentId(record.id)}
                                  onOpen={() => onOpenDocument(record.id)}
                                  onDuplicate={() => docs.handleDuplicate(record.id)}
@@ -237,8 +326,15 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
          <DragOverlay>
             {activeDrag && (
                activeDrag.type === 'doc' ? (
-                  <div className="rounded-lg border border-accent bg-raised shadow-xl px-3 py-2 text-sm text-text opacity-90 max-w-[260px] truncate">
-                     {activeDrag.label}
+                  <div className="w-full h-full flex items-stretch rounded-lg border border-accent bg-raised overflow-hidden shadow-2xl cursor-grabbing opacity-80">
+                     <DocumentCardPreview
+                        meta={activeDrag.record.meta}
+                        previewSections={activeDrag.record.previewSections}
+                        docTheme={activeDrag.record.docTheme}
+                        docAccent={activeDrag.record.docAccent}
+                        eager
+                     />
+                     <DocumentCardMeta record={activeDrag.record} />
                   </div>
                ) : (
                   <div className="flex items-center gap-1.5 rounded-md border border-accent bg-raised shadow-xl px-2 py-1.5 text-sm text-text opacity-90">

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, FilePlus, Upload, Save, FileUp, FileDown, Download, Library } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface FileMenuProps {
    onOpenBinder:      () => void
@@ -19,9 +19,9 @@ interface FileMenuProps {
    t: T
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function FileMenu({
    onOpenBinder,
@@ -52,7 +52,9 @@ export function FileMenu({
       setOpen(false)
    }
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <div ref={containerRef} className="relative">
@@ -128,9 +130,9 @@ export function FileMenu({
    )
 }
 
-// ============================================================
-// Shared primitives (file-local)
-// ============================================================
+// ##################################
+// # SHARED PRIMITIVES (FILE-LOCAL) #
+// ##################################
 
 interface MenuItemProps {
    icon:     React.ReactNode

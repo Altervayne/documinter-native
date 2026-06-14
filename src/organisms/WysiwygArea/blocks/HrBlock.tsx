@@ -1,9 +1,9 @@
 // -- Type Imports --
 import type { Block } from '../../../types'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface HrBlockProps {
    block:     Block
@@ -11,9 +11,9 @@ interface HrBlockProps {
    readOnly?: boolean
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 /**
  * Renders a horizontal rule — a pure visual divider with no editable content.

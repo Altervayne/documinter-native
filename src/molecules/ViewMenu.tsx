@@ -4,9 +4,9 @@ import type { PaneId, PaneNode } from '../types'
 import type { T } from '../lib/i18n'
 import { isPanelVisible } from '../lib/paneTree'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface ViewMenuProps {
    paneLayout:    PaneNode
@@ -14,9 +14,9 @@ interface ViewMenuProps {
    t:             T
 }
 
-// ============================================================
-// Panel config (stable — defined at module level)
-// ============================================================
+// ###################################################
+// # PANEL CONFIG (STABLE — DEFINED AT MODULE LEVEL) #
+// ###################################################
 
 const PANEL_OPTIONS: {
    id:          PaneId
@@ -29,9 +29,9 @@ const PANEL_OPTIONS: {
    { id: 'markdown', icon: <FileText     size={14} />, labelKey: 'viewMarkdown', shortcutKey: 'shortcutToggleMarkdown' },
 ]
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
    const [open, setOpen]  = useState(false)

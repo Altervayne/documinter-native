@@ -27,9 +27,9 @@
 import { esc } from './text'
 import type { CursorPosition, InlineContent, InlineRun } from '../types'
 
-// ============================================================
-// Internal types
-// ============================================================
+// ##################
+// # INTERNAL TYPES #
+// ##################
 
 interface ParseFlags {
    bold?:          boolean
@@ -41,9 +41,9 @@ interface ParseFlags {
    highlight?:     string
 }
 
-// ============================================================
-// Private helpers — shared by parsing and rendering
-// ============================================================
+// #####################################################
+// # PRIVATE HELPERS — SHARED BY PARSING AND RENDERING #
+// #####################################################
 
 /**
  * Convert a browser-normalised CSS color value back to a lowercase hex string.
@@ -140,9 +140,9 @@ export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
    return result
 }
 
-// ============================================================
-// Private helper — DOM walk (shared by parseInlineContent and domToInlineContent)
-// ============================================================
+// ###################################################################################
+// # PRIVATE HELPER — DOM WALK (SHARED BY PARSEINLINECONTENT AND DOMTOINLINECONTENT) #
+// ###################################################################################
 
 /**
  * Recursively walk a list of DOM child nodes, accumulating InlineRun entries.
@@ -214,9 +214,9 @@ function walkNodes(nodes: Iterable<ChildNode>, flags: ParseFlags, runs: InlineRu
    }
 }
 
-// ============================================================
-// Private helpers — Mintdown serialisation
-// ============================================================
+// ############################################
+// # PRIVATE HELPERS — MINTDOWN SERIALISATION #
+// ############################################
 
 /** Escape Mintdown special characters in run text. '\n' is left as-is (emitted as literal newline). */
 function escapeMintdown(text: string): string {
@@ -256,14 +256,14 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
    while (pos < source.length) {
       const char = source[pos]
 
-      // ── Escape sequence ───────────────────────────────────
+      // Escape sequence
       if (char === '\\' && pos + 1 < source.length) {
          appendRun(runs, source[pos + 1], flags)
          pos += 2
          continue
       }
 
-      // ── Bold + italic: *** ────────────────────────────────
+      // Bold + italic: ***
       if (source.startsWith('***', pos)) {
          const closeIndex = findClosingMarker(source, pos + 3, '***')
          if (closeIndex !== -1) {
@@ -278,7 +278,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Bold: ** ─────────────────────────────────────────
+      // Bold: **
       if (source.startsWith('**', pos)) {
          // findClosingMarker skips *** so we don't accidentally match ** inside ***
          const closeIndex = findClosingMarker(source, pos + 2, '**', '***')
@@ -293,7 +293,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Italic: * (but not ** or ***) ───────────────────
+      // Italic: * (but not ** or ***)
       if (char === '*') {
          // findClosingMarker skips ** (and thus *** as well)
          const closeIndex = findClosingMarker(source, pos + 1, '*', '**')
@@ -308,7 +308,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Underline: __ ────────────────────────────────────
+      // Underline: __
       if (source.startsWith('__', pos)) {
          const closeIndex = findClosingMarker(source, pos + 2, '__')
          if (closeIndex !== -1) {
@@ -323,7 +323,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Strikethrough: ~~ ────────────────────────────────
+      // Strikethrough: ~~
       if (source.startsWith('~~', pos)) {
          const closeIndex = findClosingMarker(source, pos + 2, '~~')
          if (closeIndex !== -1) {
@@ -337,7 +337,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Link: [text](href) ───────────────────────────────
+      // Link: [text](href)
       if (char === '[') {
          const closeBracket = source.indexOf(']', pos + 1)
          if (closeBracket !== -1 && source[closeBracket + 1] === '(') {
@@ -358,7 +358,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          continue
       }
 
-      // ── Color: {color:VALUE}text{/color} ────────────────
+      // Color: {color:VALUE}text{/color}
       if (source.startsWith('{color:', pos)) {
          const openTagClose = source.indexOf('}', pos + 7)
          if (openTagClose !== -1) {
@@ -375,7 +375,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          // Malformed: fall through to literal '{'
       }
 
-      // ── Highlight: {highlight:VALUE}text{/highlight} ────
+      // Highlight: {highlight:VALUE}text{/highlight}
       if (source.startsWith('{highlight:', pos)) {
          const openTagClose = source.indexOf('}', pos + 11)
          if (openTagClose !== -1) {
@@ -392,7 +392,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          // Malformed: fall through to literal '{'
       }
 
-      // ── Plain character ──────────────────────────────────
+      // Plain character
       appendRun(runs, char, flags)
       pos++
    }
@@ -400,9 +400,9 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
    return runs
 }
 
-// ============================================================
-// Public API
-// ============================================================
+// ##############
+// # PUBLIC API #
+// ##############
 
 /**
  * Convert a raw innerHTML string (from the legacy rich-text model) to InlineContent.
@@ -606,9 +606,9 @@ export function computeCursorPosition(element: HTMLElement): CursorPosition | nu
    return { runIndex: lastRunIndex, offset: currentContent[lastRunIndex]?.text.length ?? 0 }
 }
 
-// ============================================================
-// Color application & selection helpers
-// ============================================================
+// #########################################
+// # COLOR APPLICATION & SELECTION HELPERS #
+// #########################################
 
 /** Returns true when two InlineRun objects have identical formatting flags (ignoring text). */
 export function runsHaveSameFlags(runA: InlineRun, runB: InlineRun): boolean {

@@ -1,8 +1,8 @@
 import type { Language } from '../types'
 
-// ============================================================
-// CSS — properties, selectors, values, at-rules, variables
-// ============================================================
+// ############################################################
+// # CSS — PROPERTIES, SELECTORS, VALUES, AT-RULES, VARIABLES #
+// ############################################################
 //
 // Token mapping:
 //   kw   (blue)   — property names (word before : that isn't ::pseudo)
@@ -12,7 +12,6 @@ import type { Language } from '../types'
 //   str  (red)    — quoted strings
 //   cmt  (green)  — /* … */ comments
 //   op   (muted)  — braces, semicolons, colons, punctuation
-// ============================================================
 
 export const css: Language = {
    name: 'css',

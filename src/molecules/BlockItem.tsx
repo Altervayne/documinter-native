@@ -20,18 +20,18 @@ import { useLang } from '../contexts/LangContext'
 // -- Component Imports --
 import { TreeBlockMenu } from './TreeBlockMenu'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface BlockItemProps {
    block: Block
    secId: string
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function BlockItem({ block, secId }: BlockItemProps) {
    const { t } = useLang()

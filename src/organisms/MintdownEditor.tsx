@@ -3,9 +3,9 @@ import { documentToMintdown, mintdownToDocument } from '../lib/mintdown'
 import { useRawEditor } from '../hooks/useRawEditor'
 import { HighlightedTextarea } from '../atoms/HighlightedTextarea'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface MintdownEditorProps {
    sections: Section[]
@@ -13,9 +13,9 @@ interface MintdownEditorProps {
    onCommit: (sections: Section[], meta: DocMeta) => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function MintdownEditor({ sections, meta, onCommit }: MintdownEditorProps) {
    const { text, handleChange, handleFocus, handleBlur, handleKeyDown } = useRawEditor({

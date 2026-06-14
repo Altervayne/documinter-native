@@ -22,15 +22,15 @@ import { BottomDropZone } from '../../../atoms/BottomDropZone'
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
 
-// ============================================================
-// DnD strategy — items stay in place; DragOverlay provides the ghost
-// ============================================================
+// ######################################################################
+// # DND STRATEGY — ITEMS STAY IN PLACE; DRAGOVERLAY PROVIDES THE GHOST #
+// ######################################################################
 
 const noopStrategy: SortingStrategy = () => null
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface ContainerColumnProps {
    secId:     string
@@ -41,9 +41,9 @@ interface ContainerColumnProps {
    readOnly?: boolean
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: ContainerColumnProps) {
    const { t } = useLang()
@@ -82,7 +82,9 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       setDragWidth(null)
    }
 
-   // ── Build inner-block prop set ─────────────────────────────
+   // ===========================
+   //  Build inner-block prop set
+   // ===========================
 
    function makeInnerProps(innerBlock: Block, idx: number) {
       return {
@@ -111,7 +113,9 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       }
    }
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <div className="container-col">

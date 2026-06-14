@@ -1,9 +1,9 @@
 import { ColorSwatchButton } from '../atoms/ColorSwatchButton'
 import { ColorPicker } from './ColorPicker'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface InlineColorPopoverProps {
    /** Currently active color hex, or undefined when the field is unset. */
@@ -22,9 +22,9 @@ interface InlineColorPopoverProps {
    onClose:     () => void
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 /**
  * Floating color popover shared by the font-color and highlight-color buttons.

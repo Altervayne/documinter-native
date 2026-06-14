@@ -3,9 +3,9 @@ import type { RefObject } from 'react'
 import type { Block, Section } from '../types'
 import { execFormatCommand } from '../lib/execCommand'
 
-// ============================================================
-// Anchored-block helper (link panel jump targets)
-// ============================================================
+// ###################################################
+// # ANCHORED-BLOCK HELPER (LINK PANEL JUMP TARGETS) #
+// ###################################################
 
 export interface AnchoredBlock {
    block:        Block
@@ -26,9 +26,9 @@ export function getAnchoredBlocks(sections: Section[]): AnchoredBlock[] {
    return result
 }
 
-// ============================================================
-// Hook
-// ============================================================
+// ########
+// # HOOK #
+// ########
 
 interface UseLinkModeOptions {
    /** Selection range shared with the toolbar + color picker; saved on open, restored on apply. */

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MoreHorizontal, GripVertical } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { BinderDocumentRecord } from '../../types'
@@ -12,7 +12,7 @@ interface DocumentCardProps {
    record:           BinderDocumentRecord
    isCurrent:        boolean
    isSelected:       boolean
-   isDraggable:      boolean   // manual sort active (not searching) — shows the drag handle
+   reorderable:      boolean   // manual sort active — only then do siblings shift to preview a reorder
    onSelect:         () => void
    onOpen:           () => void
    onDuplicate:      () => void
@@ -23,20 +23,24 @@ interface DocumentCardProps {
 }
 
 /**
- * A document card: scaled preview (left) + metadata (right). Single-click selects,
- * double-click opens; the ⋯ button and right-click open the context menu. When manual
- * sort is active, a grip handle (top-right) makes the card draggable to reorder or to
- * drop onto a nav folder.
+ * A document card: scaled preview (left) + metadata (right). The whole card is grabbable —
+ * drag it onto a nav folder to move it, or (under manual sort) onto another card to reorder.
+ * A 5px drag threshold keeps single-click (select) and double-click (open) working; the ⋯
+ * button and right-click open the context menu.
  */
 export function DocumentCard({
-   record, isCurrent, isSelected, isDraggable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
+   record, isCurrent, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
 }: DocumentCardProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-      useSortable({ id: `doc:${record.id}`, disabled: !isDraggable })
-   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
+      useSortable({ id: `doc:${record.id}` })
+   // Apply the sortable position transform only when reordering is live; otherwise (drag-to-folder
+   // in a non-manual sort) the dragged card is just hidden — siblings must not shift around.
+   const style = reorderable
+      ? { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
+      : { opacity: isDragging ? 0 : 1 }
 
    function openMenu(event: React.MouseEvent) {
       event.preventDefault()
@@ -57,10 +61,11 @@ export function DocumentCard({
             ref={setNodeRef}
             style={style}
             {...attributes}
+            {...listeners}
             onClick={onSelect}
             onDoubleClick={onOpen}
             onContextMenu={openMenu}
-            className={`group relative flex items-stretch rounded-lg border bg-raised overflow-hidden cursor-pointer transition-colors select-none ${outlineClass}`}
+            className={`group relative flex items-stretch rounded-lg border bg-raised overflow-hidden cursor-grab active:cursor-grabbing transition-colors select-none ${outlineClass}`}
          >
             <DocumentCardPreview
                meta={record.meta}
@@ -77,23 +82,11 @@ export function DocumentCard({
                </div>
             )}
 
-            {isDraggable && (
-               <button
-                  type="button"
-                  aria-label={t.dragToReorder}
-                  title={t.dragToReorder}
-                  {...listeners}
-                  onClick={event => event.stopPropagation()}
-                  className="absolute top-2 right-2 z-10 p-1 rounded-md bg-raised/80 text-muted hover:text-text shadow-sm ring-1 ring-border cursor-grab active:cursor-grabbing"
-               >
-                  <GripVertical size={14} />
-               </button>
-            )}
-
             <button
                type="button"
                aria-label="More actions"
                onClick={openMenu}
+               onPointerDown={event => event.stopPropagation()}
                className="absolute bottom-2 right-2 p-1 rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-accent/10 transition-opacity cursor-pointer"
             >
                <MoreHorizontal size={16} />

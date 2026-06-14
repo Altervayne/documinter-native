@@ -9,9 +9,9 @@ import {
    visiblePanels,
 } from '../lib/paneTree'
 
-// ============================================================
-// Storage schema
-// ============================================================
+// ##################
+// # STORAGE SCHEMA #
+// ##################
 
 interface WorkspaceStorage {
    activeLayout:    PaneNode
@@ -42,9 +42,9 @@ function saveStorage(storage: WorkspaceStorage): void {
    localStorage.setItem(STORAGE_KEY, JSON.stringify(storage))
 }
 
-// ============================================================
-// Hook
-// ============================================================
+// ########
+// # HOOK #
+// ########
 
 export interface WorkspaceStateResult {
    paneLayout:    PaneNode
@@ -69,14 +69,18 @@ export function useWorkspaceState(): WorkspaceStateResult {
          const { activeLayout, storedPositions } = current
 
          if (isPanelVisible(activeLayout, id)) {
-            // ── Toggle OFF ────────────────────────────────
+            // ===========
+            //  Toggle OFF
+            // ===========
             if (countVisiblePanels(activeLayout) <= 1) return current   // guard: keep at least one panel
 
             const newLayout    = removePanel(activeLayout, id)!
             const newPositions = { ...storedPositions, [id]: activeLayout }
             return { activeLayout: newLayout, storedPositions: newPositions }
          } else {
-            // ── Toggle ON ─────────────────────────────────
+            // ==========
+            //  Toggle ON
+            // ==========
             const targetSet = new Set(visiblePanels(activeLayout))
             targetSet.add(id)
 

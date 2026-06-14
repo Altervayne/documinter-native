@@ -85,9 +85,9 @@ const TYPES = [
    'Fenêtre', 'Fenetre', 'Champ'
 ]
 
-// ==============================================================================
-// Build combined patterns (longest alternative first to prevent partial matches)
-// ==============================================================================
+// ##################################################################################
+// # BUILD COMBINED PATTERNS (LONGEST ALTERNATIVE FIRST TO PREVENT PARTIAL MATCHES) #
+// ##################################################################################
 function escRe(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
 const allKw = [...KEYWORDS_DECL, ...KEYWORDS_FLOW, ...KEYWORDS_LOGIC, ...KEYWORDS_BOOL]

@@ -4,9 +4,9 @@ import { BlockTypePicker } from './BlockTypePicker'
 import type { BlockType } from '../types'
 import type { T } from '../lib/i18n'
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface InsertMenuProps {
    /** ID of the last section, or null if there are no sections yet. */
@@ -16,9 +16,9 @@ interface InsertMenuProps {
    t: T
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 export function InsertMenu({ lastSectionId, onAddSection, onAddBlock, t }: InsertMenuProps) {
    const [open, setOpen]                       = useState(false)
@@ -61,7 +61,9 @@ export function InsertMenu({ lastSectionId, onAddSection, onAddBlock, t }: Inser
       setPickerAnchorRect(null)
    }
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <div ref={containerRef} className="relative">

@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 
-// ============================================================
+// ############################################################
 // BottomDropZone — invisible droppable sentinel at the end of a
 // noopStrategy sortable list.
 //
@@ -8,7 +8,7 @@ import { useDroppable } from '@dnd-kit/core'
 // the last item produces adjustedIdx = lastIdx - 1 (one short).
 // Dropping here triggers a "move to end" branch in handleDragEnd.
 // Only rendered while a drag is active so it takes no space at rest.
-// ============================================================
+// ############################################################
 
 interface BottomDropZoneProps {
    id: string

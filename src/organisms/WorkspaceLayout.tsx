@@ -4,15 +4,15 @@ import { useLang } from '../contexts/LangContext'
 import type { PaneId, PaneLeaf, PaneSplit, PaneNode } from '../types'
 import { countVisiblePanels, relocatePanel, setSplitRatio } from '../lib/paneTree'
 
-// ============================================================
-// Internal types
-// ============================================================
+// ##################
+// # INTERNAL TYPES #
+// ##################
 
 type DropZone = 'left' | 'right' | 'top' | 'bottom'
 
-// ============================================================
-// Pure helpers
-// ============================================================
+// ################
+// # PURE HELPERS #
+// ################
 
 /**
  * Returns which quadrant of `rect` the pointer falls in.
@@ -35,9 +35,9 @@ function computeDropZone(
    return dy < 0 ? 'top' : 'bottom'
 }
 
-// ============================================================
-// PaneHeader sub-component
-// ============================================================
+// ############################
+// # PANEHEADER SUB-COMPONENT #
+// ############################
 
 interface PaneHeaderProps {
    label:         string
@@ -62,9 +62,9 @@ function PaneHeader({ label, onPointerDown, onPointerMove, onPointerUp }: PaneHe
    )
 }
 
-// ============================================================
-// DropZoneOverlay sub-component
-// ============================================================
+// #################################
+// # DROPZONEOVERLAY SUB-COMPONENT #
+// #################################
 
 const ZONE_STYLES: Record<DropZone, React.CSSProperties> = {
    left:   { position: 'absolute', left: 4,  top: 4,    bottom: 4,  width: 'calc(50% - 8px)' },
@@ -115,9 +115,9 @@ function DropZoneOverlay({ hoveredZone }: { hoveredZone: DropZone | null }) {
    )
 }
 
-// ============================================================
-// Types
-// ============================================================
+// #########
+// # TYPES #
+// #########
 
 interface WorkspaceLayoutProps {
    paneLayout:         PaneNode
@@ -125,9 +125,9 @@ interface WorkspaceLayoutProps {
    panels:             Record<PaneId, React.ReactNode>
 }
 
-// ============================================================
-// Component
-// ============================================================
+// #############
+// # COMPONENT #
+// #############
 
 /**
  * Renders the workspace as a recursive PaneNode tree.
@@ -152,7 +152,9 @@ export function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
    const { t } = useLang()
 
-   // ── Drag state ─────────────────────────────────────────────
+   // ===========
+   //  Drag state
+   // ===========
    const [draggingPaneId, setDraggingPaneId]   = useState<PaneId | null>(null)
    const [hoveredDropInfo, setHoveredDropInfo] = useState<{ paneId: PaneId; zone: DropZone } | null>(null)
    const [dragPosition, setDragPosition]       = useState<{ x: number; y: number } | null>(null)
@@ -166,7 +168,9 @@ export function WorkspaceLayout({
 
    const totalPanels = countVisiblePanels(paneLayout)
 
-   // ── Pane label lookup ─────────────────────────────────────
+   // ==================
+   //  Pane label lookup
+   // ==================
 
    function getPaneLabel(paneId: PaneId): string {
       switch (paneId) {
@@ -176,7 +180,9 @@ export function WorkspaceLayout({
       }
    }
 
-   // ── Pane-header drag handlers ─────────────────────────────
+   // ==========================
+   //  Pane-header drag handlers
+   // ==========================
 
    function handlePaneHeaderPointerDown(
       event: React.PointerEvent<HTMLDivElement>,
@@ -220,7 +226,9 @@ export function WorkspaceLayout({
       setDragPosition(null)
    }
 
-   // ── Divider resize handlers ───────────────────────────────
+   // ========================
+   //  Divider resize handlers
+   // ========================
 
    function handleDividerPointerDown(event: React.PointerEvent<HTMLDivElement>): void {
       event.preventDefault()
@@ -244,7 +252,9 @@ export function WorkspaceLayout({
       event.currentTarget.releasePointerCapture(event.pointerId)
    }
 
-   // ── Recursive tree renderer ───────────────────────────────
+   // ========================
+   //  Recursive tree renderer
+   // ========================
 
    function renderNode(node: PaneNode, path: number[]): React.ReactElement {
       if (node.kind === 'leaf') return renderLeaf(node as PaneLeaf)
@@ -328,7 +338,9 @@ export function WorkspaceLayout({
       )
    }
 
-   // ── Render ─────────────────────────────────────────────────
+   // =======
+   //  Render
+   // =======
 
    return (
       <>

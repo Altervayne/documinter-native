@@ -1,8 +1,8 @@
 import type { Language } from '../types'
 
-// ============================================================
-// HTML — tags, attributes, values, comments, entities
-// ============================================================
+// #######################################################
+// # HTML — TAGS, ATTRIBUTES, VALUES, COMMENTS, ENTITIES #
+// #######################################################
 //
 // Token mapping:
 //   kw   (blue)   — tag names, including the opening <  or </
@@ -11,7 +11,6 @@ import type { Language } from '../types'
 //   str  (red)    — attribute values ("…" / '…')
 //   cmt  (green)  — <!-- … --> comments
 //   op   (muted)  — angle brackets, =, /
-// ============================================================
 
 export const html: Language = {
    name: 'html',

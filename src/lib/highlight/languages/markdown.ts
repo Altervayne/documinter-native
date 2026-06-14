@@ -1,8 +1,8 @@
 import type { Language, TokenRule } from '../types'
 
-// ##############################################################################
-// Markdown language — rules for the Markdown editor panel
-// ##############################################################################
+// ###########################################################
+// # MARKDOWN LANGUAGE — RULES FOR THE MARKDOWN EDITOR PANEL #
+// ###########################################################
 //
 // These rules are also imported and extended by mintdown.ts.
 // Export `markdownRules` as a separate constant so mintdown.ts can spread it
@@ -12,13 +12,15 @@ import type { Language, TokenRule } from '../types'
 // All patterns have the `y` (sticky) flag added automatically by the tokenizer.
 // Patterns with the `m` flag use `^` to match only at the start of a line.
 
-// ============================================================
-// Rule list
-// ============================================================
+// #############
+// # RULE LIST #
+// #############
 
 export const markdownRules: TokenRule[] = [
 
-   // ── Block-level rules (m flag — ^ only matches at line start) ─────────────
+   // ==========================================================
+   //  Block-level rules (m flag — ^ only matches at line start)
+   // ==========================================================
 
    // YAML front matter block.
    // Requires key: value lines (no blank lines) between the --- fences,
@@ -57,7 +59,9 @@ export const markdownRules: TokenRule[] = [
    // Table pipes — matches each | individually in data rows and separator rows.
    { type: 'op',   pattern: /\|/ },
 
-   // ── Inline rules (no ^, match anywhere in the text) ──────────────────────
+   // ================================================
+   //  Inline rules (no ^, match anywhere in the text)
+   // ================================================
 
    // Image  ![alt](url) — must come before the link rule.
    { type: 'fn',   pattern: /!\[[^\]]*\]\([^)]*\)/ },
@@ -81,9 +85,9 @@ export const markdownRules: TokenRule[] = [
    { type: 'del',  pattern: /~~[^~\n]+~~/ },
 ]
 
-// ============================================================
-// Language export
-// ============================================================
+// ###################
+// # LANGUAGE EXPORT #
+// ###################
 
 export const markdown: Language = {
    name: 'markdown',

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-// ============================================================
+// ############################################################
 // DropIndicator — accent-coloured insertion bar shown at a DnD
 // drop target during a drag operation.
 //
@@ -18,7 +18,7 @@ import { useState, useEffect } from 'react'
 // indicator appear instantly when prefers-reduced-motion is on —
 // the element still mounts and becomes visible, just without a
 // fade.
-// ============================================================
+// ############################################################
 
 export function DropIndicator() {
    const [isVisible, setIsVisible] = useState(false)

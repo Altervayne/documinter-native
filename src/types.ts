@@ -3,9 +3,9 @@ export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
 
-// ============================================================
-// Inline content model
-// ============================================================
+// ########################
+// # INLINE CONTENT MODEL #
+// ########################
 
 /** A single contiguous run of text with a uniform set of inline formatting flags.
  *  Invariant: text.length > 0 — empty runs are always filtered before storing.
@@ -32,9 +32,9 @@ export interface CursorPosition {
    offset:   number
 }
 
-// ============================================================
-// Editor UI state
-// ============================================================
+// ###################
+// # EDITOR UI STATE #
+// ###################
 
 /** Active inline-formatting state shown by the FormatToolbar for the current selection.
  *  Shared between the toolbar and the inline-color picker hook. */
@@ -47,9 +47,9 @@ export interface FormatState {
    highlightColor: string | undefined
 }
 
-// ============================================================
-// Document model
-// ============================================================
+// ##################
+// # DOCUMENT MODEL #
+// ##################
 
 export interface ListItem {
    id:        string
@@ -98,9 +98,9 @@ export interface DocState {
    sections: Section[]
 }
 
-// ============================================================
-// Binder — IndexedDB document library
-// ============================================================
+// #######################################
+// # BINDER — INDEXEDDB DOCUMENT LIBRARY #
+// #######################################
 
 /** A section's title + a slice of its blocks, for the card preview (image src stripped). */
 export interface PreviewSection {
@@ -131,6 +131,7 @@ export interface BinderDocumentRecord {
    folderId:        string             // '0' = root (unfiled)
    sortOrder:       number             // manual sort position within folder
    sectionTitles:   string[]           // all section titles (cheap; count = .length)
+   contentText:     string             // flattened plain text of every block (for full-text search)
    previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped — no base64
    docTheme:        'light' | 'dark'   // per-document presentation
    docAccent:       string             // per-document presentation
@@ -146,9 +147,9 @@ export interface BinderDocumentContent {
 
 export type Mode = 'wysiwyg' | 'preview'
 
-// ============================================================
-// Pane tree — workspace layout model
-// ============================================================
+// ######################################
+// # PANE TREE — WORKSPACE LAYOUT MODEL #
+// ######################################
 
 /** Which content lives in a leaf pane. */
 export type PaneId = 'wysiwyg' | 'mintdown' | 'markdown'

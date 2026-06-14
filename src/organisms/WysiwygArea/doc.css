@@ -1,16 +1,16 @@
-/* ─────────────────────────────────────────────────────────────────────────
+/* ############################################################
    Light-theme document styles for the WYSIWYG preview area.
    Applied inside .doc-render.  NOT a CSS Module — imported as a side-effect.
    These styles also appear inlined in the HTML export (see lib/export.ts).
-───────────────────────────────────────────────────────────────────────────── */
+   ############################################################ */
 
-/* ── Document canvas background token ──────────────────────────────────────
+/* Document canvas background token
    Used by WysiwygArea/index.tsx and the empty-state inline code snippet.
    Overridden by .doc-dark to the GitHub-dark paper color.                   */
 :root            { --doc-canvas-bg: #ffffff; }
 .doc-dark        { --doc-canvas-bg: #161b22; }
 
-/* ── Callout accent tokens ──────────────────────────────────────────────────
+/* Callout accent tokens
    Used by CalloutStylePicker.tsx so hardcoded hex lives in one place.
    Dark-doc overrides switch to the brighter GitHub-dark callout palette.    */
 :root {
@@ -206,7 +206,7 @@
 }
 .wysiwyg-add-btn:hover { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, #fff); color: var(--doc-accent, var(--color-accent)); border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 30%, #fff); }
 
-/* ── Doc-canvas editor UI ───────────────────────────────────────────────────
+/* Doc-canvas editor UI
    These classes are used by React components rendered ON the canvas.
    They respond to the document theme (.doc-dark), not the app theme.       */
 
@@ -336,10 +336,9 @@
 .container-divider:hover .container-ratio-badge { opacity: 1; }
 
 
-/* ── Dark document (paper) mode ─────────────────────────────────────────────
+/* Dark document (paper) mode
    Applied by adding the .doc-dark class to the card container.
-   These overrides mirror the dark theme in lib/export.ts getColors('dark').
-──────────────────────────────────────────────────────────────────────────── */
+   These overrides mirror the dark theme in lib/export.ts getColors('dark'). */
 .doc-dark .doc-render             { color: #e6edf3; }
 .doc-dark .doc-render h1          { color: #e6edf3; }
 .doc-dark .doc-render h2          { color: #e6edf3; border-bottom-color: #30363d; }
