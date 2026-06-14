@@ -1,4 +1,4 @@
-import { FolderPlus, ChevronLeft } from 'lucide-react'
+import { FolderPlus, ChevronLeft, X } from 'lucide-react'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 import type { BinderFolderRecord } from '../../types'
 import { useLang } from '../../contexts/LangContext'
@@ -22,6 +22,9 @@ interface BinderNavProps {
    rootRef?:             React.RefObject<HTMLDivElement | null>      // for drag-over-nav detection
    backRef?:             React.RefObject<HTMLButtonElement | null>   // Back button — up-drop hit target
    isUpTarget?:          boolean   // a dragged card is hovering the Back button (up-drop)
+   isDragging?:          boolean   // any drag in progress — shows the Cancel-move dropzone
+   cancelRef?:           React.RefObject<HTMLDivElement | null>      // Cancel-move zone hit target
+   isCancelTarget?:      boolean   // the cursor is over the Cancel-move dropzone
    onNavigateUp:         () => void                  // go up one level (to the parent folder)
    onSelectFolder:       (id: string | null) => void
    onEnterFolder:        (folder: BinderFolderRecord) => void
@@ -38,7 +41,8 @@ interface BinderNavProps {
  */
 export function BinderNav({
    currentFolder, subfolders, folderDocumentCounts, selectedFolderId, editingFolderId, isDocumentDragging,
-   draggingDocFolderId, folderDropTarget, rootRef, backRef, isUpTarget, onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
+   draggingDocFolderId, folderDropTarget, rootRef, backRef, isUpTarget, isDragging, cancelRef, isCancelTarget,
+   onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
 }: BinderNavProps) {
    const { t } = useLang()
 
@@ -88,23 +92,49 @@ export function BinderNav({
                   )
                })}
             </SortableContext>
-            {subfolders.length === 0 && (
-               <div className="px-2 py-1.5 text-xs text-muted/40 select-none">—</div>
-            )}
-
-            {/* New folder — sticks to the bottom of the scrolling list (like the workspace
-                "Add section" button), always in view but scrolls with content as needed. */}
-            <div className="sticky bottom-0 mt-1 bg-raised/40">
+            {subfolders.length === 0 ? (
+               /* No subfolders → a prominent "create a folder" call to action (the New-folder
+                  button blown up, since there's nothing else to anchor it to). */
                <button
                   type="button"
                   onClick={onNewFolder}
-                  className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium text-accent/60 hover:text-accent hover:bg-accent/8 rounded-md border border-dashed border-accent/30 hover:border-accent/50 transition-colors cursor-pointer"
+                  className="group/empty mt-1 w-full flex flex-col items-center gap-2.5 px-3 py-6 rounded-lg border border-dashed border-accent/30 hover:border-accent/50 hover:bg-accent/8 text-center transition-colors cursor-pointer"
                >
-                  <FolderPlus size={13} />
-                  {t.binderNewFolder}
+                  <FolderPlus size={26} className="text-accent/40 group-hover/empty:text-accent/70 transition-colors" />
+                  <span className="flex flex-col gap-0.5">
+                     <span className="text-sm font-medium text-muted">{t.binderNoFolders}</span>
+                     <span className="text-xs font-medium text-accent/70">{t.binderNoFoldersHint}</span>
+                  </span>
                </button>
-            </div>
+            ) : (
+               /* New folder — sticks to the bottom of the scrolling list (like the workspace
+                  "Add section" button), always in view but scrolls with content as needed. */
+               <div className="sticky bottom-0 mt-1 bg-raised/40">
+                  <button
+                     type="button"
+                     onClick={onNewFolder}
+                     className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium text-accent/60 hover:text-accent hover:bg-accent/8 rounded-md border border-dashed border-accent/30 hover:border-accent/50 transition-colors cursor-pointer"
+                  >
+                     <FolderPlus size={13} />
+                     {t.binderNewFolder}
+                  </button>
+               </div>
+            )}
          </div>
+
+         {/* Cancel-move dropzone — appears at the foot of the nav during any drag; dropping here
+             aborts the move (detected by cursor geometry in the binder, like the Back button). */}
+         {isDragging && (
+            <div
+               ref={cancelRef}
+               className={`binder-cancel-zone shrink-0 m-1.5 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md border border-dashed text-xs font-medium transition-colors ${
+                  isCancelTarget ? 'border-red bg-red/10 text-red' : 'border-border/70 text-muted/70'
+               }`}
+            >
+               <X size={13} />
+               {t.binderCancelMove}
+            </div>
+         )}
       </div>
    )
 }

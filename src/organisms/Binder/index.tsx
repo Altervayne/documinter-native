@@ -4,7 +4,7 @@ import {
    type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { Folder, ArrowDown, ArrowUp } from 'lucide-react'
+import { Folder, ArrowDown, ArrowUp, FilePlus } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
 import { DOCUMENT_DATE_FIELDS, backfillSearchText, getFolderAncestors } from '../../lib/storage'
 import type { DocumentSortBy, DocumentDateField, SearchCriteria, DateFilter, FieldQuery } from '../../lib/storage'
@@ -28,6 +28,11 @@ import './binderDragOverlay.css'
 // current folder's parent via the Back button (up a level), or nothing.
 type DropIntent = 'down' | 'up' | null
 
+// Spring-loaded navigation: dwelling on a folder / Back button for this long during a drag
+// navigates there (drilling in / up) without ending the drag, so items can be moved many levels.
+const SPRING_HOLD_MS = 900
+type SpringTarget = { kind: 'folder'; id: string } | { kind: 'back' }
+
 /** Lives inside the DndContext; reports whether the cursor is over a folder row (a down-drop). */
 function FolderOverWatcher({ onChange }: { onChange: (overFolder: boolean) => void }) {
    useDndMonitor({
@@ -47,8 +52,8 @@ export interface BinderProps {
    onClose:           () => void
    /** Open a stored document in the editor. */
    onOpenDocument:    (id: string) => void
-   /** Create a blank document and open it. */
-   onNewDocument:     () => void
+   /** Create a blank document and open it. With a folderId, the new document is filed there. */
+   onNewDocument:     (folderId?: string) => void
    /** Notify the editor that a document was deleted (so it can clear a now-stale current id). */
    onDocumentDeleted: (id: string) => void
 }
@@ -221,14 +226,37 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
    const overlayCardRef  = useRef<HTMLDivElement>(null)      // the full-card clone (funnels into the dot)
    const grabCapturedRef = useRef(false)                     // funnel origin captured once per drag
    const overBackRef     = useRef(false)                     // cursor over Back button (read at drop)
+   const cancelRef       = useRef<HTMLDivElement>(null)      // Cancel-move dropzone hit target
+   const overCancelRef   = useRef(false)                     // cursor over the Cancel-move zone (read at drop)
    const folderTargetRef = useRef<FolderDropTarget | null>(null)   // folder drag: hovered row + zone (read at drop)
    const [isOverNav, setIsOverNav]         = useState(false)
+   const [overCancel, setOverCancel]       = useState(false)
    const [overBack, setOverBack]           = useState(false)
    const [isOverFolder, setIsOverFolder]   = useState(false)
    const [folderTarget, setFolderTarget]   = useState<FolderDropTarget | null>(null)
    const isDocDragging    = activeDrag?.type === 'doc'
    const isFolderDragging = activeDrag?.type === 'folder'
    const draggedFolderId  = activeDrag?.type === 'folder' ? activeDrag.id : null
+
+   // Spring-loaded navigation state: a dwell timer, the current dwell target, and a progress ring.
+   const springTimerRef  = useRef<number | null>(null)
+   const springTargetRef = useRef<SpringTarget | null>(null)
+   const [springActive, setSpringActive] = useState(false)   // ring visible
+   const [springRunId, setSpringRunId]   = useState(0)        // bump to restart the ring animation
+   // Kept fresh so the (delayed) dwell timer navigates against the current view, not a stale closure.
+   const springDataRef = useRef({ subfolders: nav.subfolders, ancestors: nav.ancestors, navigateTo })
+
+   const resetSpring = useCallback(() => {
+      if (springTimerRef.current !== null) { clearTimeout(springTimerRef.current); springTimerRef.current = null }
+      springTargetRef.current = null
+      setSpringActive(false)
+   }, [])
+
+   // Sync the data the dwell timer needs every render (the timer fires long after the closure that
+   // started it, possibly after a navigation, so it must read the live view).
+   useEffect(() => {
+      springDataRef.current = { subfolders: nav.subfolders, ancestors: nav.ancestors, navigateTo }
+   })
 
    // Puck visibility + direction differ by drag kind: a card morphs over the whole nav; a folder
    // morphs only when it would actually move (nested into a folder, or up via the Back button).
@@ -244,18 +272,63 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       if (!isDocDragging && !isFolderDragging) return
       const inside = (rect: DOMRect | undefined, x: number, y: number) =>
          Boolean(rect) && x >= rect!.left && x <= rect!.right && y >= rect!.top && y <= rect!.bottom
+
+      // Restart / clear the dwell timer + ring as the navigable target changes; fire navigation
+      // (drill into a folder, or up via Back) when the cursor holds the same target for SPRING_HOLD_MS.
+      const updateSpring = (next: SpringTarget | null) => {
+         const previous = springTargetRef.current
+         const same = (!previous && !next)
+            || (!!previous && !!next && previous.kind === next.kind
+                && (previous.kind !== 'folder' || previous.id === (next as { id?: string }).id))
+         if (same) return
+         if (springTimerRef.current !== null) { clearTimeout(springTimerRef.current); springTimerRef.current = null }
+         springTargetRef.current = next
+         if (!next) { setSpringActive(false); return }
+         setSpringActive(true)
+         setSpringRunId(runId => runId + 1)
+         springTimerRef.current = window.setTimeout(() => {
+            springTimerRef.current = null
+            springTargetRef.current = null
+            setSpringActive(false)
+            const { subfolders, ancestors, navigateTo: navTo } = springDataRef.current
+            if (next.kind === 'back') navTo(ancestors.length > 0 ? ancestors[ancestors.length - 1] : null)
+            else {
+               const folder = subfolders.find(candidate => candidate.id === next.id)
+               if (folder) navTo(folder)
+            }
+         }, SPRING_HOLD_MS)
+      }
+
       const handlePointerMove = (event: PointerEvent) => {
          const { clientX: x, clientY: y } = event
          if (clusterRef.current) {
             clusterRef.current.style.left = `${x}px`
             clusterRef.current.style.top  = `${y}px`
          }
-         const overBackNow = inside(backRef.current?.getBoundingClientRect(), x, y)
+         const overNav      = inside(navRef.current?.getBoundingClientRect(),    x, y)
+         const overBackNow  = inside(backRef.current?.getBoundingClientRect(),   x, y)
+         const overCancelNow = inside(cancelRef.current?.getBoundingClientRect(), x, y)
+         overBackRef.current   = overBackNow
+         overCancelRef.current = overCancelNow
          setOverBack(overBackNow)
-         overBackRef.current = overBackNow
+         setOverCancel(overCancelNow)
+
+         // Folder row directly under the cursor (geometry; excludes the dragged folder itself).
+         let hovered: FolderDropTarget | null = null
+         if (!overBackNow && navRef.current) {
+            for (const row of navRef.current.querySelectorAll<HTMLElement>('[data-folder-id]')) {
+               const rect = row.getBoundingClientRect()
+               if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+               const id = row.getAttribute('data-folder-id')
+               if (id && id !== draggedFolderId) {
+                  const ratio = (y - rect.top) / rect.height
+                  hovered = { id, zone: ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'nest' }
+               }
+               break
+            }
+         }
 
          if (isDocDragging) {
-            const overNav = inside(navRef.current?.getBoundingClientRect(), x, y)
             setIsOverNav(overNav)
             // Capture the grab point once (while the card is still full-size) so the collapse
             // funnels toward the cursor rather than the card's center.
@@ -264,28 +337,22 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                overlayCardRef.current.style.transformOrigin = `${x - cardRect.left}px ${y - cardRect.top}px`
                grabCapturedRef.current = true
             }
+            // A card springs into any hovered folder, or up via Back.
+            updateSpring(overBackNow ? { kind: 'back' } : hovered ? { kind: 'folder', id: hovered.id } : null)
             return
          }
 
-         // Folder drag: find the hovered folder row (excluding the dragged folder) and its zone.
-         let target: FolderDropTarget | null = null
-         if (!overBackNow && navRef.current) {
-            for (const row of navRef.current.querySelectorAll<HTMLElement>('[data-folder-id]')) {
-               const rect = row.getBoundingClientRect()
-               if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
-               const id = row.getAttribute('data-folder-id')
-               if (id && id !== draggedFolderId) {
-                  const ratio = (y - rect.top) / rect.height
-                  target = { id, zone: ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'nest' }
-               }
-               break
-            }
-         }
-         setFolderTarget(target)
-         folderTargetRef.current = target
+         // Folder drag: nest highlight / reorder line come from the hovered row + zone.
+         setFolderTarget(hovered)
+         folderTargetRef.current = hovered
+         // A folder springs into a hovered folder's center (nest zone), or up via Back.
+         updateSpring(overBackNow ? { kind: 'back' } : hovered?.zone === 'nest' ? { kind: 'folder', id: hovered.id } : null)
       }
       window.addEventListener('pointermove', handlePointerMove)
-      return () => window.removeEventListener('pointermove', handlePointerMove)
+      return () => {
+         window.removeEventListener('pointermove', handlePointerMove)
+         if (springTimerRef.current !== null) { clearTimeout(springTimerRef.current); springTimerRef.current = null }
+      }
    }, [isDocDragging, isFolderDragging, draggedFolderId])
 
    const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -295,9 +362,12 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       setOverBack(false)
       setIsOverFolder(false)
       setFolderTarget(null)
+      setOverCancel(false)
       overBackRef.current     = false
+      overCancelRef.current   = false
       folderTargetRef.current = null
       grabCapturedRef.current = false
+      resetSpring()
       if (item.type === 'doc') {
          const record = docs.documents.find(record => record.id === item.id)
          if (record) setActiveDrag({ type: 'doc', record })
@@ -305,7 +375,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
          const folder = nav.subfolders.find(folder => folder.id === item.id)
          setActiveDrag({ type: 'folder', id: item.id, label: folder?.name ?? '' })
       }
-   }, [docs.documents, nav.subfolders])
+   }, [docs.documents, nav.subfolders, resetSpring])
 
    // Nest folder A into B — rejected if B is a descendant of A (would create a cycle). Among the
    // visible siblings a cycle is impossible, but the full ancestor walk is validated regardless.
@@ -317,46 +387,59 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
 
    const handleDragEnd = useCallback((event: DragEndEvent) => {
       const droppedOnBack   = overBackRef.current
+      const droppedOnCancel = overCancelRef.current
       const folderTargetNow = folderTargetRef.current
       setActiveDrag(null)
       setIsOverNav(false)
       setOverBack(false)
+      setOverCancel(false)
       setIsOverFolder(false)
       setFolderTarget(null)
       overBackRef.current     = false
+      overCancelRef.current   = false
       folderTargetRef.current = null
+      resetSpring()
+
+      // Dropped on the Cancel-move zone → abort: no move, reorder, or navigation commit.
+      if (droppedOnCancel) return
 
       const { active, over } = event
       const source = parseDragId(String(active.id))
       if (!source) return
 
       if (source.type === 'doc') {
+         const record = docs.documents.find(item => item.id === source.id)
+         const isForeign = !record   // arrived in this view via spring-navigation — not a local doc
+
          // Drop on the Back button → move the document up a level (to the current folder's parent).
-         // Detected by cursor rect (the Back button isn't a dnd-kit droppable, so `over` is null).
          if (droppedOnBack && currentFolder) {
-            const record = docs.documents.find(record => record.id === source.id)
             if (!record || record.folderId !== currentFolder.parentId) {
                void docs.handleMove(source.id, currentFolder.parentId)
                setSelectedDocumentId(null)
             }
             return
          }
-         if (!over || active.id === over.id) return
-         const target = parseDragId(String(over.id))
-         if (!target) return
-         if (target.type === 'doc') {
+         const target = over && active.id !== over.id ? parseDragId(String(over.id)) : null
+         if (target?.type === 'folder') {
+            // Move into the dropped-on folder — unless it's already the doc's folder.
+            if (record && record.folderId === target.id) return
+            void docs.handleMove(source.id, target.id)
+            setSelectedDocumentId(null)
+            return
+         }
+         if (isForeign) {
+            // Spring-navigated here from elsewhere → land the document in the current folder.
+            void docs.handleMove(source.id, currentFolderId)
+            setSelectedDocumentId(null)
+            return
+         }
+         if (target?.type === 'doc') {
             // Reorder documents — only meaningful (and only persisted) under manual sort.
             if (!manualSortActive) return
-            const ids = docs.documents.map(record => record.id)
+            const ids = docs.documents.map(item => item.id)
             const oldIndex = ids.indexOf(source.id)
             const newIndex = ids.indexOf(target.id)
             if (oldIndex !== -1 && newIndex !== -1) void docs.handleReorder(arrayMove(ids, oldIndex, newIndex))
-         } else if (target.type === 'folder') {
-            // Move into the dropped-on folder (any sort) — unless it's already the doc's folder.
-            const sourceRecord = docs.documents.find(record => record.id === source.id)
-            if (sourceRecord && sourceRecord.folderId === target.id) return
-            void docs.handleMove(source.id, target.id)
-            setSelectedDocumentId(null)
          }
          return
       }
@@ -366,24 +449,28 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
          void nav.moveFolder(source.id, currentFolder.parentId)   // up a level — always cycle-safe
          return
       }
-      if (folderTargetNow) {
-         if (folderTargetNow.zone === 'nest') {
-            void nestFolder(source.id, folderTargetNow.id)
-         } else {
-            // Reorder before/after the target among the visible siblings.
-            const ids = nav.subfolders.map(folder => folder.id).filter(id => id !== source.id)
-            const targetIndex = ids.indexOf(folderTargetNow.id)
-            if (targetIndex !== -1) {
-               ids.splice(folderTargetNow.zone === 'before' ? targetIndex : targetIndex + 1, 0, source.id)
-               void nav.reorderFolders(ids)
-            }
+      if (folderTargetNow?.zone === 'nest') {
+         void nestFolder(source.id, folderTargetNow.id)
+         return
+      }
+      const isNativeFolder = nav.subfolders.some(folder => folder.id === source.id)
+      if (!isNativeFolder) {
+         // A folder spring-navigated here (foreign to this level) → land it in the current folder.
+         void nestFolder(source.id, currentFolderId)
+      } else if (folderTargetNow) {
+         // Reorder before/after the target among the visible siblings.
+         const ids = nav.subfolders.map(folder => folder.id).filter(id => id !== source.id)
+         const targetIndex = ids.indexOf(folderTargetNow.id)
+         if (targetIndex !== -1) {
+            ids.splice(folderTargetNow.zone === 'before' ? targetIndex : targetIndex + 1, 0, source.id)
+            void nav.reorderFolders(ids)
          }
       }
-   }, [docs, nav, manualSortActive, currentFolder, nestFolder])
+   }, [docs, nav, manualSortActive, currentFolder, currentFolderId, nestFolder, resetSpring])
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
-         <BinderTopbar theme={theme} onClose={onClose} onNewDocument={onNewDocument} />
+         <BinderTopbar theme={theme} onClose={onClose} onNewDocument={() => onNewDocument(currentFolderId)} />
 
          {/* pointerWithin: the drop target is whatever sits directly under the cursor — so a card
              dropped onto a folder unambiguously lands in that folder, not the nearest-center one. */}
@@ -392,7 +479,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
             collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            onDragCancel={() => { setActiveDrag(null); setIsOverNav(false); setOverBack(false); setIsOverFolder(false); setFolderTarget(null); overBackRef.current = false; folderTargetRef.current = null }}
+            onDragCancel={() => { setActiveDrag(null); setIsOverNav(false); setOverBack(false); setOverCancel(false); setIsOverFolder(false); setFolderTarget(null); overBackRef.current = false; overCancelRef.current = false; folderTargetRef.current = null; resetSpring() }}
          >
          <FolderOverWatcher onChange={setIsOverFolder} />
          <div className="flex flex-1 min-h-0">
@@ -408,6 +495,9 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                rootRef={navRef}
                backRef={backRef}
                isUpTarget={overBack}
+               isDragging={!!activeDrag}
+               cancelRef={cancelRef}
+               isCancelTarget={overCancel}
                onNavigateUp={() => navigateTo(nav.ancestors.length > 0 ? nav.ancestors[nav.ancestors.length - 1] : null)}
                onSelectFolder={setSelectedFolderId}
                onEnterFolder={navigateTo}
@@ -443,9 +533,23 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                   {docs.isLoading ? (
                      <div className="text-muted text-sm">…</div>
                   ) : docs.documents.length === 0 ? (
-                     <div className="flex h-full items-center justify-center text-muted text-sm">
-                        {hasActiveCriteria ? t.binderNoResults : currentFolder ? t.binderEmptyFolder : t.binderEmpty}
-                     </div>
+                     hasActiveCriteria ? (
+                        <div className="flex h-full items-center justify-center text-muted text-sm">{t.binderNoResults}</div>
+                     ) : (
+                        <div className="flex h-full items-center justify-center">
+                           <button
+                              type="button"
+                              onClick={() => onNewDocument(currentFolderId)}
+                              className="flex flex-col items-center gap-3 py-12 px-10 rounded-xl border border-dashed border-accent/30 hover:border-accent/50 hover:bg-accent/5 text-center cursor-pointer transition-colors select-none"
+                           >
+                              <FilePlus size={32} className="text-accent/40" />
+                              <div className="flex flex-col gap-1">
+                                 <span className="text-sm font-medium text-muted">{t.binderEmptyTitle}</span>
+                                 <span className="text-xs font-medium text-accent/70">{t.binderEmptyHint}</span>
+                              </div>
+                           </button>
+                        </div>
+                     )
                   ) : (
                      <SortableContext items={docs.documents.map(record => `doc:${record.id}`)} strategy={rectSortingStrategy}>
                         <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))' }}>
@@ -518,6 +622,12 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                className={`binder-overlay-cluster fixed z-[1000] pointer-events-none${activeDrag.type === 'doc' && activeDrag.record.docTheme === 'dark' ? ' doc-dark' : ''}`}
                style={activeDrag.type === 'doc' ? { '--doc-accent': activeDrag.record.docAccent } as CSSProperties : undefined}
             >
+               {springActive && (
+                  <svg key={springRunId} className="binder-spring-ring" width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                     <circle className="binder-spring-track" cx="14" cy="14" r="11" />
+                     <circle className="binder-spring-fill" cx="14" cy="14" r="11" style={{ animationDuration: `${SPRING_HOLD_MS}ms` }} />
+                  </svg>
+               )}
                <div className="binder-overlay-dot" />
                <div className="binder-overlay-pill">
                   {activeDrag.type === 'doc' ? (

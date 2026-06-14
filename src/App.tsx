@@ -95,6 +95,9 @@ export default function App() {
    const { showToast } = useToast()
 
    const currentDocumentIdRef = useRef<string | null>(null)
+   // Folder a freshly-created document should land in on its first save (set when "New" is used
+   // from inside a binder folder; cleared once the document is saved or replaced). null = root.
+   const pendingNewDocFolderRef = useRef<string | null>(null)
    const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
    const hasHydratedRef       = useRef(false)
    const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -111,6 +114,7 @@ export default function App() {
    // Apply a programmatically-loaded document without dirtying / re-saving it.
    const applyLoadedDocument = useCallback((loaded: LoadedDocument, id: string | null) => {
       skipNextAutosaveRef.current = true
+      pendingNewDocFolderRef.current = null
       setMeta(loaded.meta)
       setSections(loaded.sections)
       setDocTheme(loaded.docTheme)
@@ -125,6 +129,7 @@ export default function App() {
    // and skips the autosave cycle this replacement triggers.
    const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[]) => {
       skipNextAutosaveRef.current = true
+      pendingNewDocFolderRef.current = null   // a plain new/import/load lands in root unless set after
       setMeta(nextMeta)
       setSections(nextSections)
       currentDocumentIdRef.current = null
@@ -185,11 +190,13 @@ export default function App() {
             { meta, sections },
             { docTheme, docAccent },
             currentDocumentIdRef.current ?? undefined,
+            pendingNewDocFolderRef.current ?? undefined,
          ).then(savedId => {
             if (currentDocumentIdRef.current === null) {
                currentDocumentIdRef.current = savedId
                setCurrentDocumentId(savedId)
             }
+            pendingNewDocFolderRef.current = null   // consumed — future new docs default to root
             setSaveStatus('saved')
          }).catch(error => {
             console.error('[autosave] saveDocument failed:', error)
@@ -225,11 +232,13 @@ export default function App() {
             { meta, sections },
             { docTheme, docAccent },
             currentDocumentIdRef.current ?? undefined,
+            pendingNewDocFolderRef.current ?? undefined,
          )
          if (currentDocumentIdRef.current === null) {
             currentDocumentIdRef.current = savedId
             setCurrentDocumentId(savedId)
          }
+         pendingNewDocFolderRef.current = null   // consumed — future new docs default to root
          setSaveStatus('saved')
       } catch (error) {
          console.error('[persistNow] saveDocument failed:', error)
@@ -255,7 +264,7 @@ export default function App() {
    }, [saveStatus, persistNow])
 
    // Pending binder navigation awaiting unsaved-changes confirmation.
-   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'open'; id: string } | { kind: 'new' } | null>(null)
+   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'open'; id: string } | { kind: 'new'; folderId?: string } | null>(null)
 
    // True when the current document isn't durably saved (flush in-flight or failed).
    const isNotDurablySaved = saveStatus === 'saving' || saveStatus === 'dirty'
@@ -274,10 +283,11 @@ export default function App() {
       }
    }, [applyLoadedDocument, showToast, t])
 
-   // Create a blank document and close the binder (currentDocumentId reset to null,
-   // so the first edit creates a fresh IndexedDB record).
-   const newDocumentNow = useCallback(() => {
+   // Create a blank document and close the binder (currentDocumentId reset to null, so the first
+   // edit creates a fresh IndexedDB record — filed into folderId if given, else root).
+   const newDocumentNow = useCallback((folderId?: string) => {
       replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
+      pendingNewDocFolderRef.current = folderId ?? null   // set after replaceDocument (which clears it)
       setBinderOpen(false)
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [t, replaceDocument, showToast])
@@ -289,10 +299,10 @@ export default function App() {
       else void openDocumentNow(id)
    }, [isNotDurablySaved, openDocumentNow])
 
-   // Create a new document from the binder — same unsaved guard.
-   const handleNewDocumentFromBinder = useCallback(() => {
-      if (isNotDurablySaved) setPendingNavigation({ kind: 'new' })
-      else newDocumentNow()
+   // Create a new document from the binder (optionally filed into a folder) — same unsaved guard.
+   const handleNewDocumentFromBinder = useCallback((folderId?: string) => {
+      if (isNotDurablySaved) setPendingNavigation({ kind: 'new', folderId })
+      else newDocumentNow(folderId)
    }, [isNotDurablySaved, newDocumentNow])
 
    // Confirm the pending navigation (discard-and-open / discard-and-new per approved design).
@@ -300,7 +310,7 @@ export default function App() {
       const pending = pendingNavigation
       setPendingNavigation(null)
       if (pending?.kind === 'open') void openDocumentNow(pending.id)
-      else if (pending?.kind === 'new') newDocumentNow()
+      else if (pending?.kind === 'new') newDocumentNow(pending.folderId)
    }, [pendingNavigation, openDocumentNow, newDocumentNow])
 
    const handleCancelNavigation = useCallback(() => setPendingNavigation(null), [])

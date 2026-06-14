@@ -594,6 +594,7 @@ export async function saveDocument(
    state: DocState,
    presentation: DocPresentation,
    existingId?: string,
+   targetFolderId?: string,
 ): Promise<string> {
    const database = await openDatabase()
    const id  = existingId ?? crypto.randomUUID()
@@ -603,15 +604,15 @@ export async function saveDocument(
    const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
    const contentStore   = transaction.objectStore(DOCUMENT_CONTENT_STORE)
 
-   // Preserve createdAt / folder placement / lastOpenedAt across updates.
-   // Upsert if existingId was passed but is gone. New records land unfiled (root), appended.
+   // Preserve createdAt / folder placement / lastOpenedAt across updates. Upsert if existingId
+   // was passed but is gone. A new record lands in targetFolderId (defaulting to root), appended.
    const existing = existingId
       ? await requestToPromise<BinderDocumentRecord | undefined>(documentsStore.get(existingId))
       : undefined
    const createdAt    = existing?.createdAt ?? now
-   const folderId     = existing?.folderId ?? ROOT_FOLDER_ID
+   const folderId     = existing?.folderId ?? targetFolderId ?? ROOT_FOLDER_ID
    const lastOpenedAt = existing?.lastOpenedAt
-   const sortOrder    = existing?.sortOrder ?? await nextDocumentSortOrder(documentsStore, ROOT_FOLDER_ID)
+   const sortOrder    = existing?.sortOrder ?? await nextDocumentSortOrder(documentsStore, folderId)
 
    const record: BinderDocumentRecord = {
       id,

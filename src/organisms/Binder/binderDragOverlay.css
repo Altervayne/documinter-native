@@ -96,6 +96,42 @@
 }
 .binder-overlay-chip[data-over-nav='true'] { opacity: 0; }
 
+/* Spring-load progress ring — fills around the cursor dot while dwelling on a folder / Back. */
+.binder-spring-ring {
+   position: absolute;
+   left: 0;
+   top: 0;
+   transform: translate(-50%, -50%) rotate(-90deg);   /* start the fill at 12 o'clock */
+}
+.binder-spring-ring circle {
+   fill: none;
+   stroke-width: 2.5;
+   stroke-linecap: round;
+}
+.binder-spring-ring .binder-spring-track {
+   stroke: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.binder-spring-ring .binder-spring-fill {
+   stroke: var(--color-accent);
+   stroke-dasharray: 69.12;    /* 2π · r(11) */
+   stroke-dashoffset: 69.12;
+   animation-name: binder-spring-fill;
+   animation-timing-function: linear;
+   animation-fill-mode: forwards;
+}
+@keyframes binder-spring-fill {
+   to { stroke-dashoffset: 0; }
+}
+
+/* Cancel-move dropzone — fades up into the foot of the nav when a drag begins. */
+.binder-cancel-zone {
+   animation: binder-cancel-in 150ms ease;
+}
+@keyframes binder-cancel-in {
+   from { opacity: 0; transform: translateY(4px); }
+   to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Direction arrow — left of the dot; the relevant one fades + slides in per data-intent.
    Uses the app accent (theme-defined, legible) rather than the per-document accent, which can
    wash out against the nav for a thin stroke. */
