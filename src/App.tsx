@@ -26,6 +26,7 @@ import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
 import { ToastContainer } from './atoms/ToastContainer'
+import { UpdatePrompt } from './atoms/UpdatePrompt'
 
 // -- Markdown Imports --
 import { importMarkdownFile } from './lib/markdown'
@@ -518,6 +519,7 @@ export default function App() {
             )}
 
             <ToastContainer />
+            <UpdatePrompt />
          </LangProvider>
    )
 }

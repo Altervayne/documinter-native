@@ -170,6 +170,9 @@ export const translations = {
       autosaving:     'Autosaving...',
       saved:          'Saved',
       saveFailed:     'Save failed — your changes are still unsaved.',
+      updateAvailable: 'A new version of Documinter is available!',
+      updateReload:    'Reload to update',
+      updateDismiss:   'Dismiss',
       // Toolbar menus
       menuFile:            'File',
       menuView:            'View',
@@ -437,6 +440,9 @@ export const translations = {
       autosaving:     'Sauvegarde...',
       saved:          'Sauvegardé',
       saveFailed:     'Échec de l\'enregistrement — vos modifications ne sont pas enregistrées.',
+      updateAvailable: 'Une nouvelle version de Documinter est disponible !',
+      updateReload:    'Recharger pour mettre à jour',
+      updateDismiss:   'Ignorer',
       // Toolbar menus
       menuFile:            'Fichier',
       menuView:            'Vue',

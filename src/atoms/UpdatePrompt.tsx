@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { Sparkles, X } from 'lucide-react'
+import { useLang } from '../contexts/LangContext'
 
 export function UpdatePrompt() {
+   const { t } = useLang()
    const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null)
 
    useEffect(() => {
@@ -55,25 +57,26 @@ export function UpdatePrompt() {
 
    return (
       <div
-         className="fixed bottom-0 left-0 right-0 z-50 flex items-center gap-3 px-4 py-2.5 bg-raised border-t border-border"
+         className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-xl flex items-center gap-3.5 px-5 py-4 rounded-xl bg-raised border border-border shadow-2xl"
          style={{ animation: 'sidebar-fadein 200ms ease-out both' }}
       >
-         <RefreshCw size={14} className="text-accent shrink-0" />
-         <span className="flex-1 text-xs font-mono text-muted">
-            A new version of Documinter is available.
+         <Sparkles size={20} className="text-accent shrink-0" />
+         <span className="flex-1 text-sm font-medium text-text">
+            {t.updateAvailable}
          </span>
          <button
             onClick={handleReload}
-            className="px-3 py-1 rounded-md bg-accent text-on-accent text-xs font-mono font-semibold cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+            className="px-4 py-2 rounded-lg bg-accent text-on-accent text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity shrink-0"
          >
-            Reload to update
+            {t.updateReload}
          </button>
          <button
             onClick={() => setWaitingWorker(null)}
-            title="Dismiss"
-            className="p-1 rounded-md text-muted hover:text-text transition-colors cursor-pointer shrink-0"
+            title={t.updateDismiss}
+            aria-label={t.updateDismiss}
+            className="p-1.5 rounded-md text-muted hover:text-text transition-colors cursor-pointer shrink-0"
          >
-            <X size={14} />
+            <X size={16} />
          </button>
       </div>
    )
