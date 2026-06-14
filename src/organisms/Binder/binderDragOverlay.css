@@ -81,6 +81,21 @@
 }
 .binder-overlay-cluster.doc-dark .binder-overlay-pill .pill-title { color: #e6edf3; }
 
+/* Folder puck variant — folders have no per-document accent, so use the app surface + accent. */
+.binder-overlay-cluster[data-kind='folder'] .binder-overlay-pill {
+   background: var(--color-raised);
+   border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+.binder-overlay-cluster[data-kind='folder'] .binder-overlay-pill .pill-title { color: var(--color-text); }
+.binder-overlay-pill .pill-folder-icon { color: var(--color-accent); }
+
+/* Folder chip (State A for a folder drag) — cross-fades to the puck over a nest / up target. */
+.binder-overlay-chip {
+   opacity: 0.95;
+   transition: opacity 150ms ease;
+}
+.binder-overlay-chip[data-over-nav='true'] { opacity: 0; }
+
 /* Direction arrow — left of the dot; the relevant one fades + slides in per data-intent.
    Uses the app accent (theme-defined, legible) rather than the per-document accent, which can
    wash out against the nav for a thin stroke. */

@@ -907,9 +907,30 @@ export async function reorderDocuments(orderedIds: string[]): Promise<void> {
    await transactionDone(transaction)
 }
 
-// #####################
-// # FOLDER REORDERING #
-// #####################
+// #######################
+// # FOLDER MOVES + ORDER #
+// #######################
+
+/**
+ * Move a folder under a new parent, appended to the end of the target parent's children
+ * (sortOrder = max sibling sortOrder + 1). Does NOT validate cycles — the caller must ensure
+ * targetParentId is not the folder itself or a descendant of it.
+ */
+export async function moveFolder(id: string, targetParentId: string): Promise<void> {
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readwrite')
+   const store = transaction.objectStore(FOLDERS_STORE)
+   const folder = await requestToPromise<BinderFolderRecord | undefined>(store.get(id))
+   if (folder) {
+      const siblings = await requestToPromise<BinderFolderRecord[]>(store.index(PARENT_ID_INDEX).getAll(targetParentId))
+      const maxSort  = siblings.reduce((max, sibling) => sibling.id === id ? max : Math.max(max, sibling.sortOrder), -1)
+      folder.parentId  = targetParentId
+      folder.sortOrder = maxSort + 1
+      folder.updatedAt = new Date().toISOString()
+      store.put(folder)
+   }
+   await transactionDone(transaction)
+}
 
 /** Assign sortOrder by array position. All ids must be siblings (same parentId; validated). */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {

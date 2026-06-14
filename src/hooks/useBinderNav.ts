@@ -4,6 +4,7 @@ import {
    getFolderChildren, getFolderAncestors, listDocuments,
    createFolder as storageCreateFolder, renameFolder as storageRenameFolder,
    deleteFolder as storageDeleteFolder, reorderFolders as storageReorderFolders,
+   moveFolder as storageMoveFolder,
 } from '../lib/storage'
 
 interface UseBinderNavResult {
@@ -15,6 +16,7 @@ interface UseBinderNavResult {
    renameFolder:   (id: string, name: string) => Promise<void>
    deleteFolder:   (id: string) => Promise<void>
    reorderFolders: (orderedIds: string[]) => Promise<void>
+   moveFolder:     (id: string, targetParentId: string) => Promise<void>
 }
 
 /**
@@ -64,9 +66,26 @@ export function useBinderNav(currentFolderId: string, dataVersion: number, onCha
    }, [onChanged])
 
    const reorderFolders = useCallback(async (orderedIds: string[]) => {
+      // Optimistic: apply the new order in the same frame as the drop (the persist + re-read are
+      // async — without this the old order flashes and the drop animation lands on a stale slot).
+      setSubfolders(current => {
+         const byId = new Map(current.map(folder => [folder.id, folder]))
+         const next = orderedIds
+            .map(id => byId.get(id))
+            .filter((folder): folder is BinderFolderRecord => folder !== undefined)
+         return next.length === current.length ? next : current
+      })
       await storageReorderFolders(orderedIds)
       onChanged()
    }, [onChanged])
 
-   return { subfolders, ancestors, folderDocumentCounts, isLoading, createFolder, renameFolder, deleteFolder, reorderFolders }
+   const moveFolder = useCallback(async (id: string, targetParentId: string) => {
+      // Optimistic: the folder leaves the current level (nested into a sibling, or moved up), so
+      // drop it from the visible list immediately; the re-read confirms.
+      setSubfolders(current => current.filter(folder => folder.id !== id))
+      await storageMoveFolder(id, targetParentId)
+      onChanged()
+   }, [onChanged])
+
+   return { subfolders, ancestors, folderDocumentCounts, isLoading, createFolder, renameFolder, deleteFolder, reorderFolders, moveFolder }
 }

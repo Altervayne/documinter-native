@@ -6,13 +6,13 @@ import {
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { Folder, ArrowDown, ArrowUp } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
-import { DOCUMENT_DATE_FIELDS, backfillSearchText } from '../../lib/storage'
+import { DOCUMENT_DATE_FIELDS, backfillSearchText, getFolderAncestors } from '../../lib/storage'
 import type { DocumentSortBy, DocumentDateField, SearchCriteria, DateFilter, FieldQuery } from '../../lib/storage'
 import { useBinderDocuments } from '../../hooks/useBinderDocuments'
 import { useBinderNav } from '../../hooks/useBinderNav'
 import { useLang } from '../../contexts/LangContext'
 import { BinderTopbar } from './BinderTopbar'
-import { BinderNav } from './BinderNav'
+import { BinderNav, type FolderDropTarget } from './BinderNav'
 import { BinderBreadcrumb } from './BinderBreadcrumb'
 import { BinderControls } from './BinderControls'
 import { EMPTY_DATE_FILTER, EMPTY_FIELD_QUERY, dateDraftToFilter, fieldQueryDraftToCriteria } from './searchFilters'
@@ -213,7 +213,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
    const manualSortActive = sortBy === 'manual' && !hasActiveCriteria
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const [activeDrag, setActiveDrag] =
-      useState<{ type: 'doc'; record: BinderDocumentRecord } | { type: 'folder'; label: string } | null>(null)
+      useState<{ type: 'doc'; record: BinderDocumentRecord } | { type: 'folder'; id: string; label: string } | null>(null)
    // Drag overlay morph: over the nav, the card clone funnels into a cursor "puck" (dot + pill).
    const navRef          = useRef<HTMLDivElement>(null)
    const backRef         = useRef<HTMLButtonElement>(null)   // Back button — up-drop hit target
@@ -221,41 +221,72 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
    const overlayCardRef  = useRef<HTMLDivElement>(null)      // the full-card clone (funnels into the dot)
    const grabCapturedRef = useRef(false)                     // funnel origin captured once per drag
    const overBackRef     = useRef(false)                     // cursor over Back button (read at drop)
-   const [isOverNav, setIsOverNav]       = useState(false)
-   const [overBack, setOverBack]         = useState(false)
-   const [isOverFolder, setIsOverFolder] = useState(false)
-   const isDocDragging = activeDrag?.type === 'doc'
-   const dropIntent: DropIntent = overBack ? 'up' : isOverFolder ? 'down' : null
+   const folderTargetRef = useRef<FolderDropTarget | null>(null)   // folder drag: hovered row + zone (read at drop)
+   const [isOverNav, setIsOverNav]         = useState(false)
+   const [overBack, setOverBack]           = useState(false)
+   const [isOverFolder, setIsOverFolder]   = useState(false)
+   const [folderTarget, setFolderTarget]   = useState<FolderDropTarget | null>(null)
+   const isDocDragging    = activeDrag?.type === 'doc'
+   const isFolderDragging = activeDrag?.type === 'folder'
+   const draggedFolderId  = activeDrag?.type === 'folder' ? activeDrag.id : null
 
-   // While a card is dragging, follow the real cursor: pin the puck to it, flag when the cursor is
-   // within the nav panel (card→puck morph) and over the Back button (up-drop). Folder hover comes
-   // from dnd-kit (FolderOverWatcher). Direct DOM writes where possible, no re-render.
+   // Puck visibility + direction differ by drag kind: a card morphs over the whole nav; a folder
+   // morphs only when it would actually move (nested into a folder, or up via the Back button).
+   const folderNest   = isFolderDragging && folderTarget?.zone === 'nest'
+   const puckVisible  = isDocDragging ? isOverNav : (isFolderDragging && (overBack || Boolean(folderNest)))
+   const puckIntent: DropIntent = overBack ? 'up' : (isDocDragging ? (isOverFolder ? 'down' : null) : (folderNest ? 'down' : null))
+
+   // While anything is dragging, follow the real cursor: pin the puck to it and flag the Back
+   // button (up-drop). For a card: nav-panel hover (card→puck morph) + funnel origin. For a folder:
+   // hit-test the folder rows to derive the hovered row + zone (top/bottom edge = reorder, center =
+   // nest). Direct DOM writes where possible, no re-render unless a tracked value changes.
    useEffect(() => {
-      if (!isDocDragging) return
+      if (!isDocDragging && !isFolderDragging) return
       const inside = (rect: DOMRect | undefined, x: number, y: number) =>
          Boolean(rect) && x >= rect!.left && x <= rect!.right && y >= rect!.top && y <= rect!.bottom
       const handlePointerMove = (event: PointerEvent) => {
+         const { clientX: x, clientY: y } = event
          if (clusterRef.current) {
-            clusterRef.current.style.left = `${event.clientX}px`
-            clusterRef.current.style.top  = `${event.clientY}px`
+            clusterRef.current.style.left = `${x}px`
+            clusterRef.current.style.top  = `${y}px`
          }
-         const overNav  = inside(navRef.current?.getBoundingClientRect(),  event.clientX, event.clientY)
-         const overBackNow = inside(backRef.current?.getBoundingClientRect(), event.clientX, event.clientY)
-         setIsOverNav(overNav)
+         const overBackNow = inside(backRef.current?.getBoundingClientRect(), x, y)
          setOverBack(overBackNow)
          overBackRef.current = overBackNow
-         // Capture the grab point once (while the card is still full-size) so the collapse
-         // funnels toward the cursor rather than the card's center.
-         if (!grabCapturedRef.current && !overNav && overlayCardRef.current) {
-            const cardRect = overlayCardRef.current.getBoundingClientRect()
-            overlayCardRef.current.style.transformOrigin =
-               `${event.clientX - cardRect.left}px ${event.clientY - cardRect.top}px`
-            grabCapturedRef.current = true
+
+         if (isDocDragging) {
+            const overNav = inside(navRef.current?.getBoundingClientRect(), x, y)
+            setIsOverNav(overNav)
+            // Capture the grab point once (while the card is still full-size) so the collapse
+            // funnels toward the cursor rather than the card's center.
+            if (!grabCapturedRef.current && !overNav && overlayCardRef.current) {
+               const cardRect = overlayCardRef.current.getBoundingClientRect()
+               overlayCardRef.current.style.transformOrigin = `${x - cardRect.left}px ${y - cardRect.top}px`
+               grabCapturedRef.current = true
+            }
+            return
          }
+
+         // Folder drag: find the hovered folder row (excluding the dragged folder) and its zone.
+         let target: FolderDropTarget | null = null
+         if (!overBackNow && navRef.current) {
+            for (const row of navRef.current.querySelectorAll<HTMLElement>('[data-folder-id]')) {
+               const rect = row.getBoundingClientRect()
+               if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue
+               const id = row.getAttribute('data-folder-id')
+               if (id && id !== draggedFolderId) {
+                  const ratio = (y - rect.top) / rect.height
+                  target = { id, zone: ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'nest' }
+               }
+               break
+            }
+         }
+         setFolderTarget(target)
+         folderTargetRef.current = target
       }
       window.addEventListener('pointermove', handlePointerMove)
       return () => window.removeEventListener('pointermove', handlePointerMove)
-   }, [isDocDragging])
+   }, [isDocDragging, isFolderDragging, draggedFolderId])
 
    const handleDragStart = useCallback((event: DragStartEvent) => {
       const item = parseDragId(String(event.active.id))
@@ -263,65 +294,92 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
       setIsOverNav(false)
       setOverBack(false)
       setIsOverFolder(false)
-      overBackRef.current   = false
+      setFolderTarget(null)
+      overBackRef.current     = false
+      folderTargetRef.current = null
       grabCapturedRef.current = false
       if (item.type === 'doc') {
          const record = docs.documents.find(record => record.id === item.id)
          if (record) setActiveDrag({ type: 'doc', record })
       } else {
          const folder = nav.subfolders.find(folder => folder.id === item.id)
-         setActiveDrag({ type: 'folder', label: folder?.name ?? '' })
+         setActiveDrag({ type: 'folder', id: item.id, label: folder?.name ?? '' })
       }
    }, [docs.documents, nav.subfolders])
 
+   // Nest folder A into B — rejected if B is a descendant of A (would create a cycle). Among the
+   // visible siblings a cycle is impossible, but the full ancestor walk is validated regardless.
+   const nestFolder = useCallback(async (folderId: string, targetParentId: string) => {
+      const ancestors = await getFolderAncestors(targetParentId)
+      if (ancestors.some(ancestor => ancestor.id === folderId)) return
+      await nav.moveFolder(folderId, targetParentId)
+   }, [nav])
+
    const handleDragEnd = useCallback((event: DragEndEvent) => {
-      const droppedOnBack = overBackRef.current
+      const droppedOnBack   = overBackRef.current
+      const folderTargetNow = folderTargetRef.current
       setActiveDrag(null)
       setIsOverNav(false)
       setOverBack(false)
       setIsOverFolder(false)
-      overBackRef.current = false
+      setFolderTarget(null)
+      overBackRef.current     = false
+      folderTargetRef.current = null
+
       const { active, over } = event
       const source = parseDragId(String(active.id))
       if (!source) return
 
-      // Drop on the Back button → move the document up a level (to the current folder's parent).
-      // Detected by cursor rect (the Back button isn't a dnd-kit droppable, so `over` is null here).
-      if (source.type === 'doc' && droppedOnBack && currentFolder) {
-         const record = docs.documents.find(record => record.id === source.id)
-         if (!record || record.folderId !== currentFolder.parentId) {
-            void docs.handleMove(source.id, currentFolder.parentId)
+      if (source.type === 'doc') {
+         // Drop on the Back button → move the document up a level (to the current folder's parent).
+         // Detected by cursor rect (the Back button isn't a dnd-kit droppable, so `over` is null).
+         if (droppedOnBack && currentFolder) {
+            const record = docs.documents.find(record => record.id === source.id)
+            if (!record || record.folderId !== currentFolder.parentId) {
+               void docs.handleMove(source.id, currentFolder.parentId)
+               setSelectedDocumentId(null)
+            }
+            return
+         }
+         if (!over || active.id === over.id) return
+         const target = parseDragId(String(over.id))
+         if (!target) return
+         if (target.type === 'doc') {
+            // Reorder documents — only meaningful (and only persisted) under manual sort.
+            if (!manualSortActive) return
+            const ids = docs.documents.map(record => record.id)
+            const oldIndex = ids.indexOf(source.id)
+            const newIndex = ids.indexOf(target.id)
+            if (oldIndex !== -1 && newIndex !== -1) void docs.handleReorder(arrayMove(ids, oldIndex, newIndex))
+         } else if (target.type === 'folder') {
+            // Move into the dropped-on folder (any sort) — unless it's already the doc's folder.
+            const sourceRecord = docs.documents.find(record => record.id === source.id)
+            if (sourceRecord && sourceRecord.folderId === target.id) return
+            void docs.handleMove(source.id, target.id)
             setSelectedDocumentId(null)
          }
          return
       }
 
-      if (!over || active.id === over.id) return
-      const target = parseDragId(String(over.id))
-      if (!target) return
-
-      if (source.type === 'doc' && target.type === 'doc') {
-         // Reorder documents — only meaningful (and only persisted) under manual sort.
-         if (!manualSortActive) return
-         const ids = docs.documents.map(record => record.id)
-         const oldIndex = ids.indexOf(source.id)
-         const newIndex = ids.indexOf(target.id)
-         if (oldIndex !== -1 && newIndex !== -1) void docs.handleReorder(arrayMove(ids, oldIndex, newIndex))
-      } else if (source.type === 'doc' && target.type === 'folder') {
-         // Move into the dropped-on folder (works in any sort) — unless it's already the doc's folder.
-         const sourceRecord = docs.documents.find(record => record.id === source.id)
-         if (sourceRecord && sourceRecord.folderId === target.id) return
-         void docs.handleMove(source.id, target.id)
-         setSelectedDocumentId(null)
-      } else if (source.type === 'folder' && target.type === 'folder') {
-         // Reorder folders — only among the visible siblings (same parent). This makes a
-         // cycle structurally impossible: a folder can never become its own descendant.
-         const ids = nav.subfolders.map(folder => folder.id)
-         const oldIndex = ids.indexOf(source.id)
-         const newIndex = ids.indexOf(target.id)
-         if (oldIndex !== -1 && newIndex !== -1) void nav.reorderFolders(arrayMove(ids, oldIndex, newIndex))
+      // Folder drag — drops are driven by our own zone/Back detection, not dnd-kit `over`.
+      if (droppedOnBack && currentFolder) {
+         void nav.moveFolder(source.id, currentFolder.parentId)   // up a level — always cycle-safe
+         return
       }
-   }, [docs, nav, manualSortActive, currentFolder])
+      if (folderTargetNow) {
+         if (folderTargetNow.zone === 'nest') {
+            void nestFolder(source.id, folderTargetNow.id)
+         } else {
+            // Reorder before/after the target among the visible siblings.
+            const ids = nav.subfolders.map(folder => folder.id).filter(id => id !== source.id)
+            const targetIndex = ids.indexOf(folderTargetNow.id)
+            if (targetIndex !== -1) {
+               ids.splice(folderTargetNow.zone === 'before' ? targetIndex : targetIndex + 1, 0, source.id)
+               void nav.reorderFolders(ids)
+            }
+         }
+      }
+   }, [docs, nav, manualSortActive, currentFolder, nestFolder])
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
@@ -334,7 +392,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
             collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
-            onDragCancel={() => { setActiveDrag(null); setIsOverNav(false); setOverBack(false); setIsOverFolder(false); overBackRef.current = false }}
+            onDragCancel={() => { setActiveDrag(null); setIsOverNav(false); setOverBack(false); setIsOverFolder(false); setFolderTarget(null); overBackRef.current = false; folderTargetRef.current = null }}
          >
          <FolderOverWatcher onChange={setIsOverFolder} />
          <div className="flex flex-1 min-h-0">
@@ -346,6 +404,7 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                editingFolderId={editingFolderId}
                isDocumentDragging={activeDrag?.type === 'doc'}
                draggingDocFolderId={activeDrag?.type === 'doc' ? activeDrag.record.folderId : null}
+               folderDropTarget={isFolderDragging ? folderTarget : null}
                rootRef={navRef}
                backRef={backRef}
                isUpTarget={overBack}
@@ -434,7 +493,11 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
                      <DocumentCardMeta record={activeDrag.record} />
                   </div>
                ) : (
-                  <div className="flex items-center gap-1.5 rounded-md border border-accent bg-raised shadow-xl px-2 py-1.5 text-sm text-text opacity-90">
+                  // Folder chip (State A) — cross-fades to the puck (State B) when over a nest/up target.
+                  <div
+                     data-over-nav={puckVisible ? 'true' : 'false'}
+                     className="binder-overlay-chip flex items-center gap-1.5 rounded-md border border-accent bg-raised shadow-xl px-2 py-1.5 text-sm text-text"
+                  >
                      <Folder size={14} className="text-muted shrink-0" />
                      <span className="truncate">{activeDrag.label}</span>
                   </div>
@@ -443,20 +506,31 @@ export function Binder({ theme, currentDocumentId, onClose, onOpenDocument, onNe
          </DragOverlay>
 
          {/* State B of the morph: a "puck" pinned to the live cursor (fixed, outside the overlay so
-             dnd-kit's transform can't offset it) — dot on the cursor, title pill top-right, and a
-             direction arrow on the left. Mounted for the whole card drag; faded in by CSS. */}
-         {isDocDragging && activeDrag?.type === 'doc' && (
+             dnd-kit's transform can't offset it) — dot on the cursor, label pill top-right, and a
+             direction arrow on the left. Mounted for the whole drag; faded in by CSS. A card uses
+             its document accent + a title pill; a folder uses the app accent + a folder pill. */}
+         {activeDrag && (
             <div
                ref={clusterRef}
-               data-over-nav={isOverNav ? 'true' : 'false'}
-               data-intent={dropIntent ?? 'none'}
-               className={`binder-overlay-cluster fixed z-[1000] pointer-events-none${activeDrag.record.docTheme === 'dark' ? ' doc-dark' : ''}`}
-               style={{ '--doc-accent': activeDrag.record.docAccent } as CSSProperties}
+               data-over-nav={puckVisible ? 'true' : 'false'}
+               data-intent={puckIntent ?? 'none'}
+               data-kind={activeDrag.type}
+               className={`binder-overlay-cluster fixed z-[1000] pointer-events-none${activeDrag.type === 'doc' && activeDrag.record.docTheme === 'dark' ? ' doc-dark' : ''}`}
+               style={activeDrag.type === 'doc' ? { '--doc-accent': activeDrag.record.docAccent } as CSSProperties : undefined}
             >
                <div className="binder-overlay-dot" />
                <div className="binder-overlay-pill">
-                  <span className="pill-swatch" style={{ background: activeDrag.record.docAccent }} />
-                  <span className="pill-title">{activeDrag.record.meta.title || t.untitledDoc}</span>
+                  {activeDrag.type === 'doc' ? (
+                     <>
+                        <span className="pill-swatch" style={{ background: activeDrag.record.docAccent }} />
+                        <span className="pill-title">{activeDrag.record.meta.title || t.untitledDoc}</span>
+                     </>
+                  ) : (
+                     <>
+                        <Folder size={12} className="pill-folder-icon shrink-0" />
+                        <span className="pill-title">{activeDrag.label || t.binderNewFolder}</span>
+                     </>
+                  )}
                </div>
                <div className="binder-overlay-arrow binder-overlay-arrow-down"><ArrowDown size={15} strokeWidth={2.5} /></div>
                <div className="binder-overlay-arrow binder-overlay-arrow-up"><ArrowUp size={15} strokeWidth={2.5} /></div>

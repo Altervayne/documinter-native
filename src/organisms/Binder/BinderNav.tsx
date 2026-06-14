@@ -1,8 +1,14 @@
 import { FolderPlus, ChevronLeft } from 'lucide-react'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 import type { BinderFolderRecord } from '../../types'
 import { useLang } from '../../contexts/LangContext'
 import { BinderNavFolder } from './BinderNavFolder'
+
+/** Folders don't shift during a drag — zone detection drives the nest highlight / reorder line. */
+const noopStrategy: SortingStrategy = () => null
+
+export type FolderDropZone = 'before' | 'after' | 'nest'
+export interface FolderDropTarget { id: string; zone: FolderDropZone }
 
 interface BinderNavProps {
    currentFolder:        BinderFolderRecord | null   // null = root ("All Documents")
@@ -12,6 +18,7 @@ interface BinderNavProps {
    editingFolderId:      string | null
    isDocumentDragging:   boolean
    draggingDocFolderId:  string | null   // folderId of the doc being dragged (its own folder isn't a drop target)
+   folderDropTarget:     FolderDropTarget | null   // during a folder drag: the hovered row + zone
    rootRef?:             React.RefObject<HTMLDivElement | null>      // for drag-over-nav detection
    backRef?:             React.RefObject<HTMLButtonElement | null>   // Back button — up-drop hit target
    isUpTarget?:          boolean   // a dragged card is hovering the Back button (up-drop)
@@ -31,7 +38,7 @@ interface BinderNavProps {
  */
 export function BinderNav({
    currentFolder, subfolders, folderDocumentCounts, selectedFolderId, editingFolderId, isDocumentDragging,
-   draggingDocFolderId, rootRef, backRef, isUpTarget, onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
+   draggingDocFolderId, folderDropTarget, rootRef, backRef, isUpTarget, onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
 }: BinderNavProps) {
    const { t } = useLang()
 
@@ -57,8 +64,10 @@ export function BinderNav({
          )}
 
          <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-            <SortableContext items={subfolders.map(folder => `folder:${folder.id}`)} strategy={verticalListSortingStrategy}>
-               {subfolders.map(folder => (
+            <SortableContext items={subfolders.map(folder => `folder:${folder.id}`)} strategy={noopStrategy}>
+               {subfolders.map(folder => {
+                  const isFolderTarget = folderDropTarget?.id === folder.id
+                  return (
                   <BinderNavFolder
                      key={folder.id}
                      folder={folder}
@@ -67,6 +76,8 @@ export function BinderNav({
                      isEditing={editingFolderId === folder.id}
                      isDocumentDragging={isDocumentDragging}
                      isSourceFolder={draggingDocFolderId === folder.id}
+                     nestHighlight={isFolderTarget && folderDropTarget!.zone === 'nest'}
+                     reorderEdge={isFolderTarget && folderDropTarget!.zone !== 'nest' ? folderDropTarget!.zone : null}
                      onSelect={() => onSelectFolder(folder.id)}
                      onEnter={() => onEnterFolder(folder)}
                      onContextMenu={event => onFolderMenu(folder, event)}
@@ -74,7 +85,8 @@ export function BinderNav({
                      onCommitRename={name => onCommitRename(folder.id, name)}
                      onCancelRename={onCancelRename}
                   />
-               ))}
+                  )
+               })}
             </SortableContext>
             {subfolders.length === 0 && (
                <div className="px-2 py-1.5 text-xs text-muted/40 select-none">—</div>

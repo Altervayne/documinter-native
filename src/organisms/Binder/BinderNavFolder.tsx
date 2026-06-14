@@ -12,6 +12,8 @@ interface BinderNavFolderProps {
    isEditing:          boolean
    isDocumentDragging: boolean   // a document card is currently being dragged
    isSourceFolder:     boolean   // the dragged document already lives here — not a valid drop target
+   nestHighlight:      boolean   // a dragged folder is hovering this row's center (nest target)
+   reorderEdge:        'before' | 'after' | null   // a dragged folder is hovering this row's edge (reorder)
    onSelect:           () => void
    onEnter:            () => void
    onContextMenu:      (event: React.MouseEvent) => void
@@ -26,7 +28,7 @@ interface BinderNavFolderProps {
  * (highlights when a card is dragged over it).
  */
 export function BinderNavFolder({
-   folder, documentCount, isSelected, isEditing, isDocumentDragging, isSourceFolder,
+   folder, documentCount, isSelected, isEditing, isDocumentDragging, isSourceFolder, nestHighlight, reorderEdge,
    onSelect, onEnter, onContextMenu, onMoreClick, onCommitRename, onCancelRename,
 }: BinderNavFolderProps) {
    const { t } = useLang()
@@ -62,20 +64,27 @@ export function BinderNavFolder({
       )
    }
 
-   // Highlight only the folder directly under the cursor — and never the doc's own folder.
-   const dropHighlight = isOver && isDocumentDragging && !isSourceFolder
+   // Highlight when this row is the active drop target: a card dropped onto it (doc drag), or a
+   // folder nested into it (folder drag, center zone). Never the dragged document's own folder.
+   const dropHighlight = (isOver && isDocumentDragging && !isSourceFolder) || nestHighlight
 
    return (
       <div
          ref={setNodeRef}
          style={style}
          {...attributes}
+         data-folder-id={folder.id}
          onClick={onSelect}
          onDoubleClick={onEnter}
          onContextMenu={onContextMenu}
-         className={`group flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors select-none
+         className={`group relative flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors select-none
             ${dropHighlight ? 'bg-accent/15 ring-1 ring-accent' : isSelected ? 'bg-accent/15' : 'hover:bg-accent/10'}`}
       >
+         {reorderEdge && (
+            <div
+               className={`absolute left-1 right-1 h-0.5 rounded-full bg-accent ${reorderEdge === 'before' ? 'top-0 -translate-y-1/2' : 'bottom-0 translate-y-1/2'}`}
+            />
+         )}
          <span
             {...listeners}
             aria-label={t.dragToReorder}
