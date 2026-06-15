@@ -314,7 +314,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
 }
 
 // ###################################
-// # PRIVATE HELPERS — SERIALISATION #
+// # PRIVATE HELPERS, SERIALISATION #
 // ###################################
 
 /** Serialises a callout block in Mintdown format (`> [style]` not `> [!style]`). */
@@ -386,7 +386,7 @@ function serializeTopLevelBlock(block: Block): string {
 }
 
 // ###################################
-// # PUBLIC API — DOCUMENTTOMINTDOWN #
+// # PUBLIC API, DOCUMENTTOMINTDOWN #
 // ###################################
 
 /**
@@ -426,7 +426,7 @@ export function documentToMintdown(sections: Section[], meta: DocMeta): string {
 }
 
 // ###################################
-// # PUBLIC API — MINTDOWNTODOCUMENT #
+// # PUBLIC API, MINTDOWNTODOCUMENT #
 // ###################################
 
 /**
@@ -689,7 +689,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
 
       // Multi-line container opener
       // Matches `{` optionally followed by a ratio token and nothing else.
-      // e.g. `{`, `{2`, `{-3`, `{60|40` — but NOT `{some prose text`
+      // e.g. `{`, `{2`, `{-3`, `{60|40`, but NOT `{some prose text`
       const containerOpenMatch = line.match(/^\{(2|3|4|-3|-4|\d+\|\d+)?\s*$/)
       if (containerOpenMatch) {
          commitBlock(flushAccum())
@@ -805,12 +805,12 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
 }
 
 // ########################################################
-// # PUBLIC API — IMPORTMINTDOWNFILE / EXPORTMINTDOWNFILE #
+// # PUBLIC API, IMPORTMINTDOWNFILE / EXPORTMINTDOWNFILE #
 // ########################################################
 
 /**
  * Reads a .mintd File object and parses it into document state.
- * Thin async wrapper — all parsing logic lives in mintdownToDocument.
+ * Thin async wrapper, all parsing logic lives in mintdownToDocument.
  */
 export async function importMintdownFile(
    file: File,

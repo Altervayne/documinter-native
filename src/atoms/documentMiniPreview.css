@@ -1,9 +1,9 @@
 /* ############################################################
-   DocumentMiniPreview — faithful, transform-scaled .doc-render
+   DocumentMiniPreview, faithful, transform-scaled .doc-render
    ############################################################
    Renders the real .doc-render (doc.css verbatim) inside the same
    accent-bordered paper the editor canvas uses, then scales the whole
-   thing down uniformly. Identical stylization to the canvas — just
+   thing down uniformly. Identical stylization to the canvas, just
    smaller. --mini-scale is the only knob; the width compensation keeps
    the scaled page filling any container width.                        */
 
@@ -23,7 +23,7 @@
    transform-origin: top left;
 }
 
-/* Image placeholder — preview snapshots strip image src (no base64). Sizes are in rem so they
+/* Image placeholder, preview snapshots strip image src (no base64). Sizes are in rem so they
    scale with the page exactly like real content. */
 .doc-mini-preview .doc-image-placeholder {
    display: flex;

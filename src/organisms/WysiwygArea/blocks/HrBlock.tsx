@@ -16,7 +16,7 @@ interface HrBlockProps {
 // #############
 
 /**
- * Renders a horizontal rule — a pure visual divider with no editable content.
+ * Renders a horizontal rule, a pure visual divider with no editable content.
  * The block and patch props are accepted for contract consistency with all other
  * block components but are never used.
  *

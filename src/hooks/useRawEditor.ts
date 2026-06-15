@@ -53,7 +53,7 @@ export function useRawEditor({
       () => serialize(sections, meta)
    )
 
-   // Always-current mirror of localText — read inside debounce callbacks to
+   // Always-current mirror of localText, read inside debounce callbacks to
    // avoid capturing a stale closure.
    const localTextRef = useRef(localText)
 

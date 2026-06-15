@@ -69,7 +69,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    } = useInlineColorPicker({ savedRangeRef, setFormatState })
 
    // ##########################################################################
-   // # ORCHESTRATOR EFFECT — TOOLBAR VISIBILITY, POSITION, ACTIVE-FORMAT READ #
+   // # ORCHESTRATOR EFFECT, TOOLBAR VISIBILITY, POSITION, ACTIVE-FORMAT READ #
    // ##########################################################################
 
    useEffect(() => {
@@ -154,7 +154,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
          italic:         document.queryCommandState('italic'),
          underline:      document.queryCommandState('underline'),
          strikethrough:  document.queryCommandState('strikeThrough'),
-         // Preserve color state — format button clicks don't change colors
+         // Preserve color state, format button clicks don't change colors
          fontColor:      previous.fontColor,
          highlightColor: previous.highlightColor,
       }))

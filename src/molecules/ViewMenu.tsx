@@ -15,7 +15,7 @@ interface ViewMenuProps {
 }
 
 // ###################################################
-// # PANEL CONFIG (STABLE — DEFINED AT MODULE LEVEL) #
+// # PANEL CONFIG (STABLE, DEFINED AT MODULE LEVEL) #
 // ###################################################
 
 const PANEL_OPTIONS: {

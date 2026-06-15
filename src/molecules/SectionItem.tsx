@@ -86,7 +86,7 @@ export function SectionItem({
                <GripVertical size={16} />
             </span>
 
-            {/* Collapse chevron — click toggles only */}
+            {/* Collapse chevron, click toggles only */}
             <button
                onClick={(event) => { event.stopPropagation(); onToggle() }}
                className="shrink-0 p-0.5 text-muted/50 hover:text-muted transition-colors cursor-pointer"
@@ -98,7 +98,7 @@ export function SectionItem({
                }
             </button>
 
-            {/* Title — click scrolls to section on canvas */}
+            {/* Title, click scrolls to section on canvas */}
             <span
                className={`flex-1 min-w-0 truncate text-xs font-medium cursor-pointer select-none
                   ${section.title ? 'text-text/80' : 'text-muted/50 italic'}`}
@@ -166,7 +166,7 @@ export function SectionItem({
             </div>
          )}
 
-         {/* Block type picker — opened by the + button in the hover bar */}
+         {/* Block type picker, opened by the + button in the hover bar */}
          {pickerOpen && (
             <BlockTypePicker
                anchorRect={pickerAnchorRect ?? new DOMRect(0, 0, 0, 0)}

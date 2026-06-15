@@ -1,7 +1,7 @@
 import type { Language, TokenRule } from '../types'
 
 // ###########################################################
-// # MARKDOWN LANGUAGE — RULES FOR THE MARKDOWN EDITOR PANEL #
+// # MARKDOWN LANGUAGE, RULES FOR THE MARKDOWN EDITOR PANEL #
 // ###########################################################
 //
 // These rules are also imported and extended by mintdown.ts.
@@ -19,7 +19,7 @@ import type { Language, TokenRule } from '../types'
 export const markdownRules: TokenRule[] = [
 
    // ==========================================================
-   //  Block-level rules (m flag — ^ only matches at line start)
+   //  Block-level rules (m flag, ^ only matches at line start)
    // ==========================================================
 
    // YAML front matter block.
@@ -27,15 +27,15 @@ export const markdownRules: TokenRule[] = [
    // distinguishing it from two plain HR lines separated by content.
    { type: 'fm',   pattern: /^---\n(?:\w+: [^\n]*\n)+---(?:\n|$)/m },
 
-   // Fenced code block — entire block including fence lines and language tag.
+   // Fenced code block, entire block including fence lines and language tag.
    // \n before closing ``` anchors the fence to its own line without a second
    // internal ^ anchor (avoids sticky + multiline ^ ambiguity).
    { type: 'code', pattern: /^```\w*\n[\s\S]*?\n```(?:\n|$)/m },
 
-   // Headings — all ATX levels (# through ######), whole line.
+   // Headings, all ATX levels (# through ######), whole line.
    { type: 'kw',   pattern: /^#{1,6} .+/m },
 
-   // HTML comments — block or inline, possibly multi-line.
+   // HTML comments, block or inline, possibly multi-line.
    { type: 'cmt',  pattern: /<!--[\s\S]*?-->/ },
 
    // GFM alert callout type tag: [!NOTE], [!WARNING], [!TIP], [!CAUTION], [!IMPORTANT].
@@ -45,7 +45,7 @@ export const markdownRules: TokenRule[] = [
    // Blockquote prefix > (with optional space).
    { type: 'op',   pattern: /^> ?/m },
 
-   // Standalone --- line — HR or front-matter delimiter.
+   // Standalone --- line, HR or front-matter delimiter.
    // The front-matter rule above is higher priority, so front-matter --- lines
    // are already consumed before this rule is reached.
    { type: 'op',   pattern: /^---$/m },
@@ -56,14 +56,14 @@ export const markdownRules: TokenRule[] = [
    // Unordered list bullets: -  *  +  (with optional leading whitespace).
    { type: 'op',   pattern: /^\s*[-*+] /m },
 
-   // Table pipes — matches each | individually in data rows and separator rows.
+   // Table pipes, matches each | individually in data rows and separator rows.
    { type: 'op',   pattern: /\|/ },
 
    // ================================================
    //  Inline rules (no ^, match anywhere in the text)
    // ================================================
 
-   // Image  ![alt](url) — must come before the link rule.
+   // Image  ![alt](url), must come before the link rule.
    { type: 'fn',   pattern: /!\[[^\]]*\]\([^)]*\)/ },
 
    // Link  [label](url) or [label](#anchor).
@@ -72,10 +72,10 @@ export const markdownRules: TokenRule[] = [
    // Inline code  `code`  (single-backtick, no newlines).
    { type: 'str',  pattern: /`[^`\n]+`/ },
 
-   // Bold  **text** — must come before the italic rule to consume ** first.
+   // Bold  **text**, must come before the italic rule to consume ** first.
    { type: 'bold', pattern: /\*\*[^*\n]+\*\*/ },
 
-   // Bold/underline  __text__ — must come before the _italic_ rule.
+   // Bold/underline  __text__, must come before the _italic_ rule.
    { type: 'bold', pattern: /__[^_\n]+__/ },
 
    // Italic  *text*  (single asterisk; ** already consumed above).

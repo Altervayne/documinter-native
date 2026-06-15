@@ -86,7 +86,7 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
 
 /**
  * Render a block array to an HTML string using the same per-block logic as the full
- * HTML export. Pure — no downloads, no DOM access. Used by the binder document mini
+ * HTML export. Pure, no downloads, no DOM access. Used by the binder document mini
  * preview to render each preview section's blocks inside a `.doc-render` wrapper.
  * Pass `{ imagePlaceholder: true }` to render src-less images as a muted placeholder.
  */

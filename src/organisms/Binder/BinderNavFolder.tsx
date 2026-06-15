@@ -11,7 +11,7 @@ interface BinderNavFolderProps {
    isSelected:         boolean
    isEditing:          boolean
    isDocumentDragging: boolean   // a document card is currently being dragged
-   isSourceFolder:     boolean   // the dragged document already lives here — not a valid drop target
+   isSourceFolder:     boolean   // the dragged document already lives here, not a valid drop target
    nestHighlight:      boolean   // a dragged folder is hovering this row's center (nest target)
    reorderEdge:        'before' | 'after' | null   // a dragged folder is hovering this row's edge (reorder)
    onSelect:           () => void

@@ -1,5 +1,5 @@
 /**
- * searchFilters.ts — shared types + helpers for the binder's advanced search.
+ * searchFilters.ts, shared types + helpers for the binder's advanced search.
  *
  * Kept separate from BinderControls so the component file only exports components
  * (required by the react-refresh lint rule). Both the control bar and the binder root

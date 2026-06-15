@@ -1,12 +1,12 @@
 /**
- * storage.ts — Saving and loading documents.
+ * storage.ts, Saving and loading documents.
  *
  * Exports: readAutosave, writeAutosave, downloadJSON, loadJSONFile,
  *          AutosaveData
  *
  * Covers three persistence mechanisms:
- *   1. Autosave  — debounced writes to localStorage, read on startup
- *   2. JSON file — manual download/load of .documinter.json backups
+ *   1. Autosave , debounced writes to localStorage, read on startup
+ *   2. JSON file, manual download/load of .documinter.json backups
  */
 
 import { slugify } from './text'
@@ -60,13 +60,13 @@ function migrateBlock(rawBlock: LegacyRawBlock): Block {
       return { ...base, items: base.items.map(migrateListItem) }
    }
 
-   // Paragraph / heading / callout — populate richText from legacy text if absent
+   // Paragraph / heading / callout, populate richText from legacy text if absent
    if (base.type === 'p' || base.type === 'h3' || base.type === 'h4' || base.type === 'callout') {
       if (!Array.isArray(base.richText)) {
          const { text: _text, ...clean } = base
          return { ...clean, richText: parseInlineContent(_text ?? '') }
       }
-      // richText is already an array — strip any trailing newline runs that may
+      // richText is already an array, strip any trailing newline runs that may
       // have been saved before stripTrailingNewlines was added to domToInlineContent.
       // Without this, a stored [{ text: '\n' }] renders to '<br>' and the element
       // matches the :has(> br:only-child) placeholder CSS rule, showing the
@@ -75,7 +75,7 @@ function migrateBlock(rawBlock: LegacyRawBlock): Block {
       return { ...clean, richText: stripTrailingNewlines(base.richText) }
    }
 
-   // Table — populate richHeaders and richRows from legacy string fields if absent
+   // Table, populate richHeaders and richRows from legacy string fields if absent
    if (base.type === 'table') {
       const richHeaders = Array.isArray(base.richHeaders)
          ? base.richHeaders
@@ -195,11 +195,11 @@ export function loadJSONFile(
 }
 
 // ############################################################
-// IndexedDB — binder document library
+// IndexedDB, binder document library
 //
 // Two stores keyed by the same id:
-//   documents        — lightweight BinderDocumentRecord (meta, timestamps, preview)
-//   documentContent  — heavy BinderDocumentContent (full sections, base64 images)
+//   documents       , lightweight BinderDocumentRecord (meta, timestamps, preview)
+//   documentContent , heavy BinderDocumentContent (full sections, base64 images)
 // Splitting them lets listDocuments() read only the light store, never
 // deserializing base64, so the binder card grid stays cheap.
 // ############################################################
@@ -222,7 +222,7 @@ export interface DocPresentation {
    docAccent: string
 }
 
-/** Full editable document returned by loadDocument — DocState plus presentation. */
+/** Full editable document returned by loadDocument, DocState plus presentation. */
 export interface LoadedDocument {
    meta:      DocMeta
    sections:  Section[]
@@ -246,7 +246,7 @@ export interface FieldQuery {
 /** The three timestamps a search can constrain. */
 export type DocumentDateField = 'updatedAt' | 'createdAt' | 'lastOpenedAt'
 
-/** The three date fields in display order — also drives matching iteration. */
+/** The three date fields in display order, also drives matching iteration. */
 export const DOCUMENT_DATE_FIELDS: DocumentDateField[] = ['updatedAt', 'createdAt', 'lastOpenedAt']
 
 /**
@@ -287,7 +287,7 @@ export interface DocumentListFilter {
 let databasePromise: Promise<IDBDatabase> | null = null
 
 /**
- * Create any missing store/index (idempotent). Called from onupgradeneeded — safe to run
+ * Create any missing store/index (idempotent). Called from onupgradeneeded, safe to run
  * from any prior version; repairs partial schemas and handles fresh installs identically.
  */
 function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void {
@@ -370,7 +370,7 @@ function openAtVersion(version?: number): Promise<IDBDatabase> {
 /**
  * Open the binder database, self-healing a partial/old schema. Opens at the current version
  * first; if any required store/index is missing (e.g. a database left at a version without
- * the folders store), reopens one version higher to force onupgradeneeded to repair it —
+ * the folders store), reopens one version higher to force onupgradeneeded to repair it,
  * independent of the version number, so it works even when the DB is already "current".
  * Cached singleton; consumers never call this directly.
  */
@@ -479,7 +479,7 @@ function blockText(block: Block): string {
    return parts.filter(Boolean).join(' ')
 }
 
-/** Flattened plain text of every block across every section (section titles excluded — stored separately). */
+/** Flattened plain text of every block across every section (section titles excluded, stored separately). */
 function extractDocumentText(sections: Section[]): string {
    const parts: string[] = []
    for (const section of sections) for (const block of section.blocks) parts.push(blockText(block))
@@ -647,7 +647,7 @@ export async function saveDocument(
    return id
 }
 
-/** Read the full editable document without side effects. Internal — loadDocument wraps it. */
+/** Read the full editable document without side effects. Internal, loadDocument wraps it. */
 async function readDocument(id: string): Promise<LoadedDocument | null> {
    const database = await openDatabase()
    const transaction = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readonly')
@@ -685,7 +685,7 @@ export async function touchDocument(id: string): Promise<void> {
 }
 
 /**
- * List document records (light store only — no sections/base64), filtered by folder,
+ * List document records (light store only, no sections/base64), filtered by folder,
  * searched in-memory, and sorted. Defaults to all folders, updatedAt descending.
  */
 export async function listDocuments(filter?: DocumentListFilter): Promise<BinderDocumentRecord[]> {
@@ -819,36 +819,58 @@ export async function renameFolder(id: string, name: string): Promise<void> {
 }
 
 /**
- * Delete a folder and all descendant folders. Documents in any deleted folder are moved
- * to root (folderId '0'), appended to the end of root in their discovered order.
+ * Delete a folder and all descendant folders. By default the documents in any deleted folder
+ * are kept, moved to root (folderId '0'), appended to the end of root in their discovered order.
+ * With { recursive: true } the documents are permanently deleted from both stores instead.
+ * Returns the ids of the documents that were deleted (empty unless recursive), so the caller can
+ * clear a now-stale "currently open" document.
  */
-export async function deleteFolder(id: string): Promise<void> {
+export async function deleteFolder(id: string, options?: { recursive?: boolean }): Promise<string[]> {
+   const recursive = options?.recursive ?? false
    const database = await openDatabase()
 
-   // Phase 1 — collect the folder and all descendants (iterative breadth-first).
+   // Phase 1, collect the folder and all descendants (iterative breadth-first).
    const toDelete: string[] = [id]
    for (let index = 0; index < toDelete.length; index++) {
       const children = await getFolderChildren(toDelete[index])
       for (const child of children) toDelete.push(child.id)
    }
 
-   // Phase 2 — move orphaned documents to root, then delete the folders.
-   const transaction    = database.transaction([FOLDERS_STORE, DOCUMENTS_STORE], 'readwrite')
+   // Phase 2, handle the contained documents, then delete the folders themselves.
+   const stores = recursive
+      ? [FOLDERS_STORE, DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE]
+      : [FOLDERS_STORE, DOCUMENTS_STORE]
+   const transaction    = database.transaction(stores, 'readwrite')
    const foldersStore   = transaction.objectStore(FOLDERS_STORE)
    const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
    const folderIndex    = documentsStore.index(FOLDER_ID_INDEX)
 
-   let nextRootSort = await nextDocumentSortOrder(documentsStore, ROOT_FOLDER_ID)
-   for (const folderId of toDelete) {
-      const documents = await requestToPromise<BinderDocumentRecord[]>(folderIndex.getAll(folderId))
-      for (const document of documents) {
-         document.folderId = ROOT_FOLDER_ID
-         document.sortOrder = nextRootSort++
-         documentsStore.put(document)
+   const deletedDocumentIds: string[] = []
+   if (recursive) {
+      const contentStore = transaction.objectStore(DOCUMENT_CONTENT_STORE)
+      for (const folderId of toDelete) {
+         const documents = await requestToPromise<BinderDocumentRecord[]>(folderIndex.getAll(folderId))
+         for (const document of documents) {
+            documentsStore.delete(document.id)
+            contentStore.delete(document.id)
+            deletedDocumentIds.push(document.id)
+         }
+         foldersStore.delete(folderId)
       }
-      foldersStore.delete(folderId)
+   } else {
+      let nextRootSort = await nextDocumentSortOrder(documentsStore, ROOT_FOLDER_ID)
+      for (const folderId of toDelete) {
+         const documents = await requestToPromise<BinderDocumentRecord[]>(folderIndex.getAll(folderId))
+         for (const document of documents) {
+            document.folderId = ROOT_FOLDER_ID
+            document.sortOrder = nextRootSort++
+            documentsStore.put(document)
+         }
+         foldersStore.delete(folderId)
+      }
    }
    await transactionDone(transaction)
+   return deletedDocumentIds
 }
 
 /** Direct children of a folder, sorted by sortOrder ascending. */
@@ -924,7 +946,7 @@ export async function reorderDocuments(orderedIds: string[]): Promise<void> {
 
 /**
  * Move a folder under a new parent, appended to the end of the target parent's children
- * (sortOrder = max sibling sortOrder + 1). Does NOT validate cycles — the caller must ensure
+ * (sortOrder = max sibling sortOrder + 1). Does NOT validate cycles, the caller must ensure
  * targetParentId is not the folder itself or a descendant of it.
  */
 export async function moveFolder(id: string, targetParentId: string): Promise<void> {

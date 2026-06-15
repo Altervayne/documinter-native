@@ -1,5 +1,5 @@
 /**
- * image.ts — Image compression utility.
+ * image.ts, Image compression utility.
  *
  * Exports: compressImage
  *

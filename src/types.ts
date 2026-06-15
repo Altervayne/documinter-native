@@ -8,7 +8,7 @@ export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css'
 // ########################
 
 /** A single contiguous run of text with a uniform set of inline formatting flags.
- *  Invariant: text.length > 0 — empty runs are always filtered before storing.
+ *  Invariant: text.length > 0, empty runs are always filtered before storing.
  *  '\n' characters in text represent line breaks (rendered as <br>). */
 export interface InlineRun {
    text:           string
@@ -16,9 +16,9 @@ export interface InlineRun {
    italic?:        boolean
    underline?:     boolean
    strikethrough?: boolean
-   color?:         string     // CSS color value — reserved, not yet surfaced in UI
-   highlight?:     string     // CSS color value — reserved, not yet surfaced in UI
-   link?:          string     // href — combines freely with all other flags
+   color?:         string     // CSS color value, reserved, not yet surfaced in UI
+   highlight?:     string     // CSS color value, reserved, not yet surfaced in UI
+   link?:          string     // href, combines freely with all other flags
 }
 
 /** A paragraph of inline-formatted text: a flat, ordered sequence of runs. */
@@ -63,7 +63,7 @@ export interface Block {
    richText?: InlineContent  // p, h3, h4, callout
    style?: CalloutStyle  // callout
    code?: string         // code
-   lang?: CodeLang       // code — default 'windev'
+   lang?: CodeLang       // code, default 'windev'
    items?: ListItem[]    // list
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
@@ -99,7 +99,7 @@ export interface DocState {
 }
 
 // #######################################
-// # BINDER — INDEXEDDB DOCUMENT LIBRARY #
+// # BINDER, INDEXEDDB DOCUMENT LIBRARY #
 // #######################################
 
 /** A section's title + a slice of its blocks, for the card preview (image src stripped). */
@@ -121,7 +121,7 @@ export interface BinderFolderRecord {
 /** Lightweight binder record (the `documents` object store). Returned by
  *  listDocuments(): everything a card needs, WITHOUT the heavy sections array.
  *  NOTE: lastOpenedAt / folderId / sortOrder are binder-only and are NEVER serialized
- *  to any export format (HTML/MD/Mintdown/JSON) — exports operate on DocState only. */
+ *  to any export format (HTML/MD/Mintdown/JSON), exports operate on DocState only. */
 export interface BinderDocumentRecord {
    id:              string             // crypto.randomUUID()
    meta:            DocMeta
@@ -132,13 +132,13 @@ export interface BinderDocumentRecord {
    sortOrder:       number             // manual sort position within folder
    sectionTitles:   string[]           // all section titles (cheap; count = .length)
    contentText:     string             // flattened plain text of every block (for full-text search)
-   previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped — no base64
+   previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped, no base64
    docTheme:        'light' | 'dark'   // per-document presentation
    docAccent:       string             // per-document presentation
    schemaVersion:   number
 }
 
-/** Heavy binder content (the `documentContent` object store) — the full sections
+/** Heavy binder content (the `documentContent` object store), the full sections
  *  array, base64 image src retained. Read only when a document is opened/exported. */
 export interface BinderDocumentContent {
    id:       string
@@ -148,20 +148,20 @@ export interface BinderDocumentContent {
 export type Mode = 'wysiwyg' | 'preview'
 
 // ######################################
-// # PANE TREE — WORKSPACE LAYOUT MODEL #
+// # PANE TREE, WORKSPACE LAYOUT MODEL #
 // ######################################
 
 /** Which content lives in a leaf pane. */
 export type PaneId = 'wysiwyg' | 'mintdown' | 'markdown'
 
-/** A leaf pane — shows one editor surface. */
+/** A leaf pane, shows one editor surface. */
 export interface PaneLeaf {
    kind:   'leaf'
    paneId: PaneId
 }
 
 /**
- * A split pane — two children separated by a resizable divider.
+ * A split pane, two children separated by a resizable divider.
  * `orientation: 'h'` → children sit left / right (horizontal divider)
  * `orientation: 'v'` → children sit top / bottom (vertical divider)
  * `ratio` is children[0]'s fraction of the total axis length, clamped [0.15, 0.85].

@@ -1,5 +1,5 @@
 /**
- * text.ts — Pure string and HTML utilities.
+ * text.ts, Pure string and HTML utilities.
  *
  * Exports: esc, stripTags, sanitizeRichText, slugify
  *

@@ -1,7 +1,7 @@
 import type { Language } from '../types'
 
 // ################################################
-// # C — C99/C11 KEYWORDS + COMMON EXTENDED TYPES #
+// # C, C99/C11 KEYWORDS + COMMON EXTENDED TYPES #
 // ################################################
 
 const KEYWORDS = [
@@ -42,13 +42,13 @@ export const c: Language = {
       { type: 'cmt',  pattern: /\/\/[^\n]*/ },
       // Block comments
       { type: 'cmt',  pattern: /\/\*[\s\S]*?\*\// },
-      // Preprocessor lines (#include, #define, etc.) — entire line as one token
+      // Preprocessor lines (#include, #define, etc.), entire line as one token
       { type: 'type', pattern: /#\s*(?:include|define|undef|ifdef|ifndef|if|elif|else|endif|pragma|error|line|warning)\b[^\n]*/ },
       // String literals
       { type: 'str',  pattern: /L?"(?:[^"\\]|\\.)*"/ },
       // Character literals (single char or escape sequence)
       { type: 'str',  pattern: /'(?:[^'\\]|\\.)'/ },
-      // Numbers: hex, octal, float (with exponent), int — with optional suffixes
+      // Numbers: hex, octal, float (with exponent), int, with optional suffixes
       { type: 'num',  pattern: /\b0x[\da-fA-F]+[uUlL]*\b|\b0[0-7]+[uUlL]*\b|\b\d+\.?\d*(?:[eE][+-]?\d+)?[fFlLuU]*\b/ },
       // Extended types and standard macros
       { type: 'type', pattern: typePattern },

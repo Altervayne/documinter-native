@@ -14,7 +14,7 @@ const BOX_HEIGHT = 240
 
 /**
  * The preview slot of a document card: a fixed-size box holding a read-only
- * DocumentMiniPreview (real `.doc-render` content, scaled down). Pure React — no iframe.
+ * DocumentMiniPreview (real `.doc-render` content, scaled down). Pure React, no iframe.
  */
 export function DocumentCardPreview({ meta, previewSections, docTheme, docAccent }: DocumentCardPreviewProps) {
    return (

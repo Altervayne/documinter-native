@@ -42,13 +42,13 @@ interface WysiwygBlockProps {
    secId:  string
    block:  Block
    containerMutations?: ContainerMutations
-   /** Inner block inside a container — routes mutations through passed props */
+   /** Inner block inside a container, routes mutations through passed props */
    inner?:    boolean
    /** When inner=true, also enables DnD drag-to-reorder for this block */
    draggable?: boolean
-   /** Which side the drag grip renders on — defaults to 'left' */
+   /** Which side the drag grip renders on, defaults to 'left' */
    gripSide?: 'left' | 'right'
-   /** Static read-only view — no editing, no interactions */
+   /** Static read-only view, no editing, no interactions */
    readOnly?: boolean
    /** ID of the block currently being dragged (for insertion indicator) */
    activeBlockId?: string | null
@@ -135,7 +135,7 @@ export function WysiwygBlock({
       const listItemEl = target.closest('[data-list-item-id]')
       setContextMenuListItemId(listItemEl?.getAttribute('data-list-item-id') ?? null)
 
-      // Table cell detection — derive row/col indices from the DOM structure
+      // Table cell detection, derive row/col indices from the DOM structure
       if (block.type === 'table' && blockDivRef.current) {
          const cell = target.closest('td, th')
          if (cell && blockDivRef.current.contains(cell)) {
@@ -256,7 +256,7 @@ export function WysiwygBlock({
                style={{ background: 'var(--doc-accent, var(--color-accent))' }} />
          )}
 
-         {/* DnD grip — outer blocks always, inner blocks when draggable=true */}
+         {/* DnD grip, outer blocks always, inner blocks when draggable=true */}
          {isDraggable && !readOnly && (
             <div
                {...sortable.listeners}
@@ -373,7 +373,7 @@ export function WysiwygBlock({
          {isAnchorDupe && (
             <div className="flex items-center gap-1 mt-1 px-1 text-amber-500 text-xs font-medium">
                <TriangleAlert size={11} />
-               <span>{t.duplicateAnchor} — #{block.handle}</span>
+               <span>{t.duplicateAnchor}, #{block.handle}</span>
             </div>
          )}
       </div>

@@ -34,7 +34,7 @@ import type { Block, InlineContent, ListItem } from '../../../types'
 
 /**
  * Returns true when the cursor (selection) is at the very start of the element's
- * text content — works correctly for rich contenteditable elements with nested tags.
+ * text content, works correctly for rich contenteditable elements with nested tags.
  */
 function isCursorAtStart(element: HTMLElement): boolean {
    const selection = window.getSelection()
@@ -47,7 +47,7 @@ function isCursorAtStart(element: HTMLElement): boolean {
 }
 
 // ###########################################################
-// # LISTITEMROW — ONE SORTABLE ROW AT A GIVEN NESTING LEVEL #
+// # LISTITEMROW, ONE SORTABLE ROW AT A GIVEN NESTING LEVEL #
 // ###########################################################
 
 interface ListItemRowProps {
@@ -80,7 +80,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
    function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
       const element = event.currentTarget
 
-      // Tab / Shift+Tab — indent / unindent
+      // Tab / Shift+Tab, indent / unindent
       // preventDefault is critical: stops browser focus-change behaviour.
       // After the state update the item moves in the DOM; we restore focus explicitly.
       if (event.key === 'Tab') {
@@ -98,7 +98,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
          return
       }
 
-      // Enter — create new sibling immediately after (Shift+Enter falls through to <br>)
+      // Enter, create new sibling immediately after (Shift+Enter falls through to <br>)
       if (event.key === 'Enter' && !event.shiftKey) {
          event.preventDefault()
          const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [] }
@@ -110,7 +110,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
          return
       }
 
-      // Backspace at start — unindent or delete
+      // Backspace at start, unindent or delete
       if (event.key === 'Backspace' && isCursorAtStart(element)) {
          if (depth > 0) {
             event.preventDefault()
@@ -137,7 +137,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
       >
          {/* Item row */}
          <div className="flex items-baseline gap-1.5 py-0.5 min-h-[1.5rem]">
-            {/* Drag handle — uses negative margin to float outside the content area.
+            {/* Drag handle, uses negative margin to float outside the content area.
                 Left column (default): marginLeft -16 places it before the bullet.
                 Right column: order:3 sends it to the flex end; marginRight -16 floats it right. */}
             {!readOnly && !isDragOverlay && (
@@ -171,7 +171,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
             />
          </div>
 
-         {/* Children — recursive, indented */}
+         {/* Children, recursive, indented */}
          {item.children.length > 0 && (
             <div style={{ paddingLeft: 20 }}>
                <ListLevel
@@ -190,7 +190,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
 }
 
 // ############################################################
-// # LISTLEVEL — ONE ISOLATED DND CONTEXT FOR A SIBLING GROUP #
+// # LISTLEVEL, ONE ISOLATED DND CONTEXT FOR A SIBLING GROUP #
 // ############################################################
 
 interface ListLevelProps {
@@ -282,7 +282,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
 }
 
 // ################################
-// # LISTBLOCK — PUBLIC COMPONENT #
+// # LISTBLOCK, PUBLIC COMPONENT #
 // ################################
 
 interface ListBlockProps {

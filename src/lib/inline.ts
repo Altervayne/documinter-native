@@ -1,26 +1,26 @@
 /**
- * inline.ts — All inline-content logic.
+ * inline.ts, All inline-content logic.
  *
  * Exports:
- *   parseInlineContent       — HTML string → InlineContent (migration bridge)
- *   renderInlineContent      — InlineContent → HTML string
- *   domToInlineContent       — live HTMLElement → InlineContent (called on commit)
- *   inlineContentToMintdown  — InlineContent → Mintdown string
- *   mintdownToInlineContent  — Mintdown string → InlineContent
- *   stripTrailingNewlines    — remove trailing newline-only runs (exposed for migration)
- *   isEmptyContent           — true if array is empty or all-whitespace
- *   inlineContentEquals      — deep equality check
- *   computeCursorPosition    — derive CursorPosition from the browser Selection API
- *   runsHaveSameFlags        — true when two runs share identical formatting flags
- *   mergeAdjacentRuns        — collapse neighbouring runs with identical flags
- *   countCharsToPosition     — flat char offset of a (node, offset) within an element
- *   applyColorToRange        — set/clear a color field over a flat char range
- *   restoreSelectionRange    — re-select a flat char range after an innerHTML rewrite
- *   deriveActiveColorsAt     — active font/highlight color at a selection position
+ *   parseInlineContent      , HTML string → InlineContent (migration bridge)
+ *   renderInlineContent     , InlineContent → HTML string
+ *   domToInlineContent      , live HTMLElement → InlineContent (called on commit)
+ *   inlineContentToMintdown , InlineContent → Mintdown string
+ *   mintdownToInlineContent , Mintdown string → InlineContent
+ *   stripTrailingNewlines   , remove trailing newline-only runs (exposed for migration)
+ *   isEmptyContent          , true if array is empty or all-whitespace
+ *   inlineContentEquals     , deep equality check
+ *   computeCursorPosition   , derive CursorPosition from the browser Selection API
+ *   runsHaveSameFlags       , true when two runs share identical formatting flags
+ *   mergeAdjacentRuns       , collapse neighbouring runs with identical flags
+ *   countCharsToPosition    , flat char offset of a (node, offset) within an element
+ *   applyColorToRange       , set/clear a color field over a flat char range
+ *   restoreSelectionRange   , re-select a flat char range after an innerHTML rewrite
+ *   deriveActiveColorsAt    , active font/highlight color at a selection position
  *
  * Almost all functions are pure. The DOM-aware exceptions: domToInlineContent,
  * computeCursorPosition, countCharsToPosition and deriveActiveColorsAt READ live DOM
- * state without modifying it; restoreSelectionRange is the sole writer — it mutates
+ * state without modifying it; restoreSelectionRange is the sole writer, it mutates
  * the browser Selection to re-establish a range and touches nothing else.
  */
 
@@ -42,7 +42,7 @@ interface ParseFlags {
 }
 
 // #####################################################
-// # PRIVATE HELPERS — SHARED BY PARSING AND RENDERING #
+// # PRIVATE HELPERS, SHARED BY PARSING AND RENDERING #
 // #####################################################
 
 /**
@@ -54,9 +54,9 @@ interface ParseFlags {
  *
  * Handles:
  *   rgb(r, g, b)       → #rrggbb
- *   rgba(r, g, b, a)   → #rrggbb  (alpha dropped — we only store opaque colors)
+ *   rgba(r, g, b, a)   → #rrggbb  (alpha dropped, we only store opaque colors)
  *   #rgb               → #rrggbb  (3-digit shorthand)
- *   #rrggbb            → #rrggbb  (already canonical — lowercased)
+ *   #rrggbb            → #rrggbb  (already canonical, lowercased)
  *   anything else      → returned as-is (lowercased)
  */
 function normalizeColorValue(cssColor: string): string {
@@ -141,7 +141,7 @@ export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
 }
 
 // ###################################################################################
-// # PRIVATE HELPER — DOM WALK (SHARED BY PARSEINLINECONTENT AND DOMTOINLINECONTENT) #
+// # PRIVATE HELPER, DOM WALK (SHARED BY PARSEINLINECONTENT AND DOMTOINLINECONTENT) #
 // ###################################################################################
 
 /**
@@ -215,7 +215,7 @@ function walkNodes(nodes: Iterable<ChildNode>, flags: ParseFlags, runs: InlineRu
 }
 
 // ############################################
-// # PRIVATE HELPERS — MINTDOWN SERIALISATION #
+// # PRIVATE HELPERS, MINTDOWN SERIALISATION #
 // ############################################
 
 /** Escape Mintdown special characters in run text. '\n' is left as-is (emitted as literal newline). */
@@ -406,7 +406,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
 
 /**
  * Convert a raw innerHTML string (from the legacy rich-text model) to InlineContent.
- * Migration bridge — used by migrateBlock() in storage.ts when loading old documents.
+ * Migration bridge, used by migrateBlock() in storage.ts when loading old documents.
  * Uses DOMParser; never touches the live document.
  */
 export function parseInlineContent(html: string): InlineContent {
@@ -515,7 +515,7 @@ export function isEmptyContent(content: InlineContent): boolean {
 /**
  * Deep equality check for two InlineContent arrays.
  * Used by RichEditable's snapshot-on-focus / compare-on-blur guard.
- * Compares each field explicitly — does not use JSON.stringify.
+ * Compares each field explicitly, does not use JSON.stringify.
  */
 export function inlineContentEquals(a: InlineContent, b: InlineContent): boolean {
    if (a.length !== b.length) return false
@@ -679,8 +679,8 @@ export function countCharsToPosition(
 /**
  * Apply a color (or clear it) to runs that overlap the character range [start, end).
  *
- * - `field`  — `'color'` for font color, `'highlight'` for background highlight.
- * - `value`  — hex string to set, or `undefined` to clear the field.
+ * - `field` , `'color'` for font color, `'highlight'` for background highlight.
+ * - `value` , hex string to set, or `undefined` to clear the field.
  *
  * Strategy:
  *   1. Build a flat array of (run, startOffset, endOffset) segments.
@@ -799,7 +799,7 @@ export function restoreSelectionRange(element: HTMLElement, start: number, end: 
  *
  * Boundary handling mirrors computeCursorPosition: when the position lands exactly
  * on a run boundary, the run that STARTS at the boundary wins. This is what makes a
- * freshly-applied color read back correctly — after a color pick the selection start
+ * freshly-applied color read back correctly, after a color pick the selection start
  * sits on the new run's leading boundary, and the covered (colored) run must win over
  * the preceding (uncolored) one. A naive `offset <= charCount` test reads the
  * preceding run and clears the indicator.

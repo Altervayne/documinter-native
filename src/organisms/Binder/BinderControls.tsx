@@ -172,7 +172,7 @@ export function BinderControls({
 
    return (
       <div className="flex flex-col gap-2.5">
-         {/* Row 1 — search, filters toggle, sort */}
+         {/* Row 1, search, filters toggle, sort */}
          <div className="flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-48 max-w-md">
                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
@@ -195,7 +195,7 @@ export function BinderControls({
                )}
             </div>
 
-            {/* Filters toggle — shows the active advanced-criteria count even when collapsed */}
+            {/* Filters toggle, shows the active advanced-criteria count even when collapsed */}
             <button
                type="button"
                onClick={() => setIsPanelOpen(open => !open)}
@@ -234,7 +234,7 @@ export function BinderControls({
             </button>
          </div>
 
-         {/* Row 2 — advanced filter panel */}
+         {/* Row 2, advanced filter panel */}
          {isPanelOpen && (
             <div className="flex flex-col gap-3 rounded-md border border-border bg-el/40 p-3">
                {/* Search scope */}
@@ -264,7 +264,7 @@ export function BinderControls({
                   </div>
                </div>
 
-               {/* Date constraints — one independent row per date field */}
+               {/* Date constraints, one independent row per date field */}
                <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
                   <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted/70">{t.binderDatesHeading}</span>
                {DOCUMENT_DATE_FIELDS.map(field => (
@@ -296,7 +296,7 @@ export function BinderControls({
             </div>
          )}
 
-         {/* Row 3 — active-filter chips */}
+         {/* Row 3, active-filter chips */}
          {activeCount > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
                {scopeActive && (

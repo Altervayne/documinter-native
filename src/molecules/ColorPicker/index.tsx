@@ -130,7 +130,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
    //  Sticky refs
    // ============
    // Preserve hue/saturation through degenerate colors (black, white, gray).
-   // Only updated explicitly in onChange handlers and on external value changes —
+   // Only updated explicitly in onChange handlers and on external value changes,
    // never from derived RGB round-trips, which introduce rounding drift.
    const sHsvH  = useRef(rgbToHsv(red, green, blue)[0])
    const sHslH  = useRef(rgbToHsl(red, green, blue)[0])

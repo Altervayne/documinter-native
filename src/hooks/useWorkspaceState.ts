@@ -55,7 +55,7 @@ export interface WorkspaceStateResult {
 /**
  * Manages workspace panel layout state with position-preserving toggle semantics.
  *
- * `storedPositions` — when a panel is toggled off, the full layout snapshot is stored.
+ * `storedPositions`, when a panel is toggled off, the full layout snapshot is stored.
  * When toggled back on, the snapshot is restored only if `hasExactPanels` confirms the
  * snapshot's panel set matches the current target set (prevents stale sibling restoration).
  */

@@ -6,15 +6,15 @@ A personal WYSIWYG doc builder I made because I was tired of documentation in to
 
 ## What it does
 
-- **Click-to-edit** — everything in the preview is editable inline, no separate form
-- **Sections & blocks** — structure your doc with sections, each containing whatever blocks you need
-- **Block types** — paragraphs, headings, callouts (info/valid/warning/danger), syntax-highlighted code blocks, bullet lists, tables
-- **Drag & drop** — reorder sections and blocks however you like
-- **Appearance** — choose the document's theme (light/dark) and accent color independently from the app's own theme
-- **Export** — spits out a self-contained HTML file with everything inlined; what you see is what you get
-- **Save / Load** — round-trip your work as a `.documinter.json` file
-- **Undo on delete** — accidental deletions show a toast with an undo button
-- **EN / FR** — UI and exported HTML both support English and French
+- **Click-to-edit**, everything in the preview is editable inline, no separate form
+- **Sections & blocks**, structure your doc with sections, each containing whatever blocks you need
+- **Block types**, paragraphs, headings, callouts (info/valid/warning/danger), syntax-highlighted code blocks, bullet lists, tables
+- **Drag & drop**, reorder sections and blocks however you like
+- **Appearance**, choose the document's theme (light/dark) and accent color independently from the app's own theme
+- **Export**, spits out a self-contained HTML file with everything inlined; what you see is what you get
+- **Save / Load**, round-trip your work as a `.documinter.json` file
+- **Undo on delete**, accidental deletions show a toast with an undo button
+- **EN / FR**, UI and exported HTML both support English and French
 
 ---
 
@@ -25,7 +25,7 @@ A personal WYSIWYG doc builder I made because I was tired of documentation in to
 | Paragraph | Plain text |
 | H3 / H4 | Section and sub-section headings |
 | Callout | Highlighted note in info, valid, warning, or danger flavour |
-| Code | Syntax-highlighted block — WinDev/WLangage, JS, SQL, or plain |
+| Code | Syntax-highlighted block, WinDev/WLangage, JS, SQL, or plain |
 | List | Bullet list, add/remove items on the fly |
 | Table | Headers + rows, add/remove both on the fly |
 
@@ -49,7 +49,7 @@ npm run build
 - [Tailwind CSS v4](https://tailwindcss.com/)
 - [@dnd-kit](https://dndkit.com/) for drag-and-drop
 - [Lucide React](https://lucide.dev/) for icons
-- No UI framework — everything is hand-rolled
+- No UI framework, everything is hand-rolled
 
 ---
 

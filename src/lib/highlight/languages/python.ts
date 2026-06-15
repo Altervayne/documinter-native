@@ -38,19 +38,19 @@ export const python: Language = {
       // Comments (#  …  end-of-line)
       { type: 'cmt',  pattern: /#[^\n]*/  },
 
-      // Triple-quoted strings — must precede single-quoted rules
+      // Triple-quoted strings, must precede single-quoted rules
       // Handles f""" b""" r""" rf""" etc. (up to 2-char prefix)
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}"""[\s\S]*?"""/ },
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}'''[\s\S]*?'''/ },
 
-      // Single-line strings — newline terminates (unclosed = error in Python)
+      // Single-line strings, newline terminates (unclosed = error in Python)
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}"(?:[^"\\\n]|\\.)*"/ },
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}'(?:[^'\\\n]|\\.)*'/ },
 
       // Numbers: hex  octal  binary  float/int with optional exponent or complex suffix
       { type: 'num',  pattern: /\b0x[\da-fA-F]+\b|\b0o[0-7]+\b|\b0b[01]+\b|\b\d+\.?\d*(?:[eE][+-]?\d+)?[jJ]?\b/ },
 
-      // Decorators — @name or @module.name — use tok-type (teal) for visual distinction
+      // Decorators, @name or @module.name, use tok-type (teal) for visual distinction
       { type: 'type', pattern: /@[\w.]+/ },
 
       // Keywords

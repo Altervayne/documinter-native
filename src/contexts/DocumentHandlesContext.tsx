@@ -1,5 +1,5 @@
 /**
- * DocumentHandlesContext — Provides the flat list of all anchor handles
+ * DocumentHandlesContext, Provides the flat list of all anchor handles
  * currently defined in the document.
  *
  * Exports: DocumentHandlesProvider, useDocumentHandles

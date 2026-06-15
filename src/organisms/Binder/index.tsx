@@ -22,6 +22,7 @@ import { DocumentCardPreview } from './DocumentCardPreview'
 import { DocumentCardMeta } from './DocumentCardMeta'
 import { BinderFolderMenu } from '../../molecules/BinderFolderMenu'
 import { ConfirmDialog } from '../../molecules/ConfirmDialog'
+import { BinderFolderDeleteDialog } from '../../molecules/BinderFolderDeleteDialog'
 import './binderDragOverlay.css'
 
 // Which drop a card-over-nav will perform: into the hovered folder (down a level), to the
@@ -44,7 +45,7 @@ function FolderOverWatcher({ onChange }: { onChange: (overFolder: boolean) => vo
 }
 
 export interface BinderProps {
-   /** Active app theme — the binder topbar logo matches the main topbar's theme-aware render. */
+   /** Active app theme, the binder topbar logo matches the main topbar's theme-aware render. */
    theme:             'light' | 'dark'
    /** id of the document currently open in the editor (pinned + badged in its folder). */
    currentDocumentId: string | null
@@ -71,7 +72,7 @@ function parseDragId(raw: string): DragItem | null {
 }
 
 /**
- * Binder root — the in-app document library. Replaces the editor full-screen when open.
+ * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
 export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
@@ -176,7 +177,8 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
    const [editingFolderId, setEditingFolderId]       = useState<string | null>(null)
    const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
    const [folderMenu, setFolderMenu]                 = useState<{ folder: BinderFolderRecord; x: number; y: number } | null>(null)
-   const [folderPendingDelete, setFolderPendingDelete] = useState<BinderFolderRecord | null>(null)
+   const [folderPendingDelete, setFolderPendingDelete]     = useState<BinderFolderRecord | null>(null)
+   const [documentPendingDelete, setDocumentPendingDelete] = useState<BinderDocumentRecord | null>(null)
 
    const navigateTo = useCallback((folder: BinderFolderRecord | null) => {
       setCurrentFolder(folder)
@@ -202,16 +204,30 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
       setEditingFolderId(id)
    }, [nav, navigateTo, t])
 
-   const handleConfirmDeleteFolder = useCallback(() => {
+   const handleConfirmDeleteFolder = useCallback((recursive: boolean) => {
       const folder = folderPendingDelete
       setFolderPendingDelete(null)
       if (!folder) return
-      void nav.deleteFolder(folder.id)
+      void nav.deleteFolder(folder.id, recursive).then(deletedDocumentIds => {
+         // A recursive delete may have removed the document open in the editor, clear it so a
+         // later autosave doesn't resurrect it (saveDocument upserts a missing id).
+         if (currentDocumentId && deletedDocumentIds.includes(currentDocumentId)) {
+            onDocumentDeleted(currentDocumentId)
+         }
+      })
       // If we're inside the deleted folder (or a descendant), pop back to root.
       if (currentFolderId === folder.id || nav.ancestors.some(ancestor => ancestor.id === folder.id)) {
          navigateTo(null)
       }
-   }, [folderPendingDelete, nav, currentFolderId, navigateTo])
+   }, [folderPendingDelete, nav, currentFolderId, currentDocumentId, onDocumentDeleted, navigateTo])
+
+   const handleConfirmDeleteDocument = useCallback(() => {
+      const record = documentPendingDelete
+      setDocumentPendingDelete(null)
+      if (!record) return
+      void docs.handleDelete(record.id)
+      if (record.id === currentDocumentId) onDocumentDeleted(record.id)
+   }, [documentPendingDelete, docs, currentDocumentId, onDocumentDeleted])
 
    // ============
    //  Drag & drop
@@ -224,8 +240,8 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
       useState<{ type: 'doc'; record: BinderDocumentRecord } | { type: 'folder'; id: string; label: string } | null>(null)
    // Drag overlay morph: over the nav, the card clone funnels into a cursor "puck" (dot + pill).
    const navRef          = useRef<HTMLDivElement>(null)
-   const backRef         = useRef<HTMLButtonElement>(null)   // Back button — up-drop hit target
-   const clusterRef      = useRef<HTMLDivElement>(null)      // the puck — pinned to the live cursor
+   const backRef         = useRef<HTMLButtonElement>(null)   // Back button, up-drop hit target
+   const clusterRef      = useRef<HTMLDivElement>(null)      // the puck, pinned to the live cursor
    const overlayCardRef  = useRef<HTMLDivElement>(null)      // the full-card clone (funnels into the dot)
    const grabCapturedRef = useRef(false)                     // funnel origin captured once per drag
    const overBackRef     = useRef(false)                     // cursor over Back button (read at drop)
@@ -380,7 +396,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
       }
    }, [docs.documents, nav.subfolders, resetSpring])
 
-   // Nest folder A into B — rejected if B is a descendant of A (would create a cycle). Among the
+   // Nest folder A into B, rejected if B is a descendant of A (would create a cycle). Among the
    // visible siblings a cycle is impossible, but the full ancestor walk is validated regardless.
    const nestFolder = useCallback(async (folderId: string, targetParentId: string) => {
       const ancestors = await getFolderAncestors(targetParentId)
@@ -412,7 +428,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
 
       if (source.type === 'doc') {
          const record = docs.documents.find(item => item.id === source.id)
-         const isForeign = !record   // arrived in this view via spring-navigation — not a local doc
+         const isForeign = !record   // arrived in this view via spring-navigation, not a local doc
 
          // Drop on the Back button → move the document up a level (to the current folder's parent).
          if (droppedOnBack && currentFolder) {
@@ -424,7 +440,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
          }
          const target = over && active.id !== over.id ? parseDragId(String(over.id)) : null
          if (target?.type === 'folder') {
-            // Move into the dropped-on folder — unless it's already the doc's folder.
+            // Move into the dropped-on folder, unless it's already the doc's folder.
             if (record && record.folderId === target.id) return
             void docs.handleMove(source.id, target.id)
             setSelectedDocumentId(null)
@@ -437,7 +453,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
             return
          }
          if (target?.type === 'doc') {
-            // Reorder documents — only meaningful (and only persisted) under manual sort.
+            // Reorder documents, only meaningful (and only persisted) under manual sort.
             if (!manualSortActive) return
             const ids = docs.documents.map(item => item.id)
             const oldIndex = ids.indexOf(source.id)
@@ -447,9 +463,9 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
          return
       }
 
-      // Folder drag — drops are driven by our own zone/Back detection, not dnd-kit `over`.
+      // Folder drag, drops are driven by our own zone/Back detection, not dnd-kit `over`.
       if (droppedOnBack && currentFolder) {
-         void nav.moveFolder(source.id, currentFolder.parentId)   // up a level — always cycle-safe
+         void nav.moveFolder(source.id, currentFolder.parentId)   // up a level, always cycle-safe
          return
       }
       if (folderTargetNow?.zone === 'nest') {
@@ -475,7 +491,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
          <BinderTopbar theme={theme} onClose={onClose} onNewDocument={() => onNewDocument(currentFolderId)} />
 
-         {/* pointerWithin: the drop target is whatever sits directly under the cursor — so a card
+         {/* pointerWithin: the drop target is whatever sits directly under the cursor, so a card
              dropped onto a folder unambiguously lands in that folder, not the nearest-center one. */}
          <DndContext
             sensors={sensors}
@@ -566,10 +582,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
                                  onSelect={() => setSelectedDocumentId(record.id)}
                                  onOpen={() => onOpenDocument(record.id)}
                                  onDuplicate={() => docs.handleDuplicate(record.id)}
-                                 onDelete={() => {
-                                    void docs.handleDelete(record.id)
-                                    if (record.id === currentDocumentId) onDocumentDeleted(record.id)
-                                 }}
+                                 onDelete={() => setDocumentPendingDelete(record)}
                                  onExportHtml={() => docs.handleExportHtml(record.id)}
                                  onExportMarkdown={() => docs.handleExportMarkdown(record.id)}
                                  onExportMintdown={() => docs.handleExportMintdown(record.id)}
@@ -600,7 +613,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
                      <DocumentCardMeta record={activeDrag.record} />
                   </div>
                ) : (
-                  // Folder chip (State A) — cross-fades to the puck (State B) when over a nest/up target.
+                  // Folder chip (State A), cross-fades to the puck (State B) when over a nest/up target.
                   <div
                      data-over-nav={puckVisible ? 'true' : 'false'}
                      className="binder-overlay-chip flex items-center gap-1.5 rounded-md border border-accent bg-raised shadow-xl px-2 py-1.5 text-sm text-text"
@@ -613,7 +626,7 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
          </DragOverlay>
 
          {/* State B of the morph: a "puck" pinned to the live cursor (fixed, outside the overlay so
-             dnd-kit's transform can't offset it) — dot on the cursor, label pill top-right, and a
+             dnd-kit's transform can't offset it), dot on the cursor, label pill top-right, and a
              direction arrow on the left. Mounted for the whole drag; faded in by CSS. A card uses
              its document accent + a title pill; a folder uses the app accent + a folder pill. */}
          {activeDrag && (
@@ -663,14 +676,21 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
          )}
 
          {folderPendingDelete && (
+            <BinderFolderDeleteDialog
+               onConfirm={handleConfirmDeleteFolder}
+               onCancel={() => setFolderPendingDelete(null)}
+            />
+         )}
+
+         {documentPendingDelete && (
             <ConfirmDialog
-               title={t.binderDeleteFolder}
-               message={t.binderDeleteFolderWarning}
+               title={t.binderDeleteDocTitle}
+               message={t.binderDeleteDocWarning}
                confirmLabel={t.binderDelete}
                cancelLabel={t.binderUnsavedCancel}
                danger
-               onConfirm={handleConfirmDeleteFolder}
-               onCancel={() => setFolderPendingDelete(null)}
+               onConfirm={handleConfirmDeleteDocument}
+               onCancel={() => setDocumentPendingDelete(null)}
             />
          )}
       </div>

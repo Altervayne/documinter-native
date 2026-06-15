@@ -151,7 +151,7 @@ export function AppearanceMenu({
                      </div>
                   </div>
 
-                  {/* Full color picker — expanded on demand */}
+                  {/* Full color picker, expanded on demand */}
                   {accentPickerOpen && (
                      <ColorPicker value={docAccent} onChange={onDocAccentChange} />
                   )}

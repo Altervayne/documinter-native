@@ -12,7 +12,7 @@ import { useLang } from '../contexts/LangContext'
 
 /**
  * Loads the filtered/sorted document list for the current binder view (lightweight records
- * only — no sections/base64) and exposes the card actions: delete (with undo), duplicate,
+ * only, no sections/base64) and exposes the card actions: delete (with undo), duplicate,
  * the three exports, move, and reorder. Mutations bump the shared data version (onChanged)
  * so the nav and grid refresh together. Re-reads when the filter or data version changes.
  */
@@ -35,7 +35,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
             if (!active) return
             setIsLoading(false)
             // Surfacing this (was silently swallowed): a throw here shows an empty binder.
-            console.error('[binder] listDocuments failed — grid will appear empty:', error)
+            console.error('[binder] listDocuments failed, grid will appear empty:', error)
             showToast(t.binderActionFailed, { type: 'error' })
          })
       return () => { active = false }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 
 // ############################################################
-// DropIndicator — accent-coloured insertion bar shown at a DnD
+// DropIndicator, accent-coloured insertion bar shown at a DnD
 // drop target during a drag operation.
 //
 // Two-frame mount pattern:
@@ -15,7 +15,7 @@ import { useState, useEffect } from 'react'
 // browser paints the mounted + final-state in the same frame).
 //
 // The Tailwind motion-reduce:transition-none class makes the
-// indicator appear instantly when prefers-reduced-motion is on —
+// indicator appear instantly when prefers-reduced-motion is on,
 // the element still mounts and becomes visible, just without a
 // fade.
 // ############################################################

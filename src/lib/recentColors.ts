@@ -1,5 +1,5 @@
 /**
- * recentColors.ts — persistent backlog of recently-used custom inline colors.
+ * recentColors.ts, persistent backlog of recently-used custom inline colors.
  *
  * Custom colors are those picked through the full ColorPicker that are NOT part of
  * the curated font/highlight palettes. Font and highlight keep separate lists since
@@ -71,7 +71,7 @@ export function pushRecentColor(kind: RecentColorKind, hex: string): RecentColor
    try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
    } catch {
-      // Storage unavailable (private mode / quota) — keep the in-memory result anyway.
+      // Storage unavailable (private mode / quota), keep the in-memory result anyway.
    }
    return next
 }

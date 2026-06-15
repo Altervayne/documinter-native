@@ -1,5 +1,5 @@
 /**
- * execCommand.ts — thin wrapper around document.execCommand for contenteditable
+ * execCommand.ts, thin wrapper around document.execCommand for contenteditable
  * rich-text formatting.
  *
  * execCommand is deprecated but remains the practical cross-browser solution for

@@ -38,7 +38,7 @@ const FENCE_LANG_TO_CODE_LANG: Record<string, CodeLang> = {
 }
 
 // ###################################
-// # PRIVATE HELPERS — SERIALISATION #
+// # PRIVATE HELPERS, SERIALISATION #
 // ###################################
 
 /** Serialises InlineContent to Mintdown inline syntax. */
@@ -140,7 +140,7 @@ export function serializeBlock(block: Block): string {
             return outputLines.join('\n')
          }
 
-         // Base64 data URL or no src — emit as comment with attributes only.
+         // Base64 data URL or no src, emit as comment with attributes only.
          const attrs: string[] = [`alt="${alt}"`]
          if (block.caption)                               attrs.push(`caption="${block.caption}"`)
          if (block.align && block.align !== 'center')     attrs.push(`align="${block.align}"`)
@@ -186,7 +186,7 @@ export function serializeBlock(block: Block): string {
 }
 
 // #############################
-// # PRIVATE HELPERS — PARSING #
+// # PRIVATE HELPERS, PARSING #
 // #############################
 
 /** Maps a fence language tag string to a CodeLang (falls back to 'plain'). */
@@ -265,7 +265,7 @@ export function buildTableBlock(lines: string[]): Block {
    const tableLines = lines.filter(line => line.trimStart().startsWith('|'))
 
    if (tableLines.length < 2) {
-      // Degenerate: not enough lines for header + separator — return as paragraph.
+      // Degenerate: not enough lines for header + separator, return as paragraph.
       return {
          id:       crypto.randomUUID(),
          type:     'p',
@@ -274,7 +274,7 @@ export function buildTableBlock(lines: string[]): Block {
    }
 
    const headerCells  = parsePipeTableRow(tableLines[0])
-   // tableLines[1] is the separator row — skip it.
+   // tableLines[1] is the separator row, skip it.
    const bodyLines    = tableLines.slice(2)
 
    const richHeaders: InlineContent[]   = headerCells.map(cell => mintdownToInlineContent(cell))
@@ -287,7 +287,7 @@ export function buildTableBlock(lines: string[]): Block {
 }
 
 // ###################################
-// # PUBLIC API — DOCUMENTTOMARKDOWN #
+// # PUBLIC API, DOCUMENTTOMARKDOWN #
 // ###################################
 
 /**
@@ -337,7 +337,7 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
 }
 
 // ###################################
-// # PUBLIC API — MARKDOWNTODOCUMENT #
+// # PUBLIC API, MARKDOWNTODOCUMENT #
 // ###################################
 
 /**
@@ -345,7 +345,7 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
  * in the same format) into a DocState.
  *
  * Guarantees:
- *   - Never throws — any valid or invalid input returns a usable DocState.
+ *   - Never throws, any valid or invalid input returns a usable DocState.
  *   - O(n) single-pass line scanner.
  *   - Content before the first `##` heading is treated as preamble and discarded.
  *   - Sections with `<!-- section-id: uuid -->` preserve their UUIDs; sections
@@ -397,7 +397,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    let currentSection:    Section | null = null
    let pendingSectionId:  string  | null = null
    let pendingHandle:     string  | null = null
-   // Last committed image block — set so that caption/attrs comments can patch it.
+   // Last committed image block, set so that caption/attrs comments can patch it.
    let pendingImageBlock: Block   | null = null
 
    // Paragraph/blockquote/list/table accumulator
@@ -447,7 +447,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
                   richText: mintdownToInlineContent(content),
                }
             }
-            // No type directive — treat as plain paragraph.
+            // No type directive, treat as plain paragraph.
             return {
                id:       crypto.randomUUID(),
                type:     'p',
@@ -756,12 +756,12 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 }
 
 // ########################################################
-// # PUBLIC API — IMPORTMARKDOWNFILE / EXPORTMARKDOWNFILE #
+// # PUBLIC API, IMPORTMARKDOWNFILE / EXPORTMARKDOWNFILE #
 // ########################################################
 
 /**
  * Reads a .md File object and parses it via markdownToDocument.
- * Thin async wrapper — all parsing logic lives in markdownToDocument.
+ * Thin async wrapper, all parsing logic lives in markdownToDocument.
  */
 export async function importMarkdownFile(
    file: File,

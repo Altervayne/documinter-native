@@ -33,7 +33,7 @@ export function getAnchoredBlocks(sections: Section[]): AnchoredBlock[] {
 interface UseLinkModeOptions {
    /** Selection range shared with the toolbar + color picker; saved on open, restored on apply. */
    savedRangeRef: RefObject<Range | null>
-   /** Toolbar visibility — used to defer opening link mode after a link auto-select click. */
+   /** Toolbar visibility, used to defer opening link mode after a link auto-select click. */
    visible:    boolean
 }
 

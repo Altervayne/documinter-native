@@ -1,5 +1,5 @@
 /**
- * LangContext — Provides the active language, its setter, and the resolved
+ * LangContext, Provides the active language, its setter, and the resolved
  * translation object to the entire component tree.
  *
  * Exports: useLang, LangProvider

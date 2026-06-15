@@ -18,7 +18,7 @@ interface BinderContextMenuProps {
 const MENU_WIDTH  = 220
 const MENU_HEIGHT = 300
 
-/** Card context menu — shared by the ⋯ button and right-click. Portal-rendered. */
+/** Card context menu, shared by the ⋯ button and right-click. Portal-rendered. */
 export function BinderContextMenu({
    x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
 }: BinderContextMenuProps) {

@@ -4,7 +4,7 @@ import type { BinderFolderRecord } from '../../types'
 import { useLang } from '../../contexts/LangContext'
 import { BinderNavFolder } from './BinderNavFolder'
 
-/** Folders don't shift during a drag — zone detection drives the nest highlight / reorder line. */
+/** Folders don't shift during a drag, zone detection drives the nest highlight / reorder line. */
 const noopStrategy: SortingStrategy = () => null
 
 export type FolderDropZone = 'before' | 'after' | 'nest'
@@ -20,9 +20,9 @@ interface BinderNavProps {
    draggingDocFolderId:  string | null   // folderId of the doc being dragged (its own folder isn't a drop target)
    folderDropTarget:     FolderDropTarget | null   // during a folder drag: the hovered row + zone
    rootRef?:             React.RefObject<HTMLDivElement | null>      // for drag-over-nav detection
-   backRef?:             React.RefObject<HTMLButtonElement | null>   // Back button — up-drop hit target
+   backRef?:             React.RefObject<HTMLButtonElement | null>   // Back button, up-drop hit target
    isUpTarget?:          boolean   // a dragged card is hovering the Back button (up-drop)
-   isDragging?:          boolean   // any drag in progress — shows the Cancel-move dropzone
+   isDragging?:          boolean   // any drag in progress, shows the Cancel-move dropzone
    cancelRef?:           React.RefObject<HTMLDivElement | null>      // Cancel-move zone hit target
    isCancelTarget?:      boolean   // the cursor is over the Cancel-move dropzone
    onNavigateUp:         () => void                  // go up one level (to the parent folder)
@@ -36,7 +36,7 @@ interface BinderNavProps {
 
 /**
  * Left-hand drill-down folder panel (fixed 240px). Lists the current folder's immediate
- * subfolders (flat — no nesting); double-click a folder to enter it. "New folder" creates
+ * subfolders (flat, no nesting); double-click a folder to enter it. "New folder" creates
  * a subfolder of the current folder and enters inline rename.
  */
 export function BinderNav({
@@ -107,7 +107,7 @@ export function BinderNav({
                   </span>
                </button>
             ) : (
-               /* New folder — sticks to the bottom of the scrolling list (like the workspace
+               /* New folder, sticks to the bottom of the scrolling list (like the workspace
                   "Add section" button), always in view but scrolls with content as needed. */
                <div className="sticky bottom-0 mt-1 bg-raised/40">
                   <button
@@ -122,7 +122,7 @@ export function BinderNav({
             )}
          </div>
 
-         {/* Cancel-move dropzone — appears at the foot of the nav during any drag; dropping here
+         {/* Cancel-move dropzone, appears at the foot of the nav during any drag; dropping here
              aborts the move (detected by cursor geometry in the binder, like the Back button). */}
          {isDragging && (
             <div

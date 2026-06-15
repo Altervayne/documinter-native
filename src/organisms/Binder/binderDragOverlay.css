@@ -1,12 +1,12 @@
 /* ############################################################
-   Binder drag overlay — card funnels into a cursor "puck"
+   Binder drag overlay, card funnels into a cursor "puck"
    ############################################################
    State A is the full card clone (in the DragOverlay). State B is the
    puck pinned to the cursor: a dot on the cursor, the title pill at its
    top-right, and a direction arrow on its left. data-over-nav cross-fades
    the two; data-intent (down/up) reveals the matching arrow. CSS only.   */
 
-/* State A — the card collapses toward the cursor (transform-origin set inline to the grab point) */
+/* State A, the card collapses toward the cursor (transform-origin set inline to the grab point) */
 .binder-overlay-card {
    opacity: 0.88;
    transition: opacity 160ms ease, transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -16,14 +16,14 @@
    transform: scale(0.04);
 }
 
-/* State B — the puck cluster. The element itself is a zero-size point at the cursor. */
+/* State B, the puck cluster. The element itself is a zero-size point at the cursor. */
 .binder-overlay-cluster {
    opacity: 0;
    transition: opacity 150ms ease;
 }
 .binder-overlay-cluster[data-over-nav='true'] { opacity: 1; }
 
-/* Dot — centered on the cursor */
+/* Dot, centered on the cursor */
 .binder-overlay-dot {
    position: absolute;
    left: 0;
@@ -40,7 +40,7 @@
    transform: translate(-50%, -50%) scale(1);
 }
 
-/* Title pill — sits just off the dot's top-right; background follows the document's theme */
+/* Title pill, sits just off the dot's top-right; background follows the document's theme */
 .binder-overlay-pill {
    position: absolute;
    left: 11px;
@@ -81,7 +81,7 @@
 }
 .binder-overlay-cluster.doc-dark .binder-overlay-pill .pill-title { color: #e6edf3; }
 
-/* Folder puck variant — folders have no per-document accent, so use the app surface + accent. */
+/* Folder puck variant, folders have no per-document accent, so use the app surface + accent. */
 .binder-overlay-cluster[data-kind='folder'] .binder-overlay-pill {
    background: var(--color-raised);
    border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
@@ -89,14 +89,14 @@
 .binder-overlay-cluster[data-kind='folder'] .binder-overlay-pill .pill-title { color: var(--color-text); }
 .binder-overlay-pill .pill-folder-icon { color: var(--color-accent); }
 
-/* Folder chip (State A for a folder drag) — cross-fades to the puck over a nest / up target. */
+/* Folder chip (State A for a folder drag), cross-fades to the puck over a nest / up target. */
 .binder-overlay-chip {
    opacity: 0.95;
    transition: opacity 150ms ease;
 }
 .binder-overlay-chip[data-over-nav='true'] { opacity: 0; }
 
-/* Spring-load progress ring — fills around the cursor dot while dwelling on a folder / Back. */
+/* Spring-load progress ring, fills around the cursor dot while dwelling on a folder / Back. */
 .binder-spring-ring {
    position: absolute;
    left: 0;
@@ -123,7 +123,7 @@
    to { stroke-dashoffset: 0; }
 }
 
-/* Cancel-move dropzone — fades up into the foot of the nav when a drag begins. */
+/* Cancel-move dropzone, fades up into the foot of the nav when a drag begins. */
 .binder-cancel-zone {
    animation: binder-cancel-in 150ms ease;
 }
@@ -132,7 +132,7 @@
    to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Direction arrow — left of the dot; the relevant one fades + slides in per data-intent.
+/* Direction arrow, left of the dot; the relevant one fades + slides in per data-intent.
    Uses the app accent (theme-defined, legible) rather than the per-document accent, which can
    wash out against the nav for a thin stroke. */
 .binder-overlay-arrow {

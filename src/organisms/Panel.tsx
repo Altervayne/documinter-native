@@ -71,7 +71,7 @@ export function Panel({
    }
 
    // ==============================================================================
-   //  Always-mounted aside — width transitions between rail (3rem) and full (18rem)
+   //  Always-mounted aside, width transitions between rail (3rem) and full (18rem)
    // ==============================================================================
 
    return (
@@ -120,7 +120,7 @@ export function Panel({
                   </div>
                </div>
 
-               {/* Scrollable section tree — add-section button flows inside as sticky last child */}
+               {/* Scrollable section tree, add-section button flows inside as sticky last child */}
                <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-4">
                   {sections.length === 0 ? (
                      <button
@@ -178,7 +178,7 @@ export function Panel({
                      </DndContext>
                   )}
 
-                  {/* Sticky add-section button — only shown when sections already exist */}
+                  {/* Sticky add-section button, only shown when sections already exist */}
                   {/* The empty-state card above handles the zero-section case */}
                   {sections.length > 0 && (
                      <div className="sticky bottom-0 bg-raised mt-4">

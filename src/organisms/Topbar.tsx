@@ -255,11 +255,11 @@ export function Topbar({
          <div className="shrink-0 flex flex-col z-200">
 
             {/* ================================================= */}
-            {/*  Top strip — brand · document title · save status */}
+            {/*  Top strip, brand · document title · save status */}
             {/* ================================================= */}
             <div className="h-11 relative flex items-center px-4 bg-raised border-b border-border">
 
-               {/* Brand — left anchor */}
+               {/* Brand, left anchor */}
                <div className="flex items-center gap-2 shrink-0 select-none">
                   {theme === 'dark'
                      ? <LogoColor className="h-7 w-auto" />
@@ -268,7 +268,7 @@ export function Topbar({
                   <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
                </div>
 
-               {/* Document title — absolutely centered
+               {/* Document title, absolutely centered
                    max-w-[40%] is the collision guard: the title can never
                    overlap the brand area or save indicator at any viewport width. */}
                <div className="absolute left-1/2 -translate-x-1/2 inset-y-0 flex items-center min-w-0 max-w-[40%]">
@@ -294,7 +294,7 @@ export function Topbar({
                   )}
                </div>
 
-               {/* Save status indicator — right anchor */}
+               {/* Save status indicator, right anchor */}
                <div className="ml-auto shrink-0 flex items-center">
                   <SaveStatusIndicator
                      status={saveStatus}
@@ -306,13 +306,14 @@ export function Topbar({
             </div>
 
             {/* =============================== */}
-            {/*  Bottom strip — menus · actions */}
+            {/*  Bottom strip, menus · actions */}
             {/* =============================== */}
             <div className="flex items-center gap-1 p-1 bg-raised border-b border-border">
 
                {/* Menu bar */}
                <FileMenu
                   onOpenBinder={onOpenBinder}
+                  onSaveNow={onManualSave}
                   onNewDocument={handleNewDocument}
                   onLoadJSON={handleLoadJSON}
                   onSaveJSON={handleSaveJSON}
@@ -347,7 +348,7 @@ export function Topbar({
                />
                <AboutMenu theme={theme} t={t} />
 
-               {/* Spacer — pushes actions to the far right */}
+               {/* Spacer, pushes actions to the far right */}
                <div className="flex-1" />
 
                {/* Quick actions */}

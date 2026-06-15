@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 
 // ############################################################
-// BottomDropZone — invisible droppable sentinel at the end of a
+// BottomDropZone, invisible droppable sentinel at the end of a
 // noopStrategy sortable list.
 //
 // Without this, the last position is unreachable: hovering over

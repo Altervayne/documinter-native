@@ -15,7 +15,7 @@ export function BinderTopbar({ theme, onClose, onNewDocument, newDocumentDisable
 
    return (
       <div className="flex items-center justify-between h-11 gap-4 px-1 py-2.5 border-b border-border bg-raised">
-         {/* Brand — left anchor */}
+         {/* Brand, left anchor */}
          <div className="flex items-center gap-2 ml-3 shrink-0 select-none">
             {theme === 'dark'
                ? <LogoColor className="h-7 w-auto" />

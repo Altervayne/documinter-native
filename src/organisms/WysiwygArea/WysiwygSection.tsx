@@ -60,7 +60,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
       if (oldIdx === -1) return
       const newIdx = section.blocks.findIndex(block => block.id === over.id)
       if (newIdx === -1) {
-         // Dropped on the bottom zone — move item to the last position
+         // Dropped on the bottom zone, move item to the last position
          const lastIdx = section.blocks.length - 1
          if (oldIdx !== lastIdx) reorderBlocks(section.id, oldIdx, lastIdx)
          return
@@ -87,7 +87,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
          {/* DnD section insertion indicator */}
          {!readOnly && isOver && activeSectionId !== section.id && <DropIndicator />}
 
-         {/* Drag handle — always in DOM to hold the 2rem gutter */}
+         {/* Drag handle, always in DOM to hold the 2rem gutter */}
          <div
             {...(readOnly ? {} : listeners)}
             className="sec-drag-handle"
@@ -99,7 +99,7 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
          {/* Section content */}
          <div className="doc-section">
 
-            {/* Delete — appears top-right only while hovered, never in readOnly */}
+            {/* Delete, appears top-right only while hovered, never in readOnly */}
             {!readOnly && hovered && (
                <button className="sec-delete" onClick={() => removeSection(section.id)} title={t.deleteSection}>
                   <Trash2 size={16} />

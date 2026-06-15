@@ -23,7 +23,7 @@ import { BottomDropZone } from '../../../atoms/BottomDropZone'
 import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
 
 // ######################################################################
-// # DND STRATEGY — ITEMS STAY IN PLACE; DRAGOVERLAY PROVIDES THE GHOST #
+// # DND STRATEGY, ITEMS STAY IN PLACE; DRAGOVERLAY PROVIDES THE GHOST #
 // ######################################################################
 
 const noopStrategy: SortingStrategy = () => null
@@ -68,7 +68,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       if (oldIdx === -1) return
       const newIdx = blocks.findIndex(block => block.id === over.id)
       if (newIdx === -1) {
-         // Dropped on the bottom zone — move item to the last position
+         // Dropped on the bottom zone, move item to the last position
          const lastIdx = blocks.length - 1
          if (oldIdx !== lastIdx) cm.moveBlock(secId, blkId, side, oldIdx, lastIdx)
          return

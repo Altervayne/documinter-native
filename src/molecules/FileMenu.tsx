@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, FilePlus, Upload, Save, FileUp, FileDown, Download, Library } from 'lucide-react'
+import { ChevronDown, FilePlus, Upload, Save, FileUp, FileDown, Download, Library, HardDriveDownload } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #########
@@ -8,6 +8,7 @@ import type { T } from '../lib/i18n'
 
 interface FileMenuProps {
    onOpenBinder:      () => void
+   onSaveNow:         () => void
    onNewDocument:     () => void
    onLoadJSON:        () => void
    onSaveJSON:        () => void
@@ -25,6 +26,7 @@ interface FileMenuProps {
 
 export function FileMenu({
    onOpenBinder,
+   onSaveNow,
    onNewDocument,
    onLoadJSON,
    onSaveJSON,
@@ -80,6 +82,11 @@ export function FileMenu({
                   label={t.openBinder}
                   onClick={() => handleItemClick(onOpenBinder)}
                />
+               <MenuItem
+                  icon={<Save size={13} />}
+                  label={t.saveNow}
+                  onClick={() => handleItemClick(onSaveNow)}
+               />
                <MenuSeparator />
                <MenuItem
                   icon={<FilePlus size={13} />}
@@ -92,7 +99,7 @@ export function FileMenu({
                   onClick={() => handleItemClick(onLoadJSON)}
                />
                <MenuItem
-                  icon={<Save size={13} />}
+                  icon={<HardDriveDownload size={13} />}
                   label={t.exportJsonBackup}
                   onClick={() => handleItemClick(onSaveJSON)}
                />

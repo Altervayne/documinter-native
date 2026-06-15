@@ -1,5 +1,5 @@
 /**
- * document.ts — Document primitive factories, block display utilities, and
+ * document.ts, Document primitive factories, block display utilities, and
  * shared mutation helpers used by the three mutation hooks.
  *
  * Exports:
@@ -79,7 +79,7 @@ export function mkBlock(type: BlockType, t: T): Block {
 // # BLOCK DISPLAY UTILITIES #
 // ###########################
 
-/** Return the HTML anchor id for a block — just the user-defined handle slug. */
+/** Return the HTML anchor id for a block, just the user-defined handle slug. */
 export function blockAnchor(block: { handle?: string }): string {
    return block.handle ?? ''
 }
@@ -138,7 +138,7 @@ export function blkPreview(block: Block): string {
 }
 
 // #########################################################
-// # MUTATION HELPERS — SHARED BY THE THREE MUTATION HOOKS #
+// # MUTATION HELPERS, SHARED BY THE THREE MUTATION HOOKS #
 // #########################################################
 
 /**
@@ -165,7 +165,7 @@ export function mutateSec(
 }
 
 // ################################################################
-// # LIST ITEM TREE HELPERS — PURE FUNCTIONS USED BY WYSIWYGBLOCK #
+// # LIST ITEM TREE HELPERS, PURE FUNCTIONS USED BY WYSIWYGBLOCK #
 // ################################################################
 
 /** Walk the tree and apply a transform to the matching item. Returning null removes the item. */
@@ -201,7 +201,7 @@ export function moveListItemUp(items: ListItem[], itemId: string): ListItem[] {
       ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
       return next
    }
-   // Not at this level — recurse
+   // Not at this level, recurse
    return items.map(item => ({ ...item, children: moveListItemUp(item.children, itemId) }))
 }
 
@@ -278,7 +278,7 @@ function unindentByPath(items: ListItem[], path: number[], depth: number): ListI
  */
 export function unindentListItem(items: ListItem[], itemId: string): ListItem[] {
    const path = findItemPath(items, itemId)
-   // path.length < 2 means the item is at the root — can't unindent further
+   // path.length < 2 means the item is at the root, can't unindent further
    if (!path || path.length < 2) return items
    return unindentByPath(items, path, 0)
 }

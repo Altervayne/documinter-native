@@ -1,5 +1,5 @@
 /**
- * DocumentMutationsContext — Provides all document mutation functions to the
+ * DocumentMutationsContext, Provides all document mutation functions to the
  * component tree below App.tsx.
  *
  * Exports: DocumentMutations (interface), DocumentMutationsContext,

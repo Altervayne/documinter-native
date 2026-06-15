@@ -15,7 +15,7 @@ import {
 interface UseInlineColorPickerOptions {
    /** Selection range shared with the toolbar + link mode; restored before applying color. */
    savedRangeRef:     RefObject<Range | null>
-   /** Toolbar format state setter — the post-apply re-derive writes the active colors into it. */
+   /** Toolbar format state setter, the post-apply re-derive writes the active colors into it. */
    setFormatState: Dispatch<SetStateAction<FormatState>>
 }
 
@@ -127,7 +127,7 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
 
       // Re-derive the active colors from the settled selection so the button indicators
       // reflect the committed model. Deferred to the next frame so the innerHTML rewrite
-      // and selection restore have committed — reading colorValue directly would be
+      // and selection restore have committed, reading colorValue directly would be
       // clobbered by the debounced selectionchange re-read that follows. Re-derives both
       // fields so font and highlight indicators stay consistent regardless of which one
       // was just picked.
@@ -144,8 +144,8 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
       })
 
       // Record settled custom colors (those not in the curated palette) into the recents
-      // backlog. Debounced so dragging the ColorPicker — which emits onChange continuously
-      // — records only the final value the user lands on, not every intermediate hue.
+      // backlog. Debounced so dragging the ColorPicker, which emits onChange continuously
+      //, records only the final value the user lands on, not every intermediate hue.
       const palette: readonly string[] = field === 'color' ? FONT_COLOR_PALETTE : HIGHLIGHT_COLOR_PALETTE
       if (colorValue !== undefined && !palette.includes(colorValue)) {
          if (recentColorTimerRef.current) clearTimeout(recentColorTimerRef.current)

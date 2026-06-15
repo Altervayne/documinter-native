@@ -22,7 +22,7 @@ interface RichEditableProps {
    singleLine?:     boolean
    /** Shown as greyed italic hint when the field is empty and unfocused. */
    placeholder?:    string
-   /** When true, renders a plain static element — no editing, no event handlers. */
+   /** When true, renders a plain static element, no editing, no event handlers. */
    readOnly?:       boolean
 }
 

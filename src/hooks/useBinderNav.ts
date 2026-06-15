@@ -14,7 +14,7 @@ interface UseBinderNavResult {
    isLoading:            boolean
    createFolder:   (parentId: string, name: string) => Promise<string>
    renameFolder:   (id: string, name: string) => Promise<void>
-   deleteFolder:   (id: string) => Promise<void>
+   deleteFolder:   (id: string, recursive: boolean) => Promise<string[]>
    reorderFolders: (orderedIds: string[]) => Promise<void>
    moveFolder:     (id: string, targetParentId: string) => Promise<void>
 }
@@ -60,14 +60,15 @@ export function useBinderNav(currentFolderId: string, dataVersion: number, onCha
       onChanged()
    }, [onChanged])
 
-   const deleteFolder = useCallback(async (id: string) => {
-      await storageDeleteFolder(id)
+   const deleteFolder = useCallback(async (id: string, recursive: boolean) => {
+      const deletedDocumentIds = await storageDeleteFolder(id, { recursive })
       onChanged()
+      return deletedDocumentIds
    }, [onChanged])
 
    const reorderFolders = useCallback(async (orderedIds: string[]) => {
       // Optimistic: apply the new order in the same frame as the drop (the persist + re-read are
-      // async — without this the old order flashes and the drop animation lands on a stale slot).
+      // async, without this the old order flashes and the drop animation lands on a stale slot).
       setSubfolders(current => {
          const byId = new Map(current.map(folder => [folder.id, folder]))
          const next = orderedIds

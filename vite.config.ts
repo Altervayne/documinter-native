@@ -33,7 +33,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [
           {
-            // Google Fonts CSS manifest — can change between versions
+            // Google Fonts CSS manifest, can change between versions
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'NetworkFirst',
             options: {
@@ -42,7 +42,7 @@ export default defineConfig({
             },
           },
           {
-            // Google Fonts binary files — immutable, cache aggressively
+            // Google Fonts binary files, immutable, cache aggressively
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: 'CacheFirst',
             options: {

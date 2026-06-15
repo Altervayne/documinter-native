@@ -13,14 +13,14 @@ interface PlainEditableProps {
    singleLine?: boolean
    /** Shown as greyed italic hint when the field is empty and unfocused. */
    placeholder?: string
-   /** When true, renders a plain static element — no editing, no event handlers. */
+   /** When true, renders a plain static element, no editing, no event handlers. */
    readOnly?: boolean
 }
 
 /**
  * Plain-text contenteditable element.
  *
- * Stores and emits raw innerText — no HTML, no inline formatting.
+ * Stores and emits raw innerText, no HTML, no inline formatting.
  * Use this for single-line fields: section titles, document meta, code block overlays.
  * For rich formatted text use ContentEditable (InlineContent).
  */

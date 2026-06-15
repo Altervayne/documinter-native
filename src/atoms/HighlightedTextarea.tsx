@@ -11,7 +11,7 @@ interface HighlightedTextareaProps {
    value:        string
    language:     'markdown' | 'mintdown'
    onChange:     (event: React.ChangeEvent<HTMLTextAreaElement>) => void
-   /** useRawEditor returns () => void (no event arg) — compatible with React's
+   /** useRawEditor returns () => void (no event arg), compatible with React's
     *  FocusEventHandler because TypeScript allows callbacks with fewer parameters. */
    onFocus?:     () => void
    onBlur?:      () => void
@@ -29,7 +29,7 @@ interface HighlightedTextareaProps {
 //
 // IMPORTANT: if any of these values are changed, they must be updated on
 // both elements to maintain pixel-perfect alignment at all zoom levels.
-// Never add a border to either element — border shifts the content box.
+// Never add a border to either element, border shifts the content box.
 
 const METRIC_CLASSES =
    'font-mono text-sm leading-relaxed p-5 whitespace-pre-wrap break-words [tab-size:4]'

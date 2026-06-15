@@ -15,7 +15,7 @@ interface BinderFolderMenuProps {
 const MENU_WIDTH  = 200
 const MENU_HEIGHT = 140
 
-/** Folder context menu — shared by the ⋯ button and right-click. Portal-rendered. */
+/** Folder context menu, shared by the ⋯ button and right-click. Portal-rendered. */
 export function BinderFolderMenu({ x, y, onClose, onRename, onNewSubfolder, onDelete }: BinderFolderMenuProps) {
    const { t } = useLang()
    const menuRef = useRef<HTMLDivElement>(null)

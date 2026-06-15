@@ -159,7 +159,7 @@ export function WorkspaceLayout({
    const [hoveredDropInfo, setHoveredDropInfo] = useState<{ paneId: PaneId; zone: DropZone } | null>(null)
    const [dragPosition, setDragPosition]       = useState<{ x: number; y: number } | null>(null)
 
-   // Refs to each leaf wrapper div — used to compute drop zones during drag
+   // Refs to each leaf wrapper div, used to compute drop zones during drag
    const leafRefsMap = useRef<Map<PaneId, HTMLDivElement | null>>(new Map())
 
    // Always-current paneLayout for pointer event handlers (avoids stale closures mid-drag)
@@ -348,7 +348,7 @@ export function WorkspaceLayout({
             {renderNode(paneLayout, [])}
          </div>
 
-         {/* Drag ghost — follows cursor while a pane header is being dragged */}
+         {/* Drag ghost, follows cursor while a pane header is being dragged */}
          {draggingPaneId !== null && dragPosition !== null && (
             <div
                className="fixed z-50 pointer-events-none"

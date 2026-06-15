@@ -83,7 +83,7 @@ export function relocatePanel(
    zone:      'left' | 'right' | 'top' | 'bottom',
 ): PaneNode {
    const withoutDragged = removePanel(tree, draggedId)
-   if (withoutDragged === null) return tree   // single-leaf tree — nothing to relocate
+   if (withoutDragged === null) return tree   // single-leaf tree, nothing to relocate
 
    const draggedLeaf: PaneLeaf = { kind: 'leaf', paneId: draggedId }
    return insertAtTarget(withoutDragged, draggedLeaf, targetId, zone)
@@ -94,14 +94,14 @@ export function relocatePanel(
  *  Malformed paths (e.g. a path that lands on a leaf) are a no-op.
  */
 export function setSplitRatio(tree: PaneNode, path: number[], ratio: number): PaneNode {
-   if (tree.kind === 'leaf') return tree   // path lands on a leaf — no-op
+   if (tree.kind === 'leaf') return tree   // path lands on a leaf, no-op
 
    if (path.length === 0) {
       return { ...tree, ratio }
    }
 
    const [head, ...tail] = path
-   if (head !== 0 && head !== 1) return tree   // malformed path index — no-op
+   if (head !== 0 && head !== 1) return tree   // malformed path index, no-op
 
    const childIndex = head as 0 | 1
    const newChild   = setSplitRatio(tree.children[childIndex], tail, ratio)

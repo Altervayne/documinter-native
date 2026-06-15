@@ -1,5 +1,5 @@
 /**
- * ContentEditable — rich inline-content editor.
+ * ContentEditable, rich inline-content editor.
  *
  * Accepts InlineContent as data; emits InlineContent on commit (blur, only if changed).
  * FormatToolbar targets this element via the data-rich="true" attribute.

@@ -1,5 +1,5 @@
 /**
- * relativeTime.ts — localized relative timestamps ("2 hours ago" / "il y a 2 heures")
+ * relativeTime.ts, localized relative timestamps ("2 hours ago" / "il y a 2 heures")
  * using the native Intl.RelativeTimeFormat. No dependencies.
  */
 

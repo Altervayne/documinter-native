@@ -31,12 +31,12 @@ const KEYWORDS_DECL = [
    'LOCAL', 'GLOBAL', 'STATIQUE',
    // Constants
    'CONSTANTE', 'CONSTANT', 'Structure',
-   // OOP — class & inheritance
+   // OOP, class & inheritance
    'CLASSE', 'HÉRITE', 'HERITE',
-   // OOP — members
+   // OOP, members
    'MÉTHODE', 'METHODE',
    'ATTRIBUT', 'CONSTRUCTEUR', 'DESTRUCTEUR',
-   // OOP — modifiers
+   // OOP, modifiers
    'VIRTUEL', 'ABSTRAIT',
    // Access modifiers
    'PUBLIQUE', 'PROTÉGÉ', 'PROTEGE', 'PRIVÉ', 'PRIVE',
@@ -102,17 +102,17 @@ export const windev: Language = {
       // Line comments  ( // … )
       { type: 'cmt',  pattern: /\/\/[^\n]*/  },
 
-      // Strings — double-quoted (primary) and single-quoted
+      // Strings, double-quoted (primary) and single-quoted
       { type: 'str',  pattern: /"(?:[^"\\]|\\.)*"/ },
       { type: 'str',  pattern: /'(?:[^'\\]|\\.)*'/ },
 
-      // Numbers — integer and decimal (WLangage uses comma or dot as decimal sep)
+      // Numbers, integer and decimal (WLangage uses comma or dot as decimal sep)
       { type: 'num',  pattern: /\b\d+[.,]?\d*\b/ },
 
       // Built-in types (before keyword rule to avoid mis-classification)
       { type: 'type', pattern: new RegExp(`\\b(${typeSource})\\b`) },
 
-      // Keywords (case-sensitive — WLangage uses uppercase for control/declarations)
+      // Keywords (case-sensitive, WLangage uses uppercase for control/declarations)
       { type: 'kw',   pattern: new RegExp(`\\b(${kwSource})\\b`) },
 
       // Function / procedure calls: identifier immediately followed by (

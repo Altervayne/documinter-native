@@ -8,7 +8,7 @@ import { ColorPicker } from './ColorPicker'
 interface InlineColorPopoverProps {
    /** Currently active color hex, or undefined when the field is unset. */
    activeColor: string | undefined
-   /** Curated quick-pick palette (existing font/highlight values — no new colors). */
+   /** Curated quick-pick palette (existing font/highlight values, no new colors). */
    palette:     readonly string[]
    /** Recently-used custom colors (most-recent-first), shown as a quick-pick row. */
    recent:      readonly string[]
@@ -18,7 +18,7 @@ interface InlineColorPopoverProps {
    removeLabel: string
    /** Apply a color to the selection (undefined clears the field). Does not close. */
    onApply:     (color: string | undefined) => void
-   /** Close the popover — used by the discrete actions (quick-pick swatch / remove). */
+   /** Close the popover, used by the discrete actions (quick-pick swatch / remove). */
    onClose:     () => void
 }
 
@@ -72,7 +72,7 @@ export function InlineColorPopover({ activeColor, palette, recent, recentLabel, 
             </div>
          )}
 
-         {/* Full custom color picker — replaces the old native <input type="color"> */}
+         {/* Full custom color picker, replaces the old native <input type="color"> */}
          <div className="border-t border-border p-2">
             <ColorPicker value={activeColor ?? palette[0]} onChange={color => onApply(color)} />
          </div>

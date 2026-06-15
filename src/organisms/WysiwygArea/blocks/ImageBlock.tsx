@@ -66,7 +66,7 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
 
       return (
          <div>
-            {/* Figure: only the image — so its width drives alignment with no min-width from controls */}
+            {/* Figure: only the image, so its width drives alignment with no min-width from controls */}
             <div className={`flex ${flexAlign}`}>
                <figure className="doc-figure" style={{ maxWidth: '100%' }}>
                   <div className="relative select-none rounded-md overflow-hidden">

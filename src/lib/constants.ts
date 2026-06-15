@@ -9,7 +9,7 @@ export const ACCENT_PRESETS: string[] = [
    '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#e11d48', '#0891b2', '#2dcea8',
 ]
 
-/** Curated font-color palette — base/light pairs across the hue wheel plus neutrals. */
+/** Curated font-color palette, base/light pairs across the hue wheel plus neutrals. */
 export const FONT_COLOR_PALETTE = [
    '#111111', // Black
    '#6b6b6b', // Dark Gray
@@ -32,7 +32,7 @@ export const FONT_COLOR_PALETTE = [
    '#62c4c4', // Light Teal
 ] as const
 
-/** Curated highlight-color palette — soft pastels that keep dark text legible on the swatch. */
+/** Curated highlight-color palette, soft pastels that keep dark text legible on the swatch. */
 export const HIGHLIGHT_COLOR_PALETTE = [
    '#fff9c4', // Yellow
    '#ffe0b2', // Peach
@@ -67,7 +67,7 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
    { type: 'hr',        icon: SeparatorHorizontal },
 ]
 
-/** Keyed by BlockType — useful for O(1) icon lookups. */
+/** Keyed by BlockType, useful for O(1) icon lookups. */
 export const BLOCK_ICONS_MAP: Record<BlockType, LucideIcon> = Object.fromEntries(
    BLOCK_ICONS.map(blockIcon => [blockIcon.type, blockIcon.icon])
 ) as Record<BlockType, LucideIcon>
