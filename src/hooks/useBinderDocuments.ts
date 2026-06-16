@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { BinderDocumentRecord } from '../types'
 import {
    listDocuments, deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
-   loadDocument, saveDocument, type DocumentListFilter,
+   loadDocument, saveDocument, parseDocumentBackup, type DocumentListFilter,
 } from '../lib/storage'
 import { downloadHTML } from '../lib/export'
 import { exportMarkdownFile } from '../lib/markdown'
@@ -67,6 +67,26 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
+   }, [onChanged, showToast, t])
+
+   // Import one or more dropped files as new documents in targetFolderId. Non-JSON files and
+   // files that don't parse as a Documinter backup are skipped; the restored documents keep the
+   // theme + accent stored in their backup. Reports the outcome with a single toast.
+   const handleImportJSON = useCallback(async (files: File[], targetFolderId: string) => {
+      const jsonFiles = files.filter(file => file.name.toLowerCase().endsWith('.json'))
+      if (jsonFiles.length === 0) { showToast(t.binderImportInvalid, { type: 'error' }); return }
+      let imported = 0
+      for (const file of jsonFiles) {
+         try {
+            const parsed = parseDocumentBackup(await file.text())
+            if (!parsed) continue
+            await saveDocument(parsed.state, parsed.presentation, undefined, targetFolderId)
+            imported++
+         } catch { /* skip this file, keep importing the rest */ }
+      }
+      if (imported === 0) { showToast(t.binderImportInvalid, { type: 'error' }); return }
+      onChanged()
+      showToast(t.binderImportSuccess, { type: 'success' })
    }, [onChanged, showToast, t])
 
    const handleDuplicate = useCallback(async (id: string) => {
@@ -145,6 +165,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       documents,
       isLoading,
       handleDelete,
+      handleImportJSON,
       handleDuplicate,
       handleMove,
       handleReorder,

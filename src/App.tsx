@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
-import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, getDocumentFolderId, getFolder, type LoadedDocument } from './lib/storage'
+import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, getDocumentFolderId, getFolder, type LoadedDocument, type DocPresentation } from './lib/storage'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -127,12 +127,17 @@ export default function App() {
    // Replace the in-editor document with fresh content that is NOT yet a binder record
    // (new / JSON load / file import). Resets currentDocumentId to null so the next edit
    // creates a new IndexedDB record rather than overwriting the previously-open document,
-   // and skips the autosave cycle this replacement triggers.
-   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[]) => {
+   // and skips the autosave cycle this replacement triggers. An optional presentation restores
+   // the document's saved theme + accent (e.g. from a JSON backup); omit to keep the current ones.
+   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
       skipNextAutosaveRef.current = true
       pendingNewDocFolderRef.current = null   // a plain new/import/load lands in root unless set after
       setMeta(nextMeta)
       setSections(nextSections)
+      if (presentation) {
+         setDocTheme(presentation.docTheme)
+         setDocAccent(presentation.docAccent)
+      }
       currentDocumentIdRef.current = null
       setCurrentDocumentId(null)
    }, [])
@@ -398,9 +403,9 @@ export default function App() {
       setMeta(currentMeta => ({ ...currentMeta, ...patch }))
    }, [])
 
-   // Load state from JSON
-   const handleLoad = useCallback((state: DocState) => {
-      replaceDocument(state.meta, state.sections)
+   // Load state from JSON (restoring its saved theme + accent)
+   const handleLoad = useCallback((state: DocState, presentation: DocPresentation) => {
+      replaceDocument(state.meta, state.sections, presentation)
    }, [replaceDocument])
 
    // Mutations, extracted into focused hooks

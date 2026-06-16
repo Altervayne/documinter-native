@@ -20,7 +20,7 @@ import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
-import { downloadJSON, loadJSONFile } from '../lib/storage'
+import { downloadJSON, loadJSONFile, type DocPresentation } from '../lib/storage'
 import { documentToMarkdown } from '../lib/markdown'
 import { exportMintdownFile } from '../lib/mintdown'
 
@@ -85,7 +85,7 @@ interface TopbarProps {
    mode:             Mode
    paneLayout:       PaneNode
    saveStatus:       SaveStatus
-   onLoad:           (state: DocState) => void
+   onLoad:           (state: DocState, presentation: DocPresentation) => void
    onToggleTheme:    () => void
    onSetMode:        (mode: Mode) => void
    onTogglePanel:    (id: PaneId) => void
@@ -170,13 +170,13 @@ export function Topbar({
 
    function handleLoadJSON() {
       loadJSONFile(
-         (state: DocState) => { onLoad(state); showToast(t.jsonBackupImported, { type: 'success' }) },
+         (state: DocState, presentation: DocPresentation) => { onLoad(state, presentation); showToast(t.jsonBackupImported, { type: 'success' }) },
          (message: string) => showToast(message, { type: 'error' }),
       )
    }
 
    function handleSaveJSON() {
-      downloadJSON(meta, sections)
+      downloadJSON(meta, sections, { docTheme, docAccent })
       onManualSave()
       showToast(t.jsonBackupExported, { type: 'success' })
    }

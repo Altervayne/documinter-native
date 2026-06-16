@@ -4,7 +4,7 @@ import {
    type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { Folder, ArrowDown, ArrowUp, FilePlus } from 'lucide-react'
+import { Folder, ArrowDown, ArrowUp, FilePlus, FileJson } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
 import { DOCUMENT_DATE_FIELDS, backfillSearchText, getFolderAncestors } from '../../lib/storage'
 import type { DocumentSortBy, DocumentDateField, SearchCriteria, DateFilter, FieldQuery } from '../../lib/storage'
@@ -228,6 +228,36 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
       void docs.handleDelete(record.id)
       if (record.id === currentDocumentId) onDocumentDeleted(record.id)
    }, [documentPendingDelete, docs, currentDocumentId, onDocumentDeleted])
+
+   // =========================
+   //  Drag-and-drop file import
+   // =========================
+   // Native HTML5 file drops (from the OS file explorer) are a separate system from dnd-kit's
+   // pointer-based card dragging, so the two never collide. A dropped .documinter.json becomes a
+   // new document in the folder currently being viewed.
+   const [isFileDragOver, setIsFileDragOver] = useState(false)
+
+   const handleFileDragOver = useCallback((event: React.DragEvent) => {
+      if (!event.dataTransfer.types.includes('Files')) return   // ignore non-file drags
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+      setIsFileDragOver(true)
+   }, [])
+
+   const handleFileDragLeave = useCallback((event: React.DragEvent) => {
+      // Native dragleave also fires when crossing between child elements — only clear when the
+      // cursor has actually left the drop container.
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+      setIsFileDragOver(false)
+   }, [])
+
+   const handleFileDrop = useCallback((event: React.DragEvent) => {
+      if (!event.dataTransfer.types.includes('Files')) return
+      event.preventDefault()
+      setIsFileDragOver(false)
+      const files = Array.from(event.dataTransfer.files)
+      if (files.length > 0) void docs.handleImportJSON(files, currentFolderId)
+   }, [docs, currentFolderId])
 
    // ============
    //  Drag & drop
@@ -548,7 +578,18 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
                   />
                </div>
 
-               <div className="flex-1 overflow-y-auto p-6">
+               <div
+                  className="relative flex-1 overflow-y-auto p-6"
+                  onDragOver={handleFileDragOver}
+                  onDragLeave={handleFileDragLeave}
+                  onDrop={handleFileDrop}
+               >
+                  {isFileDragOver && (
+                     <div className="absolute inset-3 z-10 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
+                        <FileJson size={34} />
+                        <span className="text-sm font-medium">{t.binderDropToImport}</span>
+                     </div>
+                  )}
                   {docs.isLoading ? (
                      <div className="text-muted text-sm">…</div>
                   ) : docs.documents.length === 0 ? (
