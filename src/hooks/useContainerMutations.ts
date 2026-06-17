@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react'
 
 // -- Lib / Util Imports --
 import { cloneBlock, mkBlock, moveItem, mutateSec } from '../lib/document'
+import * as listItemTree from '../lib/listItemTree'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, Section, Side } from '../types'
@@ -186,6 +187,87 @@ export function useContainerMutations(
             ...sec,
             blocks: sec.blocks.map(block => block.id === blkId ? { ...block, ratio } : block),
          }))
+      }, [setSections]),
+
+      // List-item structural edits on an inner list block, backed by the listItemTree.ts helpers.
+      moveListItemUp: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.moveListItemUp(block.items ?? [], itemId) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      moveListItemDown: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.moveListItemDown(block.items ?? [], itemId) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      indentListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.indentListItem(block.items ?? [], itemId) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      unindentListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.unindentListItem(block.items ?? [], itemId) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      removeListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.removeListItemById(block.items ?? [], itemId) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      insertListItemAfter: useCallback((secId, blkId, side, innerBlkId, afterItemId, newItem) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.insertListItemAfter(block.items ?? [], afterItemId, newItem) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      updateListItemRichText: useCallback((secId, blkId, side, innerBlkId, itemId, richText) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.updateListItemRichText(block.items ?? [], itemId, richText) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      reorderListItemsUnderParent: useCallback((secId, blkId, side, innerBlkId, parentItemId, oldIndex, newIndex) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && block.type === 'list'
+                  ? { ...block, items: listItemTree.reorderListItemsUnderParent(block.items ?? [], parentItemId, oldIndex, newIndex) }
+                  : block
+            )
+         )
       }, [setSections]),
    }
 }

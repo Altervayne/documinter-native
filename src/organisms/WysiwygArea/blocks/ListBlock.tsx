@@ -15,22 +15,28 @@ import { GripVertical, CirclePlus } from 'lucide-react'
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { useLang } from '../../../contexts/LangContext'
 
-// -- Lib Imports --
-import {
-   updateListItemRichText,
-   reorderListItemsUnderParent,
-   indentListItem,
-   unindentListItem,
-   removeListItemById,
-   insertListItemAfter,
-} from '../../../lib/listItemTree'
-
 // -- Type Imports --
 import type { Block, InlineContent, ListItem } from '../../../types'
 
 // #############
 // # UTILITIES #
 // #############
+
+/**
+ * The list-item structural operations a ListBlock performs, each pre-bound to this block by the
+ * caller (top-level blocks via useBlockMutations, inner blocks via containerMutations). Bundled
+ * into one object and threaded through the recursive levels, mirroring how ContainerMutations is
+ * threaded into ContainerColumn. The underlying algorithms live in lib/listItemTree.ts; the
+ * components only invoke these handlers, they never compute a list mutation themselves.
+ */
+export interface ListItemOperations {
+   indent:         (itemId: string) => void
+   unindent:       (itemId: string) => void
+   insertAfter:    (afterItemId: string, newItem: ListItem) => void
+   remove:         (itemId: string) => void
+   updateRichText: (itemId: string, richText: InlineContent) => void
+   reorder:        (parentItemId: string | null, oldIndex: number, newIndex: number) => void
+}
 
 /**
  * Returns true when the cursor (selection) is at the very start of the element's
@@ -53,8 +59,7 @@ function isCursorAtStart(element: HTMLElement): boolean {
 interface ListItemRowProps {
    item:           ListItem
    depth:          number
-   rootItems:      ListItem[]
-   onUpdateItems:  (newItems: ListItem[]) => void
+   itemOps:        ListItemOperations
    readOnly?:      boolean
    isDragOverlay?: boolean
    gripSide?:      'left' | 'right'
@@ -62,7 +67,7 @@ interface ListItemRowProps {
 
 const BULLETS = ['•', '◦', '▸', '▹']
 
-function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
+function ListItemRow({ item, depth, itemOps, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
 
@@ -87,9 +92,9 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
          event.preventDefault()
          const currentItemId = item.id
          if (event.shiftKey) {
-            if (depth > 0) onUpdateItems(unindentListItem(rootItems, item.id))
+            if (depth > 0) itemOps.unindent(item.id)
          } else {
-            onUpdateItems(indentListItem(rootItems, item.id))
+            itemOps.indent(item.id)
          }
          requestAnimationFrame(() => {
             const target = document.querySelector(`[data-list-item-id="${currentItemId}"] [contenteditable]`)
@@ -102,7 +107,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
       if (event.key === 'Enter' && !event.shiftKey) {
          event.preventDefault()
          const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [] }
-         onUpdateItems(insertListItemAfter(rootItems, item.id, newItem))
+         itemOps.insertAfter(item.id, newItem)
          requestAnimationFrame(() => {
             const newEl = document.querySelector(`[data-list-item-id="${newItem.id}"] [contenteditable]`)
             if (newEl instanceof HTMLElement) newEl.focus()
@@ -114,12 +119,12 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
       if (event.key === 'Backspace' && isCursorAtStart(element)) {
          if (depth > 0) {
             event.preventDefault()
-            onUpdateItems(unindentListItem(rootItems, item.id))
+            itemOps.unindent(item.id)
             return
          }
          if (element.textContent?.trim() === '') {
             event.preventDefault()
-            onUpdateItems(removeListItemById(rootItems, item.id))
+            itemOps.remove(item.id)
             return
          }
          // depth === 0, non-empty: default browser behavior
@@ -160,7 +165,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
             <ContentEditable
                tag="span"
                content={(item.richText ?? []) as InlineContent}
-               onCommit={richText => onUpdateItems(updateListItemRichText(rootItems, item.id, richText))}
+               onCommit={richText => itemOps.updateRichText(item.id, richText)}
                onKeyDown={readOnly ? undefined : handleKeyDown}
                placeholder={t.listItemPlaceholder}
                style={{ flex: 1 }}
@@ -175,8 +180,7 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
                   items={item.children}
                   parentItemId={item.id}
                   depth={depth + 1}
-                  rootItems={rootItems}
-                  onUpdateItems={onUpdateItems}
+                  itemOps={itemOps}
                   readOnly={readOnly}
                   gripSide={gripSide}
                />
@@ -191,16 +195,15 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
 // ############################################################
 
 interface ListLevelProps {
-   items:         ListItem[]
-   parentItemId:  string | null
-   depth:         number
-   rootItems:     ListItem[]
-   onUpdateItems: (newItems: ListItem[]) => void
-   readOnly?:     boolean
-   gripSide?:     'left' | 'right'
+   items:        ListItem[]
+   parentItemId: string | null
+   depth:        number
+   itemOps:      ListItemOperations
+   readOnly?:    boolean
+   gripSide?:    'left' | 'right'
 }
 
-function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readOnly, gripSide = 'left' }: ListLevelProps) {
+function ListLevel({ items, parentItemId, depth, itemOps, readOnly, gripSide = 'left' }: ListLevelProps) {
    const [activeDragId, setActiveDragId] = useState<string | null>(null)
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const activeItem = activeDragId ? items.find(item => item.id === activeDragId) ?? null : null
@@ -216,7 +219,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
       const oldIndex = items.findIndex(item => item.id === active.id)
       const newIndex = items.findIndex(item => item.id === over.id)
       if (oldIndex !== -1 && newIndex !== -1) {
-         onUpdateItems(reorderListItemsUnderParent(rootItems, parentItemId, oldIndex, newIndex))
+         itemOps.reorder(parentItemId, oldIndex, newIndex)
       }
    }
 
@@ -228,8 +231,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                   key={item.id}
                   item={item}
                   depth={depth}
-                  rootItems={rootItems}
-                  onUpdateItems={onUpdateItems}
+                  itemOps={itemOps}
                   readOnly
                   gripSide={gripSide}
                />
@@ -252,8 +254,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                   key={item.id}
                   item={item}
                   depth={depth}
-                  rootItems={rootItems}
-                  onUpdateItems={onUpdateItems}
+                  itemOps={itemOps}
                   gripSide={gripSide}
                />
             ))}
@@ -265,8 +266,7 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
                   <ListItemRow
                      item={activeItem}
                      depth={depth}
-                     rootItems={rootItems}
-                     onUpdateItems={() => {}}
+                     itemOps={itemOps}
                      readOnly
                      isDragOverlay
                      gripSide={gripSide}
@@ -284,19 +284,15 @@ function ListLevel({ items, parentItemId, depth, rootItems, onUpdateItems, readO
 
 interface ListBlockProps {
    block:     Block
-   patch:     (partial: Partial<Block>) => void
+   itemOps:   ListItemOperations
    onAddItem: () => void
    readOnly?: boolean
    gripSide?: 'left' | 'right'
 }
 
-export function ListBlock({ block, patch, onAddItem, readOnly, gripSide = 'left' }: ListBlockProps) {
+export function ListBlock({ block, itemOps, onAddItem, readOnly, gripSide = 'left' }: ListBlockProps) {
    const { t } = useLang()
    const rootItems = block.items ?? []
-
-   function onUpdateItems(newItems: ListItem[]) {
-      patch({ items: newItems })
-   }
 
    return (
       <div>
@@ -304,8 +300,7 @@ export function ListBlock({ block, patch, onAddItem, readOnly, gripSide = 'left'
             items={rootItems}
             parentItemId={null}
             depth={0}
-            rootItems={rootItems}
-            onUpdateItems={onUpdateItems}
+            itemOps={itemOps}
             readOnly={readOnly}
             gripSide={gripSide}
          />

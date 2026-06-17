@@ -3,12 +3,8 @@ import { useState } from 'react'
 import type { RefObject } from 'react'
 
 // -- Lib Imports --
-import {
-   getListItemContext,
-   removeListItemById,
-   moveListItemUp, moveListItemDown,
-   indentListItem, unindentListItem,
-} from '../../lib/listItemTree'
+// getListItemContext is a read (computes the menu's enable/disable flags), not a mutation.
+import { getListItemContext } from '../../lib/listItemTree'
 
 // -- Type Imports --
 import type { Block } from '../../types'
@@ -19,8 +15,6 @@ interface UseBlockContextMenuOptions {
    /** The block's wrapper element, scopes table-cell hit-testing to this block. */
    blockDivRef:  RefObject<HTMLDivElement | null>
    isAnchorDupe: boolean
-   /** Commit a list-item edit onto the block (inner/outer routing handled by the caller). */
-   patch:        (partialBlock: Partial<Block>) => void
    onMoveUp?:    () => void
    onMoveDown?:  () => void
    onDuplicate:  () => void
@@ -28,6 +22,12 @@ interface UseBlockContextMenuOptions {
    onAnchorEdit: () => void
    onRequestInsertBefore: () => void
    onRequestInsertAfter:  () => void
+   // List-item operations, already inner/outer-routed by the caller.
+   onMoveListItemUp:   (itemId: string) => void
+   onMoveListItemDown: (itemId: string) => void
+   onIndentListItem:   (itemId: string) => void
+   onUnindentListItem: (itemId: string) => void
+   onRemoveListItem:   (itemId: string) => void
    // Table operations, already inner/outer-routed by the caller.
    onInsertTableRowAt: (rowIndex: number) => void
    onDeleteTableRowAt: (rowIndex: number) => void
@@ -46,13 +46,14 @@ interface UseBlockContextMenuResult {
 /**
  * Context-menu state for a WysiwygBlock: open position, the list-item / table-cell detection
  * from the right-click target's DOM, and assembly of the per-context action objects. The
- * list-item and table actions still go through the caller's patch / table handlers exactly as
- * before — this hook does not reroute mutations (see audit 3.2, a later session).
+ * list-item and table actions are caller-supplied handlers backed by the mutation hooks; this
+ * hook computes no list mutation itself (getListItemContext is a read for the enable flags).
  */
 export function useBlockContextMenu({
-   block, blockDivRef, isAnchorDupe, patch,
+   block, blockDivRef, isAnchorDupe,
    onMoveUp, onMoveDown, onDuplicate, onDelete, onAnchorEdit,
    onRequestInsertBefore, onRequestInsertAfter,
+   onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
 }: UseBlockContextMenuOptions): UseBlockContextMenuResult {
    const [contextMenu,           setContextMenu]           = useState<{ x: number; y: number } | null>(null)
@@ -108,17 +109,16 @@ export function useBlockContextMenu({
          const itemCtx = getListItemContext(block.items ?? [], contextMenuListItemId)
          if (itemCtx) {
             const itemId = contextMenuListItemId
-            const rootItems = block.items ?? []
             listItemActions = {
                canMoveUp:   itemCtx.indexInParent > 0,
                canMoveDown: itemCtx.indexInParent < itemCtx.siblingsCount - 1,
                canIndent:   itemCtx.indexInParent > 0,
                canUnindent: itemCtx.depth > 0,
-               onMoveUp:    () => patch({ items: moveListItemUp(rootItems, itemId) }),
-               onMoveDown:  () => patch({ items: moveListItemDown(rootItems, itemId) }),
-               onIndent:    () => patch({ items: indentListItem(rootItems, itemId) }),
-               onUnindent:  () => patch({ items: unindentListItem(rootItems, itemId) }),
-               onDelete:    () => patch({ items: removeListItemById(rootItems, itemId) }),
+               onMoveUp:    () => onMoveListItemUp(itemId),
+               onMoveDown:  () => onMoveListItemDown(itemId),
+               onIndent:    () => onIndentListItem(itemId),
+               onUnindent:  () => onUnindentListItem(itemId),
+               onDelete:    () => onRemoveListItem(itemId),
             }
          }
       }

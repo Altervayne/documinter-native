@@ -20,7 +20,7 @@ import { AddBlockRow } from '../../../molecules/AddBlockRow'
 import { BottomDropZone } from '../../../atoms/BottomDropZone'
 
 // -- Type Imports --
-import type { Block, BlockType, ContainerMutations, Side } from '../../../types'
+import type { Block, BlockType, ContainerMutations, InlineContent, ListItem, Side } from '../../../types'
 
 // ######################################################################
 // # DND STRATEGY, ITEMS STAY IN PLACE; DRAGOVERLAY PROVIDES THE GHOST #
@@ -110,6 +110,14 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
          onDeleteTableRowAt:  (rowIndex: number) => cm.deleteTableRowAt(secId, blkId, side, innerBlock.id, rowIndex),
          onInsertTableColAt:  (colIndex: number) => cm.insertTableColAt(secId, blkId, side, innerBlock.id, colIndex),
          onDeleteTableColAt:  (colIndex: number) => cm.deleteTableColAt(secId, blkId, side, innerBlock.id, colIndex),
+         onMoveListItemUp:        (itemId: string) => cm.moveListItemUp(secId, blkId, side, innerBlock.id, itemId),
+         onMoveListItemDown:      (itemId: string) => cm.moveListItemDown(secId, blkId, side, innerBlock.id, itemId),
+         onIndentListItem:        (itemId: string) => cm.indentListItem(secId, blkId, side, innerBlock.id, itemId),
+         onUnindentListItem:      (itemId: string) => cm.unindentListItem(secId, blkId, side, innerBlock.id, itemId),
+         onRemoveListItem:        (itemId: string) => cm.removeListItem(secId, blkId, side, innerBlock.id, itemId),
+         onInsertListItemAfter:   (afterItemId: string, newItem: ListItem) => cm.insertListItemAfter(secId, blkId, side, innerBlock.id, afterItemId, newItem),
+         onUpdateListItemRichText:(itemId: string, richText: InlineContent) => cm.updateListItemRichText(secId, blkId, side, innerBlock.id, itemId, richText),
+         onReorderListItems:      (parentItemId: string | null, oldIndex: number, newIndex: number) => cm.reorderListItemsUnderParent(secId, blkId, side, innerBlock.id, parentItemId, oldIndex, newIndex),
       }
    }
 

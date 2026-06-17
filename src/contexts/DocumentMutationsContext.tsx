@@ -11,7 +11,7 @@
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext } from 'react'
-import type { Block, BlockType, ContainerMutations } from '../types'
+import type { Block, BlockType, ContainerMutations, InlineContent, ListItem } from '../types'
 
 export interface DocumentMutations {
    updateBlock:       (secId: string, blkId: string, patch: Partial<Block>) => void
@@ -29,6 +29,14 @@ export interface DocumentMutations {
    deleteTableRowAt:  (secId: string, blkId: string, rowIndex: number) => void
    insertTableColAt:  (secId: string, blkId: string, colIndex: number) => void
    deleteTableColAt:  (secId: string, blkId: string, colIndex: number) => void
+   moveListItemUp:              (secId: string, blkId: string, itemId: string) => void
+   moveListItemDown:            (secId: string, blkId: string, itemId: string) => void
+   indentListItem:              (secId: string, blkId: string, itemId: string) => void
+   unindentListItem:            (secId: string, blkId: string, itemId: string) => void
+   removeListItem:              (secId: string, blkId: string, itemId: string) => void
+   insertListItemAfter:         (secId: string, blkId: string, afterItemId: string, newItem: ListItem) => void
+   updateListItemRichText:      (secId: string, blkId: string, itemId: string, richText: InlineContent) => void
+   reorderListItemsUnderParent: (secId: string, blkId: string, parentItemId: string | null, oldIndex: number, newIndex: number) => void
    containerMutations: ContainerMutations
    updateTitle:       (secId: string, title: string) => void
    removeSection:     (secId: string) => void

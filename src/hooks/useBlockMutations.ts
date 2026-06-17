@@ -7,12 +7,13 @@ import { arrayMove } from '@dnd-kit/sortable'
 
 // -- Lib / Util Imports --
 import { cloneBlock, mkBlock, moveItem, mutateSec } from '../lib/document'
+import * as listItemTree from '../lib/listItemTree'
 
 // -- Context Imports --
 import { useToast } from '../contexts/ToastContext'
 
 // -- Type Imports --
-import type { Block, BlockType, Section } from '../types'
+import type { Block, BlockType, InlineContent, ListItem, Section } from '../types'
 import type { T } from '../lib/i18n'
 
 export function useBlockMutations(
@@ -221,11 +222,106 @@ export function useBlockMutations(
       }))
    }, [setSections, t])
 
+   // ============================================================
+   //  List-item structural edits, backed by the listItemTree.ts pure helpers.
+   //  Each operates on the matching list block's items array.
+   // ============================================================
+
+   const moveListItemUp = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.moveListItemUp(block.items ?? [], itemId) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const moveListItemDown = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.moveListItemDown(block.items ?? [], itemId) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const indentListItem = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.indentListItem(block.items ?? [], itemId) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const unindentListItem = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.unindentListItem(block.items ?? [], itemId) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const removeListItem = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.removeListItemById(block.items ?? [], itemId) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const insertListItemAfter = useCallback((secId: string, blkId: string, afterItemId: string, newItem: ListItem) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.insertListItemAfter(block.items ?? [], afterItemId, newItem) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const updateListItemRichText = useCallback((secId: string, blkId: string, itemId: string, richText: InlineContent) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.updateListItemRichText(block.items ?? [], itemId, richText) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   const reorderListItemsUnderParent = useCallback((secId: string, blkId: string, parentItemId: string | null, oldIndex: number, newIndex: number) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && block.type === 'list'
+               ? { ...block, items: listItemTree.reorderListItemsUnderParent(block.items ?? [], parentItemId, oldIndex, newIndex) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
    return {
       addBlock, insertBlockAt, updateBlock, removeBlk,
       moveBlkUp, moveBlkDown, reorderBlocks, duplicateBlock,
       addListItem, removeLastItem,
       addTableRow, removeLastRow, addTableCol,
       insertTableRowAt, deleteTableRowAt, insertTableColAt, deleteTableColAt,
+      moveListItemUp, moveListItemDown, indentListItem, unindentListItem,
+      removeListItem, insertListItemAfter, updateListItemRichText, reorderListItemsUnderParent,
    }
 }

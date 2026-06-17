@@ -194,4 +194,13 @@ export interface ContainerMutations {
    insertTableColAt: (secId: string, blkId: string, side: Side, innerBlkId: string, colIndex: number) => void
    deleteTableColAt: (secId: string, blkId: string, side: Side, innerBlkId: string, colIndex: number) => void
    updateRatio:      (secId: string, blkId: string, ratio: number) => void
+   // List-item structural edits (scoped to an inner list block), backed by listItemTree.ts.
+   moveListItemUp:              (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
+   moveListItemDown:            (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
+   indentListItem:              (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
+   unindentListItem:            (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
+   removeListItem:              (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
+   insertListItemAfter:         (secId: string, blkId: string, side: Side, innerBlkId: string, afterItemId: string, newItem: ListItem) => void
+   updateListItemRichText:      (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string, richText: InlineContent) => void
+   reorderListItemsUnderParent: (secId: string, blkId: string, side: Side, innerBlkId: string, parentItemId: string | null, oldIndex: number, newIndex: number) => void
 }

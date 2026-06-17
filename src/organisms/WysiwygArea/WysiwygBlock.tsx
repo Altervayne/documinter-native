@@ -17,7 +17,7 @@ import { useBlockContextMenu } from './useBlockContextMenu'
 import { ParagraphBlock }   from './blocks/ParagraphBlock'
 import { CalloutBlock }     from './blocks/CalloutBlock'
 import { CodeBlock }        from './blocks/CodeBlock'
-import { ListBlock }        from './blocks/ListBlock'
+import { ListBlock, type ListItemOperations } from './blocks/ListBlock'
 import { TableBlock }       from './blocks/TableBlock'
 import { ImageBlock }       from './blocks/ImageBlock'
 import { ContainerBlock }   from './blocks/ContainerBlock'
@@ -27,7 +27,7 @@ import { BlockContextMenu } from '../../molecules/BlockContextMenu'
 import { BlockTypePicker }  from '../../molecules/BlockTypePicker'
 
 // -- Type Imports --
-import type { Block, BlockType, ContainerMutations } from '../../types'
+import type { Block, BlockType, ContainerMutations, InlineContent, ListItem } from '../../types'
 
 
 
@@ -62,6 +62,15 @@ interface WysiwygBlockProps {
    onDeleteTableRowAt?: (rowIndex: number) => void
    onInsertTableColAt?: (colIndex: number) => void
    onDeleteTableColAt?: (colIndex: number) => void
+   // Inner list-item operations (only when inner=true), routed through containerMutations
+   onMoveListItemUp?:        (itemId: string) => void
+   onMoveListItemDown?:      (itemId: string) => void
+   onIndentListItem?:        (itemId: string) => void
+   onUnindentListItem?:      (itemId: string) => void
+   onRemoveListItem?:        (itemId: string) => void
+   onInsertListItemAfter?:   (afterItemId: string, newItem: ListItem) => void
+   onUpdateListItemRichText?:(itemId: string, richText: InlineContent) => void
+   onReorderListItems?:      (parentItemId: string | null, oldIndex: number, newIndex: number) => void
 }
 
 
@@ -75,6 +84,8 @@ export function WysiwygBlock({
    onAddListItem,
    onAddTableRow, onRemoveLastRow, onAddTableCol,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
+   onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
+   onInsertListItemAfter, onUpdateListItemRichText, onReorderListItems,
 }: WysiwygBlockProps) {
    const ctx        = useDocumentMutations()
    const { t }      = useLang()
@@ -119,6 +130,25 @@ export function WysiwygBlock({
    const handleInsertTableColAt = inner ? onInsertTableColAt!  : (colIndex: number) => ctx.insertTableColAt(secId, block.id, colIndex)
    const handleDeleteTableColAt = inner ? onDeleteTableColAt!  : (colIndex: number) => ctx.deleteTableColAt(secId, block.id, colIndex)
 
+   // List-item operations, routed exactly like the table handlers above.
+   const handleMoveListItemUp         = inner ? onMoveListItemUp!         : (itemId: string) => ctx.moveListItemUp(secId, block.id, itemId)
+   const handleMoveListItemDown       = inner ? onMoveListItemDown!       : (itemId: string) => ctx.moveListItemDown(secId, block.id, itemId)
+   const handleIndentListItem         = inner ? onIndentListItem!         : (itemId: string) => ctx.indentListItem(secId, block.id, itemId)
+   const handleUnindentListItem       = inner ? onUnindentListItem!       : (itemId: string) => ctx.unindentListItem(secId, block.id, itemId)
+   const handleRemoveListItem         = inner ? onRemoveListItem!         : (itemId: string) => ctx.removeListItem(secId, block.id, itemId)
+   const handleInsertListItemAfter    = inner ? onInsertListItemAfter!    : (afterItemId: string, newItem: ListItem) => ctx.insertListItemAfter(secId, block.id, afterItemId, newItem)
+   const handleUpdateListItemRichText = inner ? onUpdateListItemRichText! : (itemId: string, richText: InlineContent) => ctx.updateListItemRichText(secId, block.id, itemId, richText)
+   const handleReorderListItems       = inner ? onReorderListItems!       : (parentItemId: string | null, oldIndex: number, newIndex: number) => ctx.reorderListItemsUnderParent(secId, block.id, parentItemId, oldIndex, newIndex)
+
+   const listItemOps: ListItemOperations = {
+      indent:         handleIndentListItem,
+      unindent:       handleUnindentListItem,
+      insertAfter:    handleInsertListItemAfter,
+      remove:         handleRemoveListItem,
+      updateRichText: handleUpdateListItemRichText,
+      reorder:        handleReorderListItems,
+   }
+
    // =======================
    //  Anchor + context menu
    // =======================
@@ -127,7 +157,6 @@ export function WysiwygBlock({
       block,
       blockDivRef,
       isAnchorDupe,
-      patch,
       onMoveUp,
       onMoveDown,
       onDuplicate: handleDuplicate,
@@ -135,6 +164,11 @@ export function WysiwygBlock({
       onAnchorEdit: anchor.openAnchorEditor,
       onRequestInsertBefore: () => setPendingInsert('before'),
       onRequestInsertAfter:  () => setPendingInsert('after'),
+      onMoveListItemUp:   handleMoveListItemUp,
+      onMoveListItemDown: handleMoveListItemDown,
+      onIndentListItem:   handleIndentListItem,
+      onUnindentListItem: handleUnindentListItem,
+      onRemoveListItem:   handleRemoveListItem,
       onInsertTableRowAt: handleInsertTableRowAt,
       onDeleteTableRowAt: handleDeleteTableRowAt,
       onInsertTableColAt: handleInsertTableColAt,
@@ -169,7 +203,7 @@ export function WysiwygBlock({
       if (block.type === 'code')
          return <CodeBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
-         return <ListBlock block={block} patch={patch} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
+         return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'table')
          return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} readOnly={readOnly} />
       if (block.type === 'image')
