@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import type { BinderDocumentRecord } from '../types'
 import {
    listDocuments, deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
-   loadDocument, saveDocument, parseDocumentBackup, type DocumentListFilter,
-} from '../lib/storage'
+   loadDocument, saveDocument,
+} from '../lib/binderDocuments'
+import { parseDocumentBackup } from '../lib/documentBackupFile'
+import type { DocumentListFilter } from '../lib/binderSearch'
 import { downloadHTML } from '../lib/export'
 import { exportMarkdownFile } from '../lib/markdown'
 import { exportMintdownFile } from '../lib/mintdown'

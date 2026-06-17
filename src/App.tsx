@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
-import { readAutosave, clearLegacyAutosave, saveDocument, loadDocument, getDocumentFolderId, getFolder, type LoadedDocument, type DocPresentation } from './lib/storage'
+import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
+import { saveDocument, loadDocument, getDocumentFolderId, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
+import { getFolder } from './lib/binderFolders'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'

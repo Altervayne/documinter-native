@@ -20,7 +20,8 @@ import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
-import { downloadJSON, loadJSONFile, type DocPresentation } from '../lib/storage'
+import { downloadJSON, loadJSONFile } from '../lib/documentBackupFile'
+import type { DocPresentation } from '../lib/binderDocuments'
 import { exportMarkdownFile } from '../lib/markdown'
 import { exportMintdownFile } from '../lib/mintdown'
 

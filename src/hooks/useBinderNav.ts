@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BinderFolderRecord } from '../types'
+import { listDocuments } from '../lib/binderDocuments'
 import {
-   getFolderChildren, getFolderAncestors, listDocuments,
+   getFolderChildren, getFolderAncestors,
    createFolder as storageCreateFolder, renameFolder as storageRenameFolder,
    deleteFolder as storageDeleteFolder, reorderFolders as storageReorderFolders,
    moveFolder as storageMoveFolder,
-} from '../lib/storage'
+} from '../lib/binderFolders'
 
 interface UseBinderNavResult {
    subfolders:           BinderFolderRecord[]   // immediate children of the current folder

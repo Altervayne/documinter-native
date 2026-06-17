@@ -6,7 +6,7 @@
  * import from here so the editable draft state and the storage criteria stay in lock-step.
  */
 
-import type { DateFilter, FieldQuery } from '../../lib/storage'
+import type { DateFilter, FieldQuery } from '../../lib/binderSearch'
 
 /** The targeted-field keys, in the order they appear in the filter panel. */
 export type FieldQueryKey = keyof FieldQuery
