@@ -23,7 +23,7 @@ import {
    unindentListItem,
    removeListItemById,
    insertListItemAfter,
-} from '../../../lib/document'
+} from '../../../lib/listItemTree'
 
 // -- Type Imports --
 import type { Block, InlineContent, ListItem } from '../../../types'
@@ -135,7 +135,6 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
-         {/* Item row */}
          <div className="flex items-baseline gap-1.5 py-0.5 min-h-[1.5rem]">
             {/* Drag handle, uses negative margin to float outside the content area.
                 Left column (default): marginLeft -16 places it before the bullet.
@@ -154,12 +153,10 @@ function ListItemRow({ item, depth, rootItems, onUpdateItems, readOnly, isDragOv
                </span>
             )}
 
-            {/* Bullet */}
             <span className="shrink-0 select-none text-muted/50 font-mono text-xs mt-px" style={{ minWidth: '1ch' }}>
                {bullet}
             </span>
 
-            {/* Text */}
             <ContentEditable
                tag="span"
                content={(item.richText ?? []) as InlineContent}

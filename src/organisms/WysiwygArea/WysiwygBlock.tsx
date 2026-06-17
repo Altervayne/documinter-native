@@ -25,13 +25,13 @@ import { BlockContextMenu, type ListItemContextActions, type TableCellContextAct
 import { BlockTypePicker }  from '../../molecules/BlockTypePicker'
 
 // -- Lib / Util Imports --
+import { generateHandle } from '../../lib/document'
 import {
-   generateHandle,
    getListItemContext,
    removeListItemById,
    moveListItemUp, moveListItemDown,
    indentListItem, unindentListItem,
-} from '../../lib/document'
+} from '../../lib/listItemTree'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations } from '../../types'
@@ -364,7 +364,6 @@ export function WysiwygBlock({
             />
          )}
 
-         {/* Block content */}
          <div className="min-w-0">
             {renderBlockContent()}
          </div>

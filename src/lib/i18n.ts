@@ -187,6 +187,7 @@ export const translations = {
       exportHtml:          'Export HTML',
       markdownImported:    'Markdown imported!',
       markdownExported:    'Markdown exported!',
+      importFailed:        'Import failed',
       // Binder
       openBinder:             'Open binder',
       binderTitle:            'My Documents',
@@ -465,6 +466,7 @@ export const translations = {
       exportHtml:          'Exporter HTML',
       markdownImported:    'Markdown importé !',
       markdownExported:    'Markdown exporté !',
+      importFailed:        'Échec de l\'import',
       mintdownImported:    'Mintdown importé !',
       mintdownExported:    'Mintdown exporté !',
       // Binder

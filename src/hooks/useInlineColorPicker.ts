@@ -3,14 +3,13 @@ import type { Dispatch, RefObject, SetStateAction } from 'react'
 import type { FormatState } from '../types'
 import { FONT_COLOR_PALETTE, HIGHLIGHT_COLOR_PALETTE } from '../lib/constants'
 import { readRecentColors, pushRecentColor } from '../lib/recentColors'
+import { domToInlineContent, renderInlineContent } from '../lib/inline'
 import {
-   domToInlineContent,
-   renderInlineContent,
    countCharsToPosition,
    applyColorToRange,
    restoreSelectionRange,
    deriveActiveColorsAt,
-} from '../lib/inline'
+} from '../lib/inlineFormatting'
 
 interface UseInlineColorPickerOptions {
    /** Selection range shared with the toolbar + link mode; restored before applying color. */

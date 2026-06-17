@@ -28,7 +28,6 @@ export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
 
    return (
       <div className="flex flex-col gap-2.5 min-w-0 flex-1 p-3.5">
-         {/* Title */}
          <div className="text-sm font-semibold text-text truncate min-w-0">
             {meta.title || t.untitledDoc}
          </div>
@@ -64,7 +63,6 @@ export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
             )}
          </div>
 
-         {/* Timestamps */}
          <div className="mt-auto pt-1 flex flex-col gap-0.5 text-[0.7rem] text-muted/60">
             <span className="truncate min-w-0">
                {t.binderDateUpdated}: {formatRelativeTime(updatedAt, lang)}

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import type { FormatState, Section } from '../types'
 import { blockAnchor } from '../lib/document'
-import { deriveActiveColorsAt } from '../lib/inline'
+import { deriveActiveColorsAt } from '../lib/inlineFormatting'
 import { execFormatCommand } from '../lib/execCommand'
 import { FONT_COLOR_PALETTE, HIGHLIGHT_COLOR_PALETTE } from '../lib/constants'
 import { useLang } from '../contexts/LangContext'

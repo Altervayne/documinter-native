@@ -21,7 +21,7 @@ import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
 import { downloadJSON, loadJSONFile, type DocPresentation } from '../lib/storage'
-import { documentToMarkdown } from '../lib/markdown'
+import { exportMarkdownFile } from '../lib/markdown'
 import { exportMintdownFile } from '../lib/mintdown'
 
 // -- Icon Imports --
@@ -197,22 +197,14 @@ export function Topbar({
             await onImportMarkdown(file)
             showToast(t.markdownImported, { type: 'success' })
          } catch {
-            showToast('Import failed', { type: 'error' })
+            showToast(t.importFailed, { type: 'error' })
          }
       }
       input.click()
    }
 
    function handleExportMarkdownClick() {
-      const markdownContent = documentToMarkdown(sections, meta)
-      const blob            = new Blob([markdownContent], { type: 'text/markdown' })
-      const url             = URL.createObjectURL(blob)
-      const anchor          = document.createElement('a')
-      const filename        = (meta.title || 'document').replace(/[^a-z0-9_-]/gi, '_').toLowerCase()
-      anchor.href           = url
-      anchor.download       = `${filename}.md`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      exportMarkdownFile(sections, meta)
       showToast(t.markdownExported, { type: 'success' })
    }
 
@@ -227,7 +219,7 @@ export function Topbar({
             await onImportMintdown(file)
             showToast(t.mintdownImported, { type: 'success' })
          } catch {
-            showToast('Import failed', { type: 'error' })
+            showToast(t.importFailed, { type: 'error' })
          }
       }
       input.click()

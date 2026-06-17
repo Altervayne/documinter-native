@@ -79,7 +79,6 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                } as React.CSSProperties}
             >
             <div className="doc-render">
-               {/* Page header */}
                <div className="page-header">
                   <PlainEditable
                      tag="div"
@@ -131,7 +130,6 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                   </div>
                </div>
 
-               {/* Empty state */}
                {sections.length === 0 && (
                   !readOnly && onAddSection ? (
                      <div
@@ -152,7 +150,6 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                   )
                )}
 
-               {/* Sections */}
                {readOnly ? (
                   <>
                      {sections.map((sec, index) => (
