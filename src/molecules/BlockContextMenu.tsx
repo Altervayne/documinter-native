@@ -46,7 +46,7 @@ export interface ListItemContextActions {
    onDelete:    () => void
 }
 
-interface BlockContextMenuProps {
+export interface BlockContextMenuProps {
    position:     { x: number; y: number }
    canMoveUp:    boolean
    canMoveDown:  boolean

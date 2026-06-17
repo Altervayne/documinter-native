@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState } from 'react'
 
 // -- Library Imports --
 import { useSortable } from '@dnd-kit/sortable'
@@ -10,6 +10,8 @@ import { GripVertical, TriangleAlert } from 'lucide-react'
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { useDocumentHandles } from '../../contexts/DocumentHandlesContext'
 import { useLang } from '../../contexts/LangContext'
+import { useAnchorEditor } from './useAnchorEditor'
+import { useBlockContextMenu } from './useBlockContextMenu'
 
 // -- Component Imports --
 import { ParagraphBlock }   from './blocks/ParagraphBlock'
@@ -21,17 +23,8 @@ import { ImageBlock }       from './blocks/ImageBlock'
 import { ContainerBlock }   from './blocks/ContainerBlock'
 import { HrBlock }          from './blocks/HrBlock'
 import { AnchorEditor }     from './blocks/AnchorEditor'
-import { BlockContextMenu, type ListItemContextActions, type TableCellContextActions } from '../../molecules/BlockContextMenu'
+import { BlockContextMenu } from '../../molecules/BlockContextMenu'
 import { BlockTypePicker }  from '../../molecules/BlockTypePicker'
-
-// -- Lib / Util Imports --
-import { generateHandle } from '../../lib/document'
-import {
-   getListItemContext,
-   removeListItemById,
-   moveListItemUp, moveListItemDown,
-   indentListItem, unindentListItem,
-} from '../../lib/listItemTree'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations } from '../../types'
@@ -88,80 +81,9 @@ export function WysiwygBlock({
    const allHandles = useDocumentHandles()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
 
-   const [hovered,               setHovered]               = useState(false)
-   const [contextMenu,           setContextMenu]           = useState<{ x: number; y: number } | null>(null)
-   const [contextMenuListItemId, setContextMenuListItemId] = useState<string | null>(null)
-   const [contextMenuTableCell,  setContextMenuTableCell]  = useState<{ rowIndex: number; colIndex: number; isHeader: boolean } | null>(null)
-   const [pendingInsert,         setPendingInsert]         = useState<'before' | 'after' | null>(null)
-   const [anchorEditing, setAnchorEditing] = useState(false)
-   const [anchorDraft,   setAnchorDraft]   = useState('')
-   const [anchorPos,     setAnchorPos]     = useState<{ top: number; right: number } | null>(null)
+   const [hovered,       setHovered]       = useState(false)
+   const [pendingInsert, setPendingInsert] = useState<'before' | 'after' | null>(null)
    const blockDivRef = useRef<HTMLDivElement>(null)
-
-   // ==============
-   //  Anchor editor
-   // ==============
-   function openAnchorEditor() {
-      setAnchorDraft(block.handle ?? generateHandle(block))
-      setAnchorEditing(true)
-   }
-   function closeAnchorEditor() { setAnchorEditing(false) }
-   function confirmAnchor() {
-      const slug = anchorDraft.trim().toLowerCase()
-         .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 40)
-      patch({ handle: slug || undefined })
-      closeAnchorEditor()
-   }
-   function removeAnchor() { patch({ handle: undefined }); closeAnchorEditor() }
-
-   useEffect(() => {
-      if (anchorEditing) {
-         const rect = blockDivRef.current?.getBoundingClientRect()
-         // eslint-disable-next-line react-hooks/set-state-in-effect
-         if (rect) setAnchorPos({ top: rect.top, right: window.innerWidth - rect.left + 10 })
-      } else {
-         setAnchorPos(null)
-      }
-   }, [anchorEditing])
-
-   // =============
-   //  Context menu
-   // =============
-   function handleContextMenu(event: React.MouseEvent) {
-      event.preventDefault()
-      const target = event.target as Element
-
-      // List item detection
-      const listItemEl = target.closest('[data-list-item-id]')
-      setContextMenuListItemId(listItemEl?.getAttribute('data-list-item-id') ?? null)
-
-      // Table cell detection, derive row/col indices from the DOM structure
-      if (block.type === 'table' && blockDivRef.current) {
-         const cell = target.closest('td, th')
-         if (cell && blockDivRef.current.contains(cell)) {
-            const isHeader = cell.tagName.toLowerCase() === 'th'
-            const row = cell.closest('tr')
-            const colIndex = row
-               ? Array.from(row.querySelectorAll(isHeader ? 'th' : 'td')).findIndex(el => el === cell)
-               : 0
-            const rowIndex = isHeader
-               ? -1
-               : (() => {
-                  const tbody = cell.closest('tbody')
-                  return tbody && row
-                     ? Array.from(tbody.querySelectorAll('tr')).findIndex(el => el === row)
-                     : 0
-               })()
-            setContextMenuTableCell({ rowIndex, colIndex, isHeader })
-         } else {
-            setContextMenuTableCell(null)
-         }
-      } else {
-         setContextMenuTableCell(null)
-      }
-
-      setContextMenu({ x: event.clientX, y: event.clientY })
-   }
 
    // ====
    //  DnD
@@ -196,6 +118,28 @@ export function WysiwygBlock({
    const handleDeleteTableRowAt = inner ? onDeleteTableRowAt!  : (rowIndex: number) => ctx.deleteTableRowAt(secId, block.id, rowIndex)
    const handleInsertTableColAt = inner ? onInsertTableColAt!  : (colIndex: number) => ctx.insertTableColAt(secId, block.id, colIndex)
    const handleDeleteTableColAt = inner ? onDeleteTableColAt!  : (colIndex: number) => ctx.deleteTableColAt(secId, block.id, colIndex)
+
+   // =======================
+   //  Anchor + context menu
+   // =======================
+   const anchor = useAnchorEditor({ block, blockDivRef, patch })
+   const { contextMenuProps, openContextMenu } = useBlockContextMenu({
+      block,
+      blockDivRef,
+      isAnchorDupe,
+      patch,
+      onMoveUp,
+      onMoveDown,
+      onDuplicate: handleDuplicate,
+      onDelete:    handleRemove,
+      onAnchorEdit: anchor.openAnchorEditor,
+      onRequestInsertBefore: () => setPendingInsert('before'),
+      onRequestInsertAfter:  () => setPendingInsert('after'),
+      onInsertTableRowAt: handleInsertTableRowAt,
+      onDeleteTableRowAt: handleDeleteTableRowAt,
+      onInsertTableColAt: handleInsertTableColAt,
+      onDeleteTableColAt: handleDeleteTableColAt,
+   })
 
    // ========================
    //  Block picker anchorRect
@@ -248,7 +192,7 @@ export function WysiwygBlock({
          ].join(' ')}
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
-         onContextMenu={readOnly ? undefined : handleContextMenu}
+         onContextMenu={readOnly ? undefined : openContextMenu}
       >
          {/* DnD insertion indicator */}
          {showInsertLine && (
@@ -275,79 +219,21 @@ export function WysiwygBlock({
          )}
 
          {/* Anchor editor */}
-         {!readOnly && anchorEditing && anchorPos && (
+         {!readOnly && anchor.anchorEditing && anchor.anchorPos && (
             <AnchorEditor
-               draft={anchorDraft}
+               draft={anchor.anchorDraft}
                currentHandle={block.handle}
                hasHandle={!!block.handle}
-               onChange={setAnchorDraft}
-               onConfirm={confirmAnchor}
-               onClose={closeAnchorEditor}
-               onRemove={removeAnchor}
-               pos={anchorPos}
+               onChange={anchor.setAnchorDraft}
+               onConfirm={anchor.confirmAnchor}
+               onClose={anchor.closeAnchorEditor}
+               onRemove={anchor.removeAnchor}
+               pos={anchor.anchorPos}
             />
          )}
 
          {/* Right-click context menu */}
-         {contextMenu && (() => {
-            let listItemActions: ListItemContextActions | undefined
-            if (contextMenuListItemId && block.type === 'list') {
-               const itemCtx = getListItemContext(block.items ?? [], contextMenuListItemId)
-               if (itemCtx) {
-                  const itemId = contextMenuListItemId
-                  const rootItems = block.items ?? []
-                  listItemActions = {
-                     canMoveUp:   itemCtx.indexInParent > 0,
-                     canMoveDown: itemCtx.indexInParent < itemCtx.siblingsCount - 1,
-                     canIndent:   itemCtx.indexInParent > 0,
-                     canUnindent: itemCtx.depth > 0,
-                     onMoveUp:    () => patch({ items: moveListItemUp(rootItems, itemId) }),
-                     onMoveDown:  () => patch({ items: moveListItemDown(rootItems, itemId) }),
-                     onIndent:    () => patch({ items: indentListItem(rootItems, itemId) }),
-                     onUnindent:  () => patch({ items: unindentListItem(rootItems, itemId) }),
-                     onDelete:    () => patch({ items: removeListItemById(rootItems, itemId) }),
-                  }
-               }
-            }
-            let tableCellActions: TableCellContextActions | undefined
-            if (contextMenuTableCell && block.type === 'table') {
-               const { rowIndex, colIndex } = contextMenuTableCell
-               const rowCount = block.richRows?.length ?? 0
-               const colCount = block.richHeaders?.length ?? 0
-               tableCellActions = {
-                  rowIndex,
-                  colIndex,
-                  rowCount,
-                  colCount,
-                  onInsertRowAbove: () => handleInsertTableRowAt(rowIndex === -1 ? 0 : rowIndex),
-                  onInsertRowBelow: () => handleInsertTableRowAt(rowIndex === -1 ? 0 : rowIndex + 1),
-                  onInsertColLeft:  () => handleInsertTableColAt(colIndex),
-                  onInsertColRight: () => handleInsertTableColAt(colIndex + 1),
-                  onDeleteRow:      () => { if (rowIndex >= 0) handleDeleteTableRowAt(rowIndex) },
-                  onDeleteCol:      () => handleDeleteTableColAt(colIndex),
-               }
-            }
-
-            return (
-               <BlockContextMenu
-                  position={contextMenu}
-                  canMoveUp={!!onMoveUp}
-                  canMoveDown={!!onMoveDown}
-                  hasAnchor={!!block.handle}
-                  isAnchorDupe={isAnchorDupe}
-                  onInsertBefore={() => setPendingInsert('before')}
-                  onInsertAfter={() => setPendingInsert('after')}
-                  onMoveUp={onMoveUp}
-                  onMoveDown={onMoveDown}
-                  onDuplicate={handleDuplicate}
-                  onAnchorEdit={openAnchorEditor}
-                  onDelete={handleRemove}
-                  onClose={() => { setContextMenu(null); setContextMenuListItemId(null); setContextMenuTableCell(null) }}
-                  listItem={listItemActions}
-                  tableCell={tableCellActions}
-               />
-            )
-         })()}
+         {contextMenuProps && <BlockContextMenu {...contextMenuProps} />}
 
          {/* Block type picker for insert before / after */}
          {pendingInsert && (
