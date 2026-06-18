@@ -36,6 +36,8 @@ export interface ListItemOperations {
    remove:         (itemId: string) => void
    updateRichText: (itemId: string, richText: InlineContent) => void
    reorder:        (parentItemId: string | null, oldIndex: number, newIndex: number) => void
+   /** Toggle an item's checked flag. Only supplied (and only used) in checklist mode. */
+   toggle?:        (itemId: string) => void
 }
 
 /**
@@ -60,6 +62,8 @@ interface ListItemRowProps {
    item:           ListItem
    depth:          number
    itemOps:        ListItemOperations
+   /** Render a checkbox marker (checklist) instead of a bullet (list). */
+   checklist?:     boolean
    readOnly?:      boolean
    isDragOverlay?: boolean
    gripSide?:      'left' | 'right'
@@ -67,7 +71,7 @@ interface ListItemRowProps {
 
 const BULLETS = ['•', '◦', '▸', '▹']
 
-function ListItemRow({ item, depth, itemOps, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
+function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
 
@@ -106,7 +110,7 @@ function ListItemRow({ item, depth, itemOps, readOnly, isDragOverlay, gripSide =
       // Enter, create new sibling immediately after (Shift+Enter falls through to <br>)
       if (event.key === 'Enter' && !event.shiftKey) {
          event.preventDefault()
-         const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [] }
+         const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [], ...(checklist ? { checked: false } : {}) }
          itemOps.insertAfter(item.id, newItem)
          requestAnimationFrame(() => {
             const newEl = document.querySelector(`[data-list-item-id="${newItem.id}"] [contenteditable]`)
@@ -158,9 +162,21 @@ function ListItemRow({ item, depth, itemOps, readOnly, isDragOverlay, gripSide =
                </span>
             )}
 
-            <span className="shrink-0 select-none text-muted/50 font-mono text-xs mt-px" style={{ minWidth: '1ch' }}>
-               {bullet}
-            </span>
+            {checklist ? (
+               <input
+                  type="checkbox"
+                  checked={!!item.checked}
+                  onChange={() => itemOps.toggle?.(item.id)}
+                  disabled={readOnly}
+                  className="shrink-0 mt-1 cursor-pointer disabled:cursor-default"
+                  style={{ accentColor: 'var(--doc-accent, var(--color-accent))' }}
+                  aria-label={t.checklistToggle}
+               />
+            ) : (
+               <span className="shrink-0 select-none text-muted/50 font-mono text-xs mt-px" style={{ minWidth: '1ch' }}>
+                  {bullet}
+               </span>
+            )}
 
             <ContentEditable
                tag="span"
@@ -181,6 +197,7 @@ function ListItemRow({ item, depth, itemOps, readOnly, isDragOverlay, gripSide =
                   parentItemId={item.id}
                   depth={depth + 1}
                   itemOps={itemOps}
+                  checklist={checklist}
                   readOnly={readOnly}
                   gripSide={gripSide}
                />
@@ -199,11 +216,12 @@ interface ListLevelProps {
    parentItemId: string | null
    depth:        number
    itemOps:      ListItemOperations
+   checklist?:   boolean
    readOnly?:    boolean
    gripSide?:    'left' | 'right'
 }
 
-function ListLevel({ items, parentItemId, depth, itemOps, readOnly, gripSide = 'left' }: ListLevelProps) {
+function ListLevel({ items, parentItemId, depth, itemOps, checklist, readOnly, gripSide = 'left' }: ListLevelProps) {
    const [activeDragId, setActiveDragId] = useState<string | null>(null)
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const activeItem = activeDragId ? items.find(item => item.id === activeDragId) ?? null : null
@@ -232,6 +250,7 @@ function ListLevel({ items, parentItemId, depth, itemOps, readOnly, gripSide = '
                   item={item}
                   depth={depth}
                   itemOps={itemOps}
+                  checklist={checklist}
                   readOnly
                   gripSide={gripSide}
                />
@@ -255,6 +274,7 @@ function ListLevel({ items, parentItemId, depth, itemOps, readOnly, gripSide = '
                   item={item}
                   depth={depth}
                   itemOps={itemOps}
+                  checklist={checklist}
                   gripSide={gripSide}
                />
             ))}
@@ -267,6 +287,7 @@ function ListLevel({ items, parentItemId, depth, itemOps, readOnly, gripSide = '
                      item={activeItem}
                      depth={depth}
                      itemOps={itemOps}
+                     checklist={checklist}
                      readOnly
                      isDragOverlay
                      gripSide={gripSide}
@@ -286,11 +307,13 @@ interface ListBlockProps {
    block:     Block
    itemOps:   ListItemOperations
    onAddItem: () => void
+   /** Render checkbox markers + enable the toggle (checklist block). */
+   checklist?: boolean
    readOnly?: boolean
    gripSide?: 'left' | 'right'
 }
 
-export function ListBlock({ block, itemOps, onAddItem, readOnly, gripSide = 'left' }: ListBlockProps) {
+export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, gripSide = 'left' }: ListBlockProps) {
    const { t } = useLang()
    const rootItems = block.items ?? []
 
@@ -301,6 +324,7 @@ export function ListBlock({ block, itemOps, onAddItem, readOnly, gripSide = 'lef
             parentItemId={null}
             depth={0}
             itemOps={itemOps}
+            checklist={checklist}
             readOnly={readOnly}
             gripSide={gripSide}
          />

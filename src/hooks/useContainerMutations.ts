@@ -71,7 +71,7 @@ export function useContainerMutations(
       addListItem: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: [...(block.items ?? []), { id: crypto.randomUUID(), richText: [{ text: t.newItem }], children: [] }] }
                   : block
             )
@@ -81,7 +81,7 @@ export function useContainerMutations(
       removeLastItem: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list' && (block.items?.length ?? 0) > 1
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist') && (block.items?.length ?? 0) > 1
                   ? { ...block, items: block.items!.slice(0, -1) }
                   : block
             )
@@ -193,7 +193,7 @@ export function useContainerMutations(
       moveListItemUp: useCallback((secId, blkId, side, innerBlkId, itemId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.moveListItemUp(block.items ?? [], itemId) }
                   : block
             )
@@ -203,7 +203,7 @@ export function useContainerMutations(
       moveListItemDown: useCallback((secId, blkId, side, innerBlkId, itemId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.moveListItemDown(block.items ?? [], itemId) }
                   : block
             )
@@ -213,7 +213,7 @@ export function useContainerMutations(
       indentListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.indentListItem(block.items ?? [], itemId) }
                   : block
             )
@@ -223,7 +223,7 @@ export function useContainerMutations(
       unindentListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.unindentListItem(block.items ?? [], itemId) }
                   : block
             )
@@ -233,7 +233,7 @@ export function useContainerMutations(
       removeListItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.removeListItemById(block.items ?? [], itemId) }
                   : block
             )
@@ -243,7 +243,7 @@ export function useContainerMutations(
       insertListItemAfter: useCallback((secId, blkId, side, innerBlkId, afterItemId, newItem) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.insertListItemAfter(block.items ?? [], afterItemId, newItem) }
                   : block
             )
@@ -253,7 +253,7 @@ export function useContainerMutations(
       updateListItemRichText: useCallback((secId, blkId, side, innerBlkId, itemId, richText) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.updateListItemRichText(block.items ?? [], itemId, richText) }
                   : block
             )
@@ -263,8 +263,18 @@ export function useContainerMutations(
       reorderListItemsUnderParent: useCallback((secId, blkId, side, innerBlkId, parentItemId, oldIndex, newIndex) => {
          mutateContainer(setSections, secId, blkId, side, blocks =>
             blocks.map(block =>
-               block.id === innerBlkId && block.type === 'list'
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
                   ? { ...block, items: listItemTree.reorderListItemsUnderParent(block.items ?? [], parentItemId, oldIndex, newIndex) }
+                  : block
+            )
+         )
+      }, [setSections]),
+
+      toggleChecklistItem: useCallback((secId, blkId, side, innerBlkId, itemId) => {
+         mutateContainer(setSections, secId, blkId, side, blocks =>
+            blocks.map(block =>
+               block.id === innerBlkId && (block.type === 'list' || block.type === 'checklist')
+                  ? { ...block, items: listItemTree.mutateListItem(block.items ?? [], itemId, item => ({ ...item, checked: !item.checked })) }
                   : block
             )
          )

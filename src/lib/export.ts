@@ -41,6 +41,18 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
       }
       return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
    }
+   if (block.type === 'checklist') {
+      // Real, interactive checkboxes: a reader of the exported file can tick items (native
+      // local DOM toggle, no persistence). `checked` reflects the saved state.
+      function exportChecklistItem(item: ListItem): string {
+         const childHtml = item.children.length > 0
+            ? `<ul class="doc-checklist">${item.children.map(exportChecklistItem).join('')}</ul>`
+            : ''
+         const checkedAttr = item.checked ? ' checked' : ''
+         return `<li class="doc-check-item"><input type="checkbox"${checkedAttr}><span>${richToHtml(item.richText)}</span>${childHtml}</li>`
+      }
+      return withHandle(block, `<ul class="doc-checklist">${(block.items ?? []).map(exportChecklistItem).join('')}</ul>`)
+   }
    if (block.type === 'table') {
       const headerCells = (block.richHeaders ?? [])
          .map(header => `<th>${richToHtml(header)}</th>`).join('')
@@ -289,6 +301,12 @@ function buildStyles(accent: string, colors: Colors): string {
             .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
             .doc-render li             { margin-bottom: 0.3rem; color: ${colors.textP}; }
             .doc-render li::marker     { color: ${colors.inlineCodeText}; }
+            .doc-render ul.doc-checklist { list-style: none; padding-left: 0.5rem; }
+            .doc-render ul.doc-checklist ul.doc-checklist { padding-left: 1.5rem; margin-bottom: 0; }
+            .doc-render .doc-check-item { display: flex; align-items: flex-start; gap: 0.5rem; }
+            .doc-render .doc-check-item > input[type="checkbox"] { margin-top: 0.28rem; flex-shrink: 0; width: 0.95rem; height: 0.95rem; accent-color: ${accent}; cursor: pointer; }
+            .doc-render .doc-check-item > span { flex: 1; }
+            .doc-render .doc-check-item > ul.doc-checklist { flex-basis: 100%; }
 
             /* Syntax tokens */
             .tok-kw   { color: ${colors.tokKw}; font-weight: 600; }

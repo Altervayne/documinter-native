@@ -37,6 +37,7 @@ export interface DocumentMutations {
    insertListItemAfter:         (secId: string, blkId: string, afterItemId: string, newItem: ListItem) => void
    updateListItemRichText:      (secId: string, blkId: string, itemId: string, richText: InlineContent) => void
    reorderListItemsUnderParent: (secId: string, blkId: string, parentItemId: string | null, oldIndex: number, newIndex: number) => void
+   toggleChecklistItem:         (secId: string, blkId: string, itemId: string) => void
    containerMutations: ContainerMutations
    updateTitle:       (secId: string, title: string) => void
    removeSection:     (secId: string) => void

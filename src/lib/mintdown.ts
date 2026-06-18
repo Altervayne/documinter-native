@@ -97,7 +97,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
    let pendingHandle:     string | null = null
    let pendingImageBlock: Block  | null = null
 
-   type AccumKind = 'p' | 'blockquote' | 'list' | 'table'
+   type AccumKind = 'p' | 'blockquote' | 'list' | 'checklist' | 'table'
    let accumKind:  AccumKind | null = null
    let accumLines: string[]         = []
 
@@ -124,6 +124,8 @@ function parseBodyBlocks(lines: string[]): Block[] {
             return parseCalloutLines(capturedLines.map(line => line.replace(/^> ?/, '')))
          case 'list':
             return { id: crypto.randomUUID(), type: 'list', items: buildListTree(capturedLines) }
+         case 'checklist':
+            return { id: crypto.randomUUID(), type: 'checklist', items: buildListTree(capturedLines, true) }
          case 'table':
             return buildTableBlock(capturedLines)
          default:
@@ -207,12 +209,13 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // List item
+      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
       if (/^\s*- /.test(line)) {
-         if ((accumKind as AccumKind | null) === 'list') {
+         const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
+         if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
          } else {
-            startAccum('list', line)
+            startAccum(kind, line)
          }
          continue
       }
@@ -499,7 +502,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    let pendingHandle:     string  | null = null
    let pendingImageBlock: Block   | null = null
 
-   type AccumKind = 'p' | 'blockquote' | 'list' | 'table'
+   type AccumKind = 'p' | 'blockquote' | 'list' | 'checklist' | 'table'
    let accumKind:  AccumKind | null = null
    let accumLines: string[]         = []
 
@@ -534,6 +537,8 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
             return parseCalloutLines(capturedLines.map(line => line.replace(/^> ?/, '')))
          case 'list':
             return { id: crypto.randomUUID(), type: 'list', items: buildListTree(capturedLines) }
+         case 'checklist':
+            return { id: crypto.randomUUID(), type: 'checklist', items: buildListTree(capturedLines, true) }
          case 'table':
             return buildTableBlock(capturedLines)
          default:
@@ -659,12 +664,13 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // List item
+      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
       if (/^\s*- /.test(line)) {
-         if ((accumKind as AccumKind | null) === 'list') {
+         const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
+         if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
          } else {
-            startAccum('list', line)
+            startAccum(kind, line)
          }
          continue
       }

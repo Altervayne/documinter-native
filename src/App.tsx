@@ -478,6 +478,7 @@ export default function App() {
                insertListItemAfter:         blockMutations.insertListItemAfter,
                updateListItemRichText:      blockMutations.updateListItemRichText,
                reorderListItemsUnderParent: blockMutations.reorderListItemsUnderParent,
+               toggleChecklistItem:         blockMutations.toggleChecklistItem,
                containerMutations,
                updateTitle:       sectionMutations.updateSecTitle,
                removeSection:     sectionMutations.removeSec,

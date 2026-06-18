@@ -1,4 +1,4 @@
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'list' | 'table' | 'image' | 'container' | 'hr'
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -55,6 +55,7 @@ export interface ListItem {
    id:        string
    richText?: InlineContent
    children:  ListItem[]
+   checked?:  boolean   // checklist items only; absent = unchecked
 }
 
 export interface Block {
@@ -64,7 +65,7 @@ export interface Block {
    style?: CalloutStyle  // callout
    code?: string         // code
    lang?: CodeLang       // code, default 'windev'
-   items?: ListItem[]    // list
+   items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
    src?: string          // image: base64 data URL
@@ -203,4 +204,5 @@ export interface ContainerMutations {
    insertListItemAfter:         (secId: string, blkId: string, side: Side, innerBlkId: string, afterItemId: string, newItem: ListItem) => void
    updateListItemRichText:      (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string, richText: InlineContent) => void
    reorderListItemsUnderParent: (secId: string, blkId: string, side: Side, innerBlkId: string, parentItemId: string | null, oldIndex: number, newIndex: number) => void
+   toggleChecklistItem:         (secId: string, blkId: string, side: Side, innerBlkId: string, itemId: string) => void
 }

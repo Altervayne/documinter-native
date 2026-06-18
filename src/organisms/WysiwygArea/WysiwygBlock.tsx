@@ -18,6 +18,7 @@ import { ParagraphBlock }   from './blocks/ParagraphBlock'
 import { CalloutBlock }     from './blocks/CalloutBlock'
 import { CodeBlock }        from './blocks/CodeBlock'
 import { ListBlock, type ListItemOperations } from './blocks/ListBlock'
+import { ChecklistBlock }   from './blocks/ChecklistBlock'
 import { TableBlock }       from './blocks/TableBlock'
 import { ImageBlock }       from './blocks/ImageBlock'
 import { ContainerBlock }   from './blocks/ContainerBlock'
@@ -71,6 +72,7 @@ interface WysiwygBlockProps {
    onInsertListItemAfter?:   (afterItemId: string, newItem: ListItem) => void
    onUpdateListItemRichText?:(itemId: string, richText: InlineContent) => void
    onReorderListItems?:      (parentItemId: string | null, oldIndex: number, newIndex: number) => void
+   onToggleChecklistItem?:   (itemId: string) => void
 }
 
 
@@ -85,7 +87,7 @@ export function WysiwygBlock({
    onAddTableRow, onRemoveLastRow, onAddTableCol,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
    onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
-   onInsertListItemAfter, onUpdateListItemRichText, onReorderListItems,
+   onInsertListItemAfter, onUpdateListItemRichText, onReorderListItems, onToggleChecklistItem,
 }: WysiwygBlockProps) {
    const ctx        = useDocumentMutations()
    const { t }      = useLang()
@@ -139,6 +141,7 @@ export function WysiwygBlock({
    const handleInsertListItemAfter    = inner ? onInsertListItemAfter!    : (afterItemId: string, newItem: ListItem) => ctx.insertListItemAfter(secId, block.id, afterItemId, newItem)
    const handleUpdateListItemRichText = inner ? onUpdateListItemRichText! : (itemId: string, richText: InlineContent) => ctx.updateListItemRichText(secId, block.id, itemId, richText)
    const handleReorderListItems       = inner ? onReorderListItems!       : (parentItemId: string | null, oldIndex: number, newIndex: number) => ctx.reorderListItemsUnderParent(secId, block.id, parentItemId, oldIndex, newIndex)
+   const handleToggleChecklistItem    = inner ? onToggleChecklistItem!    : (itemId: string) => ctx.toggleChecklistItem(secId, block.id, itemId)
 
    const listItemOps: ListItemOperations = {
       indent:         handleIndentListItem,
@@ -147,6 +150,7 @@ export function WysiwygBlock({
       remove:         handleRemoveListItem,
       updateRichText: handleUpdateListItemRichText,
       reorder:        handleReorderListItems,
+      toggle:         handleToggleChecklistItem,
    }
 
    // =======================
@@ -204,6 +208,8 @@ export function WysiwygBlock({
          return <CodeBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
          return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
+      if (block.type === 'checklist')
+         return <ChecklistBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'table')
          return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} readOnly={readOnly} />
       if (block.type === 'image')

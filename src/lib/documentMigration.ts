@@ -30,7 +30,12 @@ function migrateListItem(raw: unknown): ListItem {
    const richText   = Array.isArray(obj.richText)
       ? stripTrailingNewlines(obj.richText as InlineContent)
       : parseInlineContent(legacyText)
-   return { id, richText, children: children.map(migrateListItem) }
+   return {
+      id,
+      richText,
+      children: children.map(migrateListItem),
+      ...(typeof obj.checked === 'boolean' ? { checked: obj.checked } : {}),
+   }
 }
 
 /**
@@ -49,7 +54,7 @@ function migrateBlock(rawBlock: LegacyRawBlock): Block {
       }
    }
 
-   if (base.type === 'list' && Array.isArray(base.items)) {
+   if ((base.type === 'list' || base.type === 'checklist') && Array.isArray(base.items)) {
       return { ...base, items: base.items.map(migrateListItem) }
    }
 

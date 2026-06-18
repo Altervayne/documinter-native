@@ -118,6 +118,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
          onInsertListItemAfter:   (afterItemId: string, newItem: ListItem) => cm.insertListItemAfter(secId, blkId, side, innerBlock.id, afterItemId, newItem),
          onUpdateListItemRichText:(itemId: string, richText: InlineContent) => cm.updateListItemRichText(secId, blkId, side, innerBlock.id, itemId, richText),
          onReorderListItems:      (parentItemId: string | null, oldIndex: number, newIndex: number) => cm.reorderListItemsUnderParent(secId, blkId, side, innerBlock.id, parentItemId, oldIndex, newIndex),
+         onToggleChecklistItem:   (itemId: string) => cm.toggleChecklistItem(secId, blkId, side, innerBlock.id, itemId),
       }
    }
 

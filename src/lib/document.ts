@@ -41,7 +41,7 @@ export function cloneBlock(block: Block): Block {
          right: (block.right ?? []).map(cloneBlock),
       }
    }
-   if (block.type === 'list' && block.items) {
+   if ((block.type === 'list' || block.type === 'checklist') && block.items) {
       return { ...base, items: block.items.map(cloneListItem) }
    }
    return base
@@ -61,6 +61,13 @@ export function mkBlock(type: BlockType, t: T): Block {
          items: [
             { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem1 }], children: [] },
             { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem2 }], children: [] },
+         ],
+      }
+      case 'checklist': return {
+         id, type,
+         items: [
+            { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem1 }], children: [], checked: false },
+            { id: crypto.randomUUID(), richText: [{ text: t.blockDefaultListItem2 }], children: [], checked: false },
          ],
       }
       case 'table': return {
@@ -122,7 +129,7 @@ export function blkPreview(block: Block): string {
       return `[${block.style}] ${blockPlainText(block).substring(0, 20)}`
    if (block.type === 'code')
       return (block.code ?? '').substring(0, 32)
-   if (block.type === 'list')
+   if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)
    if (block.type === 'table')
       return `${(block.richHeaders ?? []).length} col × ${(block.richRows ?? []).length} rows`

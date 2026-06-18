@@ -103,7 +103,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: [...(block.items ?? []), { id: crypto.randomUUID(), richText: [{ text: t.newItem }], children: [] }] }
                : block
          ),
@@ -114,7 +114,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list' && (block.items?.length ?? 0) > 1
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist') && (block.items?.length ?? 0) > 1
                ? { ...block, items: block.items!.slice(0, -1) }
                : block
          ),
@@ -231,7 +231,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.moveListItemUp(block.items ?? [], itemId) }
                : block
          ),
@@ -242,7 +242,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.moveListItemDown(block.items ?? [], itemId) }
                : block
          ),
@@ -253,7 +253,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.indentListItem(block.items ?? [], itemId) }
                : block
          ),
@@ -264,7 +264,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.unindentListItem(block.items ?? [], itemId) }
                : block
          ),
@@ -275,7 +275,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.removeListItemById(block.items ?? [], itemId) }
                : block
          ),
@@ -286,7 +286,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.insertListItemAfter(block.items ?? [], afterItemId, newItem) }
                : block
          ),
@@ -297,7 +297,7 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.updateListItemRichText(block.items ?? [], itemId, richText) }
                : block
          ),
@@ -308,8 +308,20 @@ export function useBlockMutations(
       mutateSec(setSections, secId, sec => ({
          ...sec,
          blocks: sec.blocks.map(block =>
-            block.id === blkId && block.type === 'list'
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
                ? { ...block, items: listItemTree.reorderListItemsUnderParent(block.items ?? [], parentItemId, oldIndex, newIndex) }
+               : block
+         ),
+      }))
+   }, [setSections])
+
+   // Toggle a checklist item's checked flag, reusing the generic tree-walk primitive.
+   const toggleChecklistItem = useCallback((secId: string, blkId: string, itemId: string) => {
+      mutateSec(setSections, secId, sec => ({
+         ...sec,
+         blocks: sec.blocks.map(block =>
+            block.id === blkId && (block.type === 'list' || block.type === 'checklist')
+               ? { ...block, items: listItemTree.mutateListItem(block.items ?? [], itemId, item => ({ ...item, checked: !item.checked })) }
                : block
          ),
       }))
@@ -323,5 +335,6 @@ export function useBlockMutations(
       insertTableRowAt, deleteTableRowAt, insertTableColAt, deleteTableColAt,
       moveListItemUp, moveListItemDown, indentListItem, unindentListItem,
       removeListItem, insertListItemAfter, updateListItemRichText, reorderListItemsUnderParent,
+      toggleChecklistItem,
    }
 }

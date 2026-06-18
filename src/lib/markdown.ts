@@ -46,14 +46,16 @@ function serializeInline(content: InlineContent | undefined): string {
    return inlineContentToMintdown(content ?? [])
 }
 
-/** Renders list items recursively with two-space indentation per level. */
-function serializeListItems(items: ListItem[], depth: number): string {
+/** Renders list items recursively with two-space indentation per level. In checklist mode each
+ *  item carries a GFM task-list marker (`[x]` checked / `[ ]` unchecked) right after the dash. */
+function serializeListItems(items: ListItem[], depth: number, checklist = false): string {
    const lines: string[] = []
    const indent = '  '.repeat(depth)
    for (const item of items) {
-      lines.push(`${indent}- ${serializeInline(item.richText)}`)
+      const marker = checklist ? `[${item.checked ? 'x' : ' '}] ` : ''
+      lines.push(`${indent}- ${marker}${serializeInline(item.richText)}`)
       if (item.children.length > 0) {
-         lines.push(serializeListItems(item.children, depth + 1))
+         lines.push(serializeListItems(item.children, depth + 1, checklist))
       }
    }
    return lines.join('\n')
@@ -102,6 +104,12 @@ export function serializeBlock(block: Block): string {
          const items = block.items ?? []
          if (items.length === 0) return ''
          return serializeListItems(items, 0)
+      }
+
+      case 'checklist': {
+         const items = block.items ?? []
+         if (items.length === 0) return ''
+         return serializeListItems(items, 0, true)
       }
 
       case 'table': {
@@ -220,8 +228,9 @@ export function parsePipeTableRow(line: string): string[] {
    return cells
 }
 
-/** Builds a nested ListItem tree from indented `- text` lines. */
-export function buildListTree(lines: string[]): ListItem[] {
+/** Builds a nested ListItem tree from indented `- text` lines. In checklist mode each line's
+ *  leading `[ ]`/`[x]` task-list marker is stripped and recorded as the item's `checked` flag. */
+export function buildListTree(lines: string[], checklist = false): ListItem[] {
    interface StackEntry { depth: number; item: ListItem }
 
    const roots: ListItem[]   = []
@@ -233,10 +242,21 @@ export function buildListTree(lines: string[]): ListItem[] {
 
       const depth = Math.floor(match[1].length / 2)
 
+      let rawText = match[2]
+      let checked = false
+      if (checklist) {
+         const checkboxMatch = rawText.match(/^\[([ xX])\] (.*)$/)
+         if (checkboxMatch) {
+            checked = checkboxMatch[1] === 'x' || checkboxMatch[1] === 'X'
+            rawText = checkboxMatch[2]
+         }
+      }
+
       const item: ListItem = {
          id:       crypto.randomUUID(),
-         richText: mintdownToInlineContent(match[2]),
+         richText: mintdownToInlineContent(rawText),
          children: [],
+         ...(checklist ? { checked } : {}),
       }
 
       // Clamp depth: cannot exceed (parent depth + 1).
@@ -401,7 +421,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    let pendingImageBlock: Block   | null = null
 
    // Paragraph/blockquote/list/table accumulator
-   type AccumKind = 'p' | 'blockquote' | 'list' | 'table'
+   type AccumKind = 'p' | 'blockquote' | 'list' | 'checklist' | 'table'
    let accumKind:  AccumKind | null = null
    let accumLines: string[]         = []
 
@@ -460,6 +480,14 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
                id:    crypto.randomUUID(),
                type:  'list',
                items: buildListTree(capturedLines),
+            }
+         }
+
+         case 'checklist': {
+            return {
+               id:    crypto.randomUUID(),
+               type:  'checklist',
+               items: buildListTree(capturedLines, true),
             }
          }
 
@@ -613,12 +641,13 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // List item
+      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
       if (/^\s*- /.test(line)) {
-         if ((accumKind as AccumKind | null) === 'list') {
+         const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
+         if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
          } else {
-            startAccum('list', line)
+            startAccum(kind, line)
          }
          continue
       }
