@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
@@ -36,7 +36,7 @@ import { importMarkdownFile } from './lib/markdown'
 import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
-import type { BinderFolderRecord, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
+import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
@@ -45,12 +45,45 @@ const DEFAULT_DOC_ACCENT = '#2dcea8'
 
 export default function App() {
    // Document state starts blank; the real document is hydrated asynchronously from
-   // IndexedDB on mount (see the hydration effect below).
-   const [sections, setSections] = useState<Section[]>(() => {
+   // IndexedDB on mount (see the hydration effect below). Documents live as a list with one active
+   // tab. This phase keeps exactly one entry, so the app behaves identically to the single-document
+   // era; the tab strip + multi-tab opening arrive in later phases.
+   const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>(() => {
       const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
-      return [mkSection(translations[initialLang].defaultSectionTitle)]
+      return [{
+         tabKey:    crypto.randomUUID(),
+         meta:      EMPTY_META,
+         sections:  [mkSection(translations[initialLang].defaultSectionTitle)],
+         docTheme:  'light',
+         docAccent: DEFAULT_DOC_ACCENT,
+      }]
    })
-   const [meta, setMeta]         = useState<DocMeta>(EMPTY_META)
+   const [activeTabKey, setActiveTabKey] = useState<string>(() => openDocuments[0].tabKey)
+   // Mirror of activeTabKey for the stable setter levers + async paths that must target the current
+   // tab without re-subscribing.
+   const activeTabKeyRef = useRef(activeTabKey)
+   useEffect(() => { activeTabKeyRef.current = activeTabKey }, [activeTabKey])
+
+   // The active document and the content the render + effects below read, derived from the list.
+   const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
+   const { meta, sections, docTheme, docAccent } = activeDocument
+
+   // The setter lever (TABS_STUDY §3.2): hand the mutation hooks a Section[] setter that updates only
+   // the active tab. The hooks are unchanged — they still receive a Dispatch<SetStateAction<Section[]>>.
+   const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current
+            ? { ...document, sections: typeof updater === 'function' ? updater(document.sections) : updater }
+            : document))
+   }, [])
+   const setActiveDocTheme = useCallback((nextTheme: 'light' | 'dark') => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current ? { ...document, docTheme: nextTheme } : document))
+   }, [])
+   const setActiveDocAccent = useCallback((nextAccent: string) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current ? { ...document, docAccent: nextAccent } : document))
+   }, [])
    const [panelOpen, setPanelOpen] = useState(
       () => localStorage.getItem('documinter-panel-open') !== 'false'
    )
@@ -86,10 +119,6 @@ export default function App() {
    useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
    const t = translations[lang]
 
-   // Document appearance (independent of app theme; per-document, hydrated on mount)
-   const [docTheme,  setDocTheme]  = useState<'light' | 'dark'>('light')
-   const [docAccent, setDocAccent] = useState(DEFAULT_DOC_ACCENT)
-
    // ######################################
    // # SAVE STATUS + AUTOSAVE (INDEXEDDB) #
    // ######################################
@@ -119,10 +148,15 @@ export default function App() {
    const applyLoadedDocument = useCallback((loaded: LoadedDocument, id: string | null) => {
       skipNextAutosaveRef.current = true
       pendingNewDocFolderRef.current = null
-      setMeta(loaded.meta)
-      setSections(loaded.sections)
-      setDocTheme(loaded.docTheme)
-      setDocAccent(loaded.docAccent)
+      const newTabKey = crypto.randomUUID()
+      setOpenDocuments([{
+         tabKey:    newTabKey,
+         meta:      loaded.meta,
+         sections:  loaded.sections,
+         docTheme:  loaded.docTheme,
+         docAccent: loaded.docAccent,
+      }])
+      setActiveTabKey(newTabKey)
       currentDocumentIdRef.current = id
       setCurrentDocumentId(id)
    }, [])
@@ -135,12 +169,20 @@ export default function App() {
    const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
       skipNextAutosaveRef.current = true
       pendingNewDocFolderRef.current = null   // a plain new/import/load lands in root unless set after
-      setMeta(nextMeta)
-      setSections(nextSections)
-      if (presentation) {
-         setDocTheme(presentation.docTheme)
-         setDocAccent(presentation.docAccent)
-      }
+      const newTabKey = crypto.randomUUID()
+      setOpenDocuments(documents => {
+         // Without a presentation, carry the active tab's current theme/accent forward (matches the
+         // old behavior of leaving setDocTheme/setDocAccent untouched on a plain new/import/load).
+         const current = documents.find(document => document.tabKey === activeTabKeyRef.current)
+         return [{
+            tabKey:    newTabKey,
+            meta:      nextMeta,
+            sections:  nextSections,
+            docTheme:  presentation ? presentation.docTheme  : current?.docTheme  ?? 'light',
+            docAccent: presentation ? presentation.docAccent : current?.docAccent ?? DEFAULT_DOC_ACCENT,
+         }]
+      })
+      setActiveTabKey(newTabKey)
       currentDocumentIdRef.current = null
       setCurrentDocumentId(null)
    }, [])
@@ -378,8 +420,10 @@ export default function App() {
 
    // Commit from the MarkdownPanel back into document state (live edit, autosaves normally).
    const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {
-      setSections(newSections)
-      setMeta(newMeta)
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current
+            ? { ...document, sections: newSections, meta: newMeta }
+            : document))
    }, [])
 
    // Wipe document and start fresh.
@@ -406,7 +450,10 @@ export default function App() {
 
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
-      setMeta(currentMeta => ({ ...currentMeta, ...patch }))
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current
+            ? { ...document, meta: { ...document.meta, ...patch } }
+            : document))
    }, [])
 
    // Load state from JSON (restoring its saved theme + accent). Opening lands in the editor.
@@ -440,9 +487,9 @@ export default function App() {
    }, [binderOpen, handleCloseBinder, handleOpenBinder])
 
    // Mutations, extracted into focused hooks
-   const sectionMutations   = useSectionMutations(setSections, t)
-   const blockMutations     = useBlockMutations(setSections, t)
-   const containerMutations = useContainerMutations(setSections, t)
+   const sectionMutations   = useSectionMutations(setActiveSections, t)
+   const blockMutations     = useBlockMutations(setActiveSections, t)
+   const containerMutations = useContainerMutations(setActiveSections, t)
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
@@ -466,8 +513,8 @@ export default function App() {
             onToggleBinder={handleToggleBinder}
             onImportMarkdownFile={handleImportMarkdown}
             onImportMintdownFile={handleImportMintdown}
-            onDocThemeChange={setDocTheme}
-            onDocAccentChange={setDocAccent}
+            onDocThemeChange={setActiveDocTheme}
+            onDocAccentChange={setActiveDocAccent}
          />
 
          {binderOpen ? (

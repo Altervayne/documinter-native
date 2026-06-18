@@ -99,6 +99,17 @@ export interface DocState {
    sections: Section[]
 }
 
+/** One open document in the workspace (a tab). Holds the document content plus a stable in-session
+ *  key. `tabKey` is a fresh UUID, distinct from any binder id, so a never-saved document still has
+ *  identity. Per-tab save identity/status (documentId, saveStatus) arrive in a later phase. */
+export interface OpenDocument {
+   tabKey:    string
+   meta:      DocMeta
+   sections:  Section[]
+   docTheme:  'light' | 'dark'
+   docAccent: string
+}
+
 // #######################################
 // # BINDER, INDEXEDDB DOCUMENT LIBRARY #
 // #######################################
