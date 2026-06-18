@@ -10,7 +10,6 @@ import { useBinderNav } from '../../hooks/useBinderNav'
 import { useBinderSearch } from '../../hooks/useBinderSearch'
 import { useBinderDragAndDrop, SPRING_HOLD_MS } from '../../hooks/useBinderDragAndDrop'
 import { useLang } from '../../contexts/LangContext'
-import { BinderTopbar } from './BinderTopbar'
 import { BinderNav } from './BinderNav'
 import { BinderBreadcrumb } from './BinderBreadcrumb'
 import { BinderControls } from './BinderControls'
@@ -33,14 +32,10 @@ function FolderOverWatcher({ onChange }: { onChange: (overFolder: boolean) => vo
 }
 
 export interface BinderProps {
-   /** Active app theme, the binder topbar logo matches the main topbar's theme-aware render. */
-   theme:             'light' | 'dark'
    /** id of the document currently open in the editor (pinned + badged in its folder). */
    currentDocumentId: string | null
    /** Folder to open into (the current document's folder); null = root. Seeds the initial view. */
    initialFolder:     BinderFolderRecord | null
-   /** Close the binder and return to the editor. */
-   onClose:           () => void
    /** Open a stored document in the editor. */
    onOpenDocument:    (id: string) => void
    /** Create a blank document and open it. With a folderId, the new document is filed there. */
@@ -55,7 +50,7 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
+export function Binder({ currentDocumentId, initialFolder, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
 
    // ============================
@@ -185,8 +180,6 @@ export function Binder({ theme, currentDocumentId, initialFolder, onClose, onOpe
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
-         <BinderTopbar theme={theme} onClose={onClose} onNewDocument={() => onNewDocument(currentFolderId)} />
-
          {/* pointerWithin: the drop target is whatever sits directly under the cursor, so a card
              dropped onto a folder unambiguously lands in that folder, not the nearest-center one. */}
          <DndContext

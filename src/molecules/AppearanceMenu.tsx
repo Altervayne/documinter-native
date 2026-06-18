@@ -13,10 +13,13 @@ interface AppearanceMenuProps {
    onToggleTheme:     () => void
    lang:              Lang
    onLangChange:      (language: Lang) => void
-   docTheme:          'light' | 'dark'
-   onDocThemeChange:  (theme: 'light' | 'dark') => void
-   docAccent:         string
-   onDocAccentChange: (hex: string) => void
+   /** Mount the per-document appearance section (theme + accent). Off in binder mode, where no
+    *  document context applies — the settings stay in this menu, they simply don't mount. */
+   showDocumentSettings: boolean
+   docTheme?:          'light' | 'dark'
+   onDocThemeChange?:  (theme: 'light' | 'dark') => void
+   docAccent?:         string
+   onDocAccentChange?: (hex: string) => void
    t: T
 }
 
@@ -29,6 +32,7 @@ export function AppearanceMenu({
    onToggleTheme,
    lang,
    onLangChange,
+   showDocumentSettings,
    docTheme,
    onDocThemeChange,
    docAccent,
@@ -39,7 +43,7 @@ export function AppearanceMenu({
    const [accentPickerOpen, setAccentPickerOpen] = useState(false)
    const containerRef                           = useRef<HTMLDivElement>(null)
 
-   const isCustomAccent = !ACCENT_PRESETS.includes(docAccent)
+   const isCustomAccent = !ACCENT_PRESETS.includes(docAccent ?? '')
 
    useEffect(() => {
       if (!open) return
@@ -104,58 +108,63 @@ export function AppearanceMenu({
                   monoButtons
                />
 
-               <div className="h-px bg-border my-2 mx-3" />
+               {/* Per-document appearance, mounted only when a document context applies. */}
+               {showDocumentSettings && (
+                  <>
+                     <div className="h-px bg-border my-2 mx-3" />
 
-               {/* Document theme */}
-               <ToggleRow
-                  label={t.document}
-                  options={[
-                     { value: 'light', label: t.light },
-                     { value: 'dark',  label: t.dark  },
-                  ]}
-                  active={docTheme}
-                  onChange={(value) => onDocThemeChange(value as 'light' | 'dark')}
-               />
+                     {/* Document theme */}
+                     <ToggleRow
+                        label={t.document}
+                        options={[
+                           { value: 'light', label: t.light },
+                           { value: 'dark',  label: t.dark  },
+                        ]}
+                        active={docTheme ?? 'light'}
+                        onChange={(value) => onDocThemeChange?.(value as 'light' | 'dark')}
+                     />
 
-               {/* Accent color */}
-               <div className="px-3 py-1.5 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                     <span className="text-xs text-muted">{t.accent}</span>
-                     <div className="flex items-center gap-1">
-                        {ACCENT_PRESETS.map(color => (
-                           <button
-                              key={color}
-                              title={color}
-                              onClick={() => { onDocAccentChange(color); setAccentPickerOpen(false) }}
-                              style={{ background: color }}
-                              className={`w-3.5 h-3.5 rounded-full border-2 transition-all cursor-pointer
-                                 ${docAccent === color
-                                    ? 'border-text/70 scale-110'
-                                    : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'
-                                 }`}
-                           />
-                        ))}
-                        {/* Custom-color swatch */}
-                        <button
-                           title={t.customColor}
-                           onClick={() => setAccentPickerOpen(current => !current)}
-                           className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer
-                              ${isCustomAccent
-                                 ? 'border-text/70 scale-110'
-                                 : 'border-border opacity-50 hover:opacity-90 hover:scale-105'
-                              }`}
-                           style={isCustomAccent ? { background: docAccent } : {}}
-                        >
-                           {!isCustomAccent && <Palette size={8} className="text-muted pointer-events-none" />}
-                        </button>
+                     {/* Accent color */}
+                     <div className="px-3 py-1.5 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                           <span className="text-xs text-muted">{t.accent}</span>
+                           <div className="flex items-center gap-1">
+                              {ACCENT_PRESETS.map(color => (
+                                 <button
+                                    key={color}
+                                    title={color}
+                                    onClick={() => { onDocAccentChange?.(color); setAccentPickerOpen(false) }}
+                                    style={{ background: color }}
+                                    className={`w-3.5 h-3.5 rounded-full border-2 transition-all cursor-pointer
+                                       ${docAccent === color
+                                          ? 'border-text/70 scale-110'
+                                          : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'
+                                       }`}
+                                 />
+                              ))}
+                              {/* Custom-color swatch */}
+                              <button
+                                 title={t.customColor}
+                                 onClick={() => setAccentPickerOpen(current => !current)}
+                                 className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer
+                                    ${isCustomAccent
+                                       ? 'border-text/70 scale-110'
+                                       : 'border-border opacity-50 hover:opacity-90 hover:scale-105'
+                                    }`}
+                                 style={isCustomAccent ? { background: docAccent } : {}}
+                              >
+                                 {!isCustomAccent && <Palette size={8} className="text-muted pointer-events-none" />}
+                              </button>
+                           </div>
+                        </div>
+
+                        {/* Full color picker, expanded on demand */}
+                        {accentPickerOpen && docAccent && (
+                           <ColorPicker value={docAccent} onChange={(hex) => onDocAccentChange?.(hex)} />
+                        )}
                      </div>
-                  </div>
-
-                  {/* Full color picker, expanded on demand */}
-                  {accentPickerOpen && (
-                     <ColorPicker value={docAccent} onChange={onDocAccentChange} />
-                  )}
-               </div>
+                  </>
+               )}
 
             </div>
          )}

@@ -19,7 +19,8 @@ import { LangProvider } from './contexts/LangContext'
 import { useToast } from './contexts/ToastContext'
 
 // -- Component Imports --
-import { Topbar } from './organisms/Topbar'
+import { HeaderMenuBar } from './organisms/HeaderMenuBar'
+import { DocumentTitleBar } from './organisms/DocumentTitleBar'
 import { Panel } from './organisms/Panel'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
@@ -35,7 +36,7 @@ import { importMarkdownFile } from './lib/markdown'
 import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
-import type { BinderFolderRecord, BlockType, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
+import type { BinderFolderRecord, DocMeta, DocState, Mode, SaveStatus, Section } from './types'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
@@ -386,10 +387,12 @@ export default function App() {
       replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
    }, [t, replaceDocument])
 
-   // Import a Markdown file, parse it, replace the document.
+   // Import a Markdown file, parse it, replace the document. Opening a file lands in the editor,
+   // so leave binder mode if it was open.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
       return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
          replaceDocument(newMeta, newSections)
+         setBinderOpen(false)
       })
    }, [replaceDocument])
 
@@ -397,6 +400,7 @@ export default function App() {
    const handleImportMintdown = useCallback((file: File): Promise<void> => {
       return importMintdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
          replaceDocument(newMeta, newSections)
+         setBinderOpen(false)
       })
    }, [replaceDocument])
 
@@ -405,10 +409,35 @@ export default function App() {
       setMeta(currentMeta => ({ ...currentMeta, ...patch }))
    }, [])
 
-   // Load state from JSON (restoring its saved theme + accent)
+   // Load state from JSON (restoring its saved theme + accent). Opening lands in the editor.
    const handleLoad = useCallback((state: DocState, presentation: DocPresentation) => {
       replaceDocument(state.meta, state.sections, presentation)
+      setBinderOpen(false)
    }, [replaceDocument])
+
+   // ===================================
+   //  Header: New + standalone binder toggle
+   // ===================================
+
+   // New from the header: in binder mode create a doc and exit the binder; in document mode
+   // replace the in-editor document (the confirm lives in the header).
+   const handleHeaderNew = useCallback(() => {
+      if (binderOpen) handleNewDocumentFromBinder()
+      else handleNewDocument()
+   }, [binderOpen, handleNewDocumentFromBinder, handleNewDocument])
+
+   // Close the binder back to the editor. Document mode must always have a document, so if none is
+   // open (currentDocumentId null = only the pristine blank default was showing), spawn a fresh one.
+   const handleCloseBinder = useCallback(() => {
+      if (currentDocumentIdRef.current === null) handleNewDocument()
+      setBinderOpen(false)
+   }, [handleNewDocument])
+
+   // Standalone Open/Close Binder affordance in the header.
+   const handleToggleBinder = useCallback(() => {
+      if (binderOpen) handleCloseBinder()
+      else void handleOpenBinder()
+   }, [binderOpen, handleCloseBinder, handleOpenBinder])
 
    // Mutations, extracted into focused hooks
    const sectionMutations   = useSectionMutations(setSections, t)
@@ -417,42 +446,41 @@ export default function App() {
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
+         {/* Shared app menu bar, mounted in both modes; context-aware via mode. */}
+         <HeaderMenuBar
+            mode={binderOpen ? 'binder' : 'document'}
+            meta={meta}
+            sections={sections}
+            theme={theme}
+            docTheme={docTheme}
+            docAccent={docAccent}
+            previewMode={mode}
+            paneLayout={paneLayout}
+            saveStatus={saveStatus}
+            onLoad={handleLoad}
+            onToggleTheme={toggleTheme}
+            onSetMode={handleSetMode}
+            onTogglePanel={togglePanel}
+            onManualSave={handleManualSave}
+            onNew={handleHeaderNew}
+            onToggleBinder={handleToggleBinder}
+            onImportMarkdownFile={handleImportMarkdown}
+            onImportMintdownFile={handleImportMintdown}
+            onDocThemeChange={setDocTheme}
+            onDocAccentChange={setDocAccent}
+         />
+
          {binderOpen ? (
             <Binder
-               theme={theme}
                currentDocumentId={currentDocumentId}
                initialFolder={binderInitialFolder}
-               onClose={() => setBinderOpen(false)}
                onOpenDocument={handleOpenDocument}
                onNewDocument={handleNewDocumentFromBinder}
                onDocumentDeleted={handleDocumentDeleted}
             />
          ) : (
           <>
-            <Topbar
-               meta={meta}
-               sections={sections}
-               theme={theme}
-               docTheme={docTheme}
-               docAccent={docAccent}
-               mode={mode}
-               paneLayout={paneLayout}
-               saveStatus={saveStatus}
-               onLoad={handleLoad}
-               onToggleTheme={toggleTheme}
-               onSetMode={handleSetMode}
-               onTogglePanel={togglePanel}
-               onManualSave={handleManualSave}
-               onOpenBinder={handleOpenBinder}
-               onNewDocument={handleNewDocument}
-               onImportMarkdown={handleImportMarkdown}
-               onImportMintdown={handleImportMintdown}
-               onDocThemeChange={setDocTheme}
-               onDocAccentChange={setDocAccent}
-               onAddSection={sectionMutations.addSection}
-               onAddBlock={(sectionId: string, type: BlockType) => blockMutations.addBlock(sectionId, type)}
-               onMetaChange={handleMetaChange}
-            />
+            <DocumentTitleBar meta={meta} onMetaChange={handleMetaChange} />
 
             <DocumentMutationsContext.Provider value={{
                updateBlock:       blockMutations.updateBlock,
