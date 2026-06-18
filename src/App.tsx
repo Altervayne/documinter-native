@@ -233,7 +233,15 @@ export default function App() {
 
    // Autosave on any document change, debounced 1.5s, persisted to IndexedDB.
    useEffect(() => {
-      if (skipNextAutosaveRef.current) { skipNextAutosaveRef.current = false; return }
+      if (skipNextAutosaveRef.current) {
+         skipNextAutosaveRef.current = false
+         // A skipped cycle is a programmatic load/replace/hydration — the document is already in sync
+         // with storage, so force the status clean. Without this, a transient 'dirty' set for the
+         // pre-hydration blank (e.g. by StrictMode's double-invoked mount cycle) is never cleared,
+         // sticking the pill at "Unsaved changes" after a reload with no save actually pending.
+         setSaveStatus('clean')
+         return
+      }
       setSaveStatus('dirty')
       autosaveTimerRef.current = setTimeout(() => {
          setSaveStatus('saving')
