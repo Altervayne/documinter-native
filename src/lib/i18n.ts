@@ -11,6 +11,11 @@ export const translations = {
       toDarkMode:   'Switch to dark mode',
       untitledDoc:  'Untitled document',
       closeTab:     'Close tab',
+      tabDuplicate: 'Duplicate',
+      tabRename:    'Rename',
+      tabClose:     'Close',
+      scrollTabsLeft:  'Scroll tabs left',
+      scrollTabsRight: 'Scroll tabs right',
       jsonBackupExported: 'JSON backup exported!',
       jsonBackupImported: 'JSON backup imported!',
       // Panel
@@ -312,6 +317,11 @@ export const translations = {
       toDarkMode:   'Passer en mode sombre',
       untitledDoc:  'Document sans titre',
       closeTab:     'Fermer l\'onglet',
+      tabDuplicate: 'Dupliquer',
+      tabRename:    'Renommer',
+      tabClose:     'Fermer',
+      scrollTabsLeft:  'Défiler les onglets vers la gauche',
+      scrollTabsRight: 'Défiler les onglets vers la droite',
       jsonBackupExported: 'Sauvegarde JSON exportée !',
       jsonBackupImported: 'Sauvegarde JSON importée !',
       // Panel

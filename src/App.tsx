@@ -8,7 +8,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
-import { saveDocument, loadDocument, getDocumentFolderId, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
+import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
 import { getFolder } from './lib/binderFolders'
 
 // -- Hook Imports --
@@ -535,6 +535,24 @@ export default function App() {
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [t, activateTab, showToast])
 
+   // Duplicate a tab's document via the binder and open the copy as a new tab. The copy is made from
+   // the binder record, so the source must be persisted first: the active tab may hold unsaved edits
+   // or (if pristine) have no record yet — persist it. A non-active pristine tab has nothing stored
+   // to copy, so it no-ops. (Duplicating a pristine active blank first persists it, then copies it.)
+   const handleDuplicateTab = useCallback(async (sourceTabKey: string) => {
+      const sourceTab = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)
+      if (!sourceTab) return
+      if (sourceTab.tabKey === activeTabKeyRef.current) {
+         if (sourceTab.saveStatus !== 'clean' || sourceTab.documentId === null) await persistNow()
+      } else if (sourceTab.documentId === null) {
+         return
+      }
+      const sourceDocumentId = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)?.documentId
+      if (!sourceDocumentId) return
+      const duplicateId = await duplicateDocument(sourceDocumentId)
+      await handleOpenDocument(duplicateId)
+   }, [persistNow, handleOpenDocument])
+
    // Confirm the pending action (discard-and-close the dirty tab).
    const handleConfirmNavigation = useCallback(() => {
       const pending = pendingNavigation
@@ -692,6 +710,7 @@ export default function App() {
                onActivateTab={activateTab}
                onCloseTab={closeTab}
                onReorderTabs={reorderTabs}
+               onDuplicateTab={handleDuplicateTab}
                onMetaChange={handleMetaChange}
             />
 

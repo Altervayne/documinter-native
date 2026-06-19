@@ -7,10 +7,13 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dn
 import { CSS } from '@dnd-kit/utilities'
 
 // -- Icon Imports --
-import { X } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // -- Type Imports --
 import type { DocMeta, OpenDocument } from '../types'
+
+// -- Molecule Imports --
+import { TabContextMenu } from '../molecules/TabContextMenu'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
@@ -94,12 +97,14 @@ function TabChipContent({
 // #########################
 
 interface TabChipProps extends TabChipContentProps {
-   onChipClick: () => void
+   onChipClick:       () => void
+   onChipDoubleClick: () => void
+   onChipContextMenu: (event: React.MouseEvent) => void
 }
 
-function TabChip({ onChipClick, ...contentProps }: TabChipProps) {
+function TabChip({ onChipClick, onChipDoubleClick, onChipContextMenu, ...contentProps }: TabChipProps) {
    const { openDocument, isActive, placeholder } = contentProps
-   // A 5px drag threshold (the shared PointerSensor) keeps a plain click landing as activate/edit.
+   // A 5px drag threshold (the shared PointerSensor) keeps a plain click landing as activate.
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: openDocument.tabKey })
 
    return (
@@ -116,6 +121,8 @@ function TabChip({ onChipClick, ...contentProps }: TabChipProps) {
          {...attributes}
          {...listeners}
          onClick={onChipClick}
+         onDoubleClick={onChipDoubleClick}
+         onContextMenu={onChipContextMenu}
          title={openDocument.meta.title || placeholder}
          className={tabChipClassName(isActive)}
       >
@@ -129,22 +136,23 @@ function TabChip({ onChipClick, ...contentProps }: TabChipProps) {
 // #####################
 
 interface DocumentTitleBarProps {
-   openDocuments: OpenDocument[]
-   activeTabKey:  string
-   onActivateTab: (tabKey: string) => void
-   onCloseTab:    (tabKey: string) => void
-   onReorderTabs: (fromIndex: number, toIndex: number) => void
-   onMetaChange:  (patch: Partial<DocMeta>) => void
+   openDocuments:  OpenDocument[]
+   activeTabKey:   string
+   onActivateTab:  (tabKey: string) => void
+   onCloseTab:     (tabKey: string) => void
+   onReorderTabs:  (fromIndex: number, toIndex: number) => void
+   onDuplicateTab: (tabKey: string) => void
+   onMetaChange:   (patch: Partial<DocMeta>) => void
 }
 
 /**
- * The tab strip (second bar, document mode). One chip per open document: click an inactive tab to
- * activate it, click the active tab to edit its title (the click-to-edit affordance commits through
- * onMetaChange → the active tab's meta.title). Each chip shows a per-tab dirty dot + a close (×),
- * and the strip is drag-reorderable via a DragOverlay clone (which never changes the active tab or
- * its content, and never resizes the bar).
+ * The tab strip (second bar, document mode). One chip per open document: single-click an inactive
+ * tab to activate it; double-click a tab to rename it inline (committing through onMetaChange →
+ * the active tab's meta.title); right-click for Duplicate / Rename / Close. Each chip shows a
+ * per-tab dirty dot + a close (×), and the strip is drag-reorderable via a DragOverlay clone (which
+ * never changes the active tab or its content, and never resizes the bar).
  */
-export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onReorderTabs, onMetaChange }: DocumentTitleBarProps) {
+export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onReorderTabs, onDuplicateTab, onMetaChange }: DocumentTitleBarProps) {
    const { t } = useLang()
    // Which tab's title is being edited (null = none). Tracking the tabKey rather than a boolean means
    // a tab switch (or closing the edited tab) implicitly ends editing — the input only renders while
@@ -154,8 +162,14 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
    // The tab being dragged + its captured width, so the overlay clone matches the original.
    const [draggedTabKey, setDraggedTabKey] = useState<string | null>(null)
    const [dragWidth,     setDragWidth]     = useState<number | null>(null)
+   // The tab whose right-click context menu is open, at the cursor.
+   const [contextMenu, setContextMenu] = useState<{ tabKey: string; x: number; y: number } | null>(null)
    const titleInputRef       = useRef<HTMLInputElement>(null)
    const suppressNextBlurRef = useRef(false)
+   // The horizontally-scrolling element; its overflow state drives the scroll arrows.
+   const scrollContainerRef = useRef<HTMLDivElement>(null)
+   const [canScrollLeft,  setCanScrollLeft]  = useState(false)
+   const [canScrollRight, setCanScrollRight] = useState(false)
 
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)
    const activeTitle    = activeDocument?.meta.title ?? ''
@@ -166,13 +180,69 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
    // Select all text once the input mounts.
    useEffect(() => { if (editingTabKey !== null) titleInputRef.current?.select() }, [editingTabKey])
 
-   function handleTabClick(tabKey: string) {
-      if (tabKey === activeTabKey) {
-         setTitleDraft(activeTitle)
-         setEditingTabKey(tabKey)
-      } else {
-         onActivateTab(tabKey)
+   // Track horizontal overflow so the scroll arrows show only when there's somewhere to scroll
+   // (1px tolerance absorbs sub-pixel rounding). Recompute on the container's own scroll + size
+   // changes, and re-run on openDocuments since opening/closing/reordering tabs changes scrollWidth
+   // (which a ResizeObserver on the fixed-width container wouldn't catch).
+   useEffect(() => {
+      const container = scrollContainerRef.current
+      if (!container) return
+      function recompute() {
+         const element = scrollContainerRef.current
+         if (!element) return
+         setCanScrollLeft(element.scrollLeft > 0)
+         setCanScrollRight(element.scrollLeft < element.scrollWidth - element.clientWidth - 1)
       }
+      recompute()
+      container.addEventListener('scroll', recompute, { passive: true })
+      const resizeObserver = new ResizeObserver(recompute)
+      resizeObserver.observe(container)
+      return () => {
+         container.removeEventListener('scroll', recompute)
+         resizeObserver.disconnect()
+      }
+   }, [openDocuments])
+
+   // A plain vertical wheel scrolls the strip horizontally when it overflows. Attached non-passive
+   // (React's onWheel is passive, so preventDefault would be ignored) and only hijacked on overflow.
+   useEffect(() => {
+      const container = scrollContainerRef.current
+      if (!container) return
+      function handleWheel(event: WheelEvent) {
+         const element = scrollContainerRef.current
+         if (!element || element.scrollWidth <= element.clientWidth || event.deltaY === 0) return
+         event.preventDefault()
+         element.scrollLeft += event.deltaY
+      }
+      container.addEventListener('wheel', handleWheel, { passive: false })
+      return () => container.removeEventListener('wheel', handleWheel)
+   }, [])
+
+   function scrollByChunk(direction: -1 | 1) {
+      const container = scrollContainerRef.current
+      if (!container) return
+      container.scrollBy({ left: direction * container.clientWidth * 0.8, behavior: 'smooth' })
+   }
+
+   const hasOverflow = canScrollLeft || canScrollRight
+
+   // Single click: activate an inactive tab; the active tab is a no-op (renaming is double-click).
+   function handleTabClick(tabKey: string) {
+      if (tabKey !== activeTabKey) onActivateTab(tabKey)
+   }
+
+   // Enter inline title-edit (double-click or the context-menu Rename). Activates the tab first if
+   // needed; editing only renders once it's active (the isEditing condition below).
+   function startEditing(tabKey: string) {
+      if (tabKey !== activeTabKey) onActivateTab(tabKey)
+      const target = openDocuments.find(openDocument => openDocument.tabKey === tabKey)
+      setTitleDraft(target?.meta.title ?? '')
+      setEditingTabKey(tabKey)
+   }
+
+   function handleChipContextMenu(tabKey: string, event: React.MouseEvent) {
+      event.preventDefault()
+      setContextMenu({ tabKey, x: event.clientX, y: event.clientY })
    }
 
    function commitTitle(value: string) {
@@ -223,16 +293,35 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
    }
 
    return (
-      <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100 overflow-x-auto overflow-y-hidden">
-         <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            modifiers={RAIL_MODIFIERS}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
+      <>
+      <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100">
+         {/* Both arrow slots render together once the strip overflows, so toggling a single arrow's
+             glyph (disabled → opacity-0) never shifts the tabs; no slots at all when there's room. */}
+         {hasOverflow && (
+            <button
+               type="button"
+               aria-label={t.scrollTabsLeft}
+               disabled={!canScrollLeft}
+               onClick={() => scrollByChunk(-1)}
+               className="shrink-0 self-end grid place-items-center w-6 h-7 rounded text-muted/70 hover:text-text bg-linear-to-r from-raised/70 to-transparent hover:from-raised transition-colors disabled:opacity-0 disabled:pointer-events-none"
+            >
+               <ChevronLeft size={16} />
+            </button>
+         )}
+
+         <div
+            ref={scrollContainerRef}
+            className="flex items-end gap-1 flex-1 min-w-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
          >
-            <SortableContext items={openDocuments.map(openDocument => openDocument.tabKey)} strategy={horizontalListSortingStrategy}>
+            <DndContext
+               sensors={sensors}
+               collisionDetection={closestCenter}
+               modifiers={RAIL_MODIFIERS}
+               onDragStart={handleDragStart}
+               onDragEnd={handleDragEnd}
+               onDragCancel={handleDragCancel}
+            >
+               <SortableContext items={openDocuments.map(openDocument => openDocument.tabKey)} strategy={horizontalListSortingStrategy}>
                {openDocuments.map(openDocument => (
                   <TabChip
                      key={openDocument.tabKey}
@@ -245,6 +334,8 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
                      closeAriaLabel={t.closeTab}
                      inputRef={titleInputRef}
                      onChipClick={() => handleTabClick(openDocument.tabKey)}
+                     onChipDoubleClick={() => startEditing(openDocument.tabKey)}
+                     onChipContextMenu={event => handleChipContextMenu(openDocument.tabKey, event)}
                      onClose={() => onCloseTab(openDocument.tabKey)}
                      onDraftChange={setTitleDraft}
                      onTitleBlur={handleTitleBlur}
@@ -275,7 +366,31 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
                   </div>
                )}
             </DragOverlay>
-         </DndContext>
+            </DndContext>
+         </div>
+
+         {hasOverflow && (
+            <button
+               type="button"
+               aria-label={t.scrollTabsRight}
+               disabled={!canScrollRight}
+               onClick={() => scrollByChunk(1)}
+               className="shrink-0 self-end grid place-items-center w-6 h-7 rounded text-muted/70 hover:text-text bg-linear-to-l from-raised/70 to-transparent hover:from-raised transition-colors disabled:opacity-0 disabled:pointer-events-none"
+            >
+               <ChevronRight size={16} />
+            </button>
+         )}
       </div>
+
+      {contextMenu && (
+         <TabContextMenu
+            position={{ x: contextMenu.x, y: contextMenu.y }}
+            onDuplicate={() => { onDuplicateTab(contextMenu.tabKey); setContextMenu(null) }}
+            onRename={() => { startEditing(contextMenu.tabKey); setContextMenu(null) }}
+            onClose={() => { onCloseTab(contextMenu.tabKey); setContextMenu(null) }}
+            onDismiss={() => setContextMenu(null)}
+         />
+      )}
+      </>
    )
 }
