@@ -1,6 +1,9 @@
 // -- React Imports --
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 
+// -- Library Imports --
+import { arrayMove } from '@dnd-kit/sortable'
+
 // -- Lib / Util Imports --
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
@@ -40,12 +43,41 @@ import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveSta
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
-const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'
+const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'   // legacy single-pointer (migrated away)
+const OPEN_DOCUMENTS_KEY      = 'documinter-open-documents'        // the open-tab set + active, for reload restore
 const DEFAULT_DOC_ACCENT = '#2dcea8'
 
+// Which documents had open tabs last session, in tab order, plus which was active. Only tabs with a
+// binder id are listed; pristine never-saved tabs aren't persisted (consistent with autosave).
+interface PersistedOpenDocuments {
+   documentIds:      string[]
+   activeDocumentId: string | null
+}
+
+// Read the restore intent from localStorage, migrating the legacy single pointer when the new key is
+// absent. Never throws on a malformed value (falls back to nothing-to-restore).
+function readPersistedOpenDocuments(): PersistedOpenDocuments {
+   try {
+      const raw = localStorage.getItem(OPEN_DOCUMENTS_KEY)
+      if (raw) {
+         const parsed = JSON.parse(raw)
+         if (parsed && Array.isArray(parsed.documentIds)) {
+            return {
+               documentIds:      parsed.documentIds.filter((id: unknown): id is string => typeof id === 'string'),
+               activeDocumentId: typeof parsed.activeDocumentId === 'string' ? parsed.activeDocumentId : null,
+            }
+         }
+      }
+   } catch { /* malformed → fall through to migration / empty */ }
+   const legacyPointer = localStorage.getItem(CURRENT_DOCUMENT_ID_KEY)
+   if (legacyPointer) return { documentIds: [legacyPointer], activeDocumentId: legacyPointer }
+   return { documentIds: [], activeDocumentId: null }
+}
+
 // A fresh blank tab: new identity, no binder record yet, clean. Shared by the initial mount state,
-// New (add-a-tab), and the last-tab-close respawn (the always-have-a-document invariant).
-function createBlankDocument(sectionTitle: string): OpenDocument {
+// New (add-a-tab), the binder's New (which seeds the folder it lands in), and the last-tab-close
+// respawn (the always-have-a-document invariant).
+function createBlankDocument(sectionTitle: string, pendingFolderId: string | null = null): OpenDocument {
    return {
       tabKey:    crypto.randomUUID(),
       meta:      EMPTY_META,
@@ -53,6 +85,21 @@ function createBlankDocument(sectionTitle: string): OpenDocument {
       docTheme:  'light',
       docAccent: DEFAULT_DOC_ACCENT,
       documentId:            null,
+      saveStatus:            'clean',
+      pendingNewDocFolderId: pendingFolderId,
+   }
+}
+
+// Build an open tab from a stored document (fresh tabKey, clean — it's in sync with storage).
+// Shared by reload restore and open-from-binder.
+function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): OpenDocument {
+   return {
+      tabKey:    crypto.randomUUID(),
+      meta:      loaded.meta,
+      sections:  loaded.sections,
+      docTheme:  loaded.docTheme,
+      docAccent: loaded.docAccent,
+      documentId,
       saveStatus:            'clean',
       pendingNewDocFolderId: null,
    }
@@ -81,6 +128,11 @@ export default function App() {
    // list. documentId / saveStatus are per-tab (phase 2); the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
    const { meta, sections, docTheme, docAccent, documentId, saveStatus } = activeDocument
+
+   // Binder records that currently have an open tab (for the open-vs-active card highlight).
+   const openDocumentIds = openDocuments
+      .map(document => document.documentId)
+      .filter((id): id is string => id !== null)
 
    // The setter lever (TABS_STUDY §3.2): hand the mutation hooks a Section[] setter that updates only
    // the active tab. The hooks are unchanged — they still receive a Dispatch<SetStateAction<Section[]>>.
@@ -155,9 +207,9 @@ export default function App() {
    const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
    const hasHydratedRef       = useRef(false)
    const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
-   // Captured during the first render so the pointer-persistence effect can't wipe it
+   // Captured during the first render so the persistence effect can't overwrite the stored set
    // before the hydration effect reads it.
-   const initialPointerRef    = useRef<string | null>(localStorage.getItem(CURRENT_DOCUMENT_ID_KEY))
+   const initialRestoreRef    = useRef<PersistedOpenDocuments>(readPersistedOpenDocuments())
 
    // Keep a stable, always-current notifier so the autosave effect doesn't depend on t/showToast.
    const notifySaveFailedRef  = useRef<() => void>(() => {})
@@ -165,21 +217,15 @@ export default function App() {
       notifySaveFailedRef.current = () => showToast(t.saveFailed, { type: 'error' })
    })
 
-   // Apply a programmatically-loaded document without dirtying / re-saving it.
-   const applyLoadedDocument = useCallback((loaded: LoadedDocument, id: string | null) => {
+   // Replace the open-tab set with a restored set (reload boot / legacy migration), activating the
+   // tab whose documentId matches activeDocumentId, else the first. A programmatic replacement, so
+   // it skips the autosave cycle it triggers (no spurious save, active tab reads clean). Callers
+   // pass a non-empty restoredTabs.
+   const applyRestoredTabs = useCallback((restoredTabs: OpenDocument[], activeDocumentId: string | null) => {
       skipNextAutosaveRef.current = true
-      const newTabKey = crypto.randomUUID()
-      setOpenDocuments([{
-         tabKey:    newTabKey,
-         meta:      loaded.meta,
-         sections:  loaded.sections,
-         docTheme:  loaded.docTheme,
-         docAccent: loaded.docAccent,
-         documentId:            id,
-         saveStatus:            'clean',   // just loaded → in sync with storage
-         pendingNewDocFolderId: null,
-      }])
-      setActiveTabKey(newTabKey)
+      const activeTab = restoredTabs.find(tab => tab.documentId === activeDocumentId) ?? restoredTabs[0]
+      setOpenDocuments(restoredTabs)
+      setActiveTabKey(activeTab.tabKey)
    }, [])
 
    // Replace the in-editor document with fresh content that is NOT yet a binder record
@@ -208,15 +254,16 @@ export default function App() {
       setActiveTabKey(newTabKey)
    }, [])
 
-   // One-time async hydration: migrate any legacy localStorage autosave, then load the
-   // last-open document by pointer. The blank default shows until this resolves.
+   // One-time async hydration: restore every open tab from last session (eager — each document is
+   // loaded in full), or migrate a legacy localStorage autosave. The blank default shows until this
+   // resolves; if nothing survives it stays (the always-have-a-document invariant).
    useEffect(() => {
       let cancelled = false
       async function hydrate() {
-         const pointer = initialPointerRef.current
+         const restore = initialRestoreRef.current
          const legacy  = readAutosave()
          try {
-            if (!pointer && legacy) {
+            if (restore.documentIds.length === 0 && legacy) {
                // Migrate legacy autosave → IndexedDB. Keep the old key until the write confirms.
                const migratedId = await saveDocument(
                   { meta: legacy.meta, sections: legacy.sections },
@@ -224,33 +271,43 @@ export default function App() {
                )
                clearLegacyAutosave()
                if (cancelled) return
-               applyLoadedDocument({ ...legacy }, migratedId)
-            } else if (pointer) {
-               const loaded = await loadDocument(pointer)
-               if (cancelled) return
-               if (loaded) applyLoadedDocument(loaded, pointer)
-               else localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)   // stale pointer → stay blank
+               applyRestoredTabs([buildTabFromLoaded({ ...legacy }, migratedId)], migratedId)
+               return
             }
+            // Load each persisted id in tab order, skipping any deleted since last session.
+            const restoredTabs: OpenDocument[] = []
+            for (const persistedId of restore.documentIds) {
+               const loaded = await loadDocument(persistedId)
+               if (cancelled) return
+               if (loaded) restoredTabs.push(buildTabFromLoaded(loaded, persistedId))
+            }
+            if (restoredTabs.length > 0) applyRestoredTabs(restoredTabs, restore.activeDocumentId)
+            // else: no surviving tabs → keep the initial blank.
          } catch {
-            // IndexedDB unavailable / write failed. If we have legacy data, keep showing it
-            // in-memory as an unsaved new document (legacy key left intact for a future retry).
-            if (!cancelled && legacy && !pointer) applyLoadedDocument({ ...legacy }, null)
+            // IndexedDB unavailable / read failed. If we have legacy data, keep showing it in-memory
+            // as an unsaved document (legacy key left intact for a future retry).
+            if (!cancelled && legacy && restore.documentIds.length === 0) {
+               applyRestoredTabs([buildTabFromLoaded({ ...legacy }, null)], null)
+            }
          } finally {
             if (!cancelled) hasHydratedRef.current = true
          }
       }
       hydrate()
       return () => { cancelled = true }
-   }, [applyLoadedDocument])
+   }, [applyRestoredTabs])
 
-   // Persist the active tab's id as the last-open pointer (only after hydration, so the initial
-   // blank state can't wipe the stored pointer before it has been read). Cross-reload multi-tab
-   // restore is phase 4; this phase keeps the single last-open pointer.
+   // Persist the open-tab set + active tab (only after hydration, so the initial blank can't
+   // overwrite the stored set before it has been read). Tabs without a binder id aren't listed;
+   // once autosave assigns one this re-runs and includes them. Also retires the legacy pointer key.
    useEffect(() => {
       if (!hasHydratedRef.current) return
-      if (documentId) localStorage.setItem(CURRENT_DOCUMENT_ID_KEY, documentId)
-      else localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
-   }, [documentId])
+      const documentIds = openDocuments
+         .map(openDocument => openDocument.documentId)
+         .filter((id): id is string => id !== null)
+      localStorage.setItem(OPEN_DOCUMENTS_KEY, JSON.stringify({ documentIds, activeDocumentId: documentId }))
+      localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
+   }, [openDocuments, documentId])
 
    // Autosave on any document change, debounced 1.5s, persisted to IndexedDB.
    useEffect(() => {
@@ -372,21 +429,34 @@ export default function App() {
       const wasActive = activeTabKeyRef.current === tabKey
       const remaining = documentsBefore.filter(document => document.tabKey !== tabKey)
 
+      // Update the refs synchronously, not just via the post-render effects, so a batch of closes
+      // (a recursive folder delete removing several open docs) chains off fresh state instead of
+      // each call clobbering the previous one with a stale snapshot.
       if (remaining.length === 0) {
          const blankDocument = createBlankDocument(t.defaultSectionTitle)
          skipNextAutosaveRef.current = true
+         openDocumentsRef.current = [blankDocument]
+         activeTabKeyRef.current  = blankDocument.tabKey
          setOpenDocuments([blankDocument])
          setActiveTabKey(blankDocument.tabKey)
          return
       }
 
+      openDocumentsRef.current = remaining
       setOpenDocuments(remaining)
       if (wasActive) {
          const neighbor = remaining[index] ?? remaining[index - 1]   // right neighbor, else left
          skipNextAutosaveRef.current = true
+         activeTabKeyRef.current = neighbor.tabKey
          setActiveTabKey(neighbor.tabKey)
       }
    }, [t])
+
+   // Reorder the tab strip. Only the array order changes — the active tab's content + identity are
+   // untouched (activeTabKey is unchanged), so this triggers no autosave and no activation.
+   const reorderTabs = useCallback((fromIndex: number, toIndex: number) => {
+      setOpenDocuments(documents => arrayMove(documents, fromIndex, toIndex))
+   }, [])
 
    // #############################
    // # BINDER (DOCUMENT LIBRARY) #
@@ -414,13 +484,9 @@ export default function App() {
       setBinderOpen(true)
    }, [saveStatus, persistNow])
 
-   // Pending action awaiting unsaved-changes confirmation (binder navigation or a dirty tab close).
-   const [pendingNavigation, setPendingNavigation] = useState<
-      | { kind: 'open'; id: string }
-      | { kind: 'new'; folderId?: string }
-      | { kind: 'close-tab'; tabKey: string }
-      | null
-   >(null)
+   // Pending action awaiting unsaved-changes confirmation: a dirty tab close (discard-and-close).
+   // Opening a doc / creating one now add-or-focus a tab, discarding nothing, so they need no guard.
+   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'close-tab'; tabKey: string } | null>(null)
 
    // Close a tab. A dirty/saving tab routes through the unsaved-changes guard (discard-and-close);
    // a clean tab closes immediately.
@@ -434,61 +500,56 @@ export default function App() {
       performCloseTab(tabKey)
    }, [performCloseTab])
 
-   // True when the current document isn't durably saved (flush in-flight or failed).
-   const isNotDurablySaved = saveStatus === 'saving' || saveStatus === 'dirty'
-
-   // Load a stored document into the editor and close the binder.
-   const openDocumentNow = useCallback(async (id: string) => {
+   // Open a document from the binder: focus its tab if already open, otherwise load it into a new
+   // tab. Opening discards nothing (it never replaces another tab), so there is no unsaved-changes
+   // guard on this path. Closes the binder either way.
+   const handleOpenDocument = useCallback(async (id: string) => {
+      const existing = openDocumentsRef.current.find(document => document.documentId === id)
+      if (existing) {
+         void activateTab(existing.tabKey)
+         setBinderOpen(false)
+         showToast(t.binderDocumentOpened, { type: 'success' })
+         return
+      }
       try {
          const loaded = await loadDocument(id)
          if (!loaded) { showToast(t.binderOpenFailed, { type: 'error' }); return }
-         applyLoadedDocument(loaded, id)
+         const newTab = buildTabFromLoaded(loaded, id)
+         setOpenDocuments(documents => [...documents, newTab])
+         void activateTab(newTab.tabKey)
          setBinderOpen(false)
          showToast(t.binderDocumentOpened, { type: 'success' })
       } catch {
-         // Leave the binder open; nothing was replaced.
+         // Leave the binder open; nothing was added.
          showToast(t.binderOpenFailed, { type: 'error' })
       }
-   }, [applyLoadedDocument, showToast, t])
+   }, [activateTab, showToast, t])
 
-   // Create a blank document and close the binder (currentDocumentId reset to null, so the first
-   // edit creates a fresh IndexedDB record, filed into folderId if given, else root).
-   const newDocumentNow = useCallback((folderId?: string) => {
-      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)], undefined, folderId ?? null)
+   // New from the binder: add a fresh blank tab (carrying the folder it should land in on first
+   // save), activate it, and close the binder. No replace, no discard.
+   const handleNewDocumentFromBinder = useCallback((folderId?: string) => {
+      const newDocument = createBlankDocument(t.defaultSectionTitle, folderId ?? null)
+      setOpenDocuments(documents => [...documents, newDocument])
+      void activateTab(newDocument.tabKey)
       setBinderOpen(false)
       showToast(t.binderDocumentCreated, { type: 'success' })
-   }, [t, replaceDocument, showToast])
+   }, [t, activateTab, showToast])
 
-   // Open a document from the binder, guard against discarding unsaved changes
-   // (only fires when the open-binder flush is still in-flight or failed).
-   const handleOpenDocument = useCallback((id: string) => {
-      if (isNotDurablySaved) setPendingNavigation({ kind: 'open', id })
-      else void openDocumentNow(id)
-   }, [isNotDurablySaved, openDocumentNow])
-
-   // Create a new document from the binder (optionally filed into a folder), same unsaved guard.
-   const handleNewDocumentFromBinder = useCallback((folderId?: string) => {
-      if (isNotDurablySaved) setPendingNavigation({ kind: 'new', folderId })
-      else newDocumentNow(folderId)
-   }, [isNotDurablySaved, newDocumentNow])
-
-   // Confirm the pending navigation (discard-and-open / discard-and-new per approved design).
+   // Confirm the pending action (discard-and-close the dirty tab).
    const handleConfirmNavigation = useCallback(() => {
       const pending = pendingNavigation
       setPendingNavigation(null)
-      if (pending?.kind === 'open') void openDocumentNow(pending.id)
-      else if (pending?.kind === 'new') newDocumentNow(pending.folderId)
-      else if (pending?.kind === 'close-tab') performCloseTab(pending.tabKey)
-   }, [pendingNavigation, openDocumentNow, newDocumentNow, performCloseTab])
+      if (pending?.kind === 'close-tab') performCloseTab(pending.tabKey)
+   }, [pendingNavigation, performCloseTab])
 
    const handleCancelNavigation = useCallback(() => setPendingNavigation(null), [])
 
-   // When the currently-open document is deleted from the binder, clear its id so the
-   // next edit creates a fresh record instead of resurrecting the deleted one (upsert).
+   // A document was deleted from the binder: close its tab if one is open (the close path's
+   // neighbor-activate / spawn-blank-if-last invariant applies). No-op if no tab has it.
    const handleDocumentDeleted = useCallback((id: string) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.documentId === id ? { ...document, documentId: null } : document))
-   }, [])
+      const openTab = openDocumentsRef.current.find(document => document.documentId === id)
+      if (openTab) closeTab(openTab.tabKey)
+   }, [closeTab])
 
    // Mode system
    const [mode, setMode] = useState<Mode>('wysiwyg')
@@ -616,7 +677,8 @@ export default function App() {
 
          {binderOpen ? (
             <Binder
-               currentDocumentId={documentId}
+               openDocumentIds={openDocumentIds}
+               activeDocumentId={documentId}
                initialFolder={binderInitialFolder}
                onOpenDocument={handleOpenDocument}
                onNewDocument={handleNewDocumentFromBinder}
@@ -629,6 +691,7 @@ export default function App() {
                activeTabKey={activeTabKey}
                onActivateTab={activateTab}
                onCloseTab={closeTab}
+               onReorderTabs={reorderTabs}
                onMetaChange={handleMetaChange}
             />
 

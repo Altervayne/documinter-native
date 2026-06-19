@@ -10,7 +10,8 @@ import { BinderContextMenu } from '../../molecules/BinderContextMenu'
 
 interface DocumentCardProps {
    record:           BinderDocumentRecord
-   isCurrent:        boolean
+   isActive:         boolean   // open in the active tab → "Currently editing"
+   isOpen:           boolean   // open in some tab (active or not) → "Open"
    isSelected:       boolean
    reorderable:      boolean   // manual sort active, only then do siblings shift to preview a reorder
    onSelect:         () => void
@@ -29,7 +30,7 @@ interface DocumentCardProps {
  * button and right-click open the context menu.
  */
 export function DocumentCard({
-   record, isCurrent, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
+   record, isActive, isOpen, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
 }: DocumentCardProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
@@ -48,12 +49,14 @@ export function DocumentCard({
       setMenuPosition({ x: event.clientX, y: event.clientY })
    }
 
-   // Ring priority: selected (strong) > current (subtle). Current also shows the badge.
+   // Ring priority: selected (strong) > active (subtle) > open (faint). Active/open also badge.
    const outlineClass = isSelected
       ? 'border-accent ring-2 ring-accent'
-      : isCurrent
+      : isActive
          ? 'border-accent/40 ring-2 ring-accent/40'
-         : 'border-border hover:border-accent/40'
+         : isOpen
+            ? 'border-accent/25 ring-1 ring-accent/25'
+            : 'border-border hover:border-accent/40'
 
    return (
       <>
@@ -76,9 +79,13 @@ export function DocumentCard({
 
             <DocumentCardMeta record={record} />
 
-            {isCurrent && (
+            {isActive ? (
                <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[0.6rem] font-mono font-semibold bg-accent text-on-accent shadow-md ring-1 ring-black/20">
                   {t.binderCurrentlyEditing}
+               </div>
+            ) : isOpen && (
+               <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-md text-[0.6rem] font-mono font-semibold bg-raised text-accent shadow-md ring-1 ring-accent/40">
+                  {t.binderOpenTab}
                </div>
             )}
 

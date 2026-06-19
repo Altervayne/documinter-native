@@ -32,15 +32,17 @@ function FolderOverWatcher({ onChange }: { onChange: (overFolder: boolean) => vo
 }
 
 export interface BinderProps {
-   /** id of the document currently open in the editor (pinned + badged in its folder). */
-   currentDocumentId: string | null
+   /** ids of every document with an open tab (badged "Open" in their folder). */
+   openDocumentIds:   string[]
+   /** id of the document in the active tab (badged "Currently editing"). null = active tab unsaved. */
+   activeDocumentId:  string | null
    /** Folder to open into (the current document's folder); null = root. Seeds the initial view. */
    initialFolder:     BinderFolderRecord | null
-   /** Open a stored document in the editor. */
+   /** Open a stored document in the editor (adds or focuses its tab). */
    onOpenDocument:    (id: string) => void
    /** Create a blank document and open it. With a folderId, the new document is filed there. */
    onNewDocument:     (folderId?: string) => void
-   /** Notify the editor that a document was deleted (so it can clear a now-stale current id). */
+   /** Notify the editor that a document was deleted (so it can close its tab if open). */
    onDocumentDeleted: (id: string) => void
 }
 
@@ -50,7 +52,7 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ currentDocumentId, initialFolder, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
+export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
 
    // ============================
@@ -131,25 +133,25 @@ export function Binder({ currentDocumentId, initialFolder, onOpenDocument, onNew
       setFolderPendingDelete(null)
       if (!folder) return
       void nav.deleteFolder(folder.id, recursive).then(deletedDocumentIds => {
-         // A recursive delete may have removed the document open in the editor, clear it so a
-         // later autosave doesn't resurrect it (saveDocument upserts a missing id).
-         if (currentDocumentId && deletedDocumentIds.includes(currentDocumentId)) {
-            onDocumentDeleted(currentDocumentId)
+         // A recursive delete may have removed documents open in tabs; close each so a later
+         // autosave doesn't resurrect it (saveDocument upserts a missing id).
+         for (const deletedId of deletedDocumentIds) {
+            if (openDocumentIds.includes(deletedId)) onDocumentDeleted(deletedId)
          }
       })
       // If we're inside the deleted folder (or a descendant), pop back to root.
       if (currentFolderId === folder.id || nav.ancestors.some(ancestor => ancestor.id === folder.id)) {
          navigateTo(null)
       }
-   }, [folderPendingDelete, nav, currentFolderId, currentDocumentId, onDocumentDeleted, navigateTo])
+   }, [folderPendingDelete, nav, currentFolderId, openDocumentIds, onDocumentDeleted, navigateTo])
 
    const handleConfirmDeleteDocument = useCallback(() => {
       const record = documentPendingDelete
       setDocumentPendingDelete(null)
       if (!record) return
       void docs.handleDelete(record.id)
-      if (record.id === currentDocumentId) onDocumentDeleted(record.id)
-   }, [documentPendingDelete, docs, currentDocumentId, onDocumentDeleted])
+      if (openDocumentIds.includes(record.id)) onDocumentDeleted(record.id)
+   }, [documentPendingDelete, docs, openDocumentIds, onDocumentDeleted])
 
    // ============
    //  Drag & drop
@@ -276,7 +278,8 @@ export function Binder({ currentDocumentId, initialFolder, onOpenDocument, onNew
                               <DocumentCard
                                  key={record.id}
                                  record={record}
-                                 isCurrent={record.id === currentDocumentId}
+                                 isActive={record.id === activeDocumentId}
+                                 isOpen={openDocumentIds.includes(record.id)}
                                  isSelected={record.id === selectedDocumentId}
                                  reorderable={manualSortActive}
                                  onSelect={() => setSelectedDocumentId(record.id)}
