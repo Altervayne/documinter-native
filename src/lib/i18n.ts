@@ -10,6 +10,7 @@ export const translations = {
       toLightMode:  'Switch to light mode',
       toDarkMode:   'Switch to dark mode',
       untitledDoc:  'Untitled document',
+      closeTab:     'Close tab',
       jsonBackupExported: 'JSON backup exported!',
       jsonBackupImported: 'JSON backup imported!',
       // Panel
@@ -309,6 +310,7 @@ export const translations = {
       toLightMode:  'Passer en mode clair',
       toDarkMode:   'Passer en mode sombre',
       untitledDoc:  'Document sans titre',
+      closeTab:     'Fermer l\'onglet',
       jsonBackupExported: 'Sauvegarde JSON exportée !',
       jsonBackupImported: 'Sauvegarde JSON importée !',
       // Panel

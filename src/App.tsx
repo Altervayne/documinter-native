@@ -43,6 +43,21 @@ const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: 
 const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'
 const DEFAULT_DOC_ACCENT = '#2dcea8'
 
+// A fresh blank tab: new identity, no binder record yet, clean. Shared by the initial mount state,
+// New (add-a-tab), and the last-tab-close respawn (the always-have-a-document invariant).
+function createBlankDocument(sectionTitle: string): OpenDocument {
+   return {
+      tabKey:    crypto.randomUUID(),
+      meta:      EMPTY_META,
+      sections:  [mkSection(sectionTitle)],
+      docTheme:  'light',
+      docAccent: DEFAULT_DOC_ACCENT,
+      documentId:            null,
+      saveStatus:            'clean',
+      pendingNewDocFolderId: null,
+   }
+}
+
 export default function App() {
    // Document state starts blank; the real document is hydrated asynchronously from
    // IndexedDB on mount (see the hydration effect below). Documents live as a list with one active
@@ -50,16 +65,7 @@ export default function App() {
    // era; the tab strip + multi-tab opening arrive in later phases.
    const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>(() => {
       const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
-      return [{
-         tabKey:    crypto.randomUUID(),
-         meta:      EMPTY_META,
-         sections:  [mkSection(translations[initialLang].defaultSectionTitle)],
-         docTheme:  'light',
-         docAccent: DEFAULT_DOC_ACCENT,
-         documentId:            null,
-         saveStatus:            'clean',
-         pendingNewDocFolderId: null,
-      }]
+      return [createBlankDocument(translations[initialLang].defaultSectionTitle)]
    })
    const [activeTabKey, setActiveTabKey] = useState<string>(() => openDocuments[0].tabKey)
    // Mirror of activeTabKey for the stable setter levers + async paths that must target the current
@@ -328,6 +334,60 @@ export default function App() {
    // Manual save
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
 
+   // ###############
+   // # TAB SYSTEM  #
+   // ###############
+
+   // The single switch primitive every activation routes through.
+   const activateTab = useCallback(async (tabKey: string) => {
+      if (tabKey === activeTabKeyRef.current) return   // already active, nothing to do
+      // Flush-on-switch: drain the outgoing tab's pending save before leaving it, so a debounced
+      // write can't be dropped or land against the wrong tab. persistNow flushes the active tab,
+      // which is still the outgoing one at this point.
+      const outgoing = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      if (outgoing && (outgoing.saveStatus === 'dirty' || outgoing.saveStatus === 'saving')) {
+         await persistNow()
+      }
+      // Skip-on-activation: the incoming tab's content becoming active must not be read as an edit
+      // (same mechanism as a programmatic replace), so the autosave cycle skips + clears it clean.
+      skipNextAutosaveRef.current = true
+      setActiveTabKey(tabKey)
+   }, [persistNow])
+
+   // New = add a tab. Appends a fresh blank document and activates it (no longer replaces the active
+   // tab, so nothing is discarded and no confirm is needed).
+   const addNewTab = useCallback(() => {
+      const newDocument = createBlankDocument(t.defaultSectionTitle)
+      setOpenDocuments(documents => [...documents, newDocument])
+      void activateTab(newDocument.tabKey)
+   }, [t, activateTab])
+
+   // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
+   // neighbor (right, else left). If it was the last tab, respawn a blank — openDocuments is never
+   // empty (the always-have-a-document invariant now lives on the tab list).
+   const performCloseTab = useCallback((tabKey: string) => {
+      const documentsBefore = openDocumentsRef.current
+      const index = documentsBefore.findIndex(document => document.tabKey === tabKey)
+      if (index === -1) return
+      const wasActive = activeTabKeyRef.current === tabKey
+      const remaining = documentsBefore.filter(document => document.tabKey !== tabKey)
+
+      if (remaining.length === 0) {
+         const blankDocument = createBlankDocument(t.defaultSectionTitle)
+         skipNextAutosaveRef.current = true
+         setOpenDocuments([blankDocument])
+         setActiveTabKey(blankDocument.tabKey)
+         return
+      }
+
+      setOpenDocuments(remaining)
+      if (wasActive) {
+         const neighbor = remaining[index] ?? remaining[index - 1]   // right neighbor, else left
+         skipNextAutosaveRef.current = true
+         setActiveTabKey(neighbor.tabKey)
+      }
+   }, [t])
+
    // #############################
    // # BINDER (DOCUMENT LIBRARY) #
    // #############################
@@ -354,8 +414,25 @@ export default function App() {
       setBinderOpen(true)
    }, [saveStatus, persistNow])
 
-   // Pending binder navigation awaiting unsaved-changes confirmation.
-   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'open'; id: string } | { kind: 'new'; folderId?: string } | null>(null)
+   // Pending action awaiting unsaved-changes confirmation (binder navigation or a dirty tab close).
+   const [pendingNavigation, setPendingNavigation] = useState<
+      | { kind: 'open'; id: string }
+      | { kind: 'new'; folderId?: string }
+      | { kind: 'close-tab'; tabKey: string }
+      | null
+   >(null)
+
+   // Close a tab. A dirty/saving tab routes through the unsaved-changes guard (discard-and-close);
+   // a clean tab closes immediately.
+   const closeTab = useCallback((tabKey: string) => {
+      const target = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (!target) return
+      if (target.saveStatus === 'dirty' || target.saveStatus === 'saving') {
+         setPendingNavigation({ kind: 'close-tab', tabKey })
+         return
+      }
+      performCloseTab(tabKey)
+   }, [performCloseTab])
 
    // True when the current document isn't durably saved (flush in-flight or failed).
    const isNotDurablySaved = saveStatus === 'saving' || saveStatus === 'dirty'
@@ -401,7 +478,8 @@ export default function App() {
       setPendingNavigation(null)
       if (pending?.kind === 'open') void openDocumentNow(pending.id)
       else if (pending?.kind === 'new') newDocumentNow(pending.folderId)
-   }, [pendingNavigation, openDocumentNow, newDocumentNow])
+      else if (pending?.kind === 'close-tab') performCloseTab(pending.tabKey)
+   }, [pendingNavigation, openDocumentNow, newDocumentNow, performCloseTab])
 
    const handleCancelNavigation = useCallback(() => setPendingNavigation(null), [])
 
@@ -451,11 +529,6 @@ export default function App() {
             : document))
    }, [])
 
-   // Wipe document and start fresh.
-   const handleNewDocument = useCallback(() => {
-      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
-   }, [t, replaceDocument])
-
    // Import a Markdown file, parse it, replace the document. Opening a file lands in the editor,
    // so leave binder mode if it was open.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
@@ -491,20 +564,18 @@ export default function App() {
    //  Header: New + standalone binder toggle
    // ===================================
 
-   // New from the header: in binder mode create a doc and exit the binder; in document mode
-   // replace the in-editor document (the confirm lives in the header).
+   // New from the header: in binder mode create a doc and exit the binder; in document mode add a
+   // new tab (nothing is discarded, so no confirm).
    const handleHeaderNew = useCallback(() => {
       if (binderOpen) handleNewDocumentFromBinder()
-      else handleNewDocument()
-   }, [binderOpen, handleNewDocumentFromBinder, handleNewDocument])
+      else addNewTab()
+   }, [binderOpen, handleNewDocumentFromBinder, addNewTab])
 
-   // Close the binder back to the editor. Document mode must always have a document, so if none is
-   // open (currentDocumentId null = only the pristine blank default was showing), spawn a fresh one.
+   // Close the binder back to the editor. The always-have-a-document invariant now lives on the tab
+   // list (openDocuments is never empty), so there is always a tab to return to — just close.
    const handleCloseBinder = useCallback(() => {
-      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
-      if (!activeTab || activeTab.documentId === null) handleNewDocument()
       setBinderOpen(false)
-   }, [handleNewDocument])
+   }, [])
 
    // Standalone Open/Close Binder affordance in the header.
    const handleToggleBinder = useCallback(() => {
@@ -553,7 +624,13 @@ export default function App() {
             />
          ) : (
           <>
-            <DocumentTitleBar meta={meta} onMetaChange={handleMetaChange} />
+            <DocumentTitleBar
+               openDocuments={openDocuments}
+               activeTabKey={activeTabKey}
+               onActivateTab={activateTab}
+               onCloseTab={closeTab}
+               onMetaChange={handleMetaChange}
+            />
 
             <DocumentMutationsContext.Provider value={{
                updateBlock:       blockMutations.updateBlock,

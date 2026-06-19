@@ -1,45 +1,57 @@
 // -- React Imports --
 import { useEffect, useRef, useState } from 'react'
 
+// -- Icon Imports --
+import { X } from 'lucide-react'
+
 // -- Type Imports --
-import type { DocMeta } from '../types'
+import type { DocMeta, OpenDocument } from '../types'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
 
 interface DocumentTitleBarProps {
-   meta:         DocMeta
-   onMetaChange: (patch: Partial<DocMeta>) => void
+   openDocuments: OpenDocument[]
+   activeTabKey:  string
+   onActivateTab: (tabKey: string) => void
+   onCloseTab:    (tabKey: string) => void
+   onMetaChange:  (patch: Partial<DocMeta>) => void
 }
 
 /**
- * The document title bar (second strip), mounted in document mode. It holds the single active
- * document's title in the slot the tab strip will later occupy — this is shell + information
- * architecture only, NO tab logic. Title editing is unchanged from the old header: same
- * click-to-edit affordance, same commit path through onMetaChange (App's handleMetaChange).
+ * The tab strip (second bar, document mode). One chip per open document: click an inactive tab to
+ * activate it, click the active tab to edit its title (the click-to-edit affordance commits through
+ * onMetaChange → the active tab's meta.title). Each chip shows a per-tab dirty dot and a close (×).
  */
-export function DocumentTitleBar({ meta, onMetaChange }: DocumentTitleBarProps) {
+export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onMetaChange }: DocumentTitleBarProps) {
    const { t } = useLang()
-   const [titleEditing, setTitleEditing] = useState(false)
-   const [titleDraft,   setTitleDraft]   = useState('')
+   // Which tab's title is being edited (null = none). Tracking the tabKey rather than a boolean means
+   // a tab switch (or closing the edited tab) implicitly ends editing — the input only renders while
+   // editingTabKey matches the active tab — so no reset-on-switch effect is needed.
+   const [editingTabKey, setEditingTabKey] = useState<string | null>(null)
+   const [titleDraft,    setTitleDraft]    = useState('')
    const titleInputRef       = useRef<HTMLInputElement>(null)
    const suppressNextBlurRef = useRef(false)
 
-   function handleTitleClick() {
-      setTitleDraft(meta.title)
-      setTitleEditing(true)
-   }
+   const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)
+   const activeTitle    = activeDocument?.meta.title ?? ''
 
-   // Select all text once the input mounts
-   useEffect(() => {
-      if (titleEditing) titleInputRef.current?.select()
-   }, [titleEditing])
+   // Select all text once the input mounts.
+   useEffect(() => { if (editingTabKey !== null) titleInputRef.current?.select() }, [editingTabKey])
+
+   function handleTabClick(tabKey: string) {
+      if (tabKey === activeTabKey) {
+         setTitleDraft(activeTitle)
+         setEditingTabKey(tabKey)
+      } else {
+         onActivateTab(tabKey)
+      }
+   }
 
    function commitTitle(value: string) {
       const trimmed = value.trim()
-      // Empty value → keep current title (no change)
-      onMetaChange({ title: trimmed || meta.title })
-      setTitleEditing(false)
+      onMetaChange({ title: trimmed || activeTitle })   // empty value keeps the current title
+      setEditingTabKey(null)
    }
 
    function handleTitleBlur() {
@@ -58,36 +70,58 @@ export function DocumentTitleBar({ meta, onMetaChange }: DocumentTitleBarProps) 
          titleInputRef.current?.blur()
       } else if (event.key === 'Escape') {
          suppressNextBlurRef.current = true
-         setTitleEditing(false)
+         setEditingTabKey(null)
          titleInputRef.current?.blur()
       }
    }
 
    return (
-      <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100">
-         {/* Tab-strip slot: the single active-document "tab" holding the title. Tabs land here later. */}
-         <div className="flex items-center h-7 px-3 min-w-0 max-w-[60%] rounded-t-md border border-b-0 border-border bg-raised">
-            {titleEditing ? (
-               <input
-                  ref={titleInputRef}
-                  type="text"
-                  aria-label={t.docTitle}
-                  value={titleDraft}
-                  onChange={event => setTitleDraft(event.target.value)}
-                  onBlur={handleTitleBlur}
-                  onKeyDown={handleTitleKeyDown}
-                  className="font-mono text-sm bg-transparent border-0 border-b border-accent/60 outline-none w-44 text-text"
-               />
-            ) : (
-               <span
-                  onClick={handleTitleClick}
-                  title={meta.title || t.untitledDoc}
-                  className="font-mono text-sm text-text/70 truncate cursor-text hover:text-text/90 select-none transition-colors"
+      <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100 overflow-x-auto">
+         {openDocuments.map(openDocument => {
+            const isActive = openDocument.tabKey === activeTabKey
+            const isDirty  = openDocument.saveStatus !== 'clean'
+            const title    = openDocument.meta.title || t.untitledDoc
+            return (
+               <div
+                  key={openDocument.tabKey}
+                  onClick={() => handleTabClick(openDocument.tabKey)}
+                  title={title}
+                  className={[
+                     'flex items-center h-7 pl-3 pr-1.5 gap-1.5 shrink-0 max-w-[14rem] rounded-t-md border border-b-0 cursor-pointer transition-colors',
+                     isActive ? 'border-border bg-raised' : 'border-transparent bg-transparent hover:bg-raised/50',
+                  ].join(' ')}
                >
-                  {meta.title || t.untitledDoc}
-               </span>
-            )}
-         </div>
+                  {isActive && editingTabKey === openDocument.tabKey ? (
+                     <input
+                        ref={titleInputRef}
+                        type="text"
+                        aria-label={t.docTitle}
+                        value={titleDraft}
+                        onChange={event => setTitleDraft(event.target.value)}
+                        onBlur={handleTitleBlur}
+                        onKeyDown={handleTitleKeyDown}
+                        onClick={event => event.stopPropagation()}
+                        className="font-mono text-sm bg-transparent border-0 border-b border-accent/60 outline-none w-40 text-text"
+                     />
+                  ) : (
+                     <span className={`font-mono text-sm truncate select-none transition-colors ${isActive ? 'text-text/90' : 'text-text/50'}`}>
+                        {title}
+                     </span>
+                  )}
+
+                  {isDirty && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-yellow" />}
+
+                  <button
+                     type="button"
+                     aria-label={t.closeTab}
+                     onClick={event => { event.stopPropagation(); onCloseTab(openDocument.tabKey) }}
+                     className="shrink-0 grid place-items-center w-4 h-4 rounded text-muted/60 hover:text-text hover:bg-border/60 transition-colors"
+                  >
+                     <X size={12} />
+                  </button>
+               </div>
+            )
+         })}
       </div>
    )
 }

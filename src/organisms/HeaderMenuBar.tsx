@@ -17,7 +17,6 @@ import { FileMenu } from '../molecules/FileMenu'
 import { ViewMenu } from '../molecules/ViewMenu'
 import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
-import { ConfirmDialog } from '../molecules/ConfirmDialog'
 
 // -- Lib Imports --
 import { downloadJSON, loadJSONFile } from '../lib/documentBackupFile'
@@ -112,7 +111,6 @@ export function HeaderMenuBar({
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
 }: HeaderMenuBarProps) {
    const [exportOpen, setExportOpen]       = useState(false)
-   const [confirmNewOpen, setConfirmNewOpen] = useState(false)
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
 
@@ -127,13 +125,6 @@ export function HeaderMenuBar({
    // =============
    //  File actions
    // =============
-
-   function handleNew() {
-      // Replacing the in-editor document warrants a confirm; in binder mode New simply spawns a
-      // new document (the binder isn't an editable doc to clear), so no confirm there.
-      if (isDocumentMode) setConfirmNewOpen(true)
-      else onNew()
-   }
 
    function handleOpenDocumint() {
       loadJSONFile(
@@ -206,7 +197,7 @@ export function HeaderMenuBar({
             {/* Menu bar */}
             <FileMenu
                mode={mode}
-               onNewDocument={handleNew}
+               onNewDocument={onNew}
                onOpenTin={comingSoon}
                onOpenDocumint={handleOpenDocumint}
                onOpenMarkdown={handleOpenMarkdown}
@@ -284,17 +275,6 @@ export function HeaderMenuBar({
                defaultAccent={docAccent}
                lang={lang}
                onClose={() => setExportOpen(false)}
-            />
-         )}
-
-         {confirmNewOpen && (
-            <ConfirmDialog
-               title={t.newDocument}
-               message={t.newDocumentConfirm}
-               confirmLabel={t.newDocumentProceed}
-               cancelLabel={t.binderUnsavedCancel}
-               onConfirm={() => { setConfirmNewOpen(false); onNew() }}
-               onCancel={() => setConfirmNewOpen(false)}
             />
          )}
       </>
