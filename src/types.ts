@@ -108,6 +108,9 @@ export interface OpenDocument {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
+   documentId:            string | null   // binder record id; null until first save
+   saveStatus:            SaveStatus       // per-tab dirty/saving/saved cycle
+   pendingNewDocFolderId: string | null    // folder a fresh doc lands in on first save; null = root
 }
 
 // #######################################

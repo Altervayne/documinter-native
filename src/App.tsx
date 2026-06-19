@@ -56,6 +56,9 @@ export default function App() {
          sections:  [mkSection(translations[initialLang].defaultSectionTitle)],
          docTheme:  'light',
          docAccent: DEFAULT_DOC_ACCENT,
+         documentId:            null,
+         saveStatus:            'clean',
+         pendingNewDocFolderId: null,
       }]
    })
    const [activeTabKey, setActiveTabKey] = useState<string>(() => openDocuments[0].tabKey)
@@ -63,10 +66,15 @@ export default function App() {
    // tab without re-subscribing.
    const activeTabKeyRef = useRef(activeTabKey)
    useEffect(() => { activeTabKeyRef.current = activeTabKey }, [activeTabKey])
+   // Mirror of the whole list for async paths (the debounced save's promotion, persistNow) that must
+   // read a tab's latest identity/status by tabKey without re-subscribing.
+   const openDocumentsRef = useRef(openDocuments)
+   useEffect(() => { openDocumentsRef.current = openDocuments }, [openDocuments])
 
-   // The active document and the content the render + effects below read, derived from the list.
+   // The active document and the content + identity the render + effects below read, derived from the
+   // list. documentId / saveStatus are per-tab (phase 2); the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
-   const { meta, sections, docTheme, docAccent } = activeDocument
+   const { meta, sections, docTheme, docAccent, documentId, saveStatus } = activeDocument
 
    // The setter lever (TABS_STUDY §3.2): hand the mutation hooks a Section[] setter that updates only
    // the active tab. The hooks are unchanged — they still receive a Dispatch<SetStateAction<Section[]>>.
@@ -83,6 +91,15 @@ export default function App() {
    const setActiveDocAccent = useCallback((nextAccent: string) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, docAccent: nextAccent } : document))
+   }, [])
+   // Per-tab save-status setter. Status lives on each OpenDocument (phase 2), so the autosave cycle,
+   // persistNow, and the fade timer target a specific tab by key — the active tab for live edits, or
+   // the captured originating tab for an async save's resolution (TABS_STUDY §4.2).
+   const setTabSaveStatus = useCallback((tabKey: string, status: SaveStatus) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === tabKey && document.saveStatus !== status
+            ? { ...document, saveStatus: status }
+            : document))
    }, [])
    const [panelOpen, setPanelOpen] = useState(
       () => localStorage.getItem('documinter-panel-open') !== 'false'
@@ -123,14 +140,12 @@ export default function App() {
    // # SAVE STATUS + AUTOSAVE (INDEXEDDB) #
    // ######################################
 
-   const [saveStatus, setSaveStatus] = useState<SaveStatus>('clean')
-   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
    const { showToast } = useToast()
 
-   const currentDocumentIdRef = useRef<string | null>(null)
-   // Folder a freshly-created document should land in on its first save (set when "New" is used
-   // from inside a binder folder; cleared once the document is saved or replaced). null = root.
-   const pendingNewDocFolderRef = useRef<string | null>(null)
+   // saveStatus, the document id, and the pending-new-doc folder are per-tab now (on OpenDocument).
+   // skipNextAutosaveRef + autosaveTimerRef stay single refs this phase: only the active tab is
+   // editable and only it debounces a save, so one skip flag + one timer suffice until phase 3 adds
+   // tab switching (which will need flush-on-switch).
    const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
    const hasHydratedRef       = useRef(false)
    const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -147,7 +162,6 @@ export default function App() {
    // Apply a programmatically-loaded document without dirtying / re-saving it.
    const applyLoadedDocument = useCallback((loaded: LoadedDocument, id: string | null) => {
       skipNextAutosaveRef.current = true
-      pendingNewDocFolderRef.current = null
       const newTabKey = crypto.randomUUID()
       setOpenDocuments([{
          tabKey:    newTabKey,
@@ -155,10 +169,11 @@ export default function App() {
          sections:  loaded.sections,
          docTheme:  loaded.docTheme,
          docAccent: loaded.docAccent,
+         documentId:            id,
+         saveStatus:            'clean',   // just loaded → in sync with storage
+         pendingNewDocFolderId: null,
       }])
       setActiveTabKey(newTabKey)
-      currentDocumentIdRef.current = id
-      setCurrentDocumentId(id)
    }, [])
 
    // Replace the in-editor document with fresh content that is NOT yet a binder record
@@ -166,9 +181,8 @@ export default function App() {
    // creates a new IndexedDB record rather than overwriting the previously-open document,
    // and skips the autosave cycle this replacement triggers. An optional presentation restores
    // the document's saved theme + accent (e.g. from a JSON backup); omit to keep the current ones.
-   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
+   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation, pendingFolderId?: string | null) => {
       skipNextAutosaveRef.current = true
-      pendingNewDocFolderRef.current = null   // a plain new/import/load lands in root unless set after
       const newTabKey = crypto.randomUUID()
       setOpenDocuments(documents => {
          // Without a presentation, carry the active tab's current theme/accent forward (matches the
@@ -180,11 +194,12 @@ export default function App() {
             sections:  nextSections,
             docTheme:  presentation ? presentation.docTheme  : current?.docTheme  ?? 'light',
             docAccent: presentation ? presentation.docAccent : current?.docAccent ?? DEFAULT_DOC_ACCENT,
+            documentId:            null,   // not yet a binder record; the first edit forks a fresh one
+            saveStatus:            'clean',
+            pendingNewDocFolderId: pendingFolderId ?? null,
          }]
       })
       setActiveTabKey(newTabKey)
-      currentDocumentIdRef.current = null
-      setCurrentDocumentId(null)
    }, [])
 
    // One-time async hydration: migrate any legacy localStorage autosave, then load the
@@ -222,58 +237,61 @@ export default function App() {
       return () => { cancelled = true }
    }, [applyLoadedDocument])
 
-   // Mirror currentDocumentId into a ref + persist the pointer (only after hydration, so
-   // the initial blank state can't wipe the stored pointer before it has been read).
+   // Persist the active tab's id as the last-open pointer (only after hydration, so the initial
+   // blank state can't wipe the stored pointer before it has been read). Cross-reload multi-tab
+   // restore is phase 4; this phase keeps the single last-open pointer.
    useEffect(() => {
-      currentDocumentIdRef.current = currentDocumentId
       if (!hasHydratedRef.current) return
-      if (currentDocumentId) localStorage.setItem(CURRENT_DOCUMENT_ID_KEY, currentDocumentId)
+      if (documentId) localStorage.setItem(CURRENT_DOCUMENT_ID_KEY, documentId)
       else localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
-   }, [currentDocumentId])
+   }, [documentId])
 
    // Autosave on any document change, debounced 1.5s, persisted to IndexedDB.
    useEffect(() => {
       if (skipNextAutosaveRef.current) {
          skipNextAutosaveRef.current = false
-         // A skipped cycle is a programmatic load/replace/hydration — the document is already in sync
-         // with storage, so force the status clean. Without this, a transient 'dirty' set for the
+         // A skipped cycle is a programmatic load/replace/hydration — the active tab is already in
+         // sync with storage, so force it clean. Without this, a transient 'dirty' set for the
          // pre-hydration blank (e.g. by StrictMode's double-invoked mount cycle) is never cleared,
          // sticking the pill at "Unsaved changes" after a reload with no save actually pending.
-         setSaveStatus('clean')
+         setTabSaveStatus(activeTabKeyRef.current, 'clean')
          return
       }
-      setSaveStatus('dirty')
+      // Capture the tab that originated this edit. The resolved save promotes/marks THIS tab by key,
+      // never whatever happens to be active when the promise settles (TABS_STUDY §4.2).
+      const originatingTabKey = activeTabKeyRef.current
+      setTabSaveStatus(originatingTabKey, 'dirty')
       autosaveTimerRef.current = setTimeout(() => {
-         setSaveStatus('saving')
+         // Read the originating tab's latest identity at fire time (a prior cycle may have promoted it).
+         const originatingTab = openDocumentsRef.current.find(document => document.tabKey === originatingTabKey)
+         setTabSaveStatus(originatingTabKey, 'saving')
          saveDocument(
             { meta, sections },
             { docTheme, docAccent },
-            currentDocumentIdRef.current ?? undefined,
-            pendingNewDocFolderRef.current ?? undefined,
+            originatingTab?.documentId ?? undefined,
+            originatingTab?.pendingNewDocFolderId ?? undefined,
          ).then(savedId => {
-            if (currentDocumentIdRef.current === null) {
-               currentDocumentIdRef.current = savedId
-               setCurrentDocumentId(savedId)
-            }
-            pendingNewDocFolderRef.current = null   // consumed, future new docs default to root
-            setSaveStatus('saved')
+            setOpenDocuments(documents => documents.map(document =>
+               document.tabKey === originatingTabKey
+                  ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null }
+                  : document))
          }).catch(error => {
             console.error('[autosave] saveDocument failed:', error)
-            setSaveStatus('dirty')
+            setTabSaveStatus(originatingTabKey, 'dirty')
             notifySaveFailedRef.current()
          })
       }, 1500)
       return () => {
          if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
       }
-   }, [meta, sections, docTheme, docAccent])
+   }, [meta, sections, docTheme, docAccent, setTabSaveStatus])
 
    // Fade the "Saved" indicator out after 2.5 s
    useEffect(() => {
       if (saveStatus !== 'saved') return
-      const clearTimer = setTimeout(() => setSaveStatus('clean'), 2500)
+      const clearTimer = setTimeout(() => setTabSaveStatus(activeTabKeyRef.current, 'clean'), 2500)
       return () => clearTimeout(clearTimer)
-   }, [saveStatus])
+   }, [saveStatus, setTabSaveStatus])
 
    // Browser tab title, asterisk while dirty
    useEffect(() => {
@@ -285,26 +303,27 @@ export default function App() {
    // so callers (manual save, opening the binder) can flush before continuing.
    const persistNow = useCallback(async (): Promise<void> => {
       if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
-      setSaveStatus('saving')
+      const flushTabKey = activeTabKeyRef.current
+      const flushTab = openDocumentsRef.current.find(document => document.tabKey === flushTabKey)
+      if (!flushTab) return
+      setTabSaveStatus(flushTabKey, 'saving')
       try {
          const savedId = await saveDocument(
-            { meta, sections },
-            { docTheme, docAccent },
-            currentDocumentIdRef.current ?? undefined,
-            pendingNewDocFolderRef.current ?? undefined,
+            { meta: flushTab.meta, sections: flushTab.sections },
+            { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent },
+            flushTab.documentId ?? undefined,
+            flushTab.pendingNewDocFolderId ?? undefined,
          )
-         if (currentDocumentIdRef.current === null) {
-            currentDocumentIdRef.current = savedId
-            setCurrentDocumentId(savedId)
-         }
-         pendingNewDocFolderRef.current = null   // consumed, future new docs default to root
-         setSaveStatus('saved')
+         setOpenDocuments(documents => documents.map(document =>
+            document.tabKey === flushTabKey
+               ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null }
+               : document))
       } catch (error) {
          console.error('[persistNow] saveDocument failed:', error)
-         setSaveStatus('dirty')
+         setTabSaveStatus(flushTabKey, 'dirty')
          showToast(t.saveFailed, { type: 'error' })
       }
-   }, [meta, sections, docTheme, docAccent, showToast, t])
+   }, [showToast, t, setTabSaveStatus])
 
    // Manual save
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
@@ -323,7 +342,8 @@ export default function App() {
    const handleOpenBinder = useCallback(async () => {
       if (saveStatus !== 'clean') await persistNow()
       let folder: BinderFolderRecord | null = null
-      const openId = currentDocumentIdRef.current
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      const openId = activeTab?.documentId ?? null
       if (openId) {
          try {
             const folderId = await getDocumentFolderId(openId)
@@ -357,8 +377,7 @@ export default function App() {
    // Create a blank document and close the binder (currentDocumentId reset to null, so the first
    // edit creates a fresh IndexedDB record, filed into folderId if given, else root).
    const newDocumentNow = useCallback((folderId?: string) => {
-      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)])
-      pendingNewDocFolderRef.current = folderId ?? null   // set after replaceDocument (which clears it)
+      replaceDocument(EMPTY_META, [mkSection(t.defaultSectionTitle)], undefined, folderId ?? null)
       setBinderOpen(false)
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [t, replaceDocument, showToast])
@@ -389,10 +408,8 @@ export default function App() {
    // When the currently-open document is deleted from the binder, clear its id so the
    // next edit creates a fresh record instead of resurrecting the deleted one (upsert).
    const handleDocumentDeleted = useCallback((id: string) => {
-      if (currentDocumentIdRef.current === id) {
-         currentDocumentIdRef.current = null
-         setCurrentDocumentId(null)
-      }
+      setOpenDocuments(documents => documents.map(document =>
+         document.documentId === id ? { ...document, documentId: null } : document))
    }, [])
 
    // Mode system
@@ -484,7 +501,8 @@ export default function App() {
    // Close the binder back to the editor. Document mode must always have a document, so if none is
    // open (currentDocumentId null = only the pristine blank default was showing), spawn a fresh one.
    const handleCloseBinder = useCallback(() => {
-      if (currentDocumentIdRef.current === null) handleNewDocument()
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      if (!activeTab || activeTab.documentId === null) handleNewDocument()
       setBinderOpen(false)
    }, [handleNewDocument])
 
@@ -527,7 +545,7 @@ export default function App() {
 
          {binderOpen ? (
             <Binder
-               currentDocumentId={currentDocumentId}
+               currentDocumentId={documentId}
                initialFolder={binderInitialFolder}
                onOpenDocument={handleOpenDocument}
                onNewDocument={handleNewDocumentFromBinder}
