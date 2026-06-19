@@ -93,6 +93,7 @@ interface HeaderMenuBarProps {
    onSetMode:        (mode: Mode) => void
    onTogglePanel:    (id: PaneId) => void
    onManualSave:     () => void
+   onSaveAs:         () => void
    onNew:            () => void
    onToggleBinder:   () => void
    onImportMarkdownFile: (file: File) => Promise<void>
@@ -107,7 +108,7 @@ interface HeaderMenuBarProps {
 
 export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onNew, onToggleBinder,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
 }: HeaderMenuBarProps) {
    const [exportOpen, setExportOpen]       = useState(false)
@@ -203,7 +204,7 @@ export function HeaderMenuBar({
                onOpenMarkdown={handleOpenMarkdown}
                onOpenMintdown={handleOpenMintdown}
                onSave={onManualSave}
-               onSaveAs={comingSoon}
+               onSaveAs={onSaveAs}
                onExportDocumint={handleExportDocumint}
                onExportMarkdown={handleExportMarkdown}
                onExportMintdown={handleExportMintdown}

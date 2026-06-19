@@ -8,7 +8,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { mkSection } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
-import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
+import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
 import { getFolder } from './lib/binderFolders'
 
 // -- Hook Imports --
@@ -31,6 +31,7 @@ import { MintdownEditor } from './organisms/MintdownEditor'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
+import { SaveAsDialog } from './molecules/SaveAsDialog'
 import { ToastContainer } from './atoms/ToastContainer'
 import { UpdatePrompt } from './atoms/UpdatePrompt'
 
@@ -362,13 +363,16 @@ export default function App() {
       document.title  = saveStatus !== 'clean' ? `* ${baseTitle}` : baseTitle
    }, [saveStatus, meta.title])
 
-   // Cancel any pending autosave and write the current document immediately. Awaitable
-   // so callers (manual save, opening the binder) can flush before continuing.
-   const persistNow = useCallback(async (): Promise<void> => {
+   // Cancel any pending autosave and write the active document immediately. Awaitable so callers
+   // (manual save, opening the binder, Save As) can flush before continuing. Returns the binder id
+   // the active tab was saved under (newly assigned if it had none), or null on failure — callers
+   // that need the id can use it directly rather than re-reading openDocumentsRef, whose promotion
+   // hasn't synced back to the ref yet at the await boundary.
+   const persistNow = useCallback(async (): Promise<string | null> => {
       if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
       const flushTabKey = activeTabKeyRef.current
       const flushTab = openDocumentsRef.current.find(document => document.tabKey === flushTabKey)
-      if (!flushTab) return
+      if (!flushTab) return null
       setTabSaveStatus(flushTabKey, 'saving')
       try {
          const savedId = await saveDocument(
@@ -381,10 +385,12 @@ export default function App() {
             document.tabKey === flushTabKey
                ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null }
                : document))
+         return savedId
       } catch (error) {
          console.error('[persistNow] saveDocument failed:', error)
          setTabSaveStatus(flushTabKey, 'dirty')
          showToast(t.saveFailed, { type: 'error' })
+         return null
       }
    }, [showToast, t, setTabSaveStatus])
 
@@ -537,21 +543,66 @@ export default function App() {
 
    // Duplicate a tab's document via the binder and open the copy as a new tab. The copy is made from
    // the binder record, so the source must be persisted first: the active tab may hold unsaved edits
-   // or (if pristine) have no record yet — persist it. A non-active pristine tab has nothing stored
-   // to copy, so it no-ops. (Duplicating a pristine active blank first persists it, then copies it.)
+   // or (if pristine) have no record yet — persist it and use persistNow's returned id (its promotion
+   // hasn't synced to openDocumentsRef at this await boundary). A non-active pristine tab has nothing
+   // stored to copy, so it no-ops.
    const handleDuplicateTab = useCallback(async (sourceTabKey: string) => {
       const sourceTab = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)
       if (!sourceTab) return
-      if (sourceTab.tabKey === activeTabKeyRef.current) {
-         if (sourceTab.saveStatus !== 'clean' || sourceTab.documentId === null) await persistNow()
-      } else if (sourceTab.documentId === null) {
-         return
-      }
-      const sourceDocumentId = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)?.documentId
+      const sourceDocumentId = sourceTab.tabKey === activeTabKeyRef.current
+         ? ((sourceTab.saveStatus !== 'clean' || sourceTab.documentId === null) ? await persistNow() : sourceTab.documentId)
+         : sourceTab.documentId
       if (!sourceDocumentId) return
       const duplicateId = await duplicateDocument(sourceDocumentId)
       await handleOpenDocument(duplicateId)
    }, [persistNow, handleOpenDocument])
+
+   // Save As opens a dialog to name the copy + pick a destination folder. The fork happens on
+   // confirm (handleConfirmSaveAs); cancel does nothing. The picker opens at the document's current
+   // folder (root for an unsaved doc), and the name pre-fills with the current title (verbatim).
+   const [saveAsDialog, setSaveAsDialog] = useState<{ sourceTabKey: string; initialFolder: BinderFolderRecord | null } | null>(null)
+
+   const handleSaveAs = useCallback(async () => {
+      const sourceTabKey = activeTabKeyRef.current
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)
+      if (!activeTab) return
+      let initialFolder: BinderFolderRecord | null = null
+      if (activeTab.documentId) {
+         try {
+            const folderId = await getDocumentFolderId(activeTab.documentId)
+            if (folderId && folderId !== '0') initialFolder = (await getFolder(folderId)) ?? null
+         } catch { /* fall back to root */ }
+      }
+      setSaveAsDialog({ sourceTabKey, initialFolder })
+   }, [])
+
+   // Fork & switch: persist the active document so the ORIGINAL is a frozen binder record, duplicate
+   // it (the copy keeps the document's own title verbatim), file the copy into the chosen folder,
+   // then re-point the active tab to the copy. Further edits save to the copy; the original is left
+   // untouched. The title is never changed here — it's part of the document, renamed in the tab.
+   const handleConfirmSaveAs = useCallback(async (destinationFolderId: string) => {
+      const dialog = saveAsDialog
+      setSaveAsDialog(null)
+      if (!dialog) return
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === dialog.sourceTabKey)
+      if (!activeTab) return
+      // Use persistNow's returned id for the freshly-persisted/promoted case: its setOpenDocuments
+      // hasn't synced to openDocumentsRef yet at this await boundary, so re-reading the ref would
+      // see a stale null and skip the fork.
+      const sourceDocumentId = (activeTab.saveStatus !== 'clean' || activeTab.documentId === null)
+         ? await persistNow()
+         : activeTab.documentId
+      if (!sourceDocumentId) return
+      const copyId = await duplicateDocument(sourceDocumentId)
+      await moveDocument(copyId, destinationFolderId)
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === dialog.sourceTabKey
+            ? { ...document, documentId: copyId }
+            : document))
+      showToast(t.savedAsCopy, { type: 'success' })
+   }, [saveAsDialog, persistNow, showToast, t])
+
+   const handleCancelSaveAs = useCallback(() => setSaveAsDialog(null), [])
 
    // Confirm the pending action (discard-and-close the dirty tab).
    const handleConfirmNavigation = useCallback(() => {
@@ -685,6 +736,7 @@ export default function App() {
             onSetMode={handleSetMode}
             onTogglePanel={togglePanel}
             onManualSave={handleManualSave}
+            onSaveAs={handleSaveAs}
             onNew={handleHeaderNew}
             onToggleBinder={handleToggleBinder}
             onImportMarkdownFile={handleImportMarkdown}
@@ -804,6 +856,14 @@ export default function App() {
                   danger
                   onConfirm={handleConfirmNavigation}
                   onCancel={handleCancelNavigation}
+               />
+            )}
+
+            {saveAsDialog && (
+               <SaveAsDialog
+                  initialFolder={saveAsDialog.initialFolder}
+                  onConfirm={handleConfirmSaveAs}
+                  onCancel={handleCancelSaveAs}
                />
             )}
 
