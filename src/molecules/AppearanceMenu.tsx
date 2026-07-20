@@ -1,8 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, Palette } from 'lucide-react'
 import { ColorPicker } from './ColorPicker'
 import { ACCENT_PRESETS } from '../lib/constants'
 import type { Lang, T } from '../lib/i18n'
+
+// #############
+// # CONSTANTS #
+// #############
+
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
+// below, sized to the dropdown's own `w-64` Tailwind class — the widest of the four header menus,
+// so the highest-risk case for right-edge overflow on a narrow window.
+const DROPDOWN_WIDTH = 256
+const EDGE_MARGIN     = 8
 
 // #########
 // # TYPES #
@@ -41,6 +52,7 @@ export function AppearanceMenu({
 }: AppearanceMenuProps) {
    const [open, setOpen]                       = useState(false)
    const [accentPickerOpen, setAccentPickerOpen] = useState(false)
+   const [alignRight, setAlignRight]            = useState(false)
    const containerRef                           = useRef<HTMLDivElement>(null)
 
    const isCustomAccent = !ACCENT_PRESETS.includes(docAccent ?? '')
@@ -55,6 +67,15 @@ export function AppearanceMenu({
       }
       document.addEventListener('mousedown', handleOutsideMouseDown)
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
+   }, [open])
+
+   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
+   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   useLayoutEffect(() => {
+      if (!open) return
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
    function handleAppThemeClick(targetTheme: 'light' | 'dark') {
@@ -83,7 +104,7 @@ export function AppearanceMenu({
 
          {/* Dropdown */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
+            <div className={`absolute top-full mt-1.5 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2 ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
 
                {/* App theme */}
                <ToggleRow

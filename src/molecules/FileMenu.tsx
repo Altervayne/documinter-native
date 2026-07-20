@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, FilePlus, Archive, FolderOpen, FileUp, FileDown, Save, SaveAll, HardDriveDownload, Upload } from 'lucide-react'
 import type { T } from '../lib/i18n'
+
+// #############
+// # CONSTANTS #
+// #############
+
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
+// below, sized to the dropdown's own `min-w-56` Tailwind class.
+const DROPDOWN_WIDTH = 224
+const EDGE_MARGIN     = 8
 
 // #########
 // # TYPES #
@@ -40,6 +50,7 @@ export function FileMenu({
    t,
 }: FileMenuProps) {
    const [open, setOpen] = useState(false)
+   const [alignRight, setAlignRight] = useState(false)
    const containerRef    = useRef<HTMLDivElement>(null)
 
    useEffect(() => {
@@ -49,6 +60,15 @@ export function FileMenu({
       }
       document.addEventListener('mousedown', handleOutsideMouseDown)
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
+   }, [open])
+
+   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
+   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   useLayoutEffect(() => {
+      if (!open) return
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
    function handleItemClick(callback: () => void) {
@@ -82,7 +102,7 @@ export function FileMenu({
 
          {/* Dropdown */}
          {open && (
-            <div className="absolute top-full mt-1.5 left-0 min-w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden" style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}>
+            <div className={`absolute top-full mt-1.5 min-w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
                {/* New + Tin (both modes) */}
                <MenuItem icon={<FilePlus size={13} />} label={t.fileNewDocument} onClick={() => handleItemClick(onNewDocument)} />
                <MenuItem icon={<Archive size={13} />}  label={t.fileOpenTin}     onClick={() => handleItemClick(onOpenTin)} />

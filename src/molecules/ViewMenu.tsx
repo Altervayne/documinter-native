@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Layout, FileText, FileType, Check } from 'lucide-react'
 import type { PaneId, PaneNode } from '../types'
 import type { T } from '../lib/i18n'
@@ -29,12 +29,19 @@ const PANEL_OPTIONS: {
    { id: 'markdown', icon: <FileText     size={14} />, labelKey: 'viewMarkdown', shortcutKey: 'shortcutToggleMarkdown' },
 ]
 
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
+// below, sized to the dropdown's own `w-56` Tailwind class.
+const DROPDOWN_WIDTH = 224
+const EDGE_MARGIN     = 8
+
 // #############
 // # COMPONENT #
 // #############
 
 export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
    const [open, setOpen]  = useState(false)
+   const [alignRight, setAlignRight] = useState(false)
    const containerRef     = useRef<HTMLDivElement>(null)
 
    // Close on outside click.
@@ -45,6 +52,15 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
       }
       document.addEventListener('mousedown', handleOutsideMouseDown)
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
+   }, [open])
+
+   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
+   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   useLayoutEffect(() => {
+      if (!open) return
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
    function handleOptionClick(id: PaneId) {
@@ -71,8 +87,8 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
          {/* Dropdown panel */}
          {open && (
             <div
-               className="absolute top-full mt-1.5 left-0 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden"
-               style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
+               className={`absolute top-full mt-1.5 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`}
+               style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}
             >
                {PANEL_OPTIONS.map(({ id, icon, labelKey, shortcutKey }) => {
                   const isActive = isPanelVisible(paneLayout, id)

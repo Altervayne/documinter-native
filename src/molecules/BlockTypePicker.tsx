@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlignLeft, Heading3, Heading4, Info, Code2, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { BlockType } from '../types'
 import { useLang } from '../contexts/LangContext'
+import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
 
 interface PickerItem {
    type:        BlockType
@@ -42,25 +43,16 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
    ]
 
    const items = insideContainer ? allItems.filter(item => item.type !== 'container') : allItems
-   const pickerHeight = items.length * ITEM_HEIGHT + PADDING * 2
 
    const [focused, setFocused] = useState(0)
-   const listRef = useRef<HTMLDivElement>(null)
 
-   // Compute fixed position
-   const viewportHeight = window.innerHeight
-   const viewportWidth  = window.innerWidth
-   const spaceBelow     = viewportHeight - anchorRect.bottom - 8
-   const spaceAbove     = anchorRect.top - 8
-   const openAbove      = preferAbove
-      ? spaceAbove >= 80
-      : spaceBelow < pickerHeight && spaceAbove > spaceBelow
-
-   const top  = openAbove ? anchorRect.top - pickerHeight - 4 : anchorRect.bottom + 4
-   const left = Math.min(
-      Math.max(8, anchorRect.left),
-      viewportWidth - PICKER_WIDTH - 8,
-   )
+   // Measured, two-sided clamp on both axes (flips above/below the anchor, then keeps the picker
+   // fully on-screen even when neither side has enough room) — replaces the old height-estimate
+   // heuristic that only handled the above/below choice and never clamped the vertical axis.
+   const { ref: listRef, top, left } = useViewportClampedPosition<HTMLDivElement>({
+      type: 'rect', rect: anchorRect, preferAbove,
+   })
+   const openAbove = top < anchorRect.top
 
    useEffect(() => {
       function onKeyDown(event: KeyboardEvent) {
@@ -79,7 +71,7 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       }
       document.addEventListener('pointerdown', onPointerDown)
       return () => document.removeEventListener('pointerdown', onPointerDown)
-   }, [onClose])
+   }, [onClose, listRef])
 
    return createPortal(
       <div

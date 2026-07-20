@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
    Bold, Italic, Underline, Strikethrough,
    Link, Link2Off, Baseline, Highlighter, CornerDownLeft,
@@ -40,6 +40,16 @@ interface FormatToolbarProps {
 }
 
 // #############
+// # CONSTANTS #
+// #############
+
+/** Minimum gap kept between a clamped floating element and the viewport edge. */
+const CLAMP_MARGIN = 8
+
+/** Vertical gap between the toolbar/trigger button and the panel/popover beneath it. */
+const FLOATING_PANEL_GAP = 6
+
+// #############
 // # COMPONENT #
 // #############
 
@@ -53,9 +63,18 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       fontColor: undefined, highlightColor: undefined,
    })
 
-   const toolbarRef       = useRef<HTMLDivElement>(null)
+   const toolbarRef              = useRef<HTMLDivElement>(null)
+   const toolbarInnerRef         = useRef<HTMLDivElement>(null)
+   const linkPanelRef            = useRef<HTMLDivElement>(null)
+   const fontColorButtonRef      = useRef<HTMLDivElement>(null)
+   const highlightColorButtonRef = useRef<HTMLDivElement>(null)
    const savedRangeRef    = useRef<Range | null>(null)
    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+   // Clamped position of the link-creator panel, relative to the toolbar's own box
+   // (the panel is `position: absolute` against the toolbar, its nearest positioned
+   // ancestor) — recomputed whenever the panel mounts, see the layout effect below.
+   const [linkPanelPos, setLinkPanelPos] = useState<Pos>({ top: 0, left: 0 })
 
    const {
       linkMode, linkUrl, setLinkUrl, isEditingExistingLink, inputRef,
@@ -113,7 +132,22 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                ? deriveActiveColorsAt(richElement, currentRange.startContainer, currentRange.startOffset)
                : { fontColor: undefined, highlightColor: undefined }
 
-            setPos({ top: rect.top - 44, left: rect.left + rect.width / 2 })
+            // Desired position centers the toolbar horizontally on the selection
+            // midpoint and places it 44px above the selection, then clamps both axes
+            // two-sided so the toolbar can never render partly off-screen. The toolbar's
+            // own rendered size is measured directly (it's always mounted, just
+            // opacity/pointer-events toggled), so the clamp works against the real box.
+            const toolbarBoundingRect = toolbarInnerRef.current?.getBoundingClientRect()
+            const toolbarWidth  = toolbarBoundingRect?.width  ?? 0
+            const toolbarHeight = toolbarBoundingRect?.height ?? 0
+
+            const desiredLeft = rect.left + rect.width / 2 - toolbarWidth / 2
+            const desiredTop  = rect.top - 44
+
+            const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - toolbarWidth  - CLAMP_MARGIN))
+            const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - toolbarHeight - CLAMP_MARGIN))
+
+            setPos({ top: clampedTop, left: clampedLeft })
             setFormatState({
                bold:           document.queryCommandState('bold'),
                italic:         document.queryCommandState('italic'),
@@ -143,6 +177,38 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       }
    }, [linkModeRef, fontColorOpenRef, highlightColorOpenRef, closeLinkMode, closeFontColorPicker, closeHighlightColorPicker])
+
+   // ##############################################################
+   // # LINK PANEL POSITION — VIEWPORT CLAMP (measured, two-sided) #
+   // ##############################################################
+
+   // Recomputed each time the link panel mounts (it unmounts/remounts with linkMode,
+   // so its content — and therefore its size — is fresh every time this runs). Measures
+   // the panel's real rendered box, then clamps the desired centered-below-toolbar
+   // position two-sided so the panel can never render partly off-screen.
+   useLayoutEffect(() => {
+      if (!linkMode) return
+      const panelElement   = linkPanelRef.current
+      const toolbarElement = toolbarInnerRef.current
+      if (!panelElement || !toolbarElement) return
+
+      const toolbarBoundingRect = toolbarElement.getBoundingClientRect()
+      const panelBoundingRect   = panelElement.getBoundingClientRect()
+
+      const desiredLeft = toolbarBoundingRect.left + toolbarBoundingRect.width / 2 - panelBoundingRect.width / 2
+      const desiredTop  = toolbarBoundingRect.bottom + FLOATING_PANEL_GAP
+
+      const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - panelBoundingRect.width  - CLAMP_MARGIN))
+      const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - panelBoundingRect.height - CLAMP_MARGIN))
+
+      // The panel is `position: absolute` against the toolbar (its nearest positioned
+      // ancestor), so the clamped viewport coordinates are converted back into an
+      // offset relative to the toolbar's own box before being stored.
+      setLinkPanelPos({
+         top:  clampedTop  - toolbarBoundingRect.top,
+         left: clampedLeft - toolbarBoundingRect.left,
+      })
+   }, [linkMode])
 
    // ########################
    // # FORMAT STATE HELPERS #
@@ -180,10 +246,11 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       <div
          ref={toolbarRef}
          className={`fixed z-9999 ${visible ? 'pointer-events-auto' : 'pointer-events-none'}`}
-         style={{ top: 0, left: 0, transform: `translate(calc(${pos.left}px - 50%), ${pos.top}px)` }}
+         style={{ top: 0, left: 0, transform: `translate(${pos.left}px, ${pos.top}px)` }}
          onMouseDown={event => event.preventDefault()}
       >
          <div
+            ref={toolbarInnerRef}
             className={`relative flex flex-col rounded-lg shadow-xl border border-border bg-raised transition-[opacity,transform] duration-[120ms] ease-out ${
                visible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.97]'
             }`}
@@ -228,7 +295,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                <div className="w-px h-4 bg-border mx-1" />
 
                {/* Font color button */}
-               <div className="relative">
+               <div ref={fontColorButtonRef} className="relative">
                   <button
                      className={formatButtonClass(fontColorOpen)}
                      title={t.formatFontColor}
@@ -250,6 +317,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   {fontColorOpen && (
                      <InlineColorPopover
                         activeColor={formatState.fontColor}
+                        anchorRef={fontColorButtonRef}
                         palette={FONT_COLOR_PALETTE}
                         recent={recentColors.color}
                         recentLabel={t.recentColors}
@@ -261,7 +329,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                </div>
 
                {/* Highlight color button */}
-               <div className="relative">
+               <div ref={highlightColorButtonRef} className="relative">
                   <button
                      className={formatButtonClass(highlightColorOpen)}
                      title={t.formatHighlightColor}
@@ -283,6 +351,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   {highlightColorOpen && (
                      <InlineColorPopover
                         activeColor={formatState.highlightColor}
+                        anchorRef={highlightColorButtonRef}
                         palette={HIGHLIGHT_COLOR_PALETTE}
                         recent={recentColors.highlight}
                         recentLabel={t.recentColors}
@@ -299,11 +368,11 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             {/* =================== */}
             {linkMode && (
                <div
+                  ref={linkPanelRef}
                   className="absolute w-72 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
                   style={{
-                     top: 'calc(100% + 6px)',
-                     left: '50%',
-                     transform: 'translateX(-50%)',
+                     top:       linkPanelPos.top,
+                     left:      linkPanelPos.left,
                      animation: 'link-panel-in 120ms ease-out both',
                   }}
                   onKeyDown={event => { if (event.key === 'Escape') closeLinkMode() }}

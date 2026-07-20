@@ -30,7 +30,7 @@ export function AnchorEditor({ draft, currentHandle, hasHandle, onChange, onConf
 
    return (
       <div
-         className="flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-border bg-raised shadow-sm whitespace-nowrap z-200 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs"
+         className="flex items-center gap-1.5 px-2 py-1 rounded-[10px] border border-border bg-raised shadow-sm whitespace-nowrap z-200 animate-[sidebar-fadein_0.12s_ease] font-mono text-xs text-text"
          style={{ position: 'fixed', top: pos.top, right: pos.right }}
       >
          <span className="shrink-0 font-semibold text-accent">#</span>

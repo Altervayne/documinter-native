@@ -262,11 +262,19 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
                         type="text"
                         value={hexRaw}
                         onChange={event => {
-                           const cleaned = event.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 6)
+                           const inputElement = event.target
+                           const cleaned = inputElement.value.replace(/[^0-9a-f]/gi, '').slice(0, 6)
                            setHexRaw(cleaned)
                            if (cleaned.length === 6) {
                               const parsed = hexToRgb('#' + cleaned)
-                              if (parsed) emit(parsed)
+                              if (parsed) {
+                                 emit(parsed)
+                                 // emit() -> onChange() can synchronously rewrite the rich-text block's
+                                 // DOM and move the browser Selection into it (see useInlineColorPicker's
+                                 // applyInlineColor/restoreSelectionRange), which steals keyboard focus
+                                 // away from this input. Reclaim it so typing can continue uninterrupted.
+                                 inputElement.focus()
+                              }
                            }
                         }}
                         maxLength={6}
