@@ -320,6 +320,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                         anchorRef={fontColorButtonRef}
                         palette={FONT_COLOR_PALETTE}
                         recent={recentColors.color}
+                        paletteLabel={t.paletteColors}
                         recentLabel={t.recentColors}
                         removeLabel={t.removeFontColor}
                         onApply={colorValue => applyInlineColor('color', colorValue)}
@@ -354,6 +355,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                         anchorRef={highlightColorButtonRef}
                         palette={HIGHLIGHT_COLOR_PALETTE}
                         recent={recentColors.highlight}
+                        paletteLabel={t.paletteColors}
                         recentLabel={t.recentColors}
                         removeLabel={t.removeHighlightColor}
                         onApply={colorValue => applyInlineColor('highlight', colorValue)}

@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import { ColorSwatchButton } from '../atoms/ColorSwatchButton'
-import { ColorPicker } from './ColorPicker'
+import { ColorPicker } from 'react-piqua-color'
 
 // #########
 // # TYPES #
@@ -20,6 +19,8 @@ interface InlineColorPopoverProps {
    palette:     readonly string[]
    /** Recently-used custom colors (most-recent-first), shown as a quick-pick row. */
    recent:      readonly string[]
+   /** Localised label for the curated-palette row. */
+   paletteLabel: string
    /** Localised label for the recent-colors row. */
    recentLabel: string
    /** Localised label for the "remove color" action. */
@@ -48,17 +49,13 @@ const TRIGGER_GAP = 6
 
 /**
  * Floating color popover shared by the font-color and highlight-color buttons.
- * Mirrors the accent-color picker in AppearanceMenu: a row of curated quick-pick
- * swatches plus the full ColorPicker for custom colors. The ColorPicker emits
- * onChange continuously while dragging, so it applies without closing; quick-pick
- * swatches and the remove action are discrete and close on selection.
- *
- * A "recent" row surfaces previously-used custom colors (those not in the curated
- * palette) so they can be re-applied in one click.
+ * The package ColorPicker renders the curated-palette row, the recents row, and the
+ * custom-color body itself (swatchesPosition="top"), and auto-highlights the swatch
+ * matching `value`. onChange applies continuously while dragging, so an active
+ * adjustment (input / slider / eyedropper) stays open; a discrete swatch or recent
+ * pick closes the popover via onColorCommitted, as does the remove action below.
  */
-export function InlineColorPopover({ activeColor, anchorRef, palette, recent, recentLabel, removeLabel, onApply, onClose }: InlineColorPopoverProps) {
-   const pickAndClose = (color: string) => { onApply(color); onClose() }
-
+export function InlineColorPopover({ activeColor, anchorRef, palette, recent, paletteLabel, recentLabel, removeLabel, onApply, onClose }: InlineColorPopoverProps) {
    const popoverRef = useRef<HTMLDivElement>(null)
 
    // Position relative to the trigger's own box (this popover's containing block —
@@ -101,30 +98,21 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, re
          }}
          onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
       >
-         {/* Curated quick-pick swatches */}
-         <div className="flex flex-wrap gap-1 p-2">
-            {palette.map(color => (
-               <ColorSwatchButton key={color} color={color} isActive={activeColor === color} onPick={pickAndClose} />
-            ))}
-         </div>
-
-         {/* Recently-used custom colors */}
-         {recent.length > 0 && (
-            <div className="border-t border-border px-2 pt-1.5 pb-2">
-               <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-1 pb-1.5">
-                  {recentLabel}
-               </div>
-               <div className="flex flex-wrap gap-1">
-                  {recent.map(color => (
-                     <ColorSwatchButton key={color} color={color} isActive={activeColor === color} onPick={pickAndClose} />
-                  ))}
-               </div>
-            </div>
-         )}
-
-         {/* Full custom color picker, replaces the old native <input type="color"> */}
-         <div className="border-t border-border p-2">
-            <ColorPicker value={activeColor ?? palette[0]} onChange={color => onApply(color)} />
+         {/* Palette row, recents row, and custom picker — all rendered by the package.
+             The palette/recents sit on top (swatchesPosition="top"); the swatch matching
+             `value` is auto-highlighted. A swatch/recent pick is discrete and closes; an
+             input/slider/eyedropper adjustment applies live and stays open. */}
+         <div className="p-2">
+            <ColorPicker
+               value={activeColor ?? palette[0]}
+               onChange={color => onApply(color)}
+               swatches={[...palette]}
+               recentColors={[...recent]}
+               swatchesLabel={paletteLabel}
+               recentLabel={recentLabel}
+               swatchesPosition="top"
+               onColorCommitted={(_hex, source) => { if (source === 'swatch' || source === 'recent') onClose() }}
+            />
          </div>
 
          {/* Remove color */}

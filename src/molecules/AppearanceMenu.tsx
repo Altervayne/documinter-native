@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, Palette } from 'lucide-react'
-import { ColorPicker } from './ColorPicker'
+import { ColorPicker } from 'react-piqua-color'
 import { ACCENT_PRESETS } from '../lib/constants'
 import type { Lang, T } from '../lib/i18n'
 
