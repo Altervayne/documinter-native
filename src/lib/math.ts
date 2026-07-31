@@ -13,13 +13,15 @@
  *   ensureTemmlStyles    - idempotently inject TEMML_STYLES into the document head
  */
 
-// The `?url` suffix asks Vite to hand back Temml's pre-built ESM file as a plain
-// asset URL, copied verbatim into the build with NO bundler code transform. This is
-// deliberate: Vite 8 / Rolldown (and the esbuild dep-optimizer) mis-regenerate
-// Temml's tokenizer regex when they transform it, truncating every LaTeX control
-// word to its first letter (\pi -> \p). Loading the raw file at runtime sidesteps
-// the transform entirely. The package's `exports` map ("./*": "./*") permits this
-// deep path. See docs/reports/2026-07-31-temml-optimizedeps-fix.md.
+// ⚠️ DO NOT change this to `import temml from 'temml'`. The `?url` suffix asks Vite to
+// hand back Temml's pre-built ESM file as a plain asset URL, copied verbatim into the
+// build with NO bundler code transform. This is deliberate and load-bearing: Vite 8 /
+// Rolldown mis-regenerate Temml's tokenizer regex when they transform it, truncating
+// every LaTeX control word to its first letter (\pi -> \p) — so a normal bundled import
+// breaks ALL math rendering, in dev and prod. Loading the raw file at runtime sidesteps
+// the transform. The package's `exports` map ("./*": "./*") permits this deep path.
+// Keep until the upstream Rolldown bug is fixed — see docs/reference/rolldown-temml-bundler-bug.md
+// (filable issue + repro) and docs/reports/2026-07-31-temml-optimizedeps-fix.md.
 import temmlUrl from 'temml/dist/temml.mjs?url'
 
 // #################

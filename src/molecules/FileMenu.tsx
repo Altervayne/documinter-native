@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, FilePlus, Archive, FolderOpen, FileUp, FileDown, Save, SaveAll, HardDriveDownload, Upload } from 'lucide-react'
+import { ChevronDown, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #############
@@ -22,15 +22,13 @@ interface FileMenuProps {
    // Available in both modes:
    onNewDocument:    () => void
    onOpenTin:        () => void
-   onOpenDocumint:   () => void
-   onOpenMarkdown:   () => void
-   onOpenMintdown:   () => void
+   /** Single, format-detecting Open (JSON backup / Mintdown / Markdown), both modes. */
+   onOpen:           () => void
    // Document mode only:
    onSave:           () => void
    onSaveAs:         () => void
-   onExportDocumint: () => void
-   onExportMarkdown: () => void
-   onExportMintdown: () => void
+   /** Single, format-aware Export dialog (HTML / Mintdown / Markdown), document mode only. */
+   onExport:         () => void
    // Binder mode only:
    onImportDocumint: () => void
    onImportMarkdown: () => void
@@ -44,8 +42,8 @@ interface FileMenuProps {
 
 export function FileMenu({
    mode,
-   onNewDocument, onOpenTin, onOpenDocumint, onOpenMarkdown, onOpenMintdown,
-   onSave, onSaveAs, onExportDocumint, onExportMarkdown, onExportMintdown,
+   onNewDocument, onOpenTin, onOpen,
+   onSave, onSaveAs, onExport,
    onImportDocumint, onImportMarkdown, onImportMintdown,
    t,
 }: FileMenuProps) {
@@ -108,10 +106,8 @@ export function FileMenu({
                <MenuItem icon={<Archive size={13} />}  label={t.fileOpenTin}     onClick={() => handleItemClick(onOpenTin)} />
                <MenuSeparator />
 
-               {/* Open into the editor (both modes) */}
-               <MenuItem icon={<FolderOpen size={13} />} label={t.fileOpenDocumint} onClick={() => handleItemClick(onOpenDocumint)} />
-               <MenuItem icon={<FileUp size={13} />}     label={t.fileOpenMarkdown} onClick={() => handleItemClick(onOpenMarkdown)} />
-               <MenuItem icon={<FileUp size={13} />}     label={t.fileOpenMintdown} onClick={() => handleItemClick(onOpenMintdown)} />
+               {/* Open into the editor — one format-detecting entry (both modes) */}
+               <MenuItem icon={<FolderOpen size={13} />} label={t.menuOpen} onClick={() => handleItemClick(onOpen)} />
 
                {/* Save + Export groups — document mode only (not mounted in binder mode) */}
                {isDocumentMode && (
@@ -120,9 +116,8 @@ export function FileMenu({
                      <MenuItem icon={<Save size={13} />}    label={t.fileSave}   onClick={() => handleItemClick(onSave)} />
                      <MenuItem icon={<SaveAll size={13} />} label={t.fileSaveAs} onClick={() => handleItemClick(onSaveAs)} />
                      <MenuSeparator />
-                     <MenuItem icon={<HardDriveDownload size={13} />} label={t.fileExportDocumint} onClick={() => handleItemClick(onExportDocumint)} />
-                     <MenuItem icon={<FileDown size={13} />}          label={t.fileExportMarkdown} onClick={() => handleItemClick(onExportMarkdown)} />
-                     <MenuItem icon={<FileDown size={13} />}          label={t.fileExportMintdown} onClick={() => handleItemClick(onExportMintdown)} />
+                     {/* One format-aware Export dialog (HTML / Mintdown / Markdown) */}
+                     <MenuItem icon={<Download size={13} />} label={t.menuExport} onClick={() => handleItemClick(onExport)} />
                   </>
                )}
 

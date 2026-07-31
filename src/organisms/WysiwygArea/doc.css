@@ -154,6 +154,7 @@
 
 /* Section, flex row with a dedicated drag handle in the padding gutter */
 .sec-wrap {
+  position: relative; /* anchors the DnD section drop indicator to this section's box */
   display: flex;
   flex-direction: row;
   align-items: flex-start;

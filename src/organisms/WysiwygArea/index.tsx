@@ -339,6 +339,20 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                      </SortableContext>
                   </DndContext>
                )}
+
+               {/* New-section affordance at the document tail, mirrors each section's add-block row */}
+               {!readOnly && onAddSection && sections.length > 0 && (
+                  <div className="pt-2 mt-1.5">
+                     <button
+                        type="button"
+                        onClick={onAddSection}
+                        className="doc-add-btn w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm border border-dashed cursor-pointer"
+                     >
+                        <Plus size={15} />
+                        <span>{t.newSection}</span>
+                     </button>
+                  </div>
+               )}
             </div>
             </div>
          </div>

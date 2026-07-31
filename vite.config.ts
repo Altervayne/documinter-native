@@ -9,7 +9,9 @@ export default defineConfig({
     // Vite's dependency pre-bundler mangles Temml's LaTeX tokenizer — it truncates
     // every control word to its first letter (\pi -> \p, \frac -> \f), so equations
     // fail to render. Excluding Temml serves its raw ESM build, which tokenizes
-    // correctly. See docs/reports/2026-07-31-temml-optimizedeps-fix.md.
+    // correctly. Keep this (and the `?url` load in src/lib/math.ts) until the upstream
+    // Rolldown bug is fixed — docs/reference/rolldown-temml-bundler-bug.md (filable issue)
+    // + docs/reports/2026-07-31-temml-optimizedeps-fix.md.
     exclude: ['temml'],
   },
   plugins: [

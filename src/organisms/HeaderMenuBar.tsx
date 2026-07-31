@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // -- Type Imports --
 import type { DocMeta, DocState, Mode, PaneId, PaneNode, SaveStatus, Section } from '../types'
@@ -19,17 +19,36 @@ import { AppearanceMenu } from '../molecules/AppearanceMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
-import { downloadJSON, loadJSONFile } from '../lib/documentBackupFile'
+import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocPresentation } from '../lib/binderDocuments'
-import { exportMarkdownFile } from '../lib/markdown'
-import { exportMintdownFile } from '../lib/mintdown'
 
 // -- Icon Imports --
-import { Eye, Download, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck } from 'lucide-react'
+import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck } from 'lucide-react'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
+
+// ====================
+//  Open format sniffing
+// ====================
+
+// Route one picked file to the right EXISTING loader. Extension decides when it is one we know;
+// otherwise the trimmed content is sniffed: `{` → JSON backup, `---` front matter → Mintdown,
+// anything else → Markdown. HTML is export-only and never routed here.
+type OpenFormat = 'backup' | 'mintdown' | 'markdown'
+
+function detectOpenFormat(fileName: string, text: string): OpenFormat {
+   const lowerName = fileName.toLowerCase()
+   if (lowerName.endsWith('.json') || lowerName.endsWith('.documint')) return 'backup'
+   if (lowerName.endsWith('.mint') || lowerName.endsWith('.mintd') || lowerName.endsWith('.mintdown')) return 'mintdown'
+   if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'markdown'
+   // Ambiguous / unknown extension (.txt, none, or anything else): sniff the content.
+   const trimmed = text.trimStart()
+   if (trimmed.startsWith('{'))   return 'backup'
+   if (trimmed.startsWith('---')) return 'mintdown'
+   return 'markdown'
+}
 
 // #########################
 // # SAVE STATUS INDICATOR #
@@ -118,6 +137,20 @@ export function HeaderMenuBar({
    const isDocumentMode = mode === 'document'
    const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
 
+   // Ctrl+E (Cmd+E) opens the Export dialog. Document mode only — export acts on the open
+   // document, which the binder view doesn't present.
+   useEffect(() => {
+      if (!isDocumentMode) return
+      function handleKeyDown(event: KeyboardEvent) {
+         if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'e') {
+            event.preventDefault()
+            setExportOpen(true)
+         }
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+   }, [isDocumentMode])
+
    // Placeholder for features not built this session (Tin, Save as, binder-mode imports).
    function comingSoon() {
       showToast(t.comingSoon, { type: 'neutral' })
@@ -127,51 +160,36 @@ export function HeaderMenuBar({
    //  File actions
    // =============
 
-   function handleOpenDocumint() {
-      loadJSONFile(
-         (state: DocState, presentation: DocPresentation) => { onLoad(state, presentation); showToast(t.jsonBackupImported, { type: 'success' }) },
-         (message: string) => showToast(message, { type: 'error' }),
-      )
-   }
-
-   function pickFile(accept: string, onPicked: (file: File) => Promise<void>) {
+   // One unified Open: a single picker whose selection is format-detected and handed to the
+   // matching EXISTING loader (JSON backup / Mintdown / Markdown). All three paths land in the
+   // editor (the import handlers leave binder mode); the toast reflects the detected format.
+   function handleOpen() {
       const input  = document.createElement('input')
       input.type   = 'file'
-      input.accept = accept
+      input.accept = '.json,.documint,.mint,.mintd,.mintdown,.md,.markdown,.txt'
       input.onchange = async () => {
          const file = input.files?.[0]
          if (!file) return
          try {
-            await onPicked(file)
+            const text   = await file.text()
+            const format = detectOpenFormat(file.name, text)
+            if (format === 'backup') {
+               const parsed = parseDocumentBackup(text)
+               if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
+               onLoad(parsed.state, parsed.presentation)
+               showToast(t.jsonBackupImported, { type: 'success' })
+            } else if (format === 'mintdown') {
+               await onImportMintdownFile(file)
+               showToast(t.mintdownImported, { type: 'success' })
+            } else {
+               await onImportMarkdownFile(file)
+               showToast(t.markdownImported, { type: 'success' })
+            }
          } catch {
             showToast(t.importFailed, { type: 'error' })
          }
       }
       input.click()
-   }
-
-   function handleOpenMarkdown() {
-      pickFile('.md,.markdown,.txt', async (file) => { await onImportMarkdownFile(file); showToast(t.markdownImported, { type: 'success' }) })
-   }
-
-   function handleOpenMintdown() {
-      pickFile('.mint,.mintdown,.txt', async (file) => { await onImportMintdownFile(file); showToast(t.mintdownImported, { type: 'success' }) })
-   }
-
-   function handleExportDocumint() {
-      downloadJSON(meta, sections, { docTheme, docAccent })
-      onManualSave()
-      showToast(t.jsonBackupExported, { type: 'success' })
-   }
-
-   function handleExportMarkdown() {
-      exportMarkdownFile(sections, meta)
-      showToast(t.markdownExported, { type: 'success' })
-   }
-
-   function handleExportMintdown() {
-      exportMintdownFile(sections, meta)
-      showToast(t.mintdownExported, { type: 'success' })
    }
 
    function handlePreviewClick() {
@@ -200,14 +218,10 @@ export function HeaderMenuBar({
                mode={mode}
                onNewDocument={onNew}
                onOpenTin={comingSoon}
-               onOpenDocumint={handleOpenDocumint}
-               onOpenMarkdown={handleOpenMarkdown}
-               onOpenMintdown={handleOpenMintdown}
+               onOpen={handleOpen}
                onSave={onManualSave}
                onSaveAs={onSaveAs}
-               onExportDocumint={handleExportDocumint}
-               onExportMarkdown={handleExportMarkdown}
-               onExportMintdown={handleExportMintdown}
+               onExport={() => setExportOpen(true)}
                onImportDocumint={comingSoon}
                onImportMarkdown={comingSoon}
                onImportMintdown={comingSoon}
@@ -250,21 +264,16 @@ export function HeaderMenuBar({
                {isDocumentMode ? t.openBinder : t.closeBinder}
             </Button>
 
-            {/* Document-only quick actions */}
+            {/* Document-only quick actions. Export now lives in File → Export... (Ctrl+E). */}
             {isDocumentMode && (
-               <>
-                  <Button
-                     variant="ghost"
-                     onClick={handlePreviewClick}
-                     disabled={isMarkdownOnly}
-                     style={previewMode === 'preview' && !isMarkdownOnly ? { color: 'var(--color-accent)' } : undefined}
-                  >
-                     <Eye size={14} />{t.previewMode}
-                  </Button>
-                  <Button variant="primary" onClick={() => setExportOpen(true)}>
-                     <Download size={14} />{t.export}
-                  </Button>
-               </>
+               <Button
+                  variant="ghost"
+                  onClick={handlePreviewClick}
+                  disabled={isMarkdownOnly}
+                  style={previewMode === 'preview' && !isMarkdownOnly ? { color: 'var(--color-accent)' } : undefined}
+               >
+                  <Eye size={14} />{t.previewMode}
+               </Button>
             )}
          </div>
 

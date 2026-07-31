@@ -940,7 +940,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
 // ########################################################
 
 /**
- * Reads a .mintd File object and parses it into document state.
+ * Reads a .mint File object and parses it into document state.
  * Thin async wrapper, all parsing logic lives in mintdownToDocument.
  */
 export async function importMintdownFile(
@@ -951,11 +951,12 @@ export async function importMintdownFile(
 }
 
 /**
- * Serialises the document and triggers a browser file download of the .mintd content.
+ * Serialises the document and triggers a browser file download of the .mint content (Documint's
+ * native format; the Open picker also still accepts legacy .mintd / .mintdown for backward compat).
  */
 export function exportMintdownFile(sections: Section[], meta: DocMeta): void {
    const content  = documentToMintdown(sections, meta)
-   const filename = `${slugify(meta.title) || 'document'}.mintd`
+   const filename = `${slugify(meta.title) || 'document'}.mint`
    const blob     = new Blob([content], { type: 'text/plain;charset=utf-8' })
    const url      = URL.createObjectURL(blob)
    const anchor   = document.createElement('a')
