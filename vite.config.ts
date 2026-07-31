@@ -5,6 +5,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  optimizeDeps: {
+    // Vite's dependency pre-bundler mangles Temml's LaTeX tokenizer — it truncates
+    // every control word to its first letter (\pi -> \p, \frac -> \f), so equations
+    // fail to render. Excluding Temml serves its raw ESM build, which tokenizes
+    // correctly. See docs/reports/2026-07-31-temml-optimizedeps-fix.md.
+    exclude: ['temml'],
+  },
   plugins: [
     tailwindcss(),
     react(),
