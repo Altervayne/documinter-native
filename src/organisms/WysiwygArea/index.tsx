@@ -14,10 +14,12 @@ import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
+import { ContextMenu } from '../../molecules/ContextMenu'
+import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --
@@ -47,8 +49,11 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
    // whole array, keeping the existing onUpdateMeta({ fields }) merge pattern.
    const fields = meta.fields
 
-   // Which field's color popover is open, plus the swatch rect that anchors it.
+   // Which field's color popover is open, plus the field rect that anchors it.
    const [colorPopover, setColorPopover] = useState<{ fieldId: string; rect: DOMRect } | null>(null)
+   // The field whose right-click context menu is open, at the cursor. `rect` is the field's box,
+   // reused to anchor the color popover when the menu's Color… item is chosen.
+   const [fieldMenu, setFieldMenu] = useState<{ fieldId: string; x: number; y: number; rect: DOMRect } | null>(null)
 
    function updateField(id: string, patch: Partial<{ label: string; value: string }>) {
       onUpdateMeta({ fields: fields.map(field => field.id === id ? { ...field, ...patch } : field) })
@@ -56,9 +61,27 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
    function addField(position: 'above' | 'below') {
       onUpdateMeta({ fields: [...fields, { id: crypto.randomUUID(), label: '', value: '', position }] })
    }
+   // Insert a blank field into a zone at a zone-relative index (translated to the flat array), for
+   // the context menu's "Add field before / after". An index past the zone's end appends after its
+   // last member; an empty zone lands at the end of the flat array.
+   function addFieldAt(position: 'above' | 'below', zoneIndex: number) {
+      const zoneFlatIndices = fields.reduce<number[]>((indices, field, flatIndex) => {
+         if (field.position === position) indices.push(flatIndex)
+         return indices
+      }, [])
+      const insertFlatIndex = zoneIndex < zoneFlatIndices.length
+         ? zoneFlatIndices[zoneIndex]
+         : zoneFlatIndices.length > 0
+            ? zoneFlatIndices[zoneFlatIndices.length - 1] + 1
+            : fields.length
+      const nextFields = [...fields]
+      nextFields.splice(insertFlatIndex, 0, { id: crypto.randomUUID(), label: '', value: '', position })
+      onUpdateMeta({ fields: nextFields })
+   }
    function removeField(id: string) {
       onUpdateMeta({ fields: fields.filter(field => field.id !== id) })
       setColorPopover(current => current?.fieldId === id ? null : current)
+      setFieldMenu(current => current?.fieldId === id ? null : current)
    }
    function flipFieldZone(id: string) {
       onUpdateMeta({ fields: fields.map(field =>
@@ -109,6 +132,37 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
 
    const visibleFields = fields.filter(field => field.label.trim() || field.value.trim())
    const popoverField  = colorPopover ? fields.find(field => field.id === colorPopover.fieldId) : undefined
+   const menuField     = fieldMenu ? fields.find(field => field.id === fieldMenu.fieldId) : undefined
+
+   // Build the right-click context-menu entries for a field: insert before/after, reorder within the
+   // zone (disabled at the ends), flip zone (label reflects the current side), toggle the label,
+   // open the color popover (anchored to the field's rect), and delete.
+   function buildFieldMenuEntries(field: typeof fields[number], fieldRect: DOMRect): ContextMenuEntry[] {
+      const zoneFields = fields.filter(entry => entry.position === field.position)
+      const zoneIndex  = zoneFields.findIndex(entry => entry.id === field.id)
+      const isBelow    = field.position === 'below'
+      const labelHidden = field.showLabel === false
+      return [
+         { label: t.addFieldBefore, icon: <Plus size={12} />,        onSelect: () => addFieldAt(field.position, zoneIndex) },
+         { label: t.addFieldAfter,  icon: <Plus size={12} />,        onSelect: () => addFieldAt(field.position, zoneIndex + 1) },
+         { type: 'separator' },
+         { label: t.moveLeft,  icon: <ChevronLeft size={12} />,  onSelect: () => moveFieldWithinZone(field.id, -1), disabled: zoneIndex === 0 },
+         { label: t.moveRight, icon: <ChevronRight size={12} />, onSelect: () => moveFieldWithinZone(field.id, 1),  disabled: zoneIndex === zoneFields.length - 1 },
+         {
+            label:    isBelow ? t.moveAboveTitle : t.moveBelowTitle,
+            icon:     isBelow ? <ArrowUp size={12} /> : <ArrowDown size={12} />,
+            onSelect: () => flipFieldZone(field.id),
+         },
+         {
+            label:    labelHidden ? t.showFieldLabel : t.hideFieldLabel,
+            icon:     labelHidden ? <Eye size={12} /> : <EyeOff size={12} />,
+            onSelect: () => toggleFieldLabel(field.id),
+         },
+         { label: t.fieldColorMenu, icon: <Palette size={12} />, onSelect: () => setColorPopover({ fieldId: field.id, rect: fieldRect }) },
+         { type: 'separator' },
+         { label: t.deleteField, icon: <X size={12} />, danger: true, onSelect: () => removeField(field.id) },
+      ]
+   }
 
    // ==========================================================
    //  Metadata zone renderers (above / below the title)
@@ -117,8 +171,17 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
       const zoneFields = fields.filter(field => field.position === position)
       return (
          <div className={`page-meta-editor page-meta-editor-${position}`}>
-            {zoneFields.map((field, zoneIndex) => (
-               <div key={field.id} className="page-meta-field" style={{ color: resolveFieldColor(field.color) }}>
+            {zoneFields.map(field => (
+               <div
+                  key={field.id}
+                  className="page-meta-field"
+                  style={{ color: resolveFieldColor(field.color) }}
+                  onContextMenu={event => {
+                     event.preventDefault()
+                     const rect = event.currentTarget.getBoundingClientRect()
+                     setFieldMenu({ fieldId: field.id, x: event.clientX, y: event.clientY, rect })
+                  }}
+               >
                   <PlainEditable
                      tag="span"
                      className={`page-meta-field-label${field.showLabel === false ? ' page-meta-field-label-hidden' : ''}`}
@@ -135,56 +198,6 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                      onBlur={value => updateField(field.id, { value: value.trim() })}
                      singleLine
                   />
-                  <span className="page-meta-field-controls" contentEditable={false}>
-                     <button
-                        type="button"
-                        data-meta-color-trigger
-                        className="page-meta-field-swatch"
-                        aria-label={t.fieldColorLabel}
-                        style={{ background: resolveFieldColor(field.color) ?? '#9ca3af' }}
-                        onClick={event => {
-                           const rect = event.currentTarget.getBoundingClientRect()
-                           setColorPopover(current => current?.fieldId === field.id ? null : { fieldId: field.id, rect })
-                        }}
-                     />
-                     <button
-                        type="button"
-                        aria-label={field.showLabel === false ? t.showFieldLabel : t.hideFieldLabel}
-                        onClick={() => toggleFieldLabel(field.id)}
-                     >
-                        {field.showLabel === false ? <EyeOff size={13} /> : <Eye size={13} />}
-                     </button>
-                     <button
-                        type="button"
-                        aria-label={t.moveLeft}
-                        disabled={zoneIndex === 0}
-                        onClick={() => moveFieldWithinZone(field.id, -1)}
-                     >
-                        <ChevronLeft size={13} />
-                     </button>
-                     <button
-                        type="button"
-                        aria-label={t.moveRight}
-                        disabled={zoneIndex === zoneFields.length - 1}
-                        onClick={() => moveFieldWithinZone(field.id, 1)}
-                     >
-                        <ChevronRight size={13} />
-                     </button>
-                     <button
-                        type="button"
-                        aria-label={t.flipFieldZone}
-                        onClick={() => flipFieldZone(field.id)}
-                     >
-                        {position === 'above' ? <ArrowDown size={13} /> : <ArrowUp size={13} />}
-                     </button>
-                     <button
-                        type="button"
-                        aria-label={t.deleteField}
-                        onClick={() => removeField(field.id)}
-                     >
-                        <X size={13} />
-                     </button>
-                  </span>
                </div>
             ))}
             <button type="button" className="page-meta-add-field" onClick={() => addField(position)}>
@@ -275,6 +288,14 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                         onPickColor={hex => setFieldColor(popoverField.id, hex)}
                         onClear={() => setFieldColor(popoverField.id, undefined)}
                         onClose={() => setColorPopover(null)}
+                     />
+                  )}
+                  {!readOnly && menuField && fieldMenu && (
+                     <ContextMenu
+                        position={{ x: fieldMenu.x, y: fieldMenu.y }}
+                        entries={buildFieldMenuEntries(menuField, fieldMenu.rect)}
+                        onClose={() => setFieldMenu(null)}
+                        className="min-w-[190px]"
                      />
                   )}
                </div>

@@ -57,19 +57,8 @@
 .doc-render .page-meta-field-label-hidden { opacity: 0.4; text-decoration: line-through; }
 .doc-render .page-meta-field-label-hidden::after { text-decoration: line-through; }
 .doc-render .page-meta-field-value { color: inherit; min-width: 4rem; outline: none; }
-.doc-render .page-meta-field-controls { display: inline-flex; align-items: center; gap: 0.15rem; opacity: 0; transition: opacity 0.12s; }
-/* Color swatch button: a small filled circle whose inline background is the field's color. */
-.doc-render .page-meta-field-controls .page-meta-field-swatch { width: 0.8rem; height: 0.8rem; border-radius: 999px; border: 1px solid rgba(0,0,0,0.2); padding: 0; }
-.doc-dark .doc-render .page-meta-field-controls .page-meta-field-swatch { border-color: rgba(255,255,255,0.25); }
-.doc-render .page-meta-field:hover .page-meta-field-controls,
-.doc-render .page-meta-field:focus-within .page-meta-field-controls { opacity: 1; }
-.doc-render .page-meta-field-controls button {
-   display: inline-flex; align-items: center; justify-content: center;
-   width: 1.15rem; height: 1.15rem; border-radius: 4px;
-   color: #9ca3af; cursor: pointer; transition: color 0.12s, background 0.12s;
-}
-.doc-render .page-meta-field-controls button:hover:not(:disabled) { color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent); }
-.doc-render .page-meta-field-controls button:disabled { opacity: 0.3; cursor: default; }
+/* Per-field editing (color, reorder, zone, hide-label, delete, insert) lives in a right-click
+   context menu (molecules/ContextMenu.tsx), so the field carries no inline hover controls. */
 .doc-render .page-meta-add-field {
    display: inline-flex; align-items: center; gap: 0.3rem;
    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
