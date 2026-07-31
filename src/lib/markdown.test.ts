@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { documentToMarkdown, markdownToDocument } from './markdown'
 import { buildFixtureDocument, buildFixtureWithoutContainers } from '../test/fixtures'
+import type { DocMeta, Section } from '../types'
 
 describe('Markdown freeform metadata', () => {
    it('parses the title plus bold-colon fields, keeping labels with spaces and colons', () => {
@@ -60,5 +61,30 @@ describe('Markdown container flattening (by design)', () => {
       expect(paragraphTexts).toContain('container right one')
       expect(paragraphTexts).toContain('container left two')
       expect(paragraphTexts).toContain('container right two')
+   })
+})
+
+// A math block serializes as a ```math fence carrying the raw LaTeX, exactly like a code fence.
+// The rendered MathML is never serialized; it is re-derived from the LaTeX on load.
+describe('Markdown math block', () => {
+   it('parses a ```math fence into a math block, keeping the raw LaTeX', () => {
+      const source = ['# Doc', '---', '', '## Section', '', '```math', 'E = mc^2', '```'].join('\n')
+      const block  = markdownToDocument(source).sections[0].blocks[0]
+      expect(block.type).toBe('math')
+      expect(block.latex).toBe('E = mc^2')
+   })
+
+   it('round-trips a math block through serialize -> parse -> serialize with LaTeX intact', () => {
+      const latex = '\\int_0^\\infty e^{-x^2}\\,dx = \\tfrac{\\sqrt{\\pi}}{2}'
+      const meta: DocMeta = { title: 'Doc', fields: [] }
+      const sections: Section[] = [{
+         id: '00000000-0000-4000-8000-000000000009', title: 'Math', collapsed: false,
+         blocks: [{ id: 'm', type: 'math', latex }],
+      }]
+      const text1    = documentToMarkdown(sections, meta)
+      expect(text1).toContain('```math')
+      const reparsed = markdownToDocument(text1)
+      expect(reparsed.sections[0].blocks[0]).toMatchObject({ type: 'math', latex })
+      expect(documentToMarkdown(reparsed.sections, reparsed.meta)).toBe(text1)
    })
 })

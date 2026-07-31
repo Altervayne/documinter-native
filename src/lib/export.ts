@@ -3,6 +3,7 @@ import { esc, slugify } from './text'
 import { renderInlineContent } from './inline'
 import { blockAnchor } from './document'
 import { highlight } from './highlight'
+import { renderLatexToMathML, TEMML_STYLES } from './math'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
@@ -31,6 +32,17 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
    if (block.type === 'code') {
       const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
       return withHandle(block, `<pre><code>${highlighted}</code></pre>`)
+   }
+   if (block.type === 'math') {
+      // Self-contained: the block ships pure MathML markup, no runtime, no fonts. An empty
+      // formula renders nothing; an invalid one falls back to its escaped LaTeX source.
+      const latex = (block.latex ?? '').trim()
+      if (!latex) return ''
+      const rendered = renderLatexToMathML(latex, true)
+      const inner = rendered.ok
+         ? rendered.mathml
+         : `<code class="doc-math-error">${esc(latex)}</code>`
+      return withHandle(block, `<div class="doc-math">${inner}</div>`)
    }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {
@@ -283,6 +295,12 @@ function buildStyles(accent: string, colors: Colors): string {
             .doc-render pre            { background: ${colors.preBg}; border: 1px solid ${colors.preBorder}; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; }
             .doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: ${colors.preText}; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
 
+            /* Math block, centered display equation. The inner override makes the display math
+               inline-block so text-align:center can center it (Temml's own rule sets width:100%). */
+            .doc-render .doc-math       { margin: 1.5rem 0; text-align: center; overflow-x: auto; }
+            .doc-render .doc-math math  { display: inline-block; text-align: initial; }
+            .doc-render .doc-math-error { color: ${colors.calloutDangerBorder}; }
+
             /* Callouts */
             .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${colors.textP}; }
             .doc-render .callout.info    { background: ${colors.calloutInfoBg}; border-color: ${colors.calloutInfoBorder}; }
@@ -361,6 +379,9 @@ function buildStyles(accent: string, colors: Colors): string {
                   .sidebar { display: none; }
                   .main { margin-left: 0; padding: 1.5rem 1rem; }
             }
+
+            /* Temml MathML rendering-correction rules (self-contained, no fonts) */
+            ${TEMML_STYLES}
    `
 }
 

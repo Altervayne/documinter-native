@@ -86,6 +86,9 @@ const allBlocks: Block[] = [
 
    ...codeBlocks,
 
+   // Math block: the LaTeX source round-trips verbatim through the ```math fence.
+   { id: 'math-block', type: 'math', latex: '\\int_0^\\infty e^{-x^2}\\,dx = \\tfrac{\\sqrt{\\pi}}{2}' },
+
    { id: 'list-block', type: 'list', items: listItems },
    { id: 'checklist-block', type: 'checklist', items: checklistItems },
 

@@ -17,6 +17,7 @@ import { useBlockContextMenu } from './useBlockContextMenu'
 import { ParagraphBlock }   from './blocks/ParagraphBlock'
 import { CalloutBlock }     from './blocks/CalloutBlock'
 import { CodeBlock }        from './blocks/CodeBlock'
+import { MathBlock }        from './blocks/MathBlock'
 import { ListBlock, type ListItemOperations } from './blocks/ListBlock'
 import { ChecklistBlock }   from './blocks/ChecklistBlock'
 import { TableBlock }       from './blocks/TableBlock'
@@ -206,6 +207,8 @@ export function WysiwygBlock({
          return <CalloutBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'code')
          return <CodeBlock block={block} patch={patch} readOnly={readOnly} />
+      if (block.type === 'math')
+         return <MathBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
          return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'checklist')

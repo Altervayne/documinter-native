@@ -53,6 +53,7 @@ function blockText(block: Block): string {
    const parts: string[] = []
    if (block.richText) parts.push(inlineText(block.richText))
    if (block.code)     parts.push(block.code)
+   if (block.latex)    parts.push(block.latex)
    if (block.alt)      parts.push(block.alt)
    if (block.caption)  parts.push(block.caption)
    if (block.items) {

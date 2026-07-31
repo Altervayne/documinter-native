@@ -68,6 +68,7 @@ describe('blkPreview', () => {
       expect(blkPreview({ id: 'x', type: 'p', richText: [{ text: 'Some paragraph' }] })).toBe('Some paragraph')
       expect(blkPreview({ id: 'x', type: 'callout', style: 'warning', richText: [{ text: 'Careful' }] })).toBe('[warning] Careful')
       expect(blkPreview({ id: 'x', type: 'code', code: 'let value = 1' })).toBe('let value = 1')
+      expect(blkPreview({ id: 'x', type: 'math', latex: 'e^{i\\pi} + 1 = 0' })).toBe('e^{i\\pi} + 1 = 0')
       expect(blkPreview({ id: 'x', type: 'container', ratio: 0.25 })).toBe('Container (25/75)')
       expect(blkPreview({ id: 'x', type: 'table', richHeaders: [[], []], richRows: [[[], []]] })).toBe('2 col × 1 rows')
       expect(blkPreview({ id: 'x', type: 'image', alt: 'a diagram' })).toBe('[Image] a diagram')
@@ -91,6 +92,9 @@ describe('mkSection / mkBlock factories', () => {
 
       const code = mkBlock('code', t)
       expect(code).toMatchObject({ type: 'code', code: t.blockDefaultCode, lang: 'windev' })
+
+      const math = mkBlock('math', t)
+      expect(math).toMatchObject({ type: 'math', latex: '' })
 
       const container = mkBlock('container', t)
       expect(container).toMatchObject({ type: 'container', ratio: 0.5, left: [], right: [] })

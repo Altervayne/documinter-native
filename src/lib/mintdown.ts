@@ -29,6 +29,19 @@ const FENCE_TO_CODE_LANG: Record<string, CodeLang> = {
    sass:       'css',
 }
 
+/**
+ * Builds the block for a closed fence from its language tag and body. A ```math fence
+ * becomes a math block carrying the raw LaTeX; every other tag becomes a code block
+ * (the rendered MathML is re-derived from the LaTeX on load, not stored).
+ */
+function buildFenceBlock(fenceLangTag: string, body: string): Block {
+   if (fenceLangTag.toLowerCase() === 'math') {
+      return { id: crypto.randomUUID(), type: 'math', latex: body }
+   }
+   const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
+   return { id: crypto.randomUUID(), type: 'code', lang, code: body }
+}
+
 // ###################
 // # PRIVATE HELPERS #
 // ###################
@@ -268,8 +281,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
       // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
-            commitBlock({ id: crypto.randomUUID(), type: 'code', lang, code: codeLines.join('\n') })
+            commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
             inCodeFence = false; fenceMark = ''; fenceLangTag = ''; codeLines = []
          } else {
             codeLines.push(line)
@@ -417,12 +429,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
    commitBlock(flushAccum())
 
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock({
-         id:   crypto.randomUUID(),
-         type: 'code',
-         lang: FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain',
-         code: codeLines.join('\n'),
-      })
+      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
    }
 
    return blocks
@@ -697,8 +704,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
-            commitBlock({ id: crypto.randomUUID(), type: 'code', lang, code: codeLines.join('\n') })
+            commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
             inCodeFence = false; fenceMark = ''; fenceLangTag = ''; codeLines = []
          } else {
             codeLines.push(line)
@@ -921,12 +927,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    commitBlock(flushAccum())
 
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock({
-         id:   crypto.randomUUID(),
-         type: 'code',
-         lang: FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain',
-         code: codeLines.join('\n'),
-      })
+      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
    }
 
    // Unclosed container at end of file: discarded per spec (no partial block emitted)

@@ -100,6 +100,14 @@ export function serializeBlock(block: Block): string {
          return `${fence}${langTag}\n${code}\n${fence}`
       }
 
+      case 'math': {
+         // A ```math fence carrying the raw LaTeX source, exactly mirroring the code fence.
+         // The rendered MathML is not serialized; it is re-derived from the LaTeX on load.
+         const latex = block.latex ?? ''
+         const fence = /^```\s*$/m.test(latex) ? '````' : '```'
+         return `${fence}math\n${latex}\n${fence}`
+      }
+
       case 'list': {
          const items = block.items ?? []
          if (items.length === 0) return ''
@@ -200,6 +208,17 @@ export function serializeBlock(block: Block): string {
 /** Maps a fence language tag string to a CodeLang (falls back to 'plain'). */
 function normalizeFenceLang(tag: string): CodeLang {
    return FENCE_LANG_TO_CODE_LANG[tag.toLowerCase()] ?? 'plain'
+}
+
+/**
+ * Builds the block for a closed fence from its language tag and body. A ```math fence
+ * becomes a math block carrying the raw LaTeX; every other tag becomes a code block.
+ */
+function buildFenceBlock(fenceLangTag: string, body: string): Block {
+   if (fenceLangTag.toLowerCase() === 'math') {
+      return { id: crypto.randomUUID(), type: 'math', latex: body }
+   }
+   return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(fenceLangTag), code: body }
 }
 
 /** Splits a Markdown pipe-table row into trimmed cell strings,
@@ -539,13 +558,12 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       if (inCodeFence) {
          // Closing fence: line is only backticks with at least fenceMark.length of them.
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            const lang: CodeLang = normalizeFenceLang(fenceLangTag)
-            const code           = codeLines.join('\n')
+            const block = buildFenceBlock(fenceLangTag, codeLines.join('\n'))
             inCodeFence  = false
             fenceMark    = ''
             fenceLangTag = ''
             codeLines    = []
-            commitBlock({ id: crypto.randomUUID(), type: 'code', lang, code })
+            commitBlock(block)
          } else {
             codeLines.push(line)
          }
@@ -767,14 +785,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    // Flush any remaining accumulator after the last line.
    commitBlock(flushAccum())
 
-   // If a code fence was never closed, emit the accumulated lines as a plain block.
+   // If a fence was never closed, emit the accumulated lines as their fenced block type.
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock({
-         id:   crypto.randomUUID(),
-         type: 'code',
-         lang: normalizeFenceLang(fenceLangTag),
-         code: codeLines.join('\n'),
-      })
+      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
    }
 
    return { sections, meta }

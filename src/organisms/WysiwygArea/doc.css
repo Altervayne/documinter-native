@@ -89,6 +89,31 @@
 /* Editable code (click-to-edit mode), reset inline-code styles */
 .doc-render pre [contenteditable] { display: block; padding: 1rem 1.25rem; background: none !important; border: none; box-shadow: none !important; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre; font-family: 'JetBrains Mono', monospace; }
 
+/* Math block, read/preview display equation.
+   The inner override makes the display math inline-block so text-align:center can
+   center it (Temml's own rule otherwise sets the math to width:100%).            */
+.doc-render .doc-math       { margin: 1.5rem 0; text-align: center; overflow-x: auto; }
+.doc-render .doc-math math  { display: inline-block; text-align: initial; }
+.doc-render .doc-math-error { color: var(--callout-danger-accent); font-family: 'JetBrains Mono', monospace; }
+
+/* Math block editor, monospaced LaTeX source over a live preview. */
+.doc-render .math-block   { margin: 1.25rem 0; }
+.doc-render .math-source  {
+  display: block; width: 100%; min-height: 3.5rem; resize: vertical;
+  padding: 0.75rem 1rem; box-sizing: border-box;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+  color: #334155; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.7;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.doc-render .math-source:focus {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent);
+}
+.doc-render .math-preview { margin-top: 0.5rem; min-height: 2rem; display: flex; justify-content: center; align-items: center; }
+.doc-render .math-preview .doc-math { margin: 0; width: 100%; }
+.doc-render .math-empty   { font-size: 0.8rem; color: #767676; font-style: italic; }
+.doc-render .math-error   { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--callout-danger-accent); white-space: pre-wrap; }
+
 /* Callouts */
 .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: #374151; }
 .doc-render .callout.info    { background: #eff6ff; border-color: #2563eb; }
@@ -384,6 +409,10 @@
 .doc-dark .doc-render pre         { background: #0d1117; border-color: #21262d; }
 .doc-dark .doc-render pre code    { color: #c9d1d9; }
 .doc-dark .doc-render pre [contenteditable] { color: #c9d1d9; }
+
+/* Math block */
+.doc-dark .doc-render .math-source        { background: #0d1117; border-color: #21262d; color: #c9d1d9; }
+.doc-dark .doc-render .math-empty         { color: #7d8490; }
 
 /* Callouts */
 .doc-dark .doc-render .callout          { color: #c9d1d9; }

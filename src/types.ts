@@ -1,4 +1,4 @@
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -65,6 +65,7 @@ export interface Block {
    style?: CalloutStyle  // callout
    code?: string         // code
    lang?: CodeLang       // code, default 'windev'
+   latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table

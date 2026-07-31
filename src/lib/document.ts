@@ -56,6 +56,7 @@ export function mkBlock(type: BlockType, t: T): Block {
       case 'h4':      return { id, type, richText: [{ text: t.blockDefaultH4 }] }
       case 'callout': return { id, type, style: 'info', richText: [{ text: t.blockDefaultCallout }] }
       case 'code':      return { id, type, code: t.blockDefaultCode, lang: 'windev' }
+      case 'math':      return { id, type, latex: '' }
       case 'list':      return {
          id, type,
          items: [
@@ -111,9 +112,11 @@ export function generateHandle(block: Block): string {
       ? blockPlainText(block)
       : block.code
          ? block.code.split('\n')[0]
-         : block.items?.[0]
-            ? listItemPlainText(block.items[0])
-            : ''
+         : block.latex
+            ? block.latex.split('\n')[0]
+            : block.items?.[0]
+               ? listItemPlainText(block.items[0])
+               : ''
    const slug = rawText.trim().toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
@@ -129,6 +132,8 @@ export function blkPreview(block: Block): string {
       return `[${block.style}] ${blockPlainText(block).substring(0, 20)}`
    if (block.type === 'code')
       return (block.code ?? '').substring(0, 32)
+   if (block.type === 'math')
+      return (block.latex ?? '').substring(0, 32)
    if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)
    if (block.type === 'table')

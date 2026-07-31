@@ -128,4 +128,25 @@ describe('Mintdown targeted parse', () => {
       expect(callout.type).toBe('callout')
       expect(callout.style).toBe('warning')
    })
+
+   it('parses a ```math fence into a math block, keeping the raw LaTeX', () => {
+      const source = mintdownDocument('', '```math', 'E = mc^2', '```')
+      const block  = mintdownToDocument(source).sections[0].blocks[0]
+      expect(block.type).toBe('math')
+      expect(block.latex).toBe('E = mc^2')
+   })
+
+   it('round-trips a math block through serialize -> parse -> serialize with LaTeX intact', () => {
+      const latex = '\\int_0^\\infty e^{-x^2}\\,dx = \\tfrac{\\sqrt{\\pi}}{2}'
+      const meta  = { title: 'Doc', fields: [] }
+      const sections = [{
+         id: '00000000-0000-4000-8000-000000000009', title: 'Math', collapsed: false,
+         blocks: [{ id: 'm', type: 'math' as const, latex }],
+      }]
+      const text1    = documentToMintdown(sections, meta)
+      expect(text1).toContain('```math')
+      const reparsed = mintdownToDocument(text1)
+      expect(reparsed.sections[0].blocks[0]).toMatchObject({ type: 'math', latex })
+      expect(documentToMintdown(reparsed.sections, reparsed.meta)).toBe(text1)
+   })
 })
