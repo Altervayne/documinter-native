@@ -22,15 +22,19 @@ interface DocumentMiniPreviewProps {
 export function DocumentMiniPreview({ meta, previewSections, docTheme, docAccent, className }: DocumentMiniPreviewProps) {
    const rootClass = ['rounded-sm doc-mini-preview', docTheme === 'dark' ? 'doc-dark' : '', className ?? ''].filter(Boolean).join(' ')
 
-   const header = `<div class="page-header">${
-      meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''
-   }<h1>${esc(meta.title) || '&nbsp;'}</h1><div class="page-meta">${
-      meta.env    ? `<span>${esc(meta.env)}</span>`    : ''
-   }${
-      meta.date   ? `<span>${esc(meta.date)}</span>`   : ''
-   }${
-      meta.author ? `<span>${esc(meta.author)}</span>` : ''
-   }</div></div>`
+   const metaRows = meta.fields
+      .filter(field => field.label.trim() !== '' || field.value.trim() !== '')
+      .map(field => {
+         const label = esc(field.label.trim())
+         const value = esc(field.value.trim())
+         const text  = label ? (value ? `${label}: ${value}` : label) : value
+         return `<span>${text}</span>`
+      })
+      .join('')
+
+   const header = `<div class="page-header"><h1>${esc(meta.title) || '&nbsp;'}</h1>${
+      metaRows ? `<div class="page-meta">${metaRows}</div>` : ''
+   }</div>`
 
    const sections = previewSections.map((section, index) =>
       `<div class="doc-section"><h2>${index + 1}. ${esc(section.title)}</h2>${

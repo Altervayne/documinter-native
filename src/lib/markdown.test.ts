@@ -2,6 +2,29 @@ import { describe, it, expect } from 'vitest'
 import { documentToMarkdown, markdownToDocument } from './markdown'
 import { buildFixtureDocument, buildFixtureWithoutContainers } from '../test/fixtures'
 
+describe('Markdown freeform metadata', () => {
+   it('parses the title plus bold-colon fields, keeping labels with spaces and colons', () => {
+      const source = [
+         '# My Doc',
+         '**Module:** Billing',
+         '**Reviewed by:** Alice Smith',
+         '**Notes:** see: the appendix',
+         '---',
+         '',
+         '## Section',
+         '',
+         'body',
+      ].join('\n')
+      const meta = markdownToDocument(source).meta
+      expect(meta.title).toBe('My Doc')
+      expect(meta.fields.map(field => [field.label, field.value])).toEqual([
+         ['Module', 'Billing'],
+         ['Reviewed by', 'Alice Smith'],
+         ['Notes', 'see: the appendix'],
+      ])
+   })
+})
+
 // Markdown round-trips the lossless subset (everything except containers). Image src/alt and
 // caption/align/height all survive — verified against the serializer's comment-based attribute
 // emission — so the fixture keeps the image; only containers are excluded.

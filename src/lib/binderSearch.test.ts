@@ -7,7 +7,7 @@ import type { BinderDocumentRecord } from '../types'
 function makeRecord(overrides: Partial<BinderDocumentRecord> = {}): BinderDocumentRecord {
    return {
       id:    'doc',
-      meta:  { module: 'Module', title: 'Title', author: 'Author', date: '2026-01-01', env: 'Env' },
+      meta:  { title: 'Title', fields: [{ id: 'f', label: 'Module', value: 'Module', position: 'below' }] },
       createdAt:       '2026-01-01T00:00:00.000Z',
       updatedAt:       '2026-01-01T00:00:00.000Z',
       lastOpenedAt:    undefined,
@@ -23,36 +23,25 @@ function makeRecord(overrides: Partial<BinderDocumentRecord> = {}): BinderDocume
    }
 }
 
-describe('matchesCriteria — global text', () => {
-   it('matches across meta, section titles, and content, case-insensitively', () => {
+describe('matchesCriteria — free-text over title, fields, sections, content', () => {
+   it('matches across title, freeform field labels + values, section titles, and content', () => {
       const record = makeRecord({
-         meta: { module: 'M', title: 'Auth Guide', author: 'A', date: '2026-01-01', env: 'E' },
+         meta: {
+            title:  'Auth Guide',
+            fields: [{ id: 'f', label: 'Reviewed by', value: 'Alice Smith', position: 'below' }],
+         },
          sectionTitles: ['Introduction'],
          contentText: 'a special phrase',
       })
-      expect(matchesCriteria(record, { text: 'auth' })).toBe(true)         // meta.title
+      expect(matchesCriteria(record, { text: 'auth' })).toBe(true)         // title
+      expect(matchesCriteria(record, { text: 'reviewed' })).toBe(true)     // field label
+      expect(matchesCriteria(record, { text: 'alice' })).toBe(true)        // field value
       expect(matchesCriteria(record, { text: 'introduction' })).toBe(true) // section title
       expect(matchesCriteria(record, { text: 'SPECIAL' })).toBe(true)      // content, case-insensitive
    })
 
    it('rejects a record that contains none of the needle', () => {
       expect(matchesCriteria(makeRecord(), { text: 'nonexistent' })).toBe(false)
-   })
-})
-
-describe('matchesCriteria — per-field queries', () => {
-   it('matches each present field as an ANDed substring', () => {
-      const record = makeRecord({
-         meta: { module: 'Billing', title: 'Invoices', author: 'Dana', date: '2026-03-04', env: 'Prod' },
-      })
-      expect(matchesCriteria(record, { fields: { title: 'invoice', module: 'bill' } })).toBe(true)
-   })
-
-   it('rejects when any single field fails, even if the others match', () => {
-      const record = makeRecord({
-         meta: { module: 'Billing', title: 'Invoices', author: 'Dana', date: '2026-03-04', env: 'Prod' },
-      })
-      expect(matchesCriteria(record, { fields: { title: 'invoice', author: 'wrong' } })).toBe(false)
    })
 })
 
@@ -94,7 +83,7 @@ describe('matchesCriteria — date ranges', () => {
    })
 
    it('rejects when one criterion in a combined object fails', () => {
-      const record = makeRecord({ meta: { module: 'M', title: 'Match', author: 'A', date: '2026-01-01', env: 'E' }, updatedAt: '2026-06-15T00:00:00.000Z' })
+      const record = makeRecord({ meta: { title: 'Match', fields: [] }, updatedAt: '2026-06-15T00:00:00.000Z' })
       // Text matches, but the updatedAt range excludes the record.
       expect(matchesCriteria(record, { text: 'match', dates: { updatedAt: { to: '2026-01-01' } } })).toBe(false)
    })
@@ -109,8 +98,8 @@ describe('documentComparator', () => {
    })
 
    it('sorts title ascending and descending', () => {
-      const apple  = makeRecord({ meta: { module: 'M', title: 'Apple',  author: 'A', date: 'd', env: 'E' } })
-      const banana = makeRecord({ meta: { module: 'M', title: 'Banana', author: 'A', date: 'd', env: 'E' } })
+      const apple  = makeRecord({ meta: { title: 'Apple',  fields: [] } })
+      const banana = makeRecord({ meta: { title: 'Banana', fields: [] } })
       expect(documentComparator('title', 'asc')(apple, banana)).toBeLessThan(0)
       expect(documentComparator('title', 'desc')(apple, banana)).toBeGreaterThan(0)
    })

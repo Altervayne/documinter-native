@@ -14,9 +14,10 @@ import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { SquareDashed } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
+import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --
@@ -37,6 +38,180 @@ interface WysiwygAreaProps {
 export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta, onAddSection, readOnly }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
+
+   // ==========================================================
+   //  Freeform metadata fields, whole-array patches to onUpdateMeta
+   // ==========================================================
+   // Fields live in one flat, ordered array; each carries a `position` ('above' | 'below') that
+   // places it in the row above or below the title. All handlers are id-based and compute the next
+   // whole array, keeping the existing onUpdateMeta({ fields }) merge pattern.
+   const fields = meta.fields
+
+   // Which field's color popover is open, plus the swatch rect that anchors it.
+   const [colorPopover, setColorPopover] = useState<{ fieldId: string; rect: DOMRect } | null>(null)
+
+   function updateField(id: string, patch: Partial<{ label: string; value: string }>) {
+      onUpdateMeta({ fields: fields.map(field => field.id === id ? { ...field, ...patch } : field) })
+   }
+   function addField(position: 'above' | 'below') {
+      onUpdateMeta({ fields: [...fields, { id: crypto.randomUUID(), label: '', value: '', position }] })
+   }
+   function removeField(id: string) {
+      onUpdateMeta({ fields: fields.filter(field => field.id !== id) })
+      setColorPopover(current => current?.fieldId === id ? null : current)
+   }
+   function flipFieldZone(id: string) {
+      onUpdateMeta({ fields: fields.map(field =>
+         field.id === id ? { ...field, position: field.position === 'above' ? 'below' : 'above' } : field) })
+   }
+   // Toggle whether the label renders in the read view + export. Default (absent/true) → false
+   // drops the label key back to the default when it flips true again, keeping the model clean.
+   function toggleFieldLabel(id: string) {
+      onUpdateMeta({ fields: fields.map(field => {
+         if (field.id !== id) return field
+         if (field.showLabel === false) { const { showLabel: _dropped, ...rest } = field; return rest }
+         return { ...field, showLabel: false }
+      }) })
+   }
+   function setFieldColor(id: string, color: string | undefined) {
+      onUpdateMeta({ fields: fields.map(field => {
+         if (field.id !== id) return field
+         if (color === undefined) { const { color: _dropped, ...rest } = field; return rest }
+         return { ...field, color }
+      }) })
+   }
+   // Reorder a field left/right within its own zone: swap it with the nearest same-zone neighbor
+   // in the flat array, so the other zone's fields keep their positions.
+   function moveFieldWithinZone(id: string, direction: -1 | 1) {
+      const current = fields.find(field => field.id === id)
+      if (!current) return
+      const zoneFlatIndices = fields.reduce<number[]>((indices, field, flatIndex) => {
+         if (field.position === current.position) indices.push(flatIndex)
+         return indices
+      }, [])
+      const zonePosition       = zoneFlatIndices.findIndex(flatIndex => fields[flatIndex].id === id)
+      const targetZonePosition = zonePosition + direction
+      if (targetZonePosition < 0 || targetZonePosition >= zoneFlatIndices.length) return
+      const flatIndexA = zoneFlatIndices[zonePosition]
+      const flatIndexB = zoneFlatIndices[targetZonePosition]
+      const nextFields = [...fields]
+      ;[nextFields[flatIndexA], nextFields[flatIndexB]] = [nextFields[flatIndexB], nextFields[flatIndexA]]
+      onUpdateMeta({ fields: nextFields })
+   }
+
+   // Resolve a field color to an inline `color` value: undefined lets CSS supply the muted gray,
+   // 'accent' tracks the document accent live, any other string is a literal hex.
+   function resolveFieldColor(color: string | undefined): string | undefined {
+      if (color === undefined) return undefined
+      if (color === 'accent')  return 'var(--doc-accent)'
+      return color
+   }
+
+   const visibleFields = fields.filter(field => field.label.trim() || field.value.trim())
+   const popoverField  = colorPopover ? fields.find(field => field.id === colorPopover.fieldId) : undefined
+
+   // ==========================================================
+   //  Metadata zone renderers (above / below the title)
+   // ==========================================================
+   function renderEditorZone(position: 'above' | 'below') {
+      const zoneFields = fields.filter(field => field.position === position)
+      return (
+         <div className={`page-meta-editor page-meta-editor-${position}`}>
+            {zoneFields.map((field, zoneIndex) => (
+               <div key={field.id} className="page-meta-field" style={{ color: resolveFieldColor(field.color) }}>
+                  <PlainEditable
+                     tag="span"
+                     className={`page-meta-field-label${field.showLabel === false ? ' page-meta-field-label-hidden' : ''}`}
+                     content={field.label}
+                     placeholder={t.placeholderFieldLabel}
+                     onBlur={value => updateField(field.id, { label: value.trim() })}
+                     singleLine
+                  />
+                  <PlainEditable
+                     tag="span"
+                     className="page-meta-field-value"
+                     content={field.value}
+                     placeholder={t.placeholderFieldValue}
+                     onBlur={value => updateField(field.id, { value: value.trim() })}
+                     singleLine
+                  />
+                  <span className="page-meta-field-controls" contentEditable={false}>
+                     <button
+                        type="button"
+                        data-meta-color-trigger
+                        className="page-meta-field-swatch"
+                        aria-label={t.fieldColorLabel}
+                        style={{ background: resolveFieldColor(field.color) ?? '#9ca3af' }}
+                        onClick={event => {
+                           const rect = event.currentTarget.getBoundingClientRect()
+                           setColorPopover(current => current?.fieldId === field.id ? null : { fieldId: field.id, rect })
+                        }}
+                     />
+                     <button
+                        type="button"
+                        aria-label={field.showLabel === false ? t.showFieldLabel : t.hideFieldLabel}
+                        onClick={() => toggleFieldLabel(field.id)}
+                     >
+                        {field.showLabel === false ? <EyeOff size={13} /> : <Eye size={13} />}
+                     </button>
+                     <button
+                        type="button"
+                        aria-label={t.moveLeft}
+                        disabled={zoneIndex === 0}
+                        onClick={() => moveFieldWithinZone(field.id, -1)}
+                     >
+                        <ChevronLeft size={13} />
+                     </button>
+                     <button
+                        type="button"
+                        aria-label={t.moveRight}
+                        disabled={zoneIndex === zoneFields.length - 1}
+                        onClick={() => moveFieldWithinZone(field.id, 1)}
+                     >
+                        <ChevronRight size={13} />
+                     </button>
+                     <button
+                        type="button"
+                        aria-label={t.flipFieldZone}
+                        onClick={() => flipFieldZone(field.id)}
+                     >
+                        {position === 'above' ? <ArrowDown size={13} /> : <ArrowUp size={13} />}
+                     </button>
+                     <button
+                        type="button"
+                        aria-label={t.deleteField}
+                        onClick={() => removeField(field.id)}
+                     >
+                        <X size={13} />
+                     </button>
+                  </span>
+               </div>
+            ))}
+            <button type="button" className="page-meta-add-field" onClick={() => addField(position)}>
+               <Plus size={13} />
+               {t.addFieldLabel}
+            </button>
+         </div>
+      )
+   }
+
+   function renderReadonlyZone(position: 'above' | 'below') {
+      const zoneFields = visibleFields.filter(field => field.position === position)
+      if (zoneFields.length === 0) return null
+      return (
+         <div className={`page-meta page-meta-${position}`}>
+            {zoneFields.map(field => {
+               const label = field.label.trim()
+               const value = field.value.trim()
+               // showLabel === false renders the value only (no label, no colon).
+               const text  = field.showLabel === false
+                  ? value
+                  : (label ? (value ? `${label}: ${value}` : label) : value)
+               return <span key={field.id} style={{ color: resolveFieldColor(field.color) }}>{text}</span>
+            })}
+         </div>
+      )
+   }
 
    const allHandles = useMemo(() =>
       sections.flatMap(section =>
@@ -80,14 +255,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
             >
             <div className="doc-render">
                <div className="page-header">
-                  <PlainEditable
-                     tag="div"
-                     className="page-module"
-                     content={meta.module || t.placeholderModule}
-                     onBlur={value => onUpdateMeta({ module: value.trim() })}
-                     singleLine
-                     readOnly={readOnly}
-                  />
+                  {readOnly ? renderReadonlyZone('above') : renderEditorZone('above')}
                   <PlainEditable
                      tag="h1"
                      content={meta.title || t.placeholderTitle}
@@ -95,39 +263,20 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
                      singleLine
                      readOnly={readOnly}
                   />
-                  <div className="page-meta">
-                     <PlainEditable
-                        tag="span"
-                        content={meta.env || t.placeholderEnv}
-                        onBlur={value => onUpdateMeta({ env: value.trim() })}
-                        singleLine
-                        readOnly={readOnly}
+                  {readOnly ? renderReadonlyZone('below') : renderEditorZone('below')}
+                  {!readOnly && colorPopover && popoverField && (
+                     <MetaFieldColorPopover
+                        activeColor={popoverField.color}
+                        anchorRect={colorPopover.rect}
+                        title={t.fieldColorLabel}
+                        accentLabel={t.colorAccentLabel}
+                        defaultLabel={t.colorDefaultLabel}
+                        onPickAccent={() => setFieldColor(popoverField.id, 'accent')}
+                        onPickColor={hex => setFieldColor(popoverField.id, hex)}
+                        onClear={() => setFieldColor(popoverField.id, undefined)}
+                        onClose={() => setColorPopover(null)}
                      />
-                     <PlainEditable
-                        tag="span"
-                        content={meta.date ? `${t.prefixUpdated} ${meta.date}` : t.placeholderDate}
-                        onBlur={value => {
-                           const stripped = value.startsWith(t.prefixUpdated)
-                              ? value.slice(t.prefixUpdated.length).trim()
-                              : value.replace(/^[^:]+:\s*/, '').trim() || value.trim()
-                           onUpdateMeta({ date: stripped })
-                        }}
-                        singleLine
-                        readOnly={readOnly}
-                     />
-                     <PlainEditable
-                        tag="span"
-                        content={meta.author ? `${t.prefixAuthor} ${meta.author}` : t.placeholderAuthor}
-                        onBlur={value => {
-                           const stripped = value.startsWith(t.prefixAuthor)
-                              ? value.slice(t.prefixAuthor.length).trim()
-                              : value.replace(/^[^:]+:\s*/, '').trim() || value.trim()
-                           onUpdateMeta({ author: stripped })
-                        }}
-                        singleLine
-                        readOnly={readOnly}
-                     />
-                  </div>
+                  )}
                </div>
 
                {sections.length === 0 && (

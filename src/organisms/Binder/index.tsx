@@ -227,8 +227,6 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
                      onSortByChange={setSortBy}
                      sortDir={sortDir}
                      onSortDirToggle={() => setSortDir(direction => direction === 'asc' ? 'desc' : 'asc')}
-                     fieldQueries={search.fieldQueries}
-                     onFieldQueryChange={search.setFieldQuery}
                      dateFilters={search.dateFilters}
                      onDateFilterChange={search.setDateFilter}
                      hasNeverOpened={search.hasNeverOpened}

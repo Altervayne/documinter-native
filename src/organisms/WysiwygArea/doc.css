@@ -40,6 +40,45 @@
 .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--doc-accent, var(--color-accent)); margin-bottom: 0.4rem; }
 .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: #111827; word-break: break-word; overflow-wrap: break-word; }
 .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #6b7280; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+/* Above / below placement rows in read-only mode, small offsets around the title. */
+.doc-render .page-meta-above { margin-bottom: 0.5rem; }
+.doc-render .page-meta-below { margin-top: 0.6rem; }
+
+/* Freeform metadata field editor (WYSIWYG only)
+   Both zones are horizontal wrapping rows. Field text defaults to the muted gray; a per-field
+   color (applied inline on .page-meta-field) is opt-in and cascades to the label and value. */
+.doc-render .page-meta-editor      { display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.25rem 1.25rem; align-items: center; }
+.doc-render .page-meta-editor-above { margin-bottom: 0.5rem; }
+.doc-render .page-meta-editor-below { margin-top: 0.6rem; }
+.doc-render .page-meta-field       { display: inline-flex; align-items: center; gap: 0.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #6b7280; }
+.doc-render .page-meta-field-label { color: inherit; min-width: 4rem; outline: none; }
+.doc-render .page-meta-field-label::after { content: ':'; opacity: 0.55; }
+/* Hidden label (showLabel === false): still editable, but visibly marked as not exporting. */
+.doc-render .page-meta-field-label-hidden { opacity: 0.4; text-decoration: line-through; }
+.doc-render .page-meta-field-label-hidden::after { text-decoration: line-through; }
+.doc-render .page-meta-field-value { color: inherit; min-width: 4rem; outline: none; }
+.doc-render .page-meta-field-controls { display: inline-flex; align-items: center; gap: 0.15rem; opacity: 0; transition: opacity 0.12s; }
+/* Color swatch button: a small filled circle whose inline background is the field's color. */
+.doc-render .page-meta-field-controls .page-meta-field-swatch { width: 0.8rem; height: 0.8rem; border-radius: 999px; border: 1px solid rgba(0,0,0,0.2); padding: 0; }
+.doc-dark .doc-render .page-meta-field-controls .page-meta-field-swatch { border-color: rgba(255,255,255,0.25); }
+.doc-render .page-meta-field:hover .page-meta-field-controls,
+.doc-render .page-meta-field:focus-within .page-meta-field-controls { opacity: 1; }
+.doc-render .page-meta-field-controls button {
+   display: inline-flex; align-items: center; justify-content: center;
+   width: 1.15rem; height: 1.15rem; border-radius: 4px;
+   color: #9ca3af; cursor: pointer; transition: color 0.12s, background 0.12s;
+}
+.doc-render .page-meta-field-controls button:hover:not(:disabled) { color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent); }
+.doc-render .page-meta-field-controls button:disabled { opacity: 0.3; cursor: default; }
+.doc-render .page-meta-add-field {
+   display: inline-flex; align-items: center; gap: 0.3rem;
+   font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+   color: #9ca3af; cursor: pointer; margin-top: 0.15rem;
+   padding: 0.15rem 0.35rem; border-radius: 4px; transition: color 0.12s, background 0.12s;
+}
+.doc-render .page-meta-add-field:hover { color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, transparent); }
+/* Dark-doc default field gray; a per-field inline color still wins via the .page-meta-field style. */
+.doc-dark .doc-render .page-meta-field { color: #8b949e; }
 
 /* Section */
 .doc-render .doc-section   { margin-bottom: 3.5rem; }

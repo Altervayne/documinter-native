@@ -135,10 +135,18 @@ export function buildFixtureDocument(): DocState {
    return {
       meta: {
          title:  'Round-Trip Fixture',
-         module: 'Testing',
-         env:    'Production',
-         date:   '2026-06-18',
-         author: 'Jane Doe',
+         // A mix of simple fields plus custom ones exercising label spaces and a value with a
+         // colon (which forces YAML value-quoting in Mintdown), so the round-trip covers quoting.
+         // `Module` is an above-title, accent-colored field (the old fixed-layout look) so the
+         // round-trip also exercises the position + color inline-mapping encoding.
+         fields: [
+            { id: 'field-module',      label: 'Module',      value: 'Testing',    position: 'above', color: 'accent' },
+            { id: 'field-environment', label: 'Environment', value: 'Production', position: 'below' },
+            { id: 'field-date',        label: 'Date',        value: '2026-06-18', position: 'below' },
+            { id: 'field-author',      label: 'Author',      value: 'Jane Doe',   position: 'below' },
+            { id: 'field-reviewed',    label: 'Reviewed by', value: 'Alice Smith', position: 'below' },
+            { id: 'field-notes',       label: 'Notes',       value: 'see: the appendix', position: 'below' },
+         ],
       },
       sections: [
          // UUID-shaped id: Markdown serializes the section id as a comment and only re-parses it

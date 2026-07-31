@@ -8,7 +8,7 @@
  */
 
 import { parseInlineContent, stripTrailingNewlines } from './inline'
-import type { Block, DocState, InlineContent, ListItem, Section } from '../types'
+import type { Block, DocMeta, DocState, InlineContent, ListItem, MetaField, Section } from '../types'
 
 // Fields present in JSON files saved before the InlineContent migration.
 // Not part of the canonical types, kept here only for migration reads.
@@ -94,9 +94,66 @@ function migrateBlock(rawBlock: LegacyRawBlock): Block {
    return clean
 }
 
+// ############################
+// # DOCUMENT METADATA MIGRATION #
+// ############################
+
+/**
+ * Bring any historical document-metadata shape up to the current freeform model
+ * ({ title, fields }). Idempotent: already-new records are normalized and returned;
+ * legacy flat records ({ module, title, author, date, env }) become a title plus an
+ * ordered list of { id, label, value, position, color } fields, dropping any that were empty.
+ *
+ * Zone/color reproduction of the old fixed layout: the module tag sat above the title in the
+ * accent color; env / date / author sat below in the default muted gray.
+ */
+export function migrateMeta(meta: unknown): DocMeta {
+   const raw = (meta ?? {}) as Record<string, unknown>
+
+   // Already the new shape: normalize each field, minting an id if one is missing. Records saved
+   // by the pre-zone freeform version lack `position`, so backfill it to 'below'; `color` passes
+   // through untouched when it is a string, and stays absent otherwise.
+   if (Array.isArray(raw.fields)) {
+      const title  = typeof raw.title === 'string' ? raw.title : ''
+      const fields = raw.fields
+         .filter((field): field is Record<string, unknown> => typeof field === 'object' && field !== null)
+         .map((field): MetaField => ({
+            id:       typeof field.id === 'string'    ? field.id    : crypto.randomUUID(),
+            label:    typeof field.label === 'string' ? field.label : '',
+            value:    typeof field.value === 'string' ? field.value : '',
+            position: field.position === 'above' ? 'above' : 'below',
+            ...(typeof field.color === 'string' ? { color: field.color } : {}),
+            ...(field.showLabel === false ? { showLabel: false } : {}),
+         }))
+      return { title, fields }
+   }
+
+   // Legacy flat shape: map the four fixed fields to freeform entries, in display order,
+   // keeping only those that carried a non-empty value. `module` reproduces the old
+   // accent-colored tag above the title; the rest are plain muted fields below it.
+   const title  = typeof raw.title === 'string' ? raw.title : ''
+   const fields: MetaField[] = []
+   const pushIfPresent = (
+      value: unknown,
+      label: string,
+      position: 'above' | 'below',
+      color?: string,
+   ): void => {
+      if (typeof value === 'string' && value.trim() !== '') {
+         fields.push({ id: crypto.randomUUID(), label, value, position, ...(color ? { color } : {}) })
+      }
+   }
+   pushIfPresent(raw.module, 'Module',      'above', 'accent')
+   pushIfPresent(raw.env,    'Environment', 'below')
+   pushIfPresent(raw.date,   'Date',        'below')
+   pushIfPresent(raw.author, 'Author',      'below')
+   return { title, fields }
+}
+
 export function migrateIds(state: DocState): DocState {
    return {
       ...state,
+      meta: migrateMeta(state.meta),
       sections: state.sections.map((sec: Section) => ({
          ...sec,
          id: String(sec.id),

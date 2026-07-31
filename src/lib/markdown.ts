@@ -326,11 +326,13 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
    // ===============
    //  Metadata block
    // ===============
+   // title stays first-class; each freeform field becomes a bold-colon line, in order. An
+   // empty-label field can't form a `**label:**` key, so it is skipped.
    parts.push(`# ${meta.title}`)
-   parts.push(`**Module:** ${meta.module}`)
-   parts.push(`**Environment:** ${meta.env}`)
-   parts.push(`**Date:** ${meta.date}`)
-   parts.push(`**Author:** ${meta.author}`)
+   for (const field of meta.fields) {
+      if (field.label.trim() === '') continue
+      parts.push(`**${field.label.trim()}:** ${field.value}`)
+   }
    parts.push('---')
 
    // =========
@@ -374,7 +376,7 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
 export function markdownToDocument(source: string): { sections: Section[], meta: DocMeta } {
    const lines = source.split('\n')
 
-   const meta: DocMeta = { title: '', module: '', env: '', date: '', author: '' }
+   const meta: DocMeta = { title: '', fields: [] }
    const sections: Section[] = []
 
    let lineIndex = 0
@@ -395,18 +397,12 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // **Key:** value  (bold-colon format)
-      const fieldMatch = line.match(/^\*\*(\w+):\*\* (.*)$/)
+      // **Label:** value  (bold-colon format; label may contain spaces / special chars)
+      // Markdown is the lossy portable format: position/color are not encoded, so parsed
+      // fields default to the below-title zone with the default (undefined) color.
+      const fieldMatch = line.match(/^\*\*(.+?):\*\*\s?(.*)$/)
       if (fieldMatch) {
-         const key   = fieldMatch[1].toLowerCase()
-         const value = fieldMatch[2]
-         switch (key) {
-            case 'module':       meta.module = value; break
-            case 'environment':
-            case 'env':          meta.env    = value; break
-            case 'date':         meta.date   = value; break
-            case 'author':       meta.author = value; break
-         }
+         meta.fields.push({ id: crypto.randomUUID(), label: fieldMatch[1].trim(), value: fieldMatch[2], position: 'below' })
       }
    }
 

@@ -86,12 +86,23 @@ export interface Section {
    blocks: Block[]
 }
 
+/** One user-defined document metadata field: a freeform label paired with a freeform value.
+ *  `position` places the field in the row above or below the title. `color` tints the field
+ *  text: undefined = the default muted meta gray, 'accent' = var(--doc-accent) tracked live, or
+ *  any literal hex. `showLabel` controls whether the label (and its colon) render in the read
+ *  view + export: undefined/true = show (default), false = value-only. */
+export interface MetaField {
+   id:        string   // stable id, from the same generator as mkBlock/mkSection (crypto.randomUUID)
+   label:     string
+   value:     string
+   position:  'above' | 'below'   // relative to the title
+   color?:    string              // undefined = default muted; 'accent' = var(--doc-accent) live; or a hex
+   showLabel?: boolean            // undefined/true = show label; false = render value only
+}
+
 export interface DocMeta {
-   module: string
-   title: string
-   author: string
-   date: string
-   env: string
+   title:  string
+   fields: MetaField[]
 }
 
 export interface DocState {

@@ -23,16 +23,79 @@ function mintdownDocument(...bodyLines: string[]): string {
    return [
       '---',
       'title: T',
-      'module: M',
-      'environment: E',
-      'date: D',
-      'author: A',
+      'Module: M',
       '---',
       '',
       '## Section',
       ...bodyLines,
    ].join('\n')
 }
+
+describe('Mintdown freeform metadata', () => {
+   it('round-trips the title plus custom fields, preserving order and values', () => {
+      const source = [
+         '---',
+         'title: My Doc',
+         'Module: Billing',
+         'Reviewed by: Alice Smith',
+         'Notes: "see: the appendix"',
+         '---',
+         '',
+         '## Section',
+         '',
+         'body',
+      ].join('\n')
+      const meta = mintdownToDocument(source).meta
+      expect(meta.title).toBe('My Doc')
+      expect(meta.fields.map(field => [field.label, field.value])).toEqual([
+         ['Module', 'Billing'],
+         ['Reviewed by', 'Alice Smith'],
+         ['Notes', 'see: the appendix'],
+      ])
+   })
+
+   it('round-trips field position + color: an above accent field and a plain below field', () => {
+      const meta = {
+         title: 'Doc',
+         fields: [
+            { id: 'a', label: 'Module', value: 'Billing', position: 'above' as const, color: 'accent' },
+            { id: 'b', label: 'Owner',  value: 'Dana',    position: 'below' as const, color: '#ff0000' },
+            { id: 'c', label: 'Date',   value: '2026-01-01', position: 'below' as const },
+         ],
+      }
+      const serialized = documentToMintdown([], meta)
+      // The above/accent and hex fields emit as inline mappings; the plain field stays a scalar.
+      expect(serialized).toContain('Module: { value: Billing, position: above, color: accent }')
+      expect(serialized).toContain('Owner: { value: Dana, color: "#ff0000" }')
+      expect(serialized).toContain('Date: 2026-01-01')
+
+      const parsed = mintdownToDocument(serialized).meta
+      expect(parsed.fields.map(field => ({ label: field.label, value: field.value, position: field.position, color: field.color }))).toEqual([
+         { label: 'Module', value: 'Billing',    position: 'above', color: 'accent' },
+         { label: 'Owner',  value: 'Dana',       position: 'below', color: '#ff0000' },
+         { label: 'Date',   value: '2026-01-01', position: 'below', color: undefined },
+      ])
+   })
+
+   it('round-trips a hidden-label field (showLabel: false), leaving default fields as scalars', () => {
+      const meta = {
+         title: 'Doc',
+         fields: [
+            { id: 'a', label: 'Version', value: '1.2.0', position: 'below' as const, showLabel: false },
+            { id: 'b', label: 'Date',    value: '2026-01-01', position: 'below' as const },
+         ],
+      }
+      const serialized = documentToMintdown([], meta)
+      expect(serialized).toContain('Version: { value: 1.2.0, showLabel: false }')
+      expect(serialized).toContain('Date: 2026-01-01')
+
+      const parsed = mintdownToDocument(serialized).meta
+      expect(parsed.fields.map(field => ({ label: field.label, value: field.value, showLabel: field.showLabel }))).toEqual([
+         { label: 'Version', value: '1.2.0',      showLabel: false },
+         { label: 'Date',    value: '2026-01-01', showLabel: undefined },
+      ])
+   })
+})
 
 describe('Mintdown targeted parse', () => {
    it('parses checklist [x]/[ ] markers into checked, preserving nesting', () => {

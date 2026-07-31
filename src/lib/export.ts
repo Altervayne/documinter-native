@@ -244,9 +244,10 @@ function buildStyles(accent: string, colors: Colors): string {
 
             /* Page header */
             .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid ${colors.border}; }
-            .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${accent}; margin-bottom: 0.4rem; }
             .doc-render h1             { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.6rem; color: ${colors.textH}; }
             .doc-render .page-meta     { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: ${colors.textMuted}; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+            .doc-render .page-meta-above { margin-bottom: 0.5rem; }
+            .doc-render .page-meta-below { margin-top: 0.6rem; }
 
             /* Sections */
             .doc-render .doc-section   { margin-bottom: 3.5rem; scroll-margin-top: 1.5rem; }
@@ -364,8 +365,45 @@ function buildStyles(accent: string, colors: Colors): string {
 }
 
 const STRINGS = {
-   en: { updated: 'Updated:', author: 'Author:', fallback: 'Documentation', madeWith: 'Made with Documinter' },
-   fr: { updated: 'Mis à jour :', author: 'Auteur :', fallback: 'Documentation', madeWith: 'Fait avec Documinter' },
+   en: { fallback: 'Documentation', madeWith: 'Made with Documinter' },
+   fr: { fallback: 'Documentation', madeWith: 'Fait avec Documinter' },
+}
+
+/**
+ * Resolve a field color to an export-safe literal, or null when it should fall back to the
+ * default muted gray supplied by CSS. 'accent' tracks the document accent (export has no live
+ * CSS var, so the accent value is substituted); any other string is a literal hex.
+ */
+function resolveExportColor(color: string | undefined, accent: string): string | null {
+   if (color === undefined) return null
+   if (color === 'accent')  return accent
+   return color
+}
+
+/**
+ * Render the freeform metadata fields for one placement zone (above or below the title) as a
+ * horizontal `.page-meta` row, skipping any field that is fully empty. Each field shows its
+ * label (when present) followed by its value, tinted with the field's resolved color.
+ */
+function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: string): string {
+   const rows = meta.fields
+      .filter(field => field.position === position)
+      .filter(field => field.label.trim() !== '' || field.value.trim() !== '')
+      .map(field => {
+         const label     = esc(field.label.trim())
+         const value     = esc(field.value.trim())
+         const resolved  = resolveExportColor(field.color, accent)
+         const styleAttr = resolved ? ` style="color:${resolved}"` : ''
+         // showLabel === false renders the value only (no label, no colon).
+         const showLabel = field.showLabel !== false
+         const inner = showLabel
+            ? (label ? (value ? `${label}: ${value}` : label) : value)
+            : value
+         return `<span class="page-meta-field"${styleAttr}>${inner}</span>`
+      })
+   if (rows.length === 0) return ''
+   const zoneClass = position === 'above' ? 'page-meta page-meta-above' : 'page-meta page-meta-below'
+   return `<div class="${zoneClass}">${rows.join('')}</div>`
 }
 
 export function generateExportHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): string {
@@ -399,7 +437,7 @@ ${blocksHTML}
 <body>
 
 <aside class="sidebar">
-      <span class="sidebar-brand">${esc(meta.module) || strings.fallback}</span>
+      <span class="sidebar-brand">${esc(meta.title) || strings.fallback}</span>
       <nav>
 ${navLinks}
       </nav>
@@ -409,13 +447,9 @@ ${navLinks}
       <div class="doc-card">
             <div class="doc-render">
                   <div class="page-header">
-                        ${meta.module ? `<div class="page-module">${esc(meta.module)}</div>` : ''}
+                        ${renderMetaZone(meta, 'above', accent)}
                         <h1>${esc(meta.title) || strings.fallback}</h1>
-                        <div class="page-meta">
-                              ${meta.env    ? `<span>${esc(meta.env)}</span>` : ''}
-                              ${meta.date   ? `<span>${strings.updated} ${esc(meta.date)}</span>` : ''}
-                              ${meta.author ? `<span>${strings.author} ${esc(meta.author)}</span>` : ''}
-                        </div>
+                        ${renderMetaZone(meta, 'below', accent)}
                   </div>
                   ${sectionsHTML}
             </div>

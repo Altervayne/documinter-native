@@ -13,14 +13,16 @@ import {
 } from './binderDatabase'
 import { buildPreviewSections, extractDocumentText } from './documentPreview'
 import { matchesCriteria, documentComparator, type DocumentListFilter } from './binderSearch'
-import { migrateIds } from './documentMigration'
+import { migrateIds, migrateMeta } from './documentMigration'
 import { cloneBlock } from './document'
 import type {
    DocMeta, DocState, Section,
    BinderDocumentRecord, BinderDocumentContent,
 } from '../types'
 
-const RECORD_SCHEMA_VERSION = 2   // v2 adds contentText (flattened block text for full-text search)
+const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to freeform meta
+                                  // (v3 moved meta to the freeform { title, fields } shape;
+                                  //  v2 added contentText, the flattened block text for full-text search)
 
 /** Presentation settings persisted per-document alongside the DocState. */
 export interface DocPresentation {
@@ -155,6 +157,10 @@ export async function listDocuments(filter?: DocumentListFilter): Promise<Binder
       : store.getAll()
    let records = await requestToPromise<BinderDocumentRecord[]>(sourceRequest)
 
+   // Light records stored before the freeform-metadata migration still carry the legacy flat meta.
+   // Normalize on read so the cards + free-text search always see the { title, fields } shape.
+   records = records.map(record => ({ ...record, meta: migrateMeta(record.meta) }))
+
    if (filter?.criteria) records = records.filter(record => matchesCriteria(record, filter.criteria!))
 
    records.sort(documentComparator(filter?.sortBy ?? 'updatedAt', filter?.sortDir ?? 'desc'))
@@ -196,7 +202,7 @@ export async function duplicateDocument(id: string): Promise<string> {
 
    const newRecord: BinderDocumentRecord = {
       id:            newId,
-      meta:          sourceRecord.meta,
+      meta:          migrateMeta(sourceRecord.meta),
       createdAt:     now,
       updatedAt:     now,
       lastOpenedAt:  undefined,

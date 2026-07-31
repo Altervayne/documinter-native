@@ -6,31 +6,7 @@
  * import from here so the editable draft state and the storage criteria stay in lock-step.
  */
 
-import type { DateFilter, FieldQuery } from '../../lib/binderSearch'
-
-/** The targeted-field keys, in the order they appear in the filter panel. */
-export type FieldQueryKey = keyof FieldQuery
-export const FIELD_QUERY_KEYS: FieldQueryKey[] = ['title', 'module', 'env', 'author', 'date', 'sectionTitles', 'content']
-
-/** Editable per-field text state (strings always present so inputs stay controlled). */
-export type FieldQueryDraft = Record<FieldQueryKey, string>
-
-export const EMPTY_FIELD_QUERY: FieldQueryDraft = {
-   title: '', module: '', env: '', author: '', date: '', sectionTitles: '', content: '',
-}
-
-/** Reduce the editable field drafts to a FieldQuery of just the non-blank entries, or undefined. */
-export function fieldQueryDraftToCriteria(draft: FieldQueryDraft): FieldQuery | undefined {
-   const result: FieldQuery = {}
-   let hasAny = false
-   for (const key of FIELD_QUERY_KEYS) {
-      if (draft[key].trim()) {
-         result[key] = draft[key]
-         hasAny = true
-      }
-   }
-   return hasAny ? result : undefined
-}
+import type { DateFilter } from '../../lib/binderSearch'
 
 /** How a date field is constrained: at/after a day, at/before a day, or within a range. */
 export type DateFilterMode = 'after' | 'before' | 'between'

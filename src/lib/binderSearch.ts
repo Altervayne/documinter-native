@@ -9,17 +9,6 @@ import type { BinderDocumentRecord } from '../types'
 
 export type DocumentSortBy = 'updatedAt' | 'createdAt' | 'lastOpenedAt' | 'title' | 'manual'
 
-/** Per-field targeted text queries (each an independent case-insensitive substring, all ANDed). */
-export interface FieldQuery {
-   title?:         string
-   module?:        string
-   env?:           string
-   author?:        string
-   date?:          string
-   sectionTitles?: string
-   content?:       string
-}
-
 /** The three timestamps a search can constrain. */
 export type DocumentDateField = 'updatedAt' | 'createdAt' | 'lastOpenedAt'
 
@@ -43,8 +32,7 @@ export interface DateFilter {
  * not here.
  */
 export interface SearchCriteria {
-   text?:           string                                   // global full-text: meta + section titles + contents
-   fields?:         FieldQuery                               // targeted per-field substrings
+   text?:           string                                   // free-text: title + every field label/value + section titles + contents
    dates?:          Partial<Record<DocumentDateField, DateFilter>>
    hasNeverOpened?: boolean
 }
@@ -57,20 +45,16 @@ export interface DocumentListFilter {
    criteria?: SearchCriteria          // multi-criteria search (all ANDed; within folderId scope)
 }
 
-/** Global full-text match: all metadata fields + section titles + flattened block contents. */
+/** Global free-text match: title + every freeform field's label/value + section titles + contents. */
 function matchesText(record: BinderDocumentRecord, needle: string): boolean {
+   const fieldText = record.meta.fields.map(field => `${field.label} ${field.value}`).join(' ')
    const haystack = [
-      record.meta.title, record.meta.module, record.meta.env, record.meta.author, record.meta.date,
+      record.meta.title,
+      fieldText,
       record.sectionTitles.join(' '),
       record.contentText ?? '',
    ].join(' ').toLowerCase()
    return haystack.includes(needle)
-}
-
-/** True when needle is empty/whitespace, or is a case-insensitive substring of haystack. */
-function fieldMatches(needle: string | undefined, haystack: string): boolean {
-   const trimmed = needle?.trim().toLowerCase()
-   return !trimmed || haystack.toLowerCase().includes(trimmed)
 }
 
 /** The day portion (YYYY-MM-DD) of the record's chosen date field, or undefined if unset. */
@@ -85,17 +69,6 @@ function recordDateDay(record: BinderDocumentRecord, field: DocumentDateField): 
 export function matchesCriteria(record: BinderDocumentRecord, criteria: SearchCriteria): boolean {
    const text = criteria.text?.trim().toLowerCase()
    if (text && !matchesText(record, text)) return false
-
-   if (criteria.fields) {
-      const fields = criteria.fields
-      if (!fieldMatches(fields.title,         record.meta.title))            return false
-      if (!fieldMatches(fields.module,        record.meta.module))           return false
-      if (!fieldMatches(fields.env,           record.meta.env))              return false
-      if (!fieldMatches(fields.author,        record.meta.author))           return false
-      if (!fieldMatches(fields.date,          record.meta.date))             return false
-      if (!fieldMatches(fields.sectionTitles, record.sectionTitles.join(' '))) return false
-      if (!fieldMatches(fields.content,       record.contentText ?? ''))     return false
-   }
 
    if (criteria.hasNeverOpened && record.lastOpenedAt !== undefined) return false
 

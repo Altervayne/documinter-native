@@ -22,7 +22,7 @@ describe('cloneBlock', () => {
 
    // normalizeIds operates on a DocState, so wrap the block to reuse it for the structural compare.
    function asNormalizedDoc(block: Block): DocState {
-      const meta: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
+      const meta: DocMeta = { title: '', fields: [] }
       return normalizeIds({ meta, sections: [{ id: 's', title: '', collapsed: false, blocks: [block] }] })
    }
 

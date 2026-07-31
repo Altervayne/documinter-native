@@ -3,8 +3,8 @@ import { Search, X, ArrowUp, ArrowDown, SlidersHorizontal, Square, CheckSquare }
 import { DOCUMENT_DATE_FIELDS } from '../../lib/binderSearch'
 import type { DocumentSortBy, DocumentDateField, DateFilter } from '../../lib/binderSearch'
 import { useLang } from '../../contexts/LangContext'
-import { dateDraftToFilter, FIELD_QUERY_KEYS } from './searchFilters'
-import type { DateFilterMode, DateFilterDraft, SearchScope, FieldQueryDraft, FieldQueryKey } from './searchFilters'
+import { dateDraftToFilter } from './searchFilters'
+import type { DateFilterMode, DateFilterDraft, SearchScope } from './searchFilters'
 
 interface BinderControlsProps {
    // Simple text search
@@ -16,8 +16,6 @@ interface BinderControlsProps {
    sortDir:         'asc' | 'desc'
    onSortDirToggle: () => void
    // Advanced filters
-   fieldQueries:           FieldQueryDraft
-   onFieldQueryChange:     (key: FieldQueryKey, value: string) => void
    dateFilters:            Record<DocumentDateField, DateFilterDraft>
    onDateFilterChange:     (field: DocumentDateField, next: DateFilterDraft) => void
    hasNeverOpened:         boolean
@@ -96,12 +94,6 @@ function DateFilterRow({
    )
 }
 
-/** Shorten a field-query value for its chip so long content searches don't sprawl. */
-function truncateValue(value: string): string {
-   const trimmed = value.trim()
-   return trimmed.length > 18 ? `${trimmed.slice(0, 18)}…` : trimmed
-}
-
 /** Build the chip text for a date bound: "Updated ≥ x", "Updated ≤ y", or "Updated x – y". */
 function dateChipLabel(fieldLabel: string, bounds: DateFilter): string {
    if (bounds.from && bounds.to) return `${fieldLabel} ${bounds.from} – ${bounds.to}`
@@ -116,7 +108,7 @@ function dateChipLabel(fieldLabel: string, bounds: DateFilter): string {
  */
 export function BinderControls({
    search, onSearchChange, sortBy, onSortByChange, sortDir, onSortDirToggle,
-   fieldQueries, onFieldQueryChange, dateFilters, onDateFilterChange,
+   dateFilters, onDateFilterChange,
    hasNeverOpened, onHasNeverOpenedToggle, scope, onScopeChange, onClearFilters,
 }: BinderControlsProps) {
    const { t } = useLang()
@@ -143,27 +135,15 @@ export function BinderControls({
       between: t.binderDateBetween,
    }
 
-   const fieldLabels: Record<FieldQueryKey, string> = {
-      title:         t.binderFieldTitle,
-      module:        t.binderFieldModule,
-      env:           t.binderFieldEnv,
-      author:        t.binderFieldAuthor,
-      date:          t.binderFieldDate,
-      sectionTitles: t.binderFieldSectionTitles,
-      content:       t.binderFieldContent,
-   }
-
    // =======================================================
    //  Active-criteria bookkeeping (drives the badge + chips)
    // =======================================================
-   const activeFields = FIELD_QUERY_KEYS.filter(key => fieldQueries[key].trim())
-
    const activeDateFields = DOCUMENT_DATE_FIELDS
       .map(field => ({ field, bounds: dateDraftToFilter(dateFilters[field]) }))
       .filter((entry): entry is { field: DocumentDateField; bounds: DateFilter } => entry.bounds !== undefined)
 
    const scopeActive = scope === 'current'
-   const activeCount = activeFields.length + activeDateFields.length + (hasNeverOpened ? 1 : 0) + (scopeActive ? 1 : 0)
+   const activeCount = activeDateFields.length + (hasNeverOpened ? 1 : 0) + (scopeActive ? 1 : 0)
 
    const scopeButtonClass = (value: SearchScope) =>
       `px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
@@ -246,24 +226,6 @@ export function BinderControls({
                   </div>
                </div>
 
-               {/* Targeted per-field text search */}
-               <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
-                  <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted/70">{t.binderTargetedSearch}</span>
-                  <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                     {FIELD_QUERY_KEYS.map(key => (
-                        <label key={key} className="flex flex-col gap-1 min-w-0">
-                           <span className="text-xs text-muted">{fieldLabels[key]}</span>
-                           <input
-                              type="text"
-                              value={fieldQueries[key]}
-                              onChange={event => onFieldQueryChange(key, event.target.value)}
-                              className="w-full bg-el border border-border rounded-md px-2 py-1.5 text-sm text-text outline-none focus:border-accent transition-colors placeholder:text-muted/50"
-                           />
-                        </label>
-                     ))}
-                  </div>
-               </div>
-
                {/* Date constraints, one independent row per date field */}
                <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
                   <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted/70">{t.binderDatesHeading}</span>
@@ -302,13 +264,6 @@ export function BinderControls({
                {scopeActive && (
                   <FilterChip label={t.binderScopeCurrentChip} onRemove={() => onScopeChange('global')} />
                )}
-               {activeFields.map(key => (
-                  <FilterChip
-                     key={key}
-                     label={`${fieldLabels[key]}: ${truncateValue(fieldQueries[key])}`}
-                     onRemove={() => onFieldQueryChange(key, '')}
-                  />
-               ))}
                {activeDateFields.map(({ field, bounds }) => (
                   <FilterChip
                      key={field}

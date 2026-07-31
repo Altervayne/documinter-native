@@ -4,17 +4,15 @@ import type { Dispatch, SetStateAction } from 'react'
 
 // -- Lib Imports --
 import { DOCUMENT_DATE_FIELDS } from '../lib/binderSearch'
-import type { SearchCriteria, DocumentDateField, DateFilter, FieldQuery } from '../lib/binderSearch'
+import type { SearchCriteria, DocumentDateField, DateFilter } from '../lib/binderSearch'
 
 // -- Binder-local search helpers --
-import { EMPTY_DATE_FILTER, EMPTY_FIELD_QUERY, dateDraftToFilter, fieldQueryDraftToCriteria } from '../organisms/Binder/searchFilters'
-import type { DateFilterDraft, SearchScope, FieldQueryDraft, FieldQueryKey } from '../organisms/Binder/searchFilters'
+import { EMPTY_DATE_FILTER, dateDraftToFilter } from '../organisms/Binder/searchFilters'
+import type { DateFilterDraft, SearchScope } from '../organisms/Binder/searchFilters'
 
 interface UseBinderSearchResult {
    searchInput:       string
    setSearchInput:    Dispatch<SetStateAction<string>>
-   fieldQueries:      FieldQueryDraft
-   setFieldQuery:     (key: FieldQueryKey, value: string) => void
    dateFilters:       Record<DocumentDateField, DateFilterDraft>
    setDateFilter:     (field: DocumentDateField, next: DateFilterDraft) => void
    hasNeverOpened:    boolean
@@ -42,10 +40,7 @@ export function useBinderSearch(): UseBinderSearchResult {
    const [searchInput, setSearchInput]         = useState('')
    const [debouncedSearch, setDebouncedSearch] = useState('')
 
-   // Advanced filters: targeted per-field queries, an independent date constraint per field,
-   // never-opened, and search scope.
-   const [fieldQueries, setFieldQueries]                   = useState<FieldQueryDraft>(EMPTY_FIELD_QUERY)
-   const [debouncedFieldQueries, setDebouncedFieldQueries] = useState<FieldQueryDraft>(EMPTY_FIELD_QUERY)
+   // Advanced filters: an independent date constraint per field, never-opened, and search scope.
    const [dateFilters, setDateFilters] = useState<Record<DocumentDateField, DateFilterDraft>>({
       updatedAt:    EMPTY_DATE_FILTER,
       createdAt:    EMPTY_DATE_FILTER,
@@ -54,9 +49,6 @@ export function useBinderSearch(): UseBinderSearchResult {
    const [hasNeverOpened, setHasNeverOpened] = useState(false)
    const [scope, setScope]                   = useState<SearchScope>('global')
 
-   const setFieldQuery = useCallback((key: FieldQueryKey, value: string) => {
-      setFieldQueries(previous => ({ ...previous, [key]: value }))
-   }, [])
    const setDateFilter = useCallback((field: DocumentDateField, next: DateFilterDraft) => {
       setDateFilters(previous => ({ ...previous, [field]: next }))
    }, [])
@@ -66,30 +58,22 @@ export function useBinderSearch(): UseBinderSearchResult {
       return () => clearTimeout(timer)
    }, [searchInput])
 
-   useEffect(() => {
-      const timer = setTimeout(() => setDebouncedFieldQueries(fieldQueries), 250)
-      return () => clearTimeout(timer)
-   }, [fieldQueries])
-
    const criteria = useMemo<SearchCriteria>(() => {
       const dates: Partial<Record<DocumentDateField, DateFilter>> = {}
       for (const field of DOCUMENT_DATE_FIELDS) {
          const filter = dateDraftToFilter(dateFilters[field])
          if (filter) dates[field] = filter
       }
-      const fields: FieldQuery | undefined = fieldQueryDraftToCriteria(debouncedFieldQueries)
       return {
          text:           debouncedSearch.trim() || undefined,
-         fields,
          dates:          Object.keys(dates).length > 0 ? dates : undefined,
          hasNeverOpened: hasNeverOpened || undefined,
       }
-   }, [debouncedSearch, debouncedFieldQueries, dateFilters, hasNeverOpened])
+   }, [debouncedSearch, dateFilters, hasNeverOpened])
 
-   const hasActiveCriteria = Boolean(criteria.text || criteria.fields || criteria.dates || criteria.hasNeverOpened)
+   const hasActiveCriteria = Boolean(criteria.text || criteria.dates || criteria.hasNeverOpened)
 
    const clearFilters = useCallback(() => {
-      setFieldQueries(EMPTY_FIELD_QUERY)
       setDateFilters({ updatedAt: EMPTY_DATE_FILTER, createdAt: EMPTY_DATE_FILTER, lastOpenedAt: EMPTY_DATE_FILTER })
       setHasNeverOpened(false)
       setScope('global')
@@ -103,7 +87,6 @@ export function useBinderSearch(): UseBinderSearchResult {
 
    return {
       searchInput, setSearchInput,
-      fieldQueries, setFieldQuery,
       dateFilters, setDateFilter,
       hasNeverOpened, setHasNeverOpened,
       scope, setScope,

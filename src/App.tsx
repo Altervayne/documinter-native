@@ -43,7 +43,7 @@ import { importMintdownFile } from './lib/mintdown'
 import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
-const EMPTY_META: DocMeta = { module: '', title: '', author: '', date: '', env: '' }
+const EMPTY_META: DocMeta = { title: '', fields: [] }
 const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'   // legacy single-pointer (migrated away)
 const OPEN_DOCUMENTS_KEY      = 'documinter-open-documents'        // the open-tab set + active, for reload restore
 const DEFAULT_DOC_ACCENT = '#2dcea8'

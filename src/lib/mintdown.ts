@@ -33,6 +33,118 @@ const FENCE_TO_CODE_LANG: Record<string, CodeLang> = {
 // # PRIVATE HELPERS #
 // ###################
 
+// ==========================
+//  YAML front-matter scalars
+// ==========================
+
+/** True when a scalar can't be written bare and must be double-quoted in the front matter. */
+function yamlNeedsQuote(text: string): boolean {
+   if (text === '') return true
+   if (text !== text.trim()) return true                 // leading / trailing whitespace
+   if (/[:#"'\\\n]/.test(text)) return true              // structural or quote characters
+   if (/^[-?[\]{}&*!|>%@`,]/.test(text)) return true     // YAML indicator start characters
+   return false
+}
+
+/** Serialise a front-matter key or value, quoting (and escaping) only when necessary. */
+function yamlQuoteScalar(text: string): string {
+   if (!yamlNeedsQuote(text)) return text
+   return '"' + text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"'
+}
+
+/** Read a double-quoted scalar starting at `text[start]` (a `"`), returning its value + end index. */
+function parseQuotedScalar(text: string, start: number): { value: string; end: number } {
+   let result = ''
+   let index  = start + 1
+   while (index < text.length) {
+      const char = text[index]
+      if (char === '\\') {
+         const next = text[index + 1]
+         if (next === undefined)  { index++; break }
+         else if (next === 'n')   result += '\n'
+         else                     result += next   // covers \" and \\ and any other escape
+         index += 2
+      } else if (char === '"') {
+         return { value: result, end: index + 1 }
+      } else {
+         result += char
+         index++
+      }
+   }
+   return { value: result, end: index }
+}
+
+/**
+ * Parse the inline-mapping form of a field value: `{ value: <v>, position: above, color: <c> }`.
+ * Returns the extracted parts, or null when `text` is not a brace-wrapped mapping. Values are
+ * read with the same need-based quoting the serializer emits (double-quoted scalar or bare token).
+ */
+function parseFieldMapping(text: string): { value: string; position: string; color: string; showLabel: string } | null {
+   const trimmed = text.trim()
+   if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null
+   const inner = trimmed.slice(1, -1)
+
+   const result = { value: '', position: '', color: '', showLabel: '' }
+   let index = 0
+   while (index < inner.length) {
+      // Skip separators / whitespace between entries.
+      while (index < inner.length && (inner[index] === ',' || inner[index] === ' ')) index++
+      if (index >= inner.length) break
+
+      const colonIndex = inner.indexOf(':', index)
+      if (colonIndex === -1) break
+      const key = inner.slice(index, colonIndex).trim()
+      index = colonIndex + 1
+      while (index < inner.length && inner[index] === ' ') index++
+
+      let entryValue: string
+      if (inner[index] === '"') {
+         const parsed = parseQuotedScalar(inner, index)
+         entryValue = parsed.value
+         index = parsed.end
+      } else {
+         const commaIndex = inner.indexOf(',', index)
+         const end = commaIndex === -1 ? inner.length : commaIndex
+         entryValue = inner.slice(index, end).trim()
+         index = end
+      }
+
+      if (key === 'value')    result.value    = entryValue
+      else if (key === 'position')  result.position  = entryValue
+      else if (key === 'color')     result.color     = entryValue
+      else if (key === 'showLabel') result.showLabel = entryValue
+   }
+   return result
+}
+
+/** Parse one `key: value` front-matter line into its (possibly quoted) key + value, or null. */
+function parseFrontMatterEntry(line: string): { key: string; value: string } | null {
+   let index = 0
+   while (index < line.length && line[index] === ' ') index++
+   if (index >= line.length) return null
+
+   let key: string
+   if (line[index] === '"') {
+      const parsed = parseQuotedScalar(line, index)
+      key   = parsed.value
+      index = parsed.end
+      while (index < line.length && line[index] === ' ') index++
+      if (line[index] !== ':') return null
+      index++
+   } else {
+      const colonIndex = line.indexOf(':', index)
+      if (colonIndex === -1) return null
+      key   = line.slice(index, colonIndex).trim()
+      index = colonIndex + 1
+   }
+
+   while (index < line.length && line[index] === ' ') index++
+   const value = index < line.length && line[index] === '"'
+      ? parseQuotedScalar(line, index).value
+      : line.slice(index).trim()
+   return { key, value }
+}
+
 /** Resolves a ratio shorthand or explicit leftPct|rightPct token to a 0–1 fraction. */
 function parseRatioToken(token: string): number {
    switch (token) {
@@ -402,12 +514,26 @@ export function documentToMintdown(sections: Section[], meta: DocMeta): string {
    // ==================
    //  YAML front matter
    // ==================
+   // title stays first-class; each freeform field is keyed by its label, in order. A plain
+   // below-title field with no color stays a simple `Label: value` scalar; a field with a
+   // non-default position or a color is emitted as an inline mapping carrying those extras.
+   // Empty-label fields can't be a key, so they are skipped (they don't survive serialization).
    parts.push('---')
-   parts.push(`title: ${meta.title}`)
-   parts.push(`module: ${meta.module}`)
-   parts.push(`environment: ${meta.env}`)
-   parts.push(`date: ${meta.date}`)
-   parts.push(`author: ${meta.author}`)
+   parts.push(`title: ${yamlQuoteScalar(meta.title)}`)
+   for (const field of meta.fields) {
+      if (field.label.trim() === '') continue
+      const key = yamlQuoteScalar(field.label)
+      const isPlain = field.position === 'below' && field.color === undefined && field.showLabel !== false
+      if (isPlain) {
+         parts.push(`${key}: ${yamlQuoteScalar(field.value)}`)
+      } else {
+         const mappingParts = [`value: ${yamlQuoteScalar(field.value)}`]
+         if (field.position === 'above')     mappingParts.push('position: above')
+         if (field.color !== undefined)       mappingParts.push(`color: ${yamlQuoteScalar(field.color)}`)
+         if (field.showLabel === false)       mappingParts.push('showLabel: false')
+         parts.push(`${key}: { ${mappingParts.join(', ')} }`)
+      }
+   }
    parts.push('---')
 
    // =========
@@ -439,7 +565,7 @@ export function documentToMintdown(sections: Section[], meta: DocMeta): string {
  */
 export function mintdownToDocument(source: string): { sections: Section[], meta: DocMeta } {
    const lines = source.split('\n')
-   const meta: DocMeta = { title: '', module: '', env: '', date: '', author: '' }
+   const meta: DocMeta = { title: '', fields: [] }
    const sections: Section[] = []
 
    let lineIndex = 0
@@ -453,18 +579,24 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    if (lineIndex < lines.length && lines[lineIndex] === '---') {
       lineIndex++ // skip opening ---
       while (lineIndex < lines.length && lines[lineIndex] !== '---') {
-         const fmLine     = lines[lineIndex]
+         const fmLine = lines[lineIndex]
          lineIndex++
-         const colonIndex = fmLine.indexOf(':')
-         if (colonIndex === -1) continue
-         const key   = fmLine.slice(0, colonIndex).trim().toLowerCase()
-         const value = fmLine.slice(colonIndex + 1).trim()
-         switch (key) {
-            case 'title':       meta.title  = value; break
-            case 'module':      meta.module = value; break
-            case 'environment': meta.env    = value; break
-            case 'date':        meta.date   = value; break
-            case 'author':      meta.author = value; break
+         const entry = parseFrontMatterEntry(fmLine)
+         if (!entry) continue
+         if (entry.key.toLowerCase() === 'title') { meta.title = entry.value; continue }
+         // A brace-wrapped value carries position + color; a bare scalar is a plain below field.
+         const mapping = parseFieldMapping(entry.value)
+         if (mapping) {
+            meta.fields.push({
+               id:       crypto.randomUUID(),
+               label:    entry.key,
+               value:    mapping.value,
+               position: mapping.position === 'above' ? 'above' : 'below',
+               ...(mapping.color !== '' ? { color: mapping.color } : {}),
+               ...(mapping.showLabel === 'false' ? { showLabel: false } : {}),
+            })
+         } else {
+            meta.fields.push({ id: crypto.randomUUID(), label: entry.key, value: entry.value, position: 'below' })
          }
       }
       if (lineIndex < lines.length) lineIndex++ // skip closing ---
@@ -478,17 +610,9 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          const titleMatch = line.match(/^# (.*)$/)
          if (titleMatch) { meta.title = titleMatch[1].trim(); continue }
 
-         const fieldMatch = line.match(/^\*\*(\w+):\*\*\s*(.*)$/)
+         const fieldMatch = line.match(/^\*\*(.+?):\*\*\s?(.*)$/)
          if (fieldMatch) {
-            const key   = fieldMatch[1].toLowerCase()
-            const value = fieldMatch[2]
-            switch (key) {
-               case 'module':       meta.module = value; break
-               case 'environment':
-               case 'env':          meta.env    = value; break
-               case 'date':         meta.date   = value; break
-               case 'author':       meta.author = value; break
-            }
+            meta.fields.push({ id: crypto.randomUUID(), label: fieldMatch[1].trim(), value: fieldMatch[2], position: 'below' })
          }
       }
       if (lineIndex < lines.length && lines[lineIndex] === '---') lineIndex++
