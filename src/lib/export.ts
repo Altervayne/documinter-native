@@ -42,7 +42,11 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
       const inner = rendered.ok
          ? rendered.mathml
          : `<code class="doc-math-error">${esc(latex)}</code>`
-      return withHandle(block, `<div class="doc-math">${inner}</div>`)
+      // The MathML scales with the wrapper's font-size. Emit the inline size only for a
+      // non-default scale, so the default export stays byte-identical to before this feature.
+      const scale     = block.mathScale
+      const styleAttr = scale !== undefined && scale !== 1 ? ` style="font-size:${scale}em"` : ''
+      return withHandle(block, `<div class="doc-math"${styleAttr}>${inner}</div>`)
    }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {

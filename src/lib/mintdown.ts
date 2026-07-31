@@ -1,6 +1,7 @@
 import type { Block, CalloutStyle, CodeLang, DocMeta, Section } from '../types'
 import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
+import { parseMathScaleToken } from './mathScale'
 import { slugify } from './text'
 
 // #############
@@ -30,15 +31,22 @@ const FENCE_TO_CODE_LANG: Record<string, CodeLang> = {
 }
 
 /**
- * Builds the block for a closed fence from its language tag and body. A ```math fence
- * becomes a math block carrying the raw LaTeX; every other tag becomes a code block
- * (the rendered MathML is re-derived from the LaTeX on load, not stored).
+ * Builds the block for a closed fence from its full info string and body. The first token is the
+ * language tag; a ```math fence becomes a math block carrying the raw LaTeX, and any following
+ * `scale=<step>` token sets its display scale (junk / out-of-range values are ignored, never
+ * thrown). Every other tag becomes a code block (the MathML is re-derived from the LaTeX on load).
  */
-function buildFenceBlock(fenceLangTag: string, body: string): Block {
-   if (fenceLangTag.toLowerCase() === 'math') {
-      return { id: crypto.randomUUID(), type: 'math', latex: body }
+function buildFenceBlock(fenceInfo: string, body: string): Block {
+   const tokens  = fenceInfo.trim().split(/\s+/)
+   const langTag = tokens[0] ?? ''
+   if (langTag.toLowerCase() === 'math') {
+      const scaleToken = tokens.slice(1).find(token => token.startsWith('scale='))
+      const scale      = parseMathScaleToken(scaleToken?.slice('scale='.length))
+      const block: Block = { id: crypto.randomUUID(), type: 'math', latex: body }
+      if (scale !== undefined) block.mathScale = scale
+      return block
    }
-   const lang: CodeLang = FENCE_TO_CODE_LANG[fenceLangTag.toLowerCase()] ?? 'plain'
+   const lang: CodeLang = FENCE_TO_CODE_LANG[langTag.toLowerCase()] ?? 'plain'
    return { id: crypto.randomUUID(), type: 'code', lang, code: body }
 }
 
@@ -228,7 +236,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
 
    let inCodeFence  = false
    let fenceMark    = ''
-   let fenceLangTag = ''
+   let fenceInfo    = ''
    let codeLines:   string[] = []
 
    function flushAccum(): Block | null {
@@ -281,8 +289,8 @@ function parseBodyBlocks(lines: string[]): Block[] {
       // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
-            inCodeFence = false; fenceMark = ''; fenceLangTag = ''; codeLines = []
+            commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
+            inCodeFence = false; fenceMark = ''; fenceInfo = ''; codeLines = []
          } else {
             codeLines.push(line)
          }
@@ -306,10 +314,12 @@ function parseBodyBlocks(lines: string[]): Block[] {
       }
 
       // Opening code fence
-      const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
+      // Group 2 captures the whole info string (lang tag plus any attributes such as the
+      // math block's `scale=`), trimmed of surrounding whitespace.
+      const fenceOpenMatch = line.match(/^(`{3,})\s*(.*?)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
-         inCodeFence = true; fenceMark = fenceOpenMatch[1]; fenceLangTag = fenceOpenMatch[2]; codeLines = []
+         inCodeFence = true; fenceMark = fenceOpenMatch[1]; fenceInfo = fenceOpenMatch[2]; codeLines = []
          pendingImageBlock = null
          continue
       }
@@ -429,7 +439,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
    commitBlock(flushAccum())
 
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
+      commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
    }
 
    return blocks
@@ -460,9 +470,9 @@ function serializeCallout(block: Block): string {
 function serializeInnerBlock(block: Block): string {
    if (block.type === 'callout') return serializeCallout(block)
    if ((block.type === 'h3' || block.type === 'h4') && block.handle) {
-      return serializeBlock({ ...block, handle: undefined })
+      return serializeBlock({ ...block, handle: undefined }, { mintdown: true })
    }
-   return serializeBlock(block)
+   return serializeBlock(block, { mintdown: true })
 }
 
 /**
@@ -501,10 +511,10 @@ function serializeTopLevelBlock(block: Block): string {
    }
 
    if ((block.type === 'h3' || block.type === 'h4') && block.handle) {
-      return serializeBlock({ ...block, handle: undefined })
+      return serializeBlock({ ...block, handle: undefined }, { mintdown: true })
    }
 
-   return serializeBlock(block)
+   return serializeBlock(block, { mintdown: true })
 }
 
 // ###################################
@@ -639,7 +649,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
 
    let inCodeFence   = false
    let fenceMark     = ''
-   let fenceLangTag  = ''
+   let fenceInfo     = ''
    let codeLines:    string[] = []
 
    let inContainer     = false
@@ -704,8 +714,8 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
-            inCodeFence = false; fenceMark = ''; fenceLangTag = ''; codeLines = []
+            commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
+            inCodeFence = false; fenceMark = ''; fenceInfo = ''; codeLines = []
          } else {
             codeLines.push(line)
          }
@@ -767,10 +777,12 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       }
 
       // Opening code fence
-      const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
+      // Group 2 captures the whole info string (lang tag plus any attributes such as the
+      // math block's `scale=`), trimmed of surrounding whitespace.
+      const fenceOpenMatch = line.match(/^(`{3,})\s*(.*?)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
-         inCodeFence = true; fenceMark = fenceOpenMatch[1]; fenceLangTag = fenceOpenMatch[2]; codeLines = []
+         inCodeFence = true; fenceMark = fenceOpenMatch[1]; fenceInfo = fenceOpenMatch[2]; codeLines = []
          pendingImageBlock = null
          continue
       }
@@ -927,7 +939,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    commitBlock(flushAccum())
 
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
+      commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
    }
 
    // Unclosed container at end of file: discarded per spec (no partial block emitted)

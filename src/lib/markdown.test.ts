@@ -87,4 +87,24 @@ describe('Markdown math block', () => {
       expect(reparsed.sections[0].blocks[0]).toMatchObject({ type: 'math', latex })
       expect(documentToMarkdown(reparsed.sections, reparsed.meta)).toBe(text1)
    })
+
+   // Markdown is the lossy portable format: the display scale is intentionally dropped so the
+   // `math` info string stays bare (GitHub disables native math rendering on any info suffix).
+   it('never emits scale= even when the block carries a mathScale', () => {
+      const meta: DocMeta = { title: 'Doc', fields: [] }
+      const sections: Section[] = [{
+         id: '00000000-0000-4000-8000-00000000000a', title: 'Math', collapsed: false,
+         blocks: [{ id: 'm', type: 'math', latex: 'E = mc^2', mathScale: 1.5 }],
+      }]
+      const text = documentToMarkdown(sections, meta)
+      expect(text).toContain('```math\n')
+      expect(text).not.toContain('scale=')
+   })
+
+   it('parses a bare ```math fence with no mathScale field', () => {
+      const source = ['# Doc', '---', '', '## Section', '', '```math', 'E = mc^2', '```'].join('\n')
+      const block  = markdownToDocument(source).sections[0].blocks[0]
+      expect(block.type).toBe('math')
+      expect(block.mathScale).toBeUndefined()
+   })
 })

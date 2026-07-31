@@ -150,3 +150,55 @@ describe('Mintdown targeted parse', () => {
       expect(documentToMintdown(reparsed.sections, reparsed.meta)).toBe(text1)
    })
 })
+
+// The math block's display scale rides the Mintdown fence info string as `math scale=1.5`, and
+// only when it is a non-default step; a bare ```math means the default (no mathScale field).
+describe('Mintdown math block scale', () => {
+   function mathScaleSection(mathScale?: number) {
+      return [{
+         id: '00000000-0000-4000-8000-00000000000a', title: 'Math', collapsed: false,
+         blocks: [{ id: 'm', type: 'math' as const, latex: 'E = mc^2', ...(mathScale !== undefined ? { mathScale } : {}) }],
+      }]
+   }
+
+   it('round-trips a non-default mathScale through serialize -> parse -> serialize', () => {
+      const meta     = { title: 'Doc', fields: [] }
+      const sections = mathScaleSection(1.5)
+      const text1    = documentToMintdown(sections, meta)
+      expect(text1).toContain('```math scale=1.5')
+      const reparsed = mintdownToDocument(text1)
+      expect(reparsed.sections[0].blocks[0]).toMatchObject({ type: 'math', latex: 'E = mc^2', mathScale: 1.5 })
+      expect(documentToMintdown(reparsed.sections, reparsed.meta)).toBe(text1)
+   })
+
+   it('emits a bare ```math fence for a default-scale (unset) math block', () => {
+      const text = documentToMintdown(mathScaleSection(), { title: 'Doc', fields: [] })
+      expect(text).toContain('```math\n')
+      expect(text).not.toContain('scale=')
+   })
+
+   it('emits a bare ```math fence when mathScale is explicitly the default 1', () => {
+      const text = documentToMintdown(mathScaleSection(1), { title: 'Doc', fields: [] })
+      expect(text).not.toContain('scale=')
+   })
+
+   it('parses a `math scale=1.5` fence into a mathScale field', () => {
+      const source = mintdownDocument('', '```math scale=1.5', 'E = mc^2', '```')
+      const block  = mintdownToDocument(source).sections[0].blocks[0]
+      expect(block).toMatchObject({ type: 'math', latex: 'E = mc^2', mathScale: 1.5 })
+   })
+
+   it('parses a bare ```math fence with no mathScale field', () => {
+      const source = mintdownDocument('', '```math', 'E = mc^2', '```')
+      const block  = mintdownToDocument(source).sections[0].blocks[0]
+      expect(block.type).toBe('math')
+      expect(block.mathScale).toBeUndefined()
+   })
+
+   it('ignores an out-of-range or junk scale token, leaving mathScale unset', () => {
+      const junk = mintdownToDocument(mintdownDocument('', '```math scale=9', 'x', '```')).sections[0].blocks[0]
+      expect(junk.mathScale).toBeUndefined()
+      const nan = mintdownToDocument(mintdownDocument('', '```math scale=abc', 'x', '```')).sections[0].blocks[0]
+      expect(nan.mathScale).toBeUndefined()
+   })
+})

@@ -1,5 +1,6 @@
 import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, Section } from '../types'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
+import { parseMathScaleToken } from './mathScale'
 import { slugify } from './text'
 
 // #############
@@ -64,8 +65,13 @@ function serializeListItems(items: ListItem[], depth: number, checklist = false)
 /** Serialises a single block to its Markdown/Mintdown representation.
  *  For h3/h4 blocks that carry a handle, the handle is emitted inline as {#slug}.
  *  For all other block types, the caller is responsible for emitting the
- *  <!-- handle: slug --> comment BEFORE this function's output. */
-export function serializeBlock(block: Block): string {
+ *  <!-- handle: slug --> comment BEFORE this function's output.
+ *
+ *  `options.mintdown` selects the Mintdown flavour, which is a superset of Markdown: it
+ *  currently only affects the `math` fence (the display scale rides the fence info string in
+ *  Mintdown but is dropped in portable Markdown). Defaults to Markdown (bare) so `.md` output
+ *  is unchanged. The flag is forwarded through the recursive `container` serialization. */
+export function serializeBlock(block: Block, options?: { mintdown?: boolean }): string {
    switch (block.type) {
       case 'p': {
          return serializeInline(block.richText)
@@ -105,7 +111,14 @@ export function serializeBlock(block: Block): string {
          // The rendered MathML is not serialized; it is re-derived from the LaTeX on load.
          const latex = block.latex ?? ''
          const fence = /^```\s*$/m.test(latex) ? '````' : '```'
-         return `${fence}math\n${latex}\n${fence}`
+         // Flavour-aware info string: Mintdown carries a non-default display scale as
+         // `math scale=1.5`; portable Markdown stays bare `math` (GitHub disables its native
+         // math rendering when the info string carries any suffix), so the scale is dropped there.
+         const scale = block.mathScale
+         const info  = options?.mintdown && scale !== undefined && scale !== 1
+            ? `math scale=${scale}`
+            : 'math'
+         return `${fence}${info}\n${latex}\n${fence}`
       }
 
       case 'list': {
@@ -176,7 +189,7 @@ export function serializeBlock(block: Block): string {
             if (innerBlock.handle && !isHeading) {
                parts.push(`<!-- handle: ${innerBlock.handle} -->`)
             }
-            parts.push(serializeBlock(innerBlock))
+            parts.push(serializeBlock(innerBlock, options))
          }
 
          parts.push('')
@@ -188,7 +201,7 @@ export function serializeBlock(block: Block): string {
             if (innerBlock.handle && !isHeading) {
                parts.push(`<!-- handle: ${innerBlock.handle} -->`)
             }
-            parts.push(serializeBlock(innerBlock))
+            parts.push(serializeBlock(innerBlock, options))
          }
 
          parts.push('')
@@ -211,14 +224,22 @@ function normalizeFenceLang(tag: string): CodeLang {
 }
 
 /**
- * Builds the block for a closed fence from its language tag and body. A ```math fence
- * becomes a math block carrying the raw LaTeX; every other tag becomes a code block.
+ * Builds the block for a closed fence from its full info string and body. The first token is the
+ * language tag; a ```math fence becomes a math block carrying the raw LaTeX, and any following
+ * `scale=<step>` token sets its display scale (junk / out-of-range values are ignored). Every
+ * other tag becomes a code block. Symmetric with mintdown.ts, harmless in the bare-Markdown path.
  */
-function buildFenceBlock(fenceLangTag: string, body: string): Block {
-   if (fenceLangTag.toLowerCase() === 'math') {
-      return { id: crypto.randomUUID(), type: 'math', latex: body }
+function buildFenceBlock(fenceInfo: string, body: string): Block {
+   const tokens  = fenceInfo.trim().split(/\s+/)
+   const langTag = tokens[0] ?? ''
+   if (langTag.toLowerCase() === 'math') {
+      const scaleToken = tokens.slice(1).find(token => token.startsWith('scale='))
+      const scale      = parseMathScaleToken(scaleToken?.slice('scale='.length))
+      const block: Block = { id: crypto.randomUUID(), type: 'math', latex: body }
+      if (scale !== undefined) block.mathScale = scale
+      return block
    }
-   return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(fenceLangTag), code: body }
+   return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(langTag), code: body }
 }
 
 /** Splits a Markdown pipe-table row into trimmed cell strings,
@@ -443,7 +464,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    // Code fence state (separate from the text accumulator)
    let inCodeFence   = false
    let fenceMark     = ''    // e.g. '```' or '````'
-   let fenceLangTag  = ''    // raw language identifier after the opening fence
+   let fenceInfo     = ''    // full info string after the opening fence (lang tag + any attrs)
    let codeLines:      string[] = []
 
    // ==========================
@@ -558,10 +579,10 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       if (inCodeFence) {
          // Closing fence: line is only backticks with at least fenceMark.length of them.
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
-            const block = buildFenceBlock(fenceLangTag, codeLines.join('\n'))
+            const block = buildFenceBlock(fenceInfo, codeLines.join('\n'))
             inCodeFence  = false
             fenceMark    = ''
-            fenceLangTag = ''
+            fenceInfo    = ''
             codeLines    = []
             commitBlock(block)
          } else {
@@ -632,13 +653,14 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Opening code fence
-      const fenceOpenMatch = line.match(/^(`{3,})\s*(\S*)\s*$/)
+      // Opening code fence. Group 2 captures the whole info string (lang tag plus any
+      // attributes such as the math block's `scale=`), trimmed of surrounding whitespace.
+      const fenceOpenMatch = line.match(/^(`{3,})\s*(.*?)\s*$/)
       if (fenceOpenMatch) {
          commitBlock(flushAccum())
          inCodeFence  = true
          fenceMark    = fenceOpenMatch[1]
-         fenceLangTag = fenceOpenMatch[2]
+         fenceInfo    = fenceOpenMatch[2]
          codeLines    = []
          pendingImageBlock = null
          continue
@@ -787,7 +809,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 
    // If a fence was never closed, emit the accumulated lines as their fenced block type.
    if (inCodeFence && codeLines.length > 0) {
-      commitBlock(buildFenceBlock(fenceLangTag, codeLines.join('\n')))
+      commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
    }
 
    return { sections, meta }

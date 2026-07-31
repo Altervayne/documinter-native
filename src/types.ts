@@ -66,6 +66,7 @@ export interface Block {
    code?: string         // code
    lang?: CodeLang       // code, default 'windev'
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
+   mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
