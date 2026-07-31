@@ -4,6 +4,7 @@ import { Button } from '../atoms/Button'
 import { ColorPicker } from 'react-piqua-color'
 import type { DocMeta, Section } from '../types'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
+import { ensureTemmlReady } from '../lib/math'
 import type { Lang } from '../lib/i18n'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
@@ -26,13 +27,18 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang,
 
    const opts: ExportOptions = { theme, accent, lang }
 
-   function handleDownload() {
+   // Temml renders math to MathML synchronously, but it loads as a raw asset (see
+   // lib/math.ts). Await readiness before generating so a fresh-load export still
+   // renders equations rather than emitting "still loading" errors.
+   async function handleDownload() {
+      await ensureTemmlReady()
       downloadHTML(meta, sections, opts)
       showToast(t.downloaded, { type: 'success' })
       onClose()
    }
 
-   function handleCopy() {
+   async function handleCopy() {
+      await ensureTemmlReady()
       const html = generateExportHTML(meta, sections, opts)
       navigator.clipboard.writeText(html).then(() => {
          showToast(t.htmlCopied, { type: 'success' })

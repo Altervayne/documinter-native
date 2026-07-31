@@ -13,7 +13,74 @@
  *   ensureTemmlStyles    - idempotently inject TEMML_STYLES into the document head
  */
 
-import temml from 'temml'
+// The `?url` suffix asks Vite to hand back Temml's pre-built ESM file as a plain
+// asset URL, copied verbatim into the build with NO bundler code transform. This is
+// deliberate: Vite 8 / Rolldown (and the esbuild dep-optimizer) mis-regenerate
+// Temml's tokenizer regex when they transform it, truncating every LaTeX control
+// word to its first letter (\pi -> \p). Loading the raw file at runtime sidesteps
+// the transform entirely. The package's `exports` map ("./*": "./*") permits this
+// deep path. See docs/reports/2026-07-31-temml-optimizedeps-fix.md.
+import temmlUrl from 'temml/dist/temml.mjs?url'
+
+// #################
+// # TEMML LOADING #
+// #################
+
+/** The subset of Temml's module surface this file relies on. */
+interface TemmlModule {
+   renderToString(
+      latex: string,
+      options?: { displayMode?: boolean; throwOnError?: boolean },
+   ): string
+}
+
+/**
+ * The loaded Temml module, or null until the raw asset finishes importing. The
+ * render path stays synchronous by reading this singleton; callers gate on
+ * readiness (see isTemmlReady / onTemmlReady) so they only render once it is set.
+ */
+let loadedTemml: TemmlModule | null = null
+
+/** Callbacks waiting for the one-time load, flushed and cleared when Temml is ready. */
+const readyCallbacks = new Set<() => void>()
+
+/**
+ * Kick off the raw-asset import once, eagerly at module evaluation. `@vite-ignore`
+ * stops Vite from trying to analyse/transform the dynamic import of the asset URL.
+ */
+const temmlReadyPromise: Promise<void> = import(/* @vite-ignore */ temmlUrl)
+   .then(module => {
+      loadedTemml = (module.default ?? module) as TemmlModule
+      readyCallbacks.forEach(callback => callback())
+      readyCallbacks.clear()
+   })
+   .catch(error => {
+      console.error('Failed to load Temml', error)
+   })
+
+/** Resolve once the raw Temml asset has loaded. Await before any on-load string render. */
+export function ensureTemmlReady(): Promise<void> {
+   return temmlReadyPromise
+}
+
+/** Whether Temml has finished loading and renderLatexToMathML can produce markup. */
+export function isTemmlReady(): boolean {
+   return loadedTemml !== null
+}
+
+/**
+ * Subscribe to the one-time Temml-ready event. If Temml is already loaded the
+ * callback fires immediately and the returned unsubscribe is a no-op; otherwise the
+ * callback runs once on load. Returns a function that removes a still-pending callback.
+ */
+export function onTemmlReady(callback: () => void): () => void {
+   if (loadedTemml !== null) {
+      callback()
+      return () => {}
+   }
+   readyCallbacks.add(callback)
+   return () => { readyCallbacks.delete(callback) }
+}
 
 // #################
 // # RENDER HELPER #
@@ -29,10 +96,17 @@ export type MathRenderResult =
  * Never throws: a parse error is caught and returned as `{ ok: false, error }`
  * so an invalid formula surfaces its message in the preview without breaking the
  * document. `displayMode` mirrors LaTeX display math (centered, full-size operators).
+ *
+ * Synchronous by design. If Temml has not loaded yet it returns a transient
+ * "still loading" error; callers gate on isTemmlReady / onTemmlReady so this guard
+ * only trips defensively.
  */
 export function renderLatexToMathML(latex: string, displayMode = true): MathRenderResult {
+   if (!loadedTemml) {
+      return { ok: false, error: 'Math renderer is still loading…' }
+   }
    try {
-      const mathml = temml.renderToString(latex, { displayMode, throwOnError: true })
+      const mathml = loadedTemml.renderToString(latex, { displayMode, throwOnError: true })
       return { ok: true, mathml }
    } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }

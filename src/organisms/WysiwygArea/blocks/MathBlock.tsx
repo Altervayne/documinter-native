@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { renderLatexToMathML, ensureTemmlStyles } from '../../../lib/math'
+import { renderLatexToMathML, ensureTemmlStyles, isTemmlReady, onTemmlReady } from '../../../lib/math'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
@@ -24,6 +24,13 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const [draft, setDraft] = useState(block.latex ?? '')
    const editing = useRef(false)
 
+   // Temml loads as a raw asset (see lib/math.ts), so on first paint it may not be
+   // ready yet. Track readiness and re-render once the one-time load completes; until
+   // then the preview/read view show a "rendering…" placeholder instead of calling
+   // the (synchronous) renderer, which would otherwise report a transient load error.
+   const [temmlReady, setTemmlReady] = useState(isTemmlReady())
+   useEffect(() => onTemmlReady(() => setTemmlReady(true)), [])
+
    // Inject Temml's rendering-correction CSS once, so the in-app MathML matches export.
    useEffect(() => { ensureTemmlStyles() }, [])
 
@@ -38,6 +45,9 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    if (readOnly) {
       const latex = (block.latex ?? '').trim()
       if (latex === '') return null   // an empty formula shows nothing in the read view
+      if (!temmlReady) {
+         return <div className="doc-math"><span className="math-loading">{t.blockMathLoading}</span></div>
+      }
       const rendered = renderLatexToMathML(latex, true)
       return (
          <div className="doc-math">
@@ -52,7 +62,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    //  Editor view
    // ============
    const trimmed  = draft.trim()
-   const rendered = trimmed === '' ? null : renderLatexToMathML(trimmed, true)
+   const rendered = trimmed === '' || !temmlReady ? null : renderLatexToMathML(trimmed, true)
 
    return (
       <div className="math-block">
@@ -69,7 +79,8 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
             }}
          />
          <div className="math-preview">
-            {rendered === null && <span className="math-empty">{t.blockMathEmpty}</span>}
+            {trimmed !== '' && !temmlReady && <span className="math-loading">{t.blockMathLoading}</span>}
+            {trimmed === '' && <span className="math-empty">{t.blockMathEmpty}</span>}
             {rendered?.ok && (
                <div className="doc-math">
                   <span dangerouslySetInnerHTML={{ __html: rendered.mathml }} />

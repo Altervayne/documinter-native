@@ -112,6 +112,7 @@
 .doc-render .math-preview { margin-top: 0.5rem; min-height: 2rem; display: flex; justify-content: center; align-items: center; }
 .doc-render .math-preview .doc-math { margin: 0; width: 100%; }
 .doc-render .math-empty   { font-size: 0.8rem; color: #767676; font-style: italic; }
+.doc-render .math-loading { font-size: 0.8rem; color: #767676; font-style: italic; }
 .doc-render .math-error   { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--callout-danger-accent); white-space: pre-wrap; }
 
 /* Callouts */
@@ -413,6 +414,7 @@
 /* Math block */
 .doc-dark .doc-render .math-source        { background: #0d1117; border-color: #21262d; color: #c9d1d9; }
 .doc-dark .doc-render .math-empty         { color: #7d8490; }
+.doc-dark .doc-render .math-loading       { color: #7d8490; }
 
 /* Callouts */
 .doc-dark .doc-render .callout          { color: #c9d1d9; }

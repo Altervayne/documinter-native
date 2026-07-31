@@ -37,7 +37,10 @@ export default defineConfig({
       },
 
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // `mjs` is required so Temml's raw ESM asset (temml-[hash].mjs, loaded at
+        // runtime via `?url` — see src/lib/math.ts) is precached; without it the
+        // dynamic import fails offline and math stops rendering.
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [
           {
             // Google Fonts CSS manifest, can change between versions
