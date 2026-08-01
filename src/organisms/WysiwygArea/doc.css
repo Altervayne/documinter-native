@@ -220,12 +220,15 @@
 .doc-render .graph-overlay-add   { align-self: flex-start; margin-top: 0.1rem; }
 
 /* ============ Data tab: adaptive spreadsheet-lite editable table ============ */
-/* The table ADAPTS to the chart type. CARTESIAN (bar/line/area) is TRANSPOSED — rows = series (a
-   sticky leading column carrying each series' swatch + name + remove), columns = categories (a
-   sticky header row of label inputs). RADIAL (pie/donut) flips to rows = slices — each row is the
-   slice's own swatch + label + value. Both pin the leading column (left: 0) and header row (top: 0)
-   inside one scroll region so identity + category headers stay visible when it scrolls; the corner
-   cell rides highest so it never slips under either axis. Numeric columns are narrow tabular-nums. */
+/* The table ADAPTS to the chart type, but BOTH shapes are categories = ROWS (scroll vertically,
+   uncapped). MULTI-SERIES (grouped/stacked bar, line, area): rows = categories (a sticky leading
+   column of label + drag handle), columns = series (a sticky header row of each series' swatch +
+   name + remove + drag handle, capped at MAX_SERIES). SINGLE-SERIES (pie/donut, simple bar): rows =
+   categories, each carrying its own swatch + label + value; no series axis. Both pin the leading
+   column (left: 0) and header row (top: 0) inside one scroll region so labels + series headers stay
+   visible when it scrolls; the corner cell rides highest so it never slips under either axis.
+   Category rows drag-reorder vertically and series columns drag-reorder horizontally (grip handles);
+   right-clicking a row or a series header opens an insert/delete menu. Numeric cells are tabular. */
 .doc-render .graph-data-tab    { display: flex; flex-direction: column; gap: 1rem; }
 .doc-render .graph-data-grid   { margin: 0; }
 .doc-render .graph-grid-scroll {
@@ -250,28 +253,36 @@
   font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767676; font-weight: 700;
 }
 
-/* Category header cell (cartesian): a label input + remove control on the header band. */
-.doc-render .graph-cat-head    { vertical-align: middle; padding: 0.3rem 0.35rem; }
-.doc-render .graph-cat-inner   { display: flex; align-items: center; gap: 0.25rem; }
-.doc-render .graph-cat-input   {
-  /* Width follows the label via the `size` attr (set in JSX), not a fixed cap — so a single-letter
-     category is a narrow column instead of hogging the old 8rem max. Small floor keeps it clickable. */
-  width: auto; min-width: 1.4rem; box-sizing: border-box;
-  height: 1.6rem; padding: 0 0.35rem;
-  background: #fff; border: 1px solid #e2e8f0; border-radius: 5px;
-  color: #334155; font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1;
-  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
-}
-
 /* Radial value-column header. */
 .doc-render .graph-value-head  {
   padding: 0.3rem 0.55rem; text-align: right;
   font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: #767676; font-weight: 700;
 }
 
-/* Leading identity cell (series in cartesian, slice in radial): swatch + name/label + remove. */
+/* Leading identity cell (category rows): drag handle + [swatch, single-series] + label + remove.
+   The series column header (multi-series) reuses .graph-lead-inner for its swatch + name + remove. */
 .doc-render .graph-lead-cell   { vertical-align: middle; padding: 0.28rem 0.4rem; }
+.doc-render .graph-series-head { vertical-align: middle; padding: 0.28rem 0.4rem; }
 .doc-render .graph-lead-inner  { display: flex; align-items: center; gap: 0.35rem; }
+
+/* Drag handles: a muted grip that brightens on hover, initiating a row (vertical) or series-column
+   (horizontal) reorder. touch-action:none lets a touch-drag beat the scroll gesture. Only the grip
+   carries the dnd listeners, so typing in a cell/label/name input never starts a drag. */
+.doc-render .graph-drag-handle {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 0.85rem; height: 1.4rem; padding: 0;
+  color: #94a3b8; cursor: grab; touch-action: none;
+  opacity: 0.4; transition: opacity 0.12s, color 0.12s;
+}
+.doc-render .graph-drag-handle-col { cursor: grab; }
+.doc-render .graph-drag-handle:hover  { opacity: 1; color: var(--doc-accent, var(--color-accent)); }
+.doc-render .graph-drag-handle:active { cursor: grabbing; }
+.doc-render .graph-drag-handle:focus-visible {
+  opacity: 1; outline: 2px solid var(--doc-accent, var(--color-accent)); outline-offset: 1px; border-radius: 3px;
+}
+/* Dragging state: the lifted row/column reads as picked-up (tint + shadow) while it glides. */
+.doc-render .graph-row-dragging { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 7%, transparent); }
+.doc-render .graph-col-dragging { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); }
 .doc-render .graph-lead-swatch {
   flex: 0 0 auto; width: 0.95rem; height: 0.95rem; padding: 0; border-radius: 4px;
   border: 1px solid color-mix(in srgb, #000 15%, transparent); cursor: pointer;
@@ -308,7 +319,6 @@
 .doc-render .graph-cell-input.is-invalid {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--callout-danger-accent) 55%, transparent);
 }
-.doc-render .graph-cat-input:focus,
 .doc-render .graph-lead-name:focus {
   border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent);
@@ -419,7 +429,6 @@
 
 /* Text inputs. */
 .doc-dark .doc-render .graph-text-input,
-.doc-dark .doc-render .graph-cat-input,
 .doc-dark .doc-render .graph-lead-name,
 .doc-dark .doc-render .graph-overlay-select { background: #0d1117; border-color: #21262d; color: #c9d1d9; }
 
@@ -430,6 +439,9 @@
 .doc-dark .doc-render .graph-grid-table td { border-right-color: #1b212a; border-bottom-color: #1b212a; }
 .doc-dark .doc-render .graph-grid-table thead th,
 .doc-dark .doc-render .graph-grid-table tbody th.graph-lead-cell { background: #161b22; border-bottom-color: #21262d; }
+.doc-dark .doc-render .graph-drag-handle { color: #6b7280; }
+.doc-dark .doc-render .graph-drag-handle:hover { color: var(--doc-accent, var(--color-accent)); }
+.doc-dark .doc-render .graph-row-dragging { background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent); }
 .doc-dark .doc-render .graph-grid-corner,
 .doc-dark .doc-render .graph-value-head  { color: #7d8490; }
 .doc-dark .doc-render .graph-cell-input  { color: #c9d1d9; }

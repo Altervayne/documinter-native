@@ -3,11 +3,28 @@ import { useEffect, useState } from 'react'
 import type React from 'react'
 import { createPortal } from 'react-dom'
 
+// -- DnD Imports --
+import {
+   DndContext, closestCenter,
+   PointerSensor, useSensor, useSensors,
+   type DragEndEvent, type Modifier,
+} from '@dnd-kit/core'
+import {
+   SortableContext, useSortable,
+   verticalListSortingStrategy, horizontalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
 // -- Library Imports --
 import { ColorPicker } from 'react-piqua-color'
+import { GripVertical, GripHorizontal } from 'lucide-react'
 
 // -- Hook Imports --
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
+
+// -- Molecule Imports --
+import { ContextMenu } from './ContextMenu'
+import type { ContextMenuEntry } from './ContextMenu'
 
 // -- Lib Imports --
 import type { GraphSpec, GraphType, GraphTheme } from '../lib/graph'
@@ -15,10 +32,14 @@ import { resolveSeriesColor, MAX_SERIES } from '../lib/graph'
 import {
    addCategory,
    removeCategory,
+   insertCategoryAt,
+   moveCategory,
    setLabel,
    setCategoryColor,
    addSeries,
    removeSeries,
+   insertSeriesAt,
+   moveSeries,
    setSeriesName,
    setSeriesColor,
    setCell,
@@ -33,6 +54,25 @@ import type { T } from '../lib/i18n'
  *  single-series table shape with the simple `bar` (which also renders series[0] only); the
  *  distinction the table keeps between them is wording + the per-category color default. */
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
+
+/** Sortable id prefixes: the grid gives each category row and series column a POSITIONAL synthetic
+ *  id (`category-<index>` / `series-<index>`) since neither carries a stable model id. onDragEnd
+ *  parses the index back out and routes to the matching pure move helper. */
+const CATEGORY_ID_PREFIX = 'category-'
+const SERIES_ID_PREFIX   = 'series-'
+
+/**
+ * One DndContext hosts BOTH sortable axes (category rows + series columns), so a single modifier
+ * locks each drag to its own axis by inspecting the active id: a series-column drag glides
+ * horizontally (y pinned), a category-row drag glides vertically (x pinned). Keeping both axes in
+ * one context (rather than nesting two) means a SortableContext always binds to the intended
+ * DndContext; the id prefix is what keeps a row-drag and a column-drag from crossing wires.
+ */
+const AXIS_LOCK_MODIFIER: Modifier = ({ transform, active }) => {
+   const activeId = active ? String(active.id) : ''
+   if (activeId.startsWith(SERIES_ID_PREFIX)) return { ...transform, y: 0 }
+   return { ...transform, x: 0 }
+}
 
 // #########
 // # TYPES #
@@ -49,7 +89,7 @@ interface GraphDataGridProps {
    onEditStart:   () => void
    /** Apply a spec edit to the live draft WITHOUT committing to the document (text/number typing). */
    onDraft:       (next: GraphSpec) => void
-   /** Apply a spec edit AND commit it to the document (discrete: add/remove/color/paste). */
+   /** Apply a spec edit AND commit it to the document (discrete: add/remove/color/paste/reorder). */
    onCommit:      (next: GraphSpec) => void
    /** Commit the current working spec to the document (fired on a text/number input blur). */
    onCommitField: () => void
@@ -66,11 +106,23 @@ interface EditingCell {
    invalid:       boolean
 }
 
-/** Which swatch popover is open: a per-series color (multi-series table) or a per-category color
- *  (single-series table — a radial slice or a simple-bar bar). */
+/** Which swatch popover is open: a per-series color (multi-series column header) or a per-category
+ *  color (single-series table — a radial slice or a simple-bar bar). */
 type ColorTarget =
    | { kind: 'series'; index: number; rect: DOMRect }
    | { kind: 'slice';  index: number; rect: DOMRect }
+
+/** The open row/column right-click menu: which axis + index it targets, anchored at the click. */
+interface GridContextMenu {
+   kind:  'category' | 'series'
+   index: number
+   x:     number
+   y:     number
+}
+
+/** The drag-handle wiring a sortable row/header hands back to the parent-rendered grip: the
+ *  activator ref + the ARIA/listener props dnd-kit needs on the grab affordance. */
+type DragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
 
 // ###########
 // # HELPERS #
@@ -103,29 +155,103 @@ function parseCellNumber(raw: string): number | null {
    return Number.isFinite(parsed) ? parsed : null
 }
 
+/** Pull the integer index back out of a positional sortable id (`category-2` → 2). */
+function indexFromSortableId(id: string, prefix: string): number {
+   return Number(id.slice(prefix.length))
+}
+
+// #####################
+// # SORTABLE WRAPPERS #
+// #####################
+
+interface SortableCategoryRowProps {
+   categoryIndex: number
+   /** Render the row's cells; receives the grip wiring to place on the leading cell's drag handle. */
+   children: (handle: DragHandleProps) => React.ReactNode
+}
+
+/**
+ * A `<tr>` category row made vertically sortable. The row is the sortable NODE; the actual grab
+ * affordance (the grip in the leading cell) is wired via the render-prop `handle` so that typing in
+ * a cell input never starts a drag — only the grip carries the listeners.
+ */
+function SortableCategoryRow({ categoryIndex, children }: SortableCategoryRowProps) {
+   const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
+      useSortable({ id: `${CATEGORY_ID_PREFIX}${categoryIndex}` })
+   const style: React.CSSProperties = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.4 : 1,
+   }
+   return (
+      <tr ref={setNodeRef} style={style} className={isDragging ? 'graph-row-dragging' : undefined}>
+         {children({ attributes, listeners, setActivatorNodeRef })}
+      </tr>
+   )
+}
+
+interface SortableSeriesHeaderProps {
+   seriesIndex:   number
+   /** Right-click opens the column context menu. */
+   onContextMenu: (event: React.MouseEvent) => void
+   /** Render the header's inner content; receives the grip wiring for the header's drag handle. */
+   children:      (handle: DragHandleProps) => React.ReactNode
+}
+
+/**
+ * A `<th>` series column header made horizontally sortable. Like the row, the header cell is the
+ * sortable node while only the grip carries the drag listeners, so editing the series name never
+ * initiates a reorder. A raised z-index while dragging keeps the moving header above its neighbors.
+ */
+function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: SortableSeriesHeaderProps) {
+   const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
+      useSortable({ id: `${SERIES_ID_PREFIX}${seriesIndex}` })
+   const style: React.CSSProperties = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.4 : 1,
+      zIndex:  isDragging ? 5 : undefined,
+   }
+   return (
+      <th
+         ref={setNodeRef}
+         style={style}
+         className={`graph-series-head${isDragging ? ' graph-col-dragging' : ''}`}
+         scope="col"
+         onContextMenu={onContextMenu}
+      >
+         {children({ attributes, listeners, setActivatorNodeRef })}
+      </th>
+   )
+}
+
 // #############
 // # COMPONENT #
 // #############
 
 /**
  * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series
- * or MANY (not radial-vs-cartesian — a simple `bar` is single-series and shares the radial shape):
+ * or MANY (not radial-vs-cartesian — a simple `bar` is single-series and shares the radial shape).
+ * BOTH shapes are now categories = ROWS (scroll vertically, uncapped), which unifies their layout
+ * and keeps the horizontally-bounded axis (≤ MAX_SERIES) as the columns:
  *
- *   - MULTI-SERIES (grouped/stacked bar, line, area): transposed — rows = series (a sticky leading
- *     column with the series' color swatch + name + remove), columns = categories (a sticky header
- *     row of label inputs + remove, plus a trailing "+" to add a category). A "+ Series" footer row
- *     adds a series (capped at MAX_SERIES). Body cells are numeric, series x category.
+ *   - MULTI-SERIES (grouped/stacked bar, line, area): rows = categories (a sticky leading column
+ *     with each category's label + drag handle), columns = series (a sticky header row of the
+ *     series' color swatch + name + remove + drag handle, plus a trailing "+" to add a series up to
+ *     MAX_SERIES). A "+ Category" footer row adds a category. Body cells are numeric, category x
+ *     series.
  *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows — each is
  *     the category's own color swatch (per-category color) + label + its single value + remove, with
- *     a "+" footer that adds a category. No "Add series". Radial reads "slice" and defaults each
+ *     a "+" footer that adds a category. No series axis. Radial reads "slice" and defaults each
  *     swatch to a palette slot per index; simple bar reads "bar"/"category" and defaults each swatch
- *     to the ONE series' uniform base color (so an un-overridden bar chart stays uniform). Both write
- *     `categoryColors` via `setCategoryColor`; only the fallback color differs by type.
+ *     to the ONE series' uniform base color. Both write `categoryColors` via `setCategoryColor`.
  *
- * Both shapes share the draft/commit model: numeric typing drafts on every keystroke (instant
- * preview) and commits on blur; structural + color edits commit immediately; a TSV paste auto-grows
- * the grid and commits once. All structural edits route through the pure `graphEdit` helpers, so the
- * arrays stay rectangular and never drop below one row/column.
+ * Both shapes share: the draft/commit model (numeric typing drafts on every keystroke and commits
+ * on blur; structural + color edits commit immediately; a TSV paste auto-grows the grid and commits
+ * once); vertical drag-reorder of category rows (multi-series ALSO horizontally reorders series
+ * columns); and a right-click context menu on rows (and, multi-series, columns) for positional
+ * insert / delete. All structural edits route through the pure `graphEdit` helpers, so the arrays
+ * stay rectangular and never drop below one row/column.
  */
 export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: GraphDataGridProps) {
    const { labels, series, categoryColors } = spec.data
@@ -141,6 +267,9 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    const singleSeriesAddLabel    = isRadial ? t.graphAddSlice : t.graphAddCategory
    const singleSeriesRemoveLabel = isRadial ? t.graphRemoveSlice : t.graphRemoveCategory
    const singleSeriesColorLabel  = isRadial ? t.graphSliceColor : t.graphBarColor
+   // The category-delete wording differs between the single-series (radial "slice") and multi-series
+   // tables; the insert-before/after wording stays category-generic for both.
+   const categoryDeleteLabel     = isSingleSeries ? singleSeriesRemoveLabel : t.graphRemoveCategory
 
    /**
     * The swatch display color for a single-series row: radial defaults to a palette slot PER index
@@ -158,6 +287,34 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
 
    // Which swatch's color popover is open, and the swatch rect that anchors it.
    const [colorPopover, setColorPopover] = useState<ColorTarget | null>(null)
+
+   // Which row/column right-click menu is open (null = none), and where it was invoked.
+   const [contextMenu, setContextMenu] = useState<GridContextMenu | null>(null)
+
+   // One pointer sensor with a 5px activation threshold (matching the list/section grids) so a click
+   // that lands on the grip but doesn't move never registers as a drag.
+   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+   // ================
+   //  Drag reorder
+   // ================
+   // One handler for both axes: the active id's prefix says which axis is dragging, and both the
+   // active and over id must share that prefix (an axis-locked drag should never resolve across
+   // axes, but the guard makes it impossible). Reorders route through the pure move helpers.
+   function handleDragEnd(event: DragEndEvent): void {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const activeId = String(active.id)
+      const overId   = String(over.id)
+      if (activeId.startsWith(CATEGORY_ID_PREFIX) && overId.startsWith(CATEGORY_ID_PREFIX)) {
+         onCommit(moveCategory(spec, indexFromSortableId(activeId, CATEGORY_ID_PREFIX), indexFromSortableId(overId, CATEGORY_ID_PREFIX)))
+      } else if (activeId.startsWith(SERIES_ID_PREFIX) && overId.startsWith(SERIES_ID_PREFIX)) {
+         onCommit(moveSeries(spec, indexFromSortableId(activeId, SERIES_ID_PREFIX), indexFromSortableId(overId, SERIES_ID_PREFIX)))
+      }
+   }
+
+   const categoryIds = labels.map((_label, categoryIndex) => `${CATEGORY_ID_PREFIX}${categoryIndex}`)
+   const seriesIds   = series.map((_series, seriesIndex) => `${SERIES_ID_PREFIX}${seriesIndex}`)
 
    // ================
    //  Cell rendering
@@ -205,27 +362,26 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ================
    //  Paste (TSV)
    // ================
-   // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell, auto-
-   // growing categories (and, for cartesian, series up to MAX_SERIES) so a bigger paste expands the
-   // grid. Non-numeric cells land as null. Applied over the pure transforms, committed once.
+   // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell. With
+   // categories = rows and series = columns, pasted ROWS map to CATEGORIES (downward, uncapped) and
+   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES) — matching the new orientation.
+   // Non-numeric cells land as null. Applied over the pure transforms, committed once.
    function handleMultiSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
       if (!isMultiCellPaste(grid)) return // a plain single value falls through to normal typing.
       event.preventDefault()
       setEditingCell(null)
       let next = spec
-      // Pasted rows map to SERIES (downward), pasted columns to CATEGORIES (rightward) — the
-      // transposed orientation the table already presents.
       for (let rowOffset = 0; rowOffset < grid.length; rowOffset++) {
-         const seriesIndex = focusSeriesIndex + rowOffset
-         while (seriesIndex >= next.data.series.length && next.data.series.length < MAX_SERIES) {
-            next = addSeries(next, `${t.graphSeriesDefault} ${next.data.series.length + 1}`)
-         }
-         if (seriesIndex >= next.data.series.length) break // hit the MAX_SERIES cap: stop growing.
+         const categoryIndex = focusCategoryIndex + rowOffset
+         while (categoryIndex >= next.data.labels.length) next = addCategory(next)
          const cells = grid[rowOffset]
          for (let columnOffset = 0; columnOffset < cells.length; columnOffset++) {
-            const categoryIndex = focusCategoryIndex + columnOffset
-            while (categoryIndex >= next.data.labels.length) next = addCategory(next)
+            const seriesIndex = focusSeriesIndex + columnOffset
+            while (seriesIndex >= next.data.series.length && next.data.series.length < MAX_SERIES) {
+               next = addSeries(next, `${t.graphSeriesDefault} ${next.data.series.length + 1}`)
+            }
+            if (seriesIndex >= next.data.series.length) break // hit the MAX_SERIES cap: stop growing.
             next = setCell(next, categoryIndex, seriesIndex, parseCellNumber(cells[columnOffset]))
          }
       }
@@ -284,6 +440,42 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    }
 
    // ================
+   //  Context menu (row / column insert + delete)
+   // ================
+   function openCategoryMenu(event: React.MouseEvent, categoryIndex: number): void {
+      event.preventDefault()
+      setContextMenu({ kind: 'category', index: categoryIndex, x: event.clientX, y: event.clientY })
+   }
+
+   function openSeriesMenu(event: React.MouseEvent, seriesIndex: number): void {
+      event.preventDefault()
+      setContextMenu({ kind: 'series', index: seriesIndex, x: event.clientX, y: event.clientY })
+   }
+
+   /** Insert-before / insert-after / delete for a category row. Delete is disabled at the last row. */
+   function categoryMenuEntries(categoryIndex: number): ContextMenuEntry[] {
+      return [
+         { label: t.graphInsertCategoryBefore, onSelect: () => onCommit(insertCategoryAt(spec, categoryIndex)) },
+         { label: t.graphInsertCategoryAfter,  onSelect: () => onCommit(insertCategoryAt(spec, categoryIndex + 1)) },
+         { type: 'separator' },
+         { label: categoryDeleteLabel, danger: true, disabled: labels.length <= 1, onSelect: () => onCommit(removeCategory(spec, categoryIndex)) },
+      ]
+   }
+
+   /** Insert-before / insert-after / delete for a series column. Inserts respect MAX_SERIES; delete
+    *  is disabled at the last column. */
+   function seriesMenuEntries(seriesIndex: number): ContextMenuEntry[] {
+      const atCap = series.length >= MAX_SERIES
+      const insertName = `${t.graphSeriesDefault} ${series.length + 1}`
+      return [
+         { label: t.graphInsertSeriesBefore, disabled: atCap, onSelect: () => onCommit(insertSeriesAt(spec, seriesIndex, insertName)) },
+         { label: t.graphInsertSeriesAfter,  disabled: atCap, onSelect: () => onCommit(insertSeriesAt(spec, seriesIndex + 1, insertName)) },
+         { type: 'separator' },
+         { label: t.graphRemoveSeries, danger: true, disabled: series.length <= 1, onSelect: () => onCommit(removeSeries(spec, seriesIndex)) },
+      ]
+   }
+
+   // ================
    //  Shared cell parts
    // ================
    function swatchButton(kind: 'series' | 'slice', index: number, resolvedColor: string, ariaLabel: string): React.ReactElement {
@@ -297,6 +489,23 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
             title={ariaLabel}
             onClick={event => openColorPopover({ kind, index, rect: event.currentTarget.getBoundingClientRect() })}
          />
+      )
+   }
+
+   /** The grip affordance a sortable row/header hands its listeners to. `orientation` only swaps the
+    *  icon (vertical for rows, horizontal for series columns); the dnd wiring is identical. */
+   function dragHandle(handle: DragHandleProps, orientation: 'row' | 'column', ariaLabel: string): React.ReactElement {
+      return (
+         <span
+            className={`graph-drag-handle${orientation === 'column' ? ' graph-drag-handle-col' : ''}`}
+            ref={handle.setActivatorNodeRef}
+            {...handle.attributes}
+            {...handle.listeners}
+            aria-label={ariaLabel}
+            title={ariaLabel}
+         >
+            {orientation === 'row' ? <GripVertical size={13} /> : <GripHorizontal size={13} />}
+         </span>
       )
    }
 
@@ -321,98 +530,114 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    }
 
    // ################
-   // # MULTI-SERIES #  (transposed: rows = series, columns = categories)
+   // # MULTI-SERIES #  (rows = categories, columns = series)
    // ################
    const multiSeriesTable = (
       <table className="graph-grid-table">
-         {/* =============== Category header row =============== */}
+         {/* =============== Series header row (sortable columns) =============== */}
          <thead>
             <tr>
                <th className="graph-grid-corner" title={t.graphAxisHint}>{t.graphAxisHint}</th>
-               {labels.map((label, categoryIndex) => (
-                  <th key={categoryIndex} className="graph-cat-head">
-                     <div className="graph-cat-inner">
-                        <input
-                           className="graph-cat-input"
-                           type="text"
-                           size={Math.max(2, label.length)}
-                           value={label}
-                           placeholder={t.graphCategoryLabel}
-                           aria-label={t.graphCategoryLabel}
-                           onFocus={onEditStart}
-                           onChange={event => { onEditStart(); onDraft(setLabel(spec, categoryIndex, event.target.value)) }}
-                           onBlur={onCommitField}
-                        />
-                        <button
-                           type="button"
-                           className="graph-icon-btn"
-                           onClick={() => onCommit(removeCategory(spec, categoryIndex))}
-                           disabled={labels.length <= 1}
-                           aria-label={t.graphRemoveCategory}
-                           title={t.graphRemoveCategory}
-                        >×</button>
-                     </div>
-                  </th>
-               ))}
+               <SortableContext items={seriesIds} strategy={horizontalListSortingStrategy}>
+                  {series.map((oneSeries, seriesIndex) => (
+                     <SortableSeriesHeader
+                        key={`${SERIES_ID_PREFIX}${seriesIndex}`}
+                        seriesIndex={seriesIndex}
+                        onContextMenu={event => openSeriesMenu(event, seriesIndex)}
+                     >
+                        {handle => (
+                           <div className="graph-lead-inner">
+                              {dragHandle(handle, 'column', t.graphReorderSeries)}
+                              {swatchButton('series', seriesIndex, resolveSeriesColor(seriesIndex, oneSeries.color, theme), t.graphSeriesColor)}
+                              <input
+                                 className="graph-lead-name"
+                                 type="text"
+                                 size={Math.max(2, oneSeries.name.length)}
+                                 value={oneSeries.name}
+                                 placeholder={t.graphSeriesName}
+                                 aria-label={t.graphSeriesName}
+                                 onFocus={onEditStart}
+                                 onChange={event => { onEditStart(); onDraft(setSeriesName(spec, seriesIndex, event.target.value)) }}
+                                 onBlur={onCommitField}
+                              />
+                              <button
+                                 type="button"
+                                 className="graph-icon-btn"
+                                 onClick={() => onCommit(removeSeries(spec, seriesIndex))}
+                                 disabled={series.length <= 1}
+                                 aria-label={t.graphRemoveSeries}
+                                 title={t.graphRemoveSeries}
+                              >×</button>
+                           </div>
+                        )}
+                     </SortableSeriesHeader>
+                  ))}
+               </SortableContext>
                <th className="graph-add-head">
                   <button
                      type="button"
                      className="graph-icon-btn graph-add-btn"
-                     onClick={() => onCommit(addCategory(spec))}
-                     aria-label={t.graphAddCategory}
-                     title={t.graphAddCategory}
+                     onClick={() => onCommit(addSeries(spec, `${t.graphSeriesDefault} ${series.length + 1}`))}
+                     disabled={series.length >= MAX_SERIES}
+                     aria-label={t.graphAddSeries}
+                     title={t.graphAddSeries}
                   >+</button>
                </th>
             </tr>
          </thead>
-         {/* =============== Series rows =============== */}
+         {/* =============== Category rows (sortable) =============== */}
          <tbody>
-            {series.map((oneSeries, seriesIndex) => (
-               <tr key={seriesIndex}>
-                  <th className="graph-lead-cell" scope="row">
-                     <div className="graph-lead-inner">
-                        {swatchButton('series', seriesIndex, resolveSeriesColor(seriesIndex, oneSeries.color, theme), t.graphSeriesColor)}
-                        <input
-                           className="graph-lead-name"
-                           type="text"
-                           size={Math.max(2, oneSeries.name.length)}
-                           value={oneSeries.name}
-                           placeholder={t.graphSeriesName}
-                           aria-label={t.graphSeriesName}
-                           onFocus={onEditStart}
-                           onChange={event => { onEditStart(); onDraft(setSeriesName(spec, seriesIndex, event.target.value)) }}
-                           onBlur={onCommitField}
-                        />
-                        <button
-                           type="button"
-                           className="graph-icon-btn"
-                           onClick={() => onCommit(removeSeries(spec, seriesIndex))}
-                           disabled={series.length <= 1}
-                           aria-label={t.graphRemoveSeries}
-                           title={t.graphRemoveSeries}
-                        >×</button>
-                     </div>
-                  </th>
-                  {labels.map((_label, categoryIndex) => (
-                     <td key={categoryIndex} className="graph-cell">
-                        {numericCell(categoryIndex, seriesIndex, oneSeries.values[categoryIndex], event => handleMultiSeriesPaste(event, categoryIndex, seriesIndex))}
-                     </td>
-                  ))}
-                  <td className="graph-grid-gutter" />
-               </tr>
-            ))}
-            {/* =============== Add-series footer =============== */}
+            <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
+               {labels.map((label, categoryIndex) => (
+                  <SortableCategoryRow key={`${CATEGORY_ID_PREFIX}${categoryIndex}`} categoryIndex={categoryIndex}>
+                     {handle => (
+                        <>
+                           <th className="graph-lead-cell" scope="row" onContextMenu={event => openCategoryMenu(event, categoryIndex)}>
+                              <div className="graph-lead-inner">
+                                 {dragHandle(handle, 'row', t.graphReorderCategory)}
+                                 <input
+                                    className="graph-lead-name"
+                                    type="text"
+                                    size={Math.max(2, label.length)}
+                                    value={label}
+                                    placeholder={t.graphCategoryLabel}
+                                    aria-label={t.graphCategoryLabel}
+                                    onFocus={onEditStart}
+                                    onChange={event => { onEditStart(); onDraft(setLabel(spec, categoryIndex, event.target.value)) }}
+                                    onBlur={onCommitField}
+                                 />
+                                 <button
+                                    type="button"
+                                    className="graph-icon-btn"
+                                    onClick={() => onCommit(removeCategory(spec, categoryIndex))}
+                                    disabled={labels.length <= 1}
+                                    aria-label={t.graphRemoveCategory}
+                                    title={t.graphRemoveCategory}
+                                 >×</button>
+                              </div>
+                           </th>
+                           {series.map((oneSeries, seriesIndex) => (
+                              <td key={seriesIndex} className="graph-cell">
+                                 {numericCell(categoryIndex, seriesIndex, oneSeries.values[categoryIndex], event => handleMultiSeriesPaste(event, categoryIndex, seriesIndex))}
+                              </td>
+                           ))}
+                           <td className="graph-grid-gutter" />
+                        </>
+                     )}
+                  </SortableCategoryRow>
+               ))}
+            </SortableContext>
+            {/* =============== Add-category footer =============== */}
             <tr>
                <th className="graph-lead-cell graph-add-row-cell" scope="row">
                   <button
                      type="button"
                      className="graph-grid-btn"
-                     onClick={() => onCommit(addSeries(spec, `${t.graphSeriesDefault} ${series.length + 1}`))}
-                     disabled={series.length >= MAX_SERIES}
-                     title={t.graphAddSeries}
-                  >{t.graphAddSeries}</button>
+                     onClick={() => onCommit(addCategory(spec))}
+                     title={t.graphAddCategory}
+                  >{t.graphAddCategory}</button>
                </th>
-               <td className="graph-grid-gutter" colSpan={labels.length + 1} />
+               <td className="graph-grid-gutter" colSpan={series.length + 1} />
             </tr>
          </tbody>
       </table>
@@ -430,37 +655,44 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
             </tr>
          </thead>
          <tbody>
-            {labels.map((label, categoryIndex) => (
-               <tr key={categoryIndex}>
-                  <th className="graph-lead-cell" scope="row">
-                     <div className="graph-lead-inner">
-                        {swatchButton('slice', categoryIndex, singleSeriesSwatchColor(categoryIndex), singleSeriesColorLabel)}
-                        <input
-                           className="graph-lead-name"
-                           type="text"
-                           size={Math.max(2, label.length)}
-                           value={label}
-                           placeholder={t.graphCategoryLabel}
-                           aria-label={t.graphCategoryLabel}
-                           onFocus={onEditStart}
-                           onChange={event => { onEditStart(); onDraft(setLabel(spec, categoryIndex, event.target.value)) }}
-                           onBlur={onCommitField}
-                        />
-                        <button
-                           type="button"
-                           className="graph-icon-btn"
-                           onClick={() => onCommit(removeCategory(spec, categoryIndex))}
-                           disabled={labels.length <= 1}
-                           aria-label={singleSeriesRemoveLabel}
-                           title={singleSeriesRemoveLabel}
-                        >×</button>
-                     </div>
-                  </th>
-                  <td className="graph-cell">
-                     {numericCell(categoryIndex, 0, series[0]?.values[categoryIndex], event => handleSingleSeriesPaste(event, categoryIndex))}
-                  </td>
-               </tr>
-            ))}
+            <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
+               {labels.map((label, categoryIndex) => (
+                  <SortableCategoryRow key={`${CATEGORY_ID_PREFIX}${categoryIndex}`} categoryIndex={categoryIndex}>
+                     {handle => (
+                        <>
+                           <th className="graph-lead-cell" scope="row" onContextMenu={event => openCategoryMenu(event, categoryIndex)}>
+                              <div className="graph-lead-inner">
+                                 {dragHandle(handle, 'row', t.graphReorderCategory)}
+                                 {swatchButton('slice', categoryIndex, singleSeriesSwatchColor(categoryIndex), singleSeriesColorLabel)}
+                                 <input
+                                    className="graph-lead-name"
+                                    type="text"
+                                    size={Math.max(2, label.length)}
+                                    value={label}
+                                    placeholder={t.graphCategoryLabel}
+                                    aria-label={t.graphCategoryLabel}
+                                    onFocus={onEditStart}
+                                    onChange={event => { onEditStart(); onDraft(setLabel(spec, categoryIndex, event.target.value)) }}
+                                    onBlur={onCommitField}
+                                 />
+                                 <button
+                                    type="button"
+                                    className="graph-icon-btn"
+                                    onClick={() => onCommit(removeCategory(spec, categoryIndex))}
+                                    disabled={labels.length <= 1}
+                                    aria-label={singleSeriesRemoveLabel}
+                                    title={singleSeriesRemoveLabel}
+                                 >×</button>
+                              </div>
+                           </th>
+                           <td className="graph-cell">
+                              {numericCell(categoryIndex, 0, series[0]?.values[categoryIndex], event => handleSingleSeriesPaste(event, categoryIndex))}
+                           </td>
+                        </>
+                     )}
+                  </SortableCategoryRow>
+               ))}
+            </SortableContext>
             {/* =============== Add-category footer =============== */}
             <tr>
                <th className="graph-lead-cell graph-add-row-cell" scope="row">
@@ -482,7 +714,14 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    return (
       <div className="graph-data-grid">
          <div className="graph-grid-scroll">
-            {isSingleSeries ? singleSeriesTable : multiSeriesTable}
+            <DndContext
+               sensors={sensors}
+               collisionDetection={closestCenter}
+               modifiers={[AXIS_LOCK_MODIFIER]}
+               onDragEnd={handleDragEnd}
+            >
+               {isSingleSeries ? singleSeriesTable : multiSeriesTable}
+            </DndContext>
          </div>
 
          {colorPopover && activePopover && (
@@ -494,6 +733,16 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                onPick={activePopover.onPick}
                onReset={activePopover.onReset}
                onClose={() => setColorPopover(null)}
+            />
+         )}
+
+         {contextMenu && (
+            <ContextMenu
+               position={{ x: contextMenu.x, y: contextMenu.y }}
+               entries={contextMenu.kind === 'category'
+                  ? categoryMenuEntries(contextMenu.index)
+                  : seriesMenuEntries(contextMenu.index)}
+               onClose={() => setContextMenu(null)}
             />
          )}
       </div>

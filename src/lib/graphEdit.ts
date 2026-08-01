@@ -60,6 +60,16 @@ function withData(spec: GraphSpec, data: GraphData): GraphSpec {
 }
 
 /**
+ * Move the item at `fromIndex` to `toIndex` IN PLACE (the array is already a fresh clone by the
+ * time this is called). Splice-out then splice-in, so every item between the two positions shifts
+ * by one — the standard drag-reorder semantics dnd-kit's sortable produces.
+ */
+function moveArrayItem<Item>(array: Item[], fromIndex: number, toIndex: number): void {
+   const [moved] = array.splice(fromIndex, 1)
+   array.splice(toIndex, 0, moved)
+}
+
+/**
  * Drop a `categoryColors` array that carries no actual override (all slots undefined), so a spec
  * whose per-slice colors were all reset serializes lean and compares equal to a never-colored one.
  */
@@ -111,6 +121,51 @@ export function removeCategory(spec: GraphSpec, rowIndex: number): GraphSpec {
    return withData(spec, data)
 }
 
+/**
+ * Insert a fresh empty category AT `index`, shifting every later category down. Every series gets a
+ * `null` spliced in at the same position (rectangular), and `categoryColors` (when present) gets an
+ * `undefined` slot so the per-slice overrides stay index-aligned. `index` may run from 0 to the
+ * current label count inclusive (an end insert equals {@link addCategory}); out of that range
+ * returns the spec unchanged. Used by the row context menu's insert-before / insert-after.
+ */
+export function insertCategoryAt(spec: GraphSpec, index: number, label: string = ''): GraphSpec {
+   if (index < 0 || index > spec.data.labels.length) return spec
+   const data = cloneData(spec)
+   data.labels.splice(index, 0, label)
+   for (const series of data.series) {
+      series.values.splice(index, 0, null)
+   }
+   if (data.categoryColors) {
+      data.categoryColors.splice(index, 0, undefined)
+   }
+   return withData(spec, data)
+}
+
+/**
+ * Move the category at `fromIndex` to `toIndex`, reordering `labels`, EVERY series' `values`, AND
+ * `categoryColors` (when present) in lockstep so all three stay index-aligned. A no-op (returns the
+ * spec unchanged) when either index is out of range or they are equal. The category count never
+ * changes, so the keep-at-least-one invariant is untouched. Drives the row drag-reorder.
+ */
+export function moveCategory(spec: GraphSpec, fromIndex: number, toIndex: number): GraphSpec {
+   const categoryCount = spec.data.labels.length
+   if (fromIndex < 0 || fromIndex >= categoryCount) return spec
+   if (toIndex < 0 || toIndex >= categoryCount) return spec
+   if (fromIndex === toIndex) return spec
+   const data = cloneData(spec)
+   moveArrayItem(data.labels, fromIndex, toIndex)
+   for (const series of data.series) {
+      moveArrayItem(series.values, fromIndex, toIndex)
+   }
+   if (data.categoryColors) {
+      // Pad to the label count first so a sparse override array reorders without dropping short.
+      while (data.categoryColors.length < categoryCount) data.categoryColors.push(undefined)
+      moveArrayItem(data.categoryColors, fromIndex, toIndex)
+      pruneCategoryColors(data)
+   }
+   return withData(spec, data)
+}
+
 /** Set the text of the label at `rowIndex`. Out-of-range indices return the spec unchanged. */
 export function setLabel(spec: GraphSpec, rowIndex: number, text: string): GraphSpec {
    if (rowIndex < 0 || rowIndex >= spec.data.labels.length) return spec
@@ -151,6 +206,36 @@ export function addSeries(spec: GraphSpec, name: string = ''): GraphSpec {
    if (spec.data.series.length >= MAX_SERIES) return spec
    const data = cloneData(spec)
    data.series.push({ name, values: data.labels.map(() => null) })
+   return withData(spec, data)
+}
+
+/**
+ * Insert a fresh series AT `index`, backfilled with `null` for every category so it stays
+ * rectangular. `index` may run from 0 to the current series count inclusive (an end insert equals
+ * {@link addSeries}); out of that range returns the spec unchanged. No-op once the series count
+ * reaches MAX_SERIES (the palette cap). Used by the column context menu's insert-before /
+ * insert-after.
+ */
+export function insertSeriesAt(spec: GraphSpec, index: number, name: string = ''): GraphSpec {
+   if (spec.data.series.length >= MAX_SERIES) return spec
+   if (index < 0 || index > spec.data.series.length) return spec
+   const data = cloneData(spec)
+   data.series.splice(index, 0, { name, values: data.labels.map(() => null) })
+   return withData(spec, data)
+}
+
+/**
+ * Move the series at `fromIndex` to `toIndex`, reordering the `series` array. A no-op (returns the
+ * spec unchanged) when either index is out of range or they are equal. The series count never
+ * changes, so the keep-at-least-one invariant is untouched. Drives the column drag-reorder.
+ */
+export function moveSeries(spec: GraphSpec, fromIndex: number, toIndex: number): GraphSpec {
+   const seriesCount = spec.data.series.length
+   if (fromIndex < 0 || fromIndex >= seriesCount) return spec
+   if (toIndex < 0 || toIndex >= seriesCount) return spec
+   if (fromIndex === toIndex) return spec
+   const data = cloneData(spec)
+   moveArrayItem(data.series, fromIndex, toIndex)
    return withData(spec, data)
 }
 
@@ -217,6 +302,16 @@ export function setType(spec: GraphSpec, type: GraphType): GraphSpec {
    const next: GraphSpec = { ...spec, type }
    if (type === 'function' && !next.functionPlot) {
       next.functionPlot = ensureFunctionPlot(spec)
+   }
+   // A type change RESETS the explicit y-axis range (yMin/yMax). These are only ever set through the
+   // function editor (a function-specific concern — pinning a range so the asymptote heuristic bites),
+   // and a range that's reasonable for f(x) is usually insane for a bar/line chart, which would leave
+   // the new chart unviewable. Dropping them lets the new type auto-scale to a sensible range.
+   if (type !== spec.type && (next.options.yMin !== undefined || next.options.yMax !== undefined)) {
+      const options: GraphOptions = { ...next.options }
+      delete options.yMin
+      delete options.yMax
+      next.options = options
    }
    return next
 }

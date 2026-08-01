@@ -11,10 +11,14 @@ import type { GraphSpec } from './graph'
 import {
    addCategory,
    removeCategory,
+   insertCategoryAt,
+   moveCategory,
    setLabel,
    setCategoryColor,
    addSeries,
    removeSeries,
+   insertSeriesAt,
+   moveSeries,
    setSeriesName,
    setSeriesColor,
    setCell,
@@ -117,6 +121,85 @@ describe('removeCategory', () => {
    })
 })
 
+describe('insertCategoryAt', () => {
+   it('inserts a fresh empty category at the position, splicing a null into every series', () => {
+      const next = insertCategoryAt(makeSpec(), 1)
+      expect(next.data.labels).toEqual(['A', '', 'B', 'C'])
+      expect(next.data.series[0].values).toEqual([1, null, 2, 3])
+      expect(next.data.series[1].values).toEqual([4, null, 5, 6])
+      expectRectangular(next)
+   })
+
+   it('inserts at the front (index 0)', () => {
+      const next = insertCategoryAt(makeSpec(), 0, 'Z')
+      expect(next.data.labels).toEqual(['Z', 'A', 'B', 'C'])
+      expect(next.data.series[0].values).toEqual([null, 1, 2, 3])
+   })
+
+   it('inserting at the label count appends (equivalent to addCategory)', () => {
+      const next = insertCategoryAt(makeSpec(), 3, 'D')
+      expect(next.data.labels).toEqual(['A', 'B', 'C', 'D'])
+      expect(next.data.series[0].values).toEqual([1, 2, 3, null])
+   })
+
+   it('keeps categoryColors aligned by splicing an undefined slot at the position', () => {
+      const colored = setCategoryColor(makeSpec(), 2, '#222222')
+      const next = insertCategoryAt(colored, 1)
+      expect(next.data.labels).toEqual(['A', '', 'B', 'C'])
+      expect(next.data.categoryColors).toEqual([undefined, undefined, undefined, '#222222'])
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeSpec()
+      expect(insertCategoryAt(spec, -1)).toBe(spec)
+      expect(insertCategoryAt(spec, 4)).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      insertCategoryAt(spec, 0, 'Z')
+      expect(spec.data.labels).toEqual(['A', 'B', 'C'])
+   })
+})
+
+describe('moveCategory', () => {
+   it('reorders labels and every series value in lockstep', () => {
+      const next = moveCategory(makeSpec(), 0, 2)
+      expect(next.data.labels).toEqual(['B', 'C', 'A'])
+      expect(next.data.series[0].values).toEqual([2, 3, 1])
+      expect(next.data.series[1].values).toEqual([5, 6, 4])
+      expectRectangular(next)
+   })
+
+   it('reorders an earlier target too (drag up)', () => {
+      const next = moveCategory(makeSpec(), 2, 0)
+      expect(next.data.labels).toEqual(['C', 'A', 'B'])
+      expect(next.data.series[0].values).toEqual([3, 1, 2])
+   })
+
+   it('keeps categoryColors aligned to the labels through the move', () => {
+      const colored = setCategoryColor(makeSpec(), 0, '#111111')
+      const next = moveCategory(colored, 0, 2)
+      expect(next.data.labels).toEqual(['B', 'C', 'A'])
+      // The override rode along with category A to its new last position.
+      expect(next.data.categoryColors).toEqual([undefined, undefined, '#111111'])
+   })
+
+   it('is a no-op when the indices are equal or out of range', () => {
+      const spec = makeSpec()
+      expect(moveCategory(spec, 1, 1)).toBe(spec)
+      expect(moveCategory(spec, -1, 0)).toBe(spec)
+      expect(moveCategory(spec, 0, 9)).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      moveCategory(spec, 0, 2)
+      expect(spec.data.labels).toEqual(['A', 'B', 'C'])
+      expect(spec.data.series[0].values).toEqual([1, 2, 3])
+   })
+})
+
 describe('setLabel', () => {
    it('replaces the label at the index', () => {
       const next = setLabel(makeSpec(), 1, 'Beta')
@@ -173,6 +256,71 @@ describe('removeSeries', () => {
    it('is a no-op for an out-of-range index', () => {
       const spec = makeSpec()
       expect(removeSeries(spec, 5)).toBe(spec)
+   })
+})
+
+describe('insertSeriesAt', () => {
+   it('inserts a fresh series backfilled with nulls at the position', () => {
+      const next = insertSeriesAt(makeSpec(), 1, 'Mid')
+      expect(next.data.series).toHaveLength(3)
+      expect(next.data.series[1]).toEqual({ name: 'Mid', values: [null, null, null] })
+      expect(next.data.series[0].name).toBe('One')
+      expect(next.data.series[2].name).toBe('Two')
+      expectRectangular(next)
+   })
+
+   it('inserts at the front (index 0)', () => {
+      const next = insertSeriesAt(makeSpec(), 0, 'First')
+      expect(next.data.series[0].name).toBe('First')
+      expect(next.data.series[1].name).toBe('One')
+   })
+
+   it('inserting at the series count appends (equivalent to addSeries)', () => {
+      const next = insertSeriesAt(makeSpec(), 2, 'Three')
+      expect(next.data.series[2].name).toBe('Three')
+   })
+
+   it('is a no-op once MAX_SERIES is reached', () => {
+      let spec = makeSpec()
+      for (let attempt = 0; attempt < 10; attempt++) spec = addSeries(spec, `S${attempt}`)
+      expect(spec.data.series).toHaveLength(8)
+      expect(insertSeriesAt(spec, 0, 'Over')).toBe(spec)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeSpec()
+      expect(insertSeriesAt(spec, -1)).toBe(spec)
+      expect(insertSeriesAt(spec, 3)).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      insertSeriesAt(spec, 0, 'First')
+      expect(spec.data.series).toHaveLength(2)
+   })
+})
+
+describe('moveSeries', () => {
+   it('reorders the series array', () => {
+      const next = moveSeries(makeSpec(), 0, 1)
+      expect(next.data.series[0].name).toBe('Two')
+      expect(next.data.series[1].name).toBe('One')
+      // Each series keeps its own values through the move.
+      expect(next.data.series[0].values).toEqual([4, 5, 6])
+      expect(next.data.series[1].values).toEqual([1, 2, 3])
+   })
+
+   it('is a no-op when the indices are equal or out of range', () => {
+      const spec = makeSpec()
+      expect(moveSeries(spec, 0, 0)).toBe(spec)
+      expect(moveSeries(spec, -1, 1)).toBe(spec)
+      expect(moveSeries(spec, 0, 5)).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      moveSeries(spec, 0, 1)
+      expect(spec.data.series[0].name).toBe('One')
    })
 })
 
@@ -287,6 +435,20 @@ describe('setType', () => {
       expect(next.type).toBe('line')
       expect(next.data.labels).toEqual(['A', 'B', 'C'])
       expect(next.options).toEqual({ legend: true })
+   })
+
+   it('clears the explicit y-range on a type change so a function y-range never leaks to other charts', () => {
+      const pinned = setOption(setOption(makeSpec(), 'yMin', -1000), 'yMax', 1000)
+      const next = setType(pinned, 'line')
+      expect(next.options.yMin).toBeUndefined()
+      expect(next.options.yMax).toBeUndefined()
+      expect(next.options.legend).toBe(true) // other options survive
+   })
+
+   it('leaves the y-range untouched when the type does not actually change', () => {
+      const pinned = setOption(makeSpec(), 'yMax', 50)
+      const next = setType(pinned, pinned.type)
+      expect(next.options.yMax).toBe(50)
    })
 })
 
