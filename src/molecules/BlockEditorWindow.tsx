@@ -171,6 +171,12 @@ export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true,
          aria-label={title}
          className={isSheet ? 'block-editor-window block-editor-window-sheet' : 'block-editor-window'}
          style={windowStyle}
+         // The window portals to <body>, but React bubbles SYNTHETIC events up the React tree — so a
+         // right-click inside the window would otherwise reach the host block's onContextMenu and open
+         // the document's block/section menu ON TOP of any editor menu. Stop it at the window root: the
+         // editor's own row context menus have already fired (they're inner targets); this only blocks
+         // the drill-through to the document. Not preventDefault'd, so native input menus still work.
+         onContextMenu={event => event.stopPropagation()}
       >
          {/* Title bar — the drag handle (inert in sheet mode). */}
          <div className="block-editor-window-titlebar" {...(isSheet ? {} : drag.titleBarProps)}>

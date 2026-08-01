@@ -16,7 +16,7 @@
 
 import type { GraphSpec, GraphTheme, GraphType } from './types'
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './layout'
-import { renderCartesian, renderFunctionPlot } from './cartesian'
+import { renderCartesian, renderFunctionPlot, renderScatterPlot, renderHistogram } from './cartesian'
 import { renderRadial } from './radial'
 import { titleElement, descElement, textElement, element } from './svg'
 
@@ -41,9 +41,13 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
 
    const body = spec.type === 'function'
       ? renderFunctionPlot(spec, theme)
-      : RADIAL_TYPES.has(spec.type)
-         ? renderRadial(spec, theme)
-         : renderCartesian(spec, theme)
+      : spec.type === 'scatter'
+         ? renderScatterPlot(spec, theme)
+         : spec.type === 'histogram'
+            ? renderHistogram(spec, theme)
+            : RADIAL_TYPES.has(spec.type)
+               ? renderRadial(spec, theme)
+               : renderCartesian(spec, theme)
 
    const accessibleTitle = spec.options.title ?? `${humanType(spec.type)} chart`
    const accessibleDesc = describeChart(spec)
@@ -60,6 +64,13 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
  * (`functionPlot`, not `data`) — it is renderable as soon as it names at least one equation with a
  * non-blank expression string (whether that expression actually COMPILES is a renderer-level
  * concern, handled gracefully per-equation, not a reason to fall back to the empty-state chart).
+ * A `scatter` chart likewise uses its own payload (`scatterPlot`) — it is renderable as soon as
+ * at least one series carries at least one point (whether that point's coordinates are finite is
+ * a renderer-level concern, handled per-point, not a reason to fall back to the empty-state chart).
+ * A `histogram` chart uses its own payload (`histogramData`) — it is renderable as soon as the
+ * sample list is non-empty (whether any of those samples are FINITE is a renderer-level concern:
+ * `computeHistogramBins` filters them and the renderer draws a graceful empty plot — axes with no
+ * bars — rather than falling back to this top-level empty-state chart).
  * Every other type: at least one label, at least one series, and at least one finite numeric cell
  * across those series. Anything less renders the empty-state.
  */
@@ -67,6 +78,14 @@ function hasRenderableData(spec: GraphSpec): boolean {
    if (spec.type === 'function') {
       const equations = spec.functionPlot?.equations ?? []
       return equations.some(equation => equation.expression.trim() !== '')
+   }
+   if (spec.type === 'scatter') {
+      const series = spec.scatterPlot?.series ?? []
+      return series.some(oneSeries => oneSeries.points.length > 0)
+   }
+   if (spec.type === 'histogram') {
+      const samples = spec.histogramData?.samples ?? []
+      return samples.length > 0
    }
    const { labels, series } = spec.data
    if (!labels || labels.length === 0) return false
@@ -125,6 +144,8 @@ function humanType(type: GraphType): string {
       case 'pie':         return 'Pie'
       case 'donut':       return 'Donut'
       case 'function':    return 'Function'
+      case 'scatter':     return 'Scatter'
+      case 'histogram':   return 'Histogram'
    }
 }
 
@@ -138,6 +159,21 @@ function describeChart(spec: GraphSpec): string {
       const equationCount = spec.functionPlot?.equations.length ?? 0
       const equationWord = equationCount === 1 ? 'equation' : 'equations'
       return `${name} chart plotting ${equationCount} ${equationWord}.`
+   }
+   if (spec.type === 'scatter') {
+      const series = spec.scatterPlot?.series ?? []
+      const pointCount = series.reduce((sum, oneSeries) => sum + oneSeries.points.length, 0)
+      const pointWord = pointCount === 1 ? 'point' : 'points'
+      // "series" is invariant English singular/plural, so no word-choice branch is needed here.
+      return `${name} chart plotting ${pointCount} ${pointWord} across ${series.length} series.`
+   }
+   if (spec.type === 'histogram') {
+      const finiteSampleCount = (spec.histogramData?.samples ?? [])
+         .filter(sample => Number.isFinite(sample)).length
+      const sampleWord = finiteSampleCount === 1 ? 'sample' : 'samples'
+      const datasetName = spec.histogramData?.name
+      const suffix = datasetName ? ` (${datasetName})` : ''
+      return `${name} chart binning ${finiteSampleCount} ${sampleWord}${suffix}.`
    }
    const labelCount = spec.data.labels.length
    const seriesCount = spec.data.series.length
@@ -166,6 +202,10 @@ export type {
    EquationSeries,
    FunctionDomain,
    FunctionPlot,
+   ScatterPoint,
+   ScatterSeries,
+   ScatterPlot,
+   HistogramData,
 } from './types'
 
 export {
@@ -190,6 +230,8 @@ export {
    FUNCTION_DEFAULT_SAMPLES,
    FUNCTION_MIN_SAMPLES,
    FUNCTION_MAX_SAMPLES,
+   HISTOGRAM_MIN_BINS,
+   HISTOGRAM_MAX_BINS,
 } from './types'
 
 export {
@@ -201,6 +243,14 @@ export {
 export type {
    CompiledExpression,
 } from './expr'
+
+export {
+   computeHistogramBins,
+} from './histogram'
+
+export type {
+   HistogramBins,
+} from './histogram'
 
 export {
    GRAPH_SERIES_LIGHT,

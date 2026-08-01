@@ -16,7 +16,10 @@
  * data), so a hand-edited file can never break the document.
  */
 
-import type { GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay, EquationSeries, FunctionDomain } from './graph'
+import type {
+   GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay,
+   EquationSeries, FunctionDomain, ScatterSeries, HistogramData,
+} from './graph'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
@@ -34,7 +37,7 @@ import { parsePipeTableRow } from './markdown'
 
 /** Every chart type the v1 renderer accepts; the parse default when the `type=` token is bad. */
 const VALID_GRAPH_TYPES: ReadonlySet<GraphType> = new Set<GraphType>([
-   'bar', 'bar-grouped', 'bar-stacked', 'line', 'area', 'pie', 'donut', 'function',
+   'bar', 'bar-grouped', 'bar-stacked', 'line', 'area', 'pie', 'donut', 'function', 'scatter', 'histogram',
 ])
 
 const DEFAULT_GRAPH_TYPE: GraphType = 'bar'
@@ -124,14 +127,24 @@ interface ParsedInfo {
    /** `xmin=`/`xmax=`/`samples=` tokens (function type only); undefined field = "use the default"
     *  (applied by the caller, since the default depends on nothing this parser knows about). */
    functionDomain:      { xMin?: number; xMax?: number; samples?: number }
+   /** `bins=`/`name=` tokens (histogram type only); undefined `bins` = "auto (Sturges)", undefined
+    *  `name` = "no dataset name". Harmlessly parsed-but-unused for every other type. */
+   histogramMeta:       { bins?: number; name?: string }
 }
 
 // ============ overlay token grammar (compact, colon-separated, quote-safe) ============
 // One `overlay=` token per Overlay (a REPEATED key — the only one in the fence). Grammar:
 //   mean:<series>            median:<series>            trend:<series>[:eq]
 //   ref:<value>[:<label>]
+//   eq:<expression>
 // where <series> is a slot index or the literal `all`. A reference label may contain spaces (and
-// colons), so the whole token is double-quoted by serializeInfoValue when it needs it.
+// colons), so the whole token is double-quoted by serializeInfoValue when it needs it. An
+// equation's <expression> is taken VERBATIM as everything after the first colon (never split
+// further) — the expr.ts grammar (docs/reference/graph_equation_study.md) has NO `:` operator or
+// token anywhere (numbers, `x`, `pi`/`e`, `+ - * / ^`, parens, commas, function names), so the
+// `eq:` prefix split is unambiguous by construction; an expression containing whitespace or a
+// literal `"` is still double-quoted by serializeInfoValue like every other token, no new
+// escaping needed.
 
 /** Serialize one overlay to its token VALUE (before quoting), or null if it can't round-trip. */
 function serializeOverlay(overlay: Overlay): string | null {
@@ -139,6 +152,10 @@ function serializeOverlay(overlay: Overlay): string | null {
       if (overlay.value === undefined || !Number.isFinite(overlay.value)) return null
       const base = `ref:${overlay.value}`
       return overlay.label && overlay.label !== '' ? `${base}:${overlay.label}` : base
+   }
+   if (overlay.kind === 'equation') {
+      if (overlay.expression === undefined || overlay.expression.trim() === '') return null
+      return `eq:${overlay.expression}`
    }
    // Computed kinds carry a series target (index or 'all'); trend carries the optional `eq` flag.
    const seriesToken = overlay.series === 'all' ? 'all' : String(overlay.series ?? 0)
@@ -158,6 +175,13 @@ function parseOverlay(raw: string): Overlay | null {
       const overlay: Overlay = { kind: 'reference', value }
       if (label !== '') overlay.label = label
       return overlay
+   }
+   if (kindToken === 'eq') {
+      // Rejoin on ':' defensively (the grammar guarantees no ':' inside an expression, but this
+      // keeps a hand-edited fence total rather than silently truncating at a stray colon).
+      const expression = segments.slice(1).join(':')
+      if (expression === '') return null // no expression: nothing to plot, not a valid overlay
+      return { kind: 'equation', expression }
    }
    if (kindToken === 'mean' || kindToken === 'median' || kindToken === 'trend') {
       const seriesToken = segments[1]
@@ -192,6 +216,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
    // the field absent and round-trips unchanged).
    const pendingOverlays: Overlay[] = []
    const functionDomain: { xMin?: number; xMax?: number; samples?: number } = {}
+   const histogramMeta: { bins?: number; name?: string } = {}
 
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -250,6 +275,14 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
             if (Number.isFinite(parsed)) functionDomain.samples = parsed
             break
          }
+         case 'bins': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) histogramMeta.bins = parsed
+            break
+         }
+         case 'name':
+            if (value !== '') histogramMeta.name = value
+            break
          case 'barWidth': {
             const parsed = Number(value)
             if (Number.isFinite(parsed)) options.barWidth = parsed
@@ -297,7 +330,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
 
    if (pendingOverlays.length > 0) options.overlays = pendingOverlays
 
-   return { type, options, colorOverrides, sliceColorOverrides, functionDomain }
+   return { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta }
 }
 
 /** Serialize the presentation options + type into the ordered `key=value` token list. */
@@ -318,6 +351,17 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       if (xMin !== FUNCTION_DEFAULT_X_MIN) tokens.push(`xmin=${xMin}`)
       if (xMax !== FUNCTION_DEFAULT_X_MAX) tokens.push(`xmax=${xMax}`)
       if (samples !== FUNCTION_DEFAULT_SAMPLES) tokens.push(`samples=${samples}`)
+   }
+
+   // `bins=`/`name=` tokens (histogram type only), emitted only when actually set — `bins` absent
+   // means "auto (Sturges)" (never emit a computed bin count, only a manual override), and `name`
+   // absent means "no dataset name" (there being no meaningful default to compare against, unlike
+   // barWidth=/lineWidth=/etc., these are simple presence checks, not default-diff checks).
+   if (spec.type === 'histogram') {
+      const histogramData = spec.histogramData
+      if (histogramData?.bins !== undefined) tokens.push(`bins=${histogramData.bins}`)
+      if (histogramData?.name !== undefined && histogramData.name !== '')
+         tokens.push(`name=${serializeInfoValue(histogramData.name)}`)
    }
 
    if (options.xLabel !== undefined && options.xLabel !== '')
@@ -361,12 +405,20 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    }
 
    // Per-series color overrides ride ONE `colors=` token in series order, empty slot = no
-   // override. Emitted only when at least one series actually carries a color.
-   const series = spec.data?.series ?? []
-   if (series.some(oneSeries => oneSeries.color !== undefined && oneSeries.color !== '')) {
+   // override. Emitted only when at least one series actually carries a color. `scatter` reads its
+   // series list from `scatterPlot` (not `data.series`, which stays empty for this type) — the
+   // SAME token grammar every other type uses, just a different source array. `histogram` has only
+   // ONE dataset (no series axis at all), so it rides the same single-slot `colors="…"` token via a
+   // synthetic one-item list built from `histogramData.color`.
+   const colorSourceSeries = spec.type === 'scatter'
+      ? (spec.scatterPlot?.series ?? [])
+      : spec.type === 'histogram'
+         ? (spec.histogramData ? [{ name: spec.histogramData.name ?? '', color: spec.histogramData.color }] : [])
+         : (spec.data?.series ?? [])
+   if (colorSourceSeries.some(oneSeries => oneSeries.color !== undefined && oneSeries.color !== '')) {
       // Always double-quote the colors list, even though it holds no spaces, so the token reads
       // clearly as one value and stays robust if a slot ever carries something exotic.
-      const slots = series.map(oneSeries => oneSeries.color ?? '')
+      const slots = colorSourceSeries.map(oneSeries => oneSeries.color ?? '')
       tokens.push(`colors="${slots.join(',')}"`)
    }
 
@@ -495,6 +547,98 @@ function serializeEquationTableBody(equations: EquationSeries[]): string {
    return [headerRow, separatorRow, ...bodyRows].join('\n')
 }
 
+/**
+ * Parse the `scatter` type's LONG-FORMAT pipe-table body — `| Series | X | Y |`, one row per POINT
+ * (not per series) — into a {@link ScatterSeries} list. Rows are grouped back into series by their
+ * `Series` cell text, preserving FIRST-SEEN series order (so an author's series ordering survives
+ * even though the long format interleaves points from different series across rows). Never throws:
+ * an unusable body yields an empty list, and a row whose X or Y cell is not a finite number is
+ * skipped rather than kept as a broken point, so a hand-edited fence can never produce a point with
+ * nothing to plot. NOTE: a series with zero points has no row to reconstruct it from and so cannot
+ * round-trip through this format — an accepted, documented degradation (the editor's keep->=1-point
+ * invariant means this only affects a hand-crafted fence, never an author using the UI).
+ */
+function parseScatterTableBody(body: string): ScatterSeries[] {
+   const rows = body.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('|'))
+
+   if (rows.length === 0) return []
+
+   // Skip the header row; skip an optional separator row directly after it.
+   let bodyStart = 1
+   if (rows.length > 1 && isSeparatorRow(parsePipeTableRow(rows[1]))) bodyStart = 2
+
+   const seriesOrder: string[] = []
+   const pointsByName = new Map<string, { x: number; y: number }[]>()
+
+   for (const row of rows.slice(bodyStart)) {
+      const cells = parsePipeTableRow(row)
+      const seriesName = (cells[0] ?? '').trim()
+      const xValue = Number((cells[1] ?? '').trim())
+      const yValue = Number((cells[2] ?? '').trim())
+      if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) continue // malformed row: skip
+      if (!pointsByName.has(seriesName)) {
+         pointsByName.set(seriesName, [])
+         seriesOrder.push(seriesName)
+      }
+      pointsByName.get(seriesName)!.push({ x: xValue, y: yValue })
+   }
+
+   return seriesOrder.map(name => ({ name, points: pointsByName.get(name) ?? [] }))
+}
+
+/**
+ * Serialize a {@link ScatterSeries} list to the `scatter` type's LONG-FORMAT pipe-table body: one
+ * row per POINT (`SeriesName | x | y`), series emitted in order with every one of their points in
+ * order. A series with zero points contributes no rows (see the parse-side note above — an
+ * accepted, editor-unreachable degradation, not a round-trip bug for anything the UI can produce).
+ */
+function serializeScatterTableBody(series: ScatterSeries[]): string {
+   const headerRow    = '| Series | X | Y |'
+   const separatorRow = '| ------ | - | - |'
+   const bodyRows: string[] = []
+   for (const oneSeries of series) {
+      const seriesName = escapePipeCell(oneSeries.name ?? '')
+      for (const point of oneSeries.points) {
+         // Skip a non-finite (blank-seeded, never filled) point — the parser skips it too, so it is
+         // never a real datum; emitting it would write a literal "NaN" cell into the fence.
+         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+         bodyRows.push(`| ${seriesName} | ${point.x} | ${point.y} |`)
+      }
+   }
+   return [headerRow, separatorRow, ...bodyRows].join('\n')
+}
+
+/**
+ * Parse a free-form blob of text into a finite `number[]`, tolerating commas, whitespace (including
+ * newlines), semicolons, and any other separator/garbage between numbers — the histogram type's
+ * "paste a pile of numbers" input, both for the fence body AND the editor's raw-samples textarea
+ * (this is the SAME parser both call, so what you paste into the editor is byte-identical to what a
+ * hand-edited fence body parses to). Tokens that do not parse to a finite number (an empty run
+ * between separators, a stray word, `NaN`/`Infinity` spelled out, …) are silently skipped — never
+ * thrown, matching the "garbage ignored, never breaks the chart" contract every other graph parser
+ * here honors.
+ */
+export function parseHistogramSamplesText(text: string): number[] {
+   const tokens = text.split(/[\s,;]+/).filter(token => token !== '')
+   const samples: number[] = []
+   for (const token of tokens) {
+      const parsed = Number(token)
+      if (Number.isFinite(parsed)) samples.push(parsed)
+   }
+   return samples
+}
+
+/**
+ * Serialize a histogram's raw sample list to the fence body: a COMPACT comma-separated number
+ * list (not a per-sample pipe table — for potentially hundreds of samples, a flat list is far more
+ * compact and just as readable in a hand-edited `.mint`/`.md` file).
+ */
+function serializeHistogramBody(samples: number[]): string {
+   return samples.map(sample => String(sample)).join(', ')
+}
+
 /** Serialize GraphData to the pipe-table body: header + separator + one row per label. */
 function serializeTableBody(spec: GraphSpec): string {
    const labels = spec.data?.labels ?? []
@@ -534,7 +678,11 @@ export function graphSpecToFence(spec: GraphSpec): { info: string; body: string 
       info: serializeInfoTokens(spec).join(' '),
       body: spec.type === 'function'
          ? serializeEquationTableBody(spec.functionPlot?.equations ?? [])
-         : serializeTableBody(spec),
+         : spec.type === 'scatter'
+            ? serializeScatterTableBody(spec.scatterPlot?.series ?? [])
+            : spec.type === 'histogram'
+               ? serializeHistogramBody(spec.histogramData?.samples ?? [])
+               : serializeTableBody(spec),
    }
 }
 
@@ -544,7 +692,7 @@ export function graphSpecToFence(spec: GraphSpec): { info: string; body: string 
  * (possibly empty), never an exception.
  */
 export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
-   const { type, options, colorOverrides, sliceColorOverrides, functionDomain } = parseInfoString(fenceInfo)
+   const { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta } = parseInfoString(fenceInfo)
 
    if (type === 'function') {
       const domain: FunctionDomain = {
@@ -557,6 +705,39 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
          data: { labels: [], series: [] },
          options,
          functionPlot: { domain, equations: parseEquationTableBody(body) },
+      }
+   }
+
+   if (type === 'scatter') {
+      const parsedSeries = parseScatterTableBody(body)
+      // Apply the per-series color overrides positionally onto the parsed series, same mechanism
+      // the generic path below uses for data.series.
+      const coloredSeries = parsedSeries.map((oneSeries, seriesIndex) => {
+         const override = colorOverrides[seriesIndex]
+         return override ? { ...oneSeries, color: override } : oneSeries
+      })
+      return {
+         type,
+         data: { labels: [], series: [] },
+         options,
+         scatterPlot: { series: coloredSeries },
+      }
+   }
+
+   if (type === 'histogram') {
+      const samples = parseHistogramSamplesText(body)
+      const histogramData: HistogramData = { samples }
+      if (histogramMeta.bins !== undefined) histogramData.bins = histogramMeta.bins
+      if (histogramMeta.name !== undefined) histogramData.name = histogramMeta.name
+      // The single-slot colors= token (see serializeInfoTokens' colorSourceSeries) carries this
+      // type's one dataset color at slot 0, same mechanism scatter/data.series use per series.
+      const colorOverride = colorOverrides[0]
+      if (colorOverride) histogramData.color = colorOverride
+      return {
+         type,
+         data: { labels: [], series: [] },
+         options,
+         histogramData,
       }
    }
 

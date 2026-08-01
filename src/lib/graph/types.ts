@@ -15,13 +15,15 @@
 // #########
 
 /**
- * The chart types the v1 renderer supports. Three rendering cores:
+ * The chart types the v1 renderer supports. Five rendering cores:
  *   - cartesian:          bar, bar-grouped, bar-stacked, line, area
  *   - radial:             pie, donut
  *   - continuous-x plot:  function (sampled equation curves over a numeric domain)
- * `scatter` is deliberately deferred (real (x,y) point pairs instead of a sampled curve, but it
- * shares the SAME continuous-x foundation `function` introduces); the union is written so a
- * future `| 'scatter'` slots in without touching the existing members.
+ *   - continuous-x/y plot: scatter (real (x, y) point pairs, reusing the SAME continuous-x
+ *                          foundation `function` introduced, plus an analogous continuous y)
+ *   - binned frequency:   histogram (raw numeric samples binned into contiguous, zero-gap bars
+ *                          over a continuous numeric x-axis of bin edges — reuses the SAME
+ *                          continuous-x foundation, but with a bar renderer, not a line renderer)
  */
 export type GraphType =
    | 'bar'
@@ -32,7 +34,8 @@ export type GraphType =
    | 'pie'
    | 'donut'
    | 'function'
-// v1.1: | 'scatter'
+   | 'scatter'
+   | 'histogram'
 
 /**
  * One named series of numbers, positionally aligned to {@link GraphData.labels}.
@@ -77,8 +80,14 @@ export interface GraphData {
  *                editor, but the render + serialization paths handle it so it is a one-line follow).
  *   - trend:     a linear least-squares trendline for a target series, labelled with its R^2.
  *   - reference: a horizontal line at a per-chart constant y (a target / threshold), no series.
+ *   - equation:  an f(x) curve plotted over the host chart's existing category-index x-range,
+ *                CHART-LEVEL like `reference` (no target series — an arbitrary expression belongs
+ *                to no series). Reuses the same home-grown `graph/expr.ts` evaluator the `function`
+ *                chart type samples with. Never auto-extends the y-axis (unlike `reference`): an
+ *                out-of-range portion of the curve is analytically clipped to the plot rect instead
+ *                of stretching the domain to fit it (see cartesian.ts's `renderEquationOverlay`).
  */
-export type OverlayKind = 'mean' | 'median' | 'trend' | 'reference'
+export type OverlayKind = 'mean' | 'median' | 'trend' | 'reference' | 'equation'
 
 /**
  * One computed reference mark drawn over a cartesian plot. Every field is optional-with-a-default,
@@ -89,15 +98,22 @@ export interface Overlay {
    /**
     * The target series for the computed kinds (mean / median / trend): a series index, or `'all'`
     * to fan out one mark per drawn series (each echoing that series' hue). Defaults to 0. Ignored
-    * by `reference` (a constant belongs to no series).
+    * by `reference` and `equation` (both are chart-level constants/curves, belonging to no series).
     */
    series?: number | 'all'
-   /** The constant y for a `reference` overlay (required in effect). Ignored by the computed kinds. */
+   /** The constant y for a `reference` overlay (required in effect). Ignored by every other kind. */
    value?: number
    /** Optional label override; falls back to a computed default per kind (see cartesian.ts). */
    label?: string
    /** Trend only: append `y = m*x + b` to the label (R^2 is shown regardless). Default false. */
    showEquation?: boolean
+   /**
+    * The `equation` overlay's raw source text in one variable `x`, e.g. `"sin(x) * 2"`, compiled
+    * via `graph/expr.ts`'s `compileExpression` — the SAME evaluator + "uncompileable/undefined
+    * draws nothing, never breaks the chart" contract the `function` chart type's equations use.
+    * Ignored by every other kind.
+    */
+   expression?: string
 }
 
 /**
@@ -230,6 +246,76 @@ export const FUNCTION_DEFAULT_SAMPLES = 200
 export const FUNCTION_MIN_SAMPLES = 20
 export const FUNCTION_MAX_SAMPLES = 2000
 
+// ##################
+// # SCATTER PLOT   #
+// ##################
+
+/** One (x, y) point on a `scatter` chart. */
+export interface ScatterPoint {
+   x: number
+   y: number
+}
+
+/**
+ * One named series of (x, y) points on a `scatter` chart. Mirrors {@link GraphSeries}' name+color
+ * shape so the same palette / color-picker machinery applies unchanged; `points` replaces
+ * `values` since a scatter point has no aligned category index to sit at — each point carries its
+ * own x AND y, rather than a value positioned at a shared category/sample index.
+ */
+export interface ScatterSeries {
+   name: string
+   /** Optional per-series color override, same semantics as {@link GraphSeries.color}. */
+   color?: string
+   points: ScatterPoint[]
+}
+
+/**
+ * The `scatter`-type payload, additive and sibling to `data`/`options`/`functionPlot`. Present +
+ * meaningful only when `type === 'scatter'`; `data` stays `{ labels: [], series: [] }` for this
+ * type, matching the `function` type's convention (keeps GraphSpec's shape uniform across every
+ * type). Unlike `function`, there is no shared domain — the x AND y ranges are both autoscaled
+ * from the plotted points themselves (see `graph/cartesian.ts`'s `renderScatterPlot`). v1 is
+ * points-only: a per-series trendline is a deferred fast-follow, NOT built here.
+ */
+export interface ScatterPlot {
+   series: ScatterSeries[]
+}
+
+// ##################
+// # HISTOGRAM      #
+// ##################
+
+/**
+ * The `histogram`-type payload, additive and sibling to `data`/`options`/`functionPlot`/
+ * `scatterPlot`. Present + meaningful only when `type === 'histogram'`; `data` stays
+ * `{ labels: [], series: [] }` for this type, matching the `function`/`scatter` convention (keeps
+ * GraphSpec's shape uniform across every type). Unlike `scatter`, there is only ONE dataset (a
+ * histogram has no series axis — every sample belongs to the same distribution), so this carries
+ * a flat sample list rather than a list of named series.
+ */
+export interface HistogramData {
+   /** The raw numeric samples to bin (NOT pre-aggregated bin counts). Non-finite entries are
+    *  filtered out by the binning function (`graph/histogram.ts`'s `computeHistogramBins`), never
+    *  by the model itself — the "never breaks the chart" contract every other graph payload here
+    *  honors. */
+   samples: number[]
+   /** Manual bin-count override, clamped to [{@link HISTOGRAM_MIN_BINS}, {@link HISTOGRAM_MAX_BINS}]
+    *  by the binning function. Undefined => an automatic bin count via Sturges' rule. */
+   bins?: number
+   /** Optional dataset name. A legend is not meaningful for a single dataset (there is nothing to
+    *  distinguish it FROM), so this surfaces minimally — only in the chart's accessible `<desc>`
+    *  (see `graph/index.ts`'s `describeChart`), never as a drawn legend box. */
+   name?: string
+   /** Optional color override, same semantics as {@link GraphSeries.color}. */
+   color?: string
+}
+
+/** The bin-count clamp bounds, shared by the binning function, the fence parser, and the editor's
+ *  manual bin-count control — one source of truth so a hand-edited fence or a typed bin count can
+ *  never request a pathological (zero, negative, or absurdly large) number of bins. */
+export const HISTOGRAM_MIN_BINS = 1
+export const HISTOGRAM_MAX_BINS = 50
+
 /** The full spec stored on a graph block: type + data + presentation options. */
 export interface GraphSpec {
    type: GraphType
@@ -238,6 +324,12 @@ export interface GraphSpec {
    /** Only used when type === 'function'. Absent/empty on every other type — a spec that has
     *  never been a function chart stays byte-identical to today. */
    functionPlot?: FunctionPlot
+   /** Only used when type === 'scatter'. Absent/empty on every other type — a spec that has
+    *  never been a scatter chart stays byte-identical to today. */
+   scatterPlot?: ScatterPlot
+   /** Only used when type === 'histogram'. Absent/empty on every other type — a spec that has
+    *  never been a histogram chart stays byte-identical to today. */
+   histogramData?: HistogramData
 }
 
 // ###############

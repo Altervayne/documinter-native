@@ -86,6 +86,25 @@ describe('cartesian marks', () => {
       expect(countOccurrences(svg, '<rect')).toBe(3)
    })
 
+   it('colors each legend swatch by series index, not name (blank/duplicate names never collapse)', () => {
+      const svg = renderGraphToSvg({
+         type: 'line',
+         data: {
+            labels: ['A', 'B'],
+            series: [
+               { name: '', values: [1, 2], color: '#111111' },
+               { name: '', values: [3, 4], color: '#222222' },
+            ],
+         },
+         options: { legend: true, showPoints: false },
+      }, LIGHT_GRAPH_THEME)
+      // With markers off, each series is ONE stroke plus ONE legend swatch of its own color. The old
+      // name-keyed legend collapsed both blank-named swatches onto the last color, so the first
+      // series' #111111 appeared only once (its stroke). Guard: each color must appear >= 2x.
+      expect(countOccurrences(svg, '#111111')).toBeGreaterThanOrEqual(2)
+      expect(countOccurrences(svg, '#222222')).toBeGreaterThanOrEqual(2)
+   })
+
    it('draws N*M rects for grouped bars', () => {
       const svg = renderGraphToSvg(makeSpec('bar-grouped'), LIGHT_GRAPH_THEME)
       expect(countOccurrences(svg, '<rect')).toBe(6)
@@ -352,6 +371,43 @@ describe('statistical overlays', () => {
       const svg = renderGraphToSvg(
          makeSpec('pie', { overlays: [{ kind: 'reference', value: 40 }] }), LIGHT_GRAPH_THEME)
       expect(countDashedLines(svg)).toBe(0)
+   })
+
+   describe('equation-curve overlay', () => {
+      it('draws a dashed polyline over an existing data chart, labelled with the expression', () => {
+         const plain = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+         // Data ranges ~30-55; this expression stays comfortably inside that range across the
+         // 3-category index domain [0,2] (40, 45, 50), so it draws one unclipped curve.
+         const withEquation = renderGraphToSvg(
+            makeSpec('line', { overlays: [{ kind: 'equation', expression: 'x*5+40' }] }),
+            LIGHT_GRAPH_THEME)
+         expect(countDashedLines(plain)).toBe(0)
+         expect(countDashedLines(withEquation)).toBe(1)
+         expect(withEquation).toContain('<polyline')
+         expect(withEquation).toContain('x*5+40') // default label = the expression itself
+      })
+
+      it('never throws and draws nothing for an uncompileable expression', () => {
+         const spec = makeSpec('line', { overlays: [{ kind: 'equation', expression: '2 +' }] })
+         expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+         expect(countDashedLines(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))).toBe(0)
+      })
+
+      it('draws nothing for a blank expression', () => {
+         const svg = renderGraphToSvg(
+            makeSpec('bar', { overlays: [{ kind: 'equation', expression: '' }] }), LIGHT_GRAPH_THEME)
+         expect(countDashedLines(svg)).toBe(0)
+      })
+
+      it('draws nothing over a single-category chart (no index range to sample across)', () => {
+         const single: GraphSpec = {
+            type: 'line',
+            data: { labels: ['A'], series: [{ name: 'S', values: [7] }] },
+            options: { overlays: [{ kind: 'equation', expression: 'x' }] },
+         }
+         expect(() => renderGraphToSvg(single, LIGHT_GRAPH_THEME)).not.toThrow()
+         expect(countDashedLines(renderGraphToSvg(single, LIGHT_GRAPH_THEME))).toBe(0)
+      })
    })
 })
 
@@ -623,6 +679,300 @@ describe('function chart (equation plot)', () => {
 
    it('is deterministic — identical input yields identical output', () => {
       const spec = makeFunctionSpec([{ name: 'f', expression: 'sin(x) + 0.5*x' }])
+      expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
+   })
+})
+
+/** A `scatter`-type spec from the given series list (legend off unless overridden). */
+function makeScatterSpec(
+   series: { name: string; points: { x: number; y: number }[]; color?: string }[],
+   overrides: Partial<GraphSpec['options']> = {},
+): GraphSpec {
+   return {
+      type: 'scatter',
+      data: { labels: [], series: [] },
+      options: { legend: false, ...overrides },
+      scatterPlot: { series },
+   }
+}
+
+describe('scatter chart (x/y point pairs)', () => {
+   it('emits a well-formed responsive <svg> with title/desc', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 2 }, { x: 2, y: 4 }] }], { title: 'A scatter' }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg.startsWith('<svg')).toBe(true)
+      expect(svg.endsWith('</svg>')).toBe(true)
+      expect(svg).toContain('viewBox="0 0 720 440"')
+      expect(svg).toContain('<title>A scatter</title>')
+   })
+
+   it('draws one <circle> per point across every series', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([
+            { name: 'A', points: [{ x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 5 }] },
+            { name: 'B', points: [{ x: 1, y: 6 }, { x: 2, y: 5 }] },
+         ]),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(countOccurrences(svg, '<circle')).toBe(5)
+   })
+
+   it('draws numeric x-axis AND y-axis tick labels (never a category label)', () => {
+      // x autoscales/nice-ticks to [0, 100] (ticks include 100); y autoscales/nice-ticks to
+      // [0, 50] (ticks include 50) — distinct max values so each assertion pins its own axis.
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 100, y: 50 }] }]),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toMatch(/>100<\/text>/)
+      expect(svg).toMatch(/>50<\/text>/)
+   })
+
+   it('autoscales both axes with NO forced zero baseline, honoring an explicit yMin/yMax override', () => {
+      // x autoscales from [1, 2] (nowhere near -10/10, so any -10/10 tick can only be the y-axis);
+      // the raw y data [1000, 1001] would autoscale far from -10/10 without the override.
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 1000 }, { x: 2, y: 1001 }] }], { yMin: -10, yMax: 10 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toMatch(/>-10<\/text>/)
+      expect(svg).toMatch(/>10<\/text>/)
+   })
+
+   it('shows a legend with series names when more than one series is drawn', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([
+            { name: 'North', points: [{ x: 1, y: 2 }] },
+            { name: 'South', points: [{ x: 3, y: 4 }] },
+         ], { legend: true }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toContain('North')
+      expect(svg).toContain('South')
+   })
+
+   it('honors a per-series color override', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 2 }], color: '#abcdef' }]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('#abcdef')
+   })
+
+   it('caps drawn series at 8, mirroring the series cap', () => {
+      const manySeries = makeScatterSpec(
+         Array.from({ length: 10 }, (_, index) => ({ name: `s${index}`, points: [{ x: index, y: index }] })))
+      const svg = renderGraphToSvg(manySeries, LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<circle')).toBe(8)
+   })
+
+   it('renders a graceful empty-state placeholder for an empty series list', () => {
+      const svg = renderGraphToSvg(makeScatterSpec([]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('No data to chart')
+   })
+
+   it('renders a graceful empty-state placeholder when every series has zero points', () => {
+      const svg = renderGraphToSvg(makeScatterSpec([{ name: 'A', points: [] }]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('No data to chart')
+   })
+
+   it('never throws for a single point (degenerate x and y domain)', () => {
+      const spec = makeScatterSpec([{ name: 'A', points: [{ x: 5, y: 5 }] }])
+      expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+   })
+
+   it('never throws and draws nothing for non-finite point coordinates', () => {
+      const spec = makeScatterSpec([{ name: 'A', points: [{ x: NaN, y: Infinity }] }])
+      expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+      const svg = renderGraphToSvg(spec, LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<circle')).toBe(0)
+   })
+
+   it('is deterministic — identical input yields identical output', () => {
+      const spec = makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] }])
+      expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
+   })
+
+   // Statistical overlays for scatter reuse the SAME overlay machinery a categorical cartesian
+   // chart draws with (dashed styling, haloed label, analytic plot-rect clip) — mean/trend are
+   // computed over the target series' raw (x, y) points instead of a category-aligned `values`
+   // array, and trend fits `linearRegressionXY`, not the categorical index-based `linearRegression`.
+   describe('statistical overlays (scatter)', () => {
+      it('adds a dashed mean line at the target series’ own point-Y mean', () => {
+         const points = [{ x: 1, y: 10 }, { x: 2, y: 20 }, { x: 3, y: 30 }]
+         const plain = renderGraphToSvg(makeScatterSpec([{ name: 'A', points }]), LIGHT_GRAPH_THEME)
+         const withMean = renderGraphToSvg(
+            makeScatterSpec([{ name: 'A', points }], { overlays: [{ kind: 'mean', series: 0 }] }),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(countDashedLines(plain)).toBe(0)
+         expect(countDashedLines(withMean)).toBe(1)
+         // mean of [10, 20, 30] = 20.
+         expect(withMean).toContain('mean 20')
+      })
+
+      it('draws a trendline fit over the raw (x, y) points, with an R² label and, opt-in, the equation', () => {
+         // A perfect line y = 2x through the origin -> slope 2, intercept 0, R^2 = 1.
+         const points = [{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 6 }]
+         const rOnly = renderGraphToSvg(
+            makeScatterSpec([{ name: 'A', points }], { overlays: [{ kind: 'trend', series: 0 }] }),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(countDashedLines(rOnly)).toBe(1)
+         expect(rOnly).toContain('R² 1')
+         expect(rOnly).not.toContain('y =')
+
+         const withEquation = renderGraphToSvg(
+            makeScatterSpec([{ name: 'A', points }], { overlays: [{ kind: 'trend', series: 0, showEquation: true }] }),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(withEquation).toContain('y =')
+         expect(withEquation).toContain('R²')
+      })
+
+      it('skips a trend overlay for a series with fewer than 2 points', () => {
+         const spec = makeScatterSpec(
+            [{ name: 'A', points: [{ x: 1, y: 1 }] }], { overlays: [{ kind: 'trend', series: 0 }] })
+         expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+         expect(countDashedLines(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))).toBe(0)
+      })
+
+      it('auto-extends the y-domain so a reference line above the plotted points stays visible', () => {
+         const points = [{ x: 1, y: 10 }, { x: 2, y: 55 }]
+         const plain = renderGraphToSvg(makeScatterSpec([{ name: 'A', points }]), LIGHT_GRAPH_THEME)
+         const svg = renderGraphToSvg(
+            makeScatterSpec([{ name: 'A', points }], { overlays: [{ kind: 'reference', value: 200, label: 'Cap' }] }),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(countDashedLines(svg)).toBe(1)
+         expect(svg).toContain('Cap')
+         // The auto-extended axis now shows a 200 tick that a plain chart of this data would not.
+         expect(plain).not.toContain('>200<')
+         expect(svg).toContain('>200<')
+      })
+
+      it('fans out an all-series mean overlay to one line per drawn series', () => {
+         const svg = renderGraphToSvg(
+            makeScatterSpec(
+               [
+                  { name: 'A', points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+                  { name: 'B', points: [{ x: 1, y: 50 }, { x: 2, y: 60 }] },
+               ],
+               { overlays: [{ kind: 'mean', series: 'all' }] },
+            ),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(countDashedLines(svg)).toBe(2)
+      })
+
+      it('skips the equation overlay kind entirely on a scatter chart (no categorical axis to sample)', () => {
+         const svg = renderGraphToSvg(
+            makeScatterSpec(
+               [{ name: 'A', points: [{ x: 1, y: 2 }] }], { overlays: [{ kind: 'equation', expression: 'x' }] }),
+            LIGHT_GRAPH_THEME,
+         )
+         expect(countDashedLines(svg)).toBe(0)
+         expect(svg).not.toContain('<polyline')
+      })
+   })
+})
+
+/** A `histogram`-type spec from the given raw samples (legend off unless overridden — though a
+ *  histogram never draws one regardless, see cartesian.ts's renderHistogram). */
+function makeHistogramSpec(
+   samples: number[],
+   histogramOverrides: { bins?: number; name?: string; color?: string } = {},
+   overrides: Partial<GraphSpec['options']> = {},
+): GraphSpec {
+   return {
+      type: 'histogram',
+      data: { labels: [], series: [] },
+      options: { legend: false, ...overrides },
+      histogramData: { samples, ...histogramOverrides },
+   }
+}
+
+describe('histogram chart (binned frequency distribution)', () => {
+   it('emits a well-formed responsive <svg> with title/desc', () => {
+      const svg = renderGraphToSvg(
+         makeHistogramSpec([1, 2, 3, 4, 5, 6, 7, 8], {}, { title: 'A histogram' }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg.startsWith('<svg')).toBe(true)
+      expect(svg.endsWith('</svg>')).toBe(true)
+      expect(svg).toContain('viewBox="0 0 720 440"')
+      expect(svg).toContain('<title>A histogram</title>')
+   })
+
+   it('draws one CONTIGUOUS <rect> bar per bin, with a manual bin count honored', () => {
+      const svg = renderGraphToSvg(makeHistogramSpec([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], { bins: 5 }), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<rect')).toBe(5)
+   })
+
+   it('draws a numeric x-axis of bin edges (never a category label)', () => {
+      // [0, 100] over 5 manual bins -> edges at 0, 20, 40, 60, 80, 100; the axis nice-ticks over
+      // that numeric domain, so 100 must appear as a tick label.
+      const svg = renderGraphToSvg(makeHistogramSpec([0, 100], { bins: 5 }), LIGHT_GRAPH_THEME)
+      expect(svg).toMatch(/>100<\/text>/)
+   })
+
+   it('draws the y-axis (frequency) from a ZERO baseline, unlike function/scatter', () => {
+      // Every sample lands in one bin (a huge count relative to the others), so 0 must be a tick.
+      const svg = renderGraphToSvg(makeHistogramSpec([10, 10, 10, 10, 20], { bins: 2 }), LIGHT_GRAPH_THEME)
+      expect(svg).toMatch(/>0<\/text>/)
+   })
+
+   it('honors an explicit yMax override on the frequency axis', () => {
+      const svg = renderGraphToSvg(
+         makeHistogramSpec([1, 2, 3, 4, 5], { bins: 5 }, { yMax: 1000 }), LIGHT_GRAPH_THEME)
+      expect(svg).toMatch(/>1,000<\/text>/)
+   })
+
+   it('draws no visible legend box for a single dataset, even with legend explicitly requested', () => {
+      // The dataset name may still surface MINIMALLY in the accessible <desc> (see describeChart
+      // below), but never as a drawn legend swatch/label in the plot area — there is only ONE
+      // <desc> element in the whole document, so this pins that as the sole place the name appears.
+      const svg = renderGraphToSvg(
+         makeHistogramSpec([1, 2, 3, 4, 5], { name: 'Widget A' }, { legend: true }), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, 'Widget A')).toBe(1)
+      expect(svg).toMatch(/<desc>[^<]*Widget A[^<]*<\/desc>/)
+   })
+
+   it('honors a dataset color override', () => {
+      const svg = renderGraphToSvg(makeHistogramSpec([1, 2, 3], { color: '#abcdef' }), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('#abcdef')
+   })
+
+   it('draws value labels above bars when showValues is set', () => {
+      const svg = renderGraphToSvg(
+         makeHistogramSpec([1, 2, 3, 4, 5], { bins: 5 }, { showValues: true }), LIGHT_GRAPH_THEME)
+      // Every one of the 5 manual bins holds exactly one of the 5 samples -> five "1" value labels.
+      expect(countOccurrences(svg, '>1</text>')).toBeGreaterThanOrEqual(5)
+   })
+
+   it('renders a graceful empty-state placeholder for an empty sample list', () => {
+      const svg = renderGraphToSvg(makeHistogramSpec([]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('No data to chart')
+   })
+
+   it('never throws and draws a graceful empty plot (no bars) when every sample is non-finite', () => {
+      // hasRenderableData only checks STRUCTURAL presence (samples.length > 0), so this spec is
+      // deemed renderable at the top level; the empty-bars degradation happens inside the renderer.
+      const spec = makeHistogramSpec([Number.NaN, Infinity, -Infinity])
+      expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+      const svg = renderGraphToSvg(spec, LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<rect')).toBe(0)
+   })
+
+   it('never throws for all-equal samples (a degenerate single-bin domain)', () => {
+      const spec = makeHistogramSpec([7, 7, 7, 7])
+      expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+      const svg = renderGraphToSvg(spec, LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<rect')).toBe(1)
+   })
+
+   it('is deterministic — identical input yields identical output', () => {
+      const spec = makeHistogramSpec([3, 1, 4, 1, 5, 9, 2, 6, 5, 3])
       expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
    })
 })

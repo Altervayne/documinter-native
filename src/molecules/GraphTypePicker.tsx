@@ -36,6 +36,8 @@ type GraphTypeLabelKey =
    | 'graphTypePie'
    | 'graphTypeDonut'
    | 'graphTypeFunction'
+   | 'graphTypeScatter'
+   | 'graphTypeHistogram'
 
 const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
    { type: 'bar',         labelKey: 'graphTypeBar' },
@@ -46,6 +48,8 @@ const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
    { type: 'pie',         labelKey: 'graphTypePie' },
    { type: 'donut',       labelKey: 'graphTypeDonut' },
    { type: 'function',    labelKey: 'graphTypeFunction' },
+   { type: 'scatter',     labelKey: 'graphTypeScatter' },
+   { type: 'histogram',   labelKey: 'graphTypeHistogram' },
 ]
 
 // ################
@@ -113,6 +117,29 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
             functionPlot: {
                domain: { xMin: -6.5, xMax: 6.5, samples: 120 },
                equations: [{ name: 'f', expression: 'sin(x)' }],
+            },
+         }
+      case 'scatter':
+         // The 9th card's thumbnail: a small canned 2-series point cloud, illustrative only.
+         return {
+            type,
+            data: { labels: [], series: [] },
+            options: { legend: false },
+            scatterPlot: {
+               series: [
+                  { name: '', points: [{ x: 1, y: 3 }, { x: 2, y: 5 }, { x: 3, y: 4 }, { x: 4, y: 6 }] },
+                  { name: '', points: [{ x: 1, y: 6 }, { x: 2, y: 4 }, { x: 3, y: 7 }, { x: 4, y: 5 }] },
+               ],
+            },
+         }
+      case 'histogram':
+         // The 10th card's thumbnail: a small canned, roughly bell-shaped sample list, illustrative only.
+         return {
+            type,
+            data: { labels: [], series: [] },
+            options: { legend: false },
+            histogramData: {
+               samples: [2, 3, 3, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 8, 8, 9],
             },
          }
    }

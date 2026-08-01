@@ -18,7 +18,10 @@
  * editing model, not about preventing a crash.
  */
 
-import type { GraphSpec, GraphData, GraphType, GraphOptions, Overlay, FunctionDomain, FunctionPlot } from './graph'
+import type {
+   GraphSpec, GraphData, GraphType, GraphOptions, Overlay,
+   FunctionDomain, FunctionPlot, ScatterPlot, ScatterPoint, HistogramData,
+} from './graph'
 import {
    MAX_SERIES,
    FUNCTION_DEFAULT_X_MIN,
@@ -26,6 +29,8 @@ import {
    FUNCTION_DEFAULT_SAMPLES,
    FUNCTION_MIN_SAMPLES,
    FUNCTION_MAX_SAMPLES,
+   HISTOGRAM_MIN_BINS,
+   HISTOGRAM_MAX_BINS,
 } from './graph'
 
 // ###########
@@ -293,15 +298,26 @@ export function setCell(spec: GraphSpec, rowIndex: number, seriesIndex: number, 
 // ####################
 
 /**
- * Switch the chart type, carrying data + options + any existing functionPlot through unchanged.
- * Switching TO `function` for the first time (no functionPlot yet) seeds one from the
- * FUNCTION_DEFAULT_* constants + a single blank equation, so the Data tab's EquationEditor always
- * has something real to render the moment the type card is clicked — never an undefined payload.
+ * Switch the chart type, carrying data + options + any existing functionPlot/scatterPlot/
+ * histogramData through unchanged. Switching TO `function` for the first time (no functionPlot
+ * yet) seeds one from the FUNCTION_DEFAULT_* constants + a single blank equation, so the Data
+ * tab's EquationEditor always has something real to render the moment the type card is clicked —
+ * never an undefined payload. Switching TO `scatter` for the first time (no scatterPlot yet)
+ * similarly seeds one series with a single point at the origin, so the Data tab's ScatterEditor
+ * always has something real to render. Switching TO `histogram` for the first time (no
+ * histogramData yet) similarly seeds a small sample list, so the Data tab's HistogramEditor never
+ * opens on a totally empty chart.
  */
 export function setType(spec: GraphSpec, type: GraphType): GraphSpec {
    const next: GraphSpec = { ...spec, type }
    if (type === 'function' && !next.functionPlot) {
       next.functionPlot = ensureFunctionPlot(spec)
+   }
+   if (type === 'scatter' && !next.scatterPlot) {
+      next.scatterPlot = ensureScatterPlot(spec)
+   }
+   if (type === 'histogram' && !next.histogramData) {
+      next.histogramData = ensureHistogramData(spec)
    }
    // A type change RESETS the explicit y-axis range (yMin/yMax). These are only ever set through the
    // function editor (a function-specific concern — pinning a range so the asymptote heuristic bites),
@@ -499,4 +515,343 @@ export function setDomain(spec: GraphSpec, partial: Partial<FunctionDomain>): Gr
       domain.samples = clampSamples(partial.samples)
    }
    return withFunctionPlot(spec, { ...functionPlot, domain })
+}
+
+/**
+ * Insert a fresh blank equation AT `index`, shifting every later equation down. `index` may run
+ * from 0 to the current equation count inclusive (an end insert equals {@link addEquation}); out of
+ * that range returns the spec with `functionPlot` merely seeded. No-op once the equation count
+ * reaches MAX_SERIES (the same palette-slot cap {@link addEquation} enforces). Drives the equation
+ * row context menu's insert-before / insert-after. The new equation's name is the next default
+ * letter (by the current count), matching {@link addEquation}.
+ */
+export function insertEquationAt(spec: GraphSpec, index: number): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   if (functionPlot.equations.length >= MAX_SERIES) return withFunctionPlot(spec, functionPlot)
+   if (index < 0 || index > functionPlot.equations.length) return withFunctionPlot(spec, functionPlot)
+   const equations = [...functionPlot.equations]
+   equations.splice(index, 0, { name: defaultEquationName(functionPlot.equations.length), expression: '' })
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+/**
+ * Move the equation at `fromIndex` to `toIndex`, reordering the `equations` array. A no-op (returns
+ * the spec with `functionPlot` merely seeded) when either index is out of range or they are equal.
+ * The equation count never changes, so the keep-at-least-one invariant is untouched. Drives the
+ * equation row drag-reorder.
+ */
+export function moveEquation(spec: GraphSpec, fromIndex: number, toIndex: number): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   const equationCount = functionPlot.equations.length
+   if (fromIndex < 0 || fromIndex >= equationCount) return withFunctionPlot(spec, functionPlot)
+   if (toIndex < 0 || toIndex >= equationCount) return withFunctionPlot(spec, functionPlot)
+   if (fromIndex === toIndex) return withFunctionPlot(spec, functionPlot)
+   const equations = [...functionPlot.equations]
+   moveArrayItem(equations, fromIndex, toIndex)
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+// ##########################
+// # SCATTER POINTS (scatter type) #
+// ##########################
+//
+// The `scatter` chart type's payload (`GraphSpec.scatterPlot`) is a list of named (x, y) point
+// series — no shared domain, no categories (unlike EQUATIONS above, which share one domain across
+// every equation). Mirrors that section's shape: every helper SEEDS a `scatterPlot` from a sensible
+// default whenever one is absent, and preserves two invariants:
+//   - NON-EMPTY SERIES LIST: the last remaining series is never removed (keep >= 1).
+//   - NON-EMPTY POINT LIST: the last remaining point in a series is never removed (keep >= 1).
+// v1 is points-only (no per-series trendline — a deferred fast-follow, not built here).
+
+/** The sane out-of-the-box scatterPlot: one blank-named series with a single point at the origin,
+ *  so a freshly switched-to scatter chart is never rendered totally empty. */
+function defaultScatterPlot(): ScatterPlot {
+   return { series: [{ name: '', points: [{ x: 0, y: 0 }] }] }
+}
+
+/** Return the spec's existing `scatterPlot`, or a freshly seeded default when absent. */
+function ensureScatterPlot(spec: GraphSpec): ScatterPlot {
+   return spec.scatterPlot ?? defaultScatterPlot()
+}
+
+/** Reassemble a fresh spec carrying a new `scatterPlot`, everything else unchanged. */
+function withScatterPlot(spec: GraphSpec, scatterPlot: ScatterPlot): GraphSpec {
+   return { ...spec, scatterPlot }
+}
+
+/**
+ * Append a new series (capped at MAX_SERIES, the same palette-slot cap the numeric data grid's
+ * series enforce, so scatter colors stay inside the validated 8-hue set), seeded with one point at
+ * the origin so it is never rendered empty. Seeds `scatterPlot` from the defaults first when the
+ * spec has never carried one.
+ */
+export function addScatterSeries(spec: GraphSpec, name: string = ''): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (scatterPlot.series.length >= MAX_SERIES) return withScatterPlot(spec, scatterPlot)
+   const series = [...scatterPlot.series, { name, points: [{ x: 0, y: 0 }] }]
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Remove the series at `seriesIndex`. No-op (series unchanged, but `scatterPlot` is still seeded
+ * if it was absent) when it would remove the last series or the index is out of range, honoring
+ * the keep-at-least-one-series invariant.
+ */
+export function removeScatterSeries(spec: GraphSpec, seriesIndex: number): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (scatterPlot.series.length <= 1) return withScatterPlot(spec, scatterPlot)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.filter((_series, index) => index !== seriesIndex)
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/** Set the display name of the series at `seriesIndex`. Out-of-range returns the spec with
+ *  `scatterPlot` merely seeded. */
+export function setScatterSeriesName(spec: GraphSpec, seriesIndex: number, name: string): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, index) =>
+      index === seriesIndex ? { ...oneSeries, name } : oneSeries)
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Set (or clear) the per-series color override at `seriesIndex` — the scatter-chart counterpart
+ * to {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely, resetting the
+ * series back to its palette slot. Out-of-range returns the spec with `scatterPlot` merely seeded.
+ */
+export function setScatterSeriesColor(spec: GraphSpec, seriesIndex: number, color: string | undefined): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, index) => {
+      if (index !== seriesIndex) return oneSeries
+      const { color: _dropped, ...rest } = oneSeries
+      return color === undefined ? rest : { ...rest, color }
+   })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Append a new point to the series at `seriesIndex`. The default is a BLANK point (non-finite x/y):
+ * the editor renders it as an empty "–" gap to type over, and both the renderer and the fence
+ * serializer skip a non-finite point — so an unfilled seed never draws a stray mark at the origin
+ * nor persists as a real datum. Out-of-range returns the spec with `scatterPlot` merely seeded.
+ */
+export function addScatterPoint(
+   spec: GraphSpec,
+   seriesIndex: number,
+   point: ScatterPoint = { x: NaN, y: NaN },
+): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, index) =>
+      index === seriesIndex ? { ...oneSeries, points: [...oneSeries.points, point] } : oneSeries)
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Remove the point at `pointIndex` from the series at `seriesIndex`. No-op (unchanged, but
+ * `scatterPlot` still seeded if absent) when it would remove that series' last point, or either
+ * index is out of range, honoring the keep-at-least-one-point-per-series invariant.
+ */
+export function removeScatterPoint(spec: GraphSpec, seriesIndex: number, pointIndex: number): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const targetSeries = scatterPlot.series[seriesIndex]
+   if (targetSeries.points.length <= 1) return withScatterPlot(spec, scatterPlot)
+   if (pointIndex < 0 || pointIndex >= targetSeries.points.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, index) => {
+      if (index !== seriesIndex) return oneSeries
+      return { ...oneSeries, points: oneSeries.points.filter((_point, pointIdx) => pointIdx !== pointIndex) }
+   })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Set the `x` or `y` field of the point at (`seriesIndex`, `pointIndex`). Out-of-range indices
+ * return the spec with `scatterPlot` merely seeded. A non-finite `value` is still written here —
+ * mirroring {@link setEquationField}'s "never breaks the chart" contract: the renderer already
+ * skips a non-finite point when computing the domain and drawing marks, so validating/blocking the
+ * keystroke is an editor concern (a live invalid-ring affordance), not this pure transform's.
+ */
+export function setScatterPointField(
+   spec: GraphSpec,
+   seriesIndex: number,
+   pointIndex: number,
+   field: 'x' | 'y',
+   value: number,
+): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const targetSeries = scatterPlot.series[seriesIndex]
+   if (pointIndex < 0 || pointIndex >= targetSeries.points.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, index) => {
+      if (index !== seriesIndex) return oneSeries
+      const points = oneSeries.points.map((point, pointIdx) =>
+         pointIdx === pointIndex ? { ...point, [field]: value } : point)
+      return { ...oneSeries, points }
+   })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Insert a fresh series AT `index`, seeded with one point at the origin so it is never rendered
+ * empty. `index` may run from 0 to the current series count inclusive (an end insert equals
+ * {@link addScatterSeries}); out of that range returns the spec with `scatterPlot` merely seeded.
+ * No-op once the series count reaches MAX_SERIES (the palette-slot cap). Drives the scatter series
+ * head context menu's insert-before / insert-after.
+ */
+export function insertScatterSeriesAt(spec: GraphSpec, index: number, name: string = ''): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (scatterPlot.series.length >= MAX_SERIES) return withScatterPlot(spec, scatterPlot)
+   if (index < 0 || index > scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const series = [...scatterPlot.series]
+   series.splice(index, 0, { name, points: [{ x: 0, y: 0 }] })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Move the series at `fromIndex` to `toIndex`, reordering the `series` array. A no-op (returns the
+ * spec with `scatterPlot` merely seeded) when either index is out of range or they are equal. The
+ * series count never changes, so the keep-at-least-one-series invariant is untouched. Drives the
+ * scatter series drag-reorder.
+ */
+export function moveScatterSeries(spec: GraphSpec, fromIndex: number, toIndex: number): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   const seriesCount = scatterPlot.series.length
+   if (fromIndex < 0 || fromIndex >= seriesCount) return withScatterPlot(spec, scatterPlot)
+   if (toIndex < 0 || toIndex >= seriesCount) return withScatterPlot(spec, scatterPlot)
+   if (fromIndex === toIndex) return withScatterPlot(spec, scatterPlot)
+   const series = [...scatterPlot.series]
+   moveArrayItem(series, fromIndex, toIndex)
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Insert a fresh point AT `index` in the series at `seriesIndex`, shifting every later point down.
+ * The default is a BLANK point (non-finite x/y), matching {@link addScatterPoint}: the editor
+ * renders it as an empty "–" gap to type over, and both the renderer and the fence serializer skip
+ * a non-finite point. `index` may run from 0 to the series' current point count inclusive (an end
+ * insert equals {@link addScatterPoint}); out of that range, or an out-of-range `seriesIndex`,
+ * returns the spec with `scatterPlot` merely seeded. Drives the point row context menu's
+ * insert-before / insert-after.
+ */
+export function insertScatterPointAt(
+   spec: GraphSpec,
+   seriesIndex: number,
+   index: number,
+   point: ScatterPoint = { x: NaN, y: NaN },
+): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const targetSeries = scatterPlot.series[seriesIndex]
+   if (index < 0 || index > targetSeries.points.length) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, seriesIdx) => {
+      if (seriesIdx !== seriesIndex) return oneSeries
+      const points = [...oneSeries.points]
+      points.splice(index, 0, point)
+      return { ...oneSeries, points }
+   })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+/**
+ * Move the point at `fromIndex` to `toIndex` WITHIN the series at `seriesIndex`, reordering only
+ * that series' `points` array (other series untouched). A no-op (returns the spec with `scatterPlot`
+ * merely seeded) when the series index is out of range, either point index is out of range, or the
+ * two point indices are equal. The point count never changes, so the keep-at-least-one-point
+ * invariant is untouched. Drives the scatter point drag-reorder.
+ */
+export function moveScatterPoint(spec: GraphSpec, seriesIndex: number, fromIndex: number, toIndex: number): GraphSpec {
+   const scatterPlot = ensureScatterPlot(spec)
+   if (seriesIndex < 0 || seriesIndex >= scatterPlot.series.length) return withScatterPlot(spec, scatterPlot)
+   const targetSeries = scatterPlot.series[seriesIndex]
+   const pointCount = targetSeries.points.length
+   if (fromIndex < 0 || fromIndex >= pointCount) return withScatterPlot(spec, scatterPlot)
+   if (toIndex < 0 || toIndex >= pointCount) return withScatterPlot(spec, scatterPlot)
+   if (fromIndex === toIndex) return withScatterPlot(spec, scatterPlot)
+   const series = scatterPlot.series.map((oneSeries, seriesIdx) => {
+      if (seriesIdx !== seriesIndex) return oneSeries
+      const points = [...oneSeries.points]
+      moveArrayItem(points, fromIndex, toIndex)
+      return { ...oneSeries, points }
+   })
+   return withScatterPlot(spec, { ...scatterPlot, series })
+}
+
+// ##################################
+// # HISTOGRAM DATA (histogram type) #
+// ##################################
+//
+// The `histogram` chart type's payload (`GraphSpec.histogramData`) is a single flat sample list —
+// no series axis, no shared domain, no categories (a histogram has exactly ONE dataset). Mirrors
+// the EQUATIONS/SCATTER sections' seeding shape: every helper SEEDS a `histogramData` from a
+// sensible default whenever one is absent, so an author can never be looking at an editor with
+// nothing to edit. `bins` is the only field with a range invariant (clamped to
+// [HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS]); `samples`/`name`/`color` have no structural invariant
+// of their own (an empty sample list is valid — the renderer just draws a graceful empty plot).
+
+/** The sane out-of-the-box histogramData: a small, real (non-empty) sample list so a freshly
+ *  switched-to histogram chart is never rendered totally empty. Bin count is left unset (auto). */
+function defaultHistogramData(): HistogramData {
+   return { samples: [1, 2, 2, 3, 3, 3, 4, 4, 5] }
+}
+
+/** Return the spec's existing `histogramData`, or a freshly seeded default when absent. */
+function ensureHistogramData(spec: GraphSpec): HistogramData {
+   return spec.histogramData ?? defaultHistogramData()
+}
+
+/** Reassemble a fresh spec carrying a new `histogramData`, everything else unchanged. */
+function withHistogramData(spec: GraphSpec, histogramData: HistogramData): GraphSpec {
+   return { ...spec, histogramData }
+}
+
+/** Clamp a requested bin count into [HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS], rounding first so a
+ *  fractional typed value never sneaks a non-integer bin count into the spec (mirrors
+ *  {@link clampSamples}'s treatment of the function type's sample count). */
+function clampBinCount(bins: number): number {
+   return Math.min(HISTOGRAM_MAX_BINS, Math.max(HISTOGRAM_MIN_BINS, Math.round(bins)))
+}
+
+/**
+ * Replace the whole raw sample list. Seeds `histogramData` from the default first when the spec
+ * has never carried one. Non-finite entries are left as-is here — {@link computeHistogramBins}
+ * (the renderer's binning function) already filters them out, so validating/blocking a stray token
+ * is the editor's parsing concern (see molecules/HistogramEditor.tsx's tolerant text parse), not
+ * this pure transform's.
+ */
+export function setHistogramSamples(spec: GraphSpec, samples: number[]): GraphSpec {
+   const histogramData = ensureHistogramData(spec)
+   return withHistogramData(spec, { ...histogramData, samples })
+}
+
+/**
+ * Set (or clear) the manual bin-count override. Passing `undefined` DELETES the `bins` key
+ * entirely, resetting the chart back to the automatic Sturges'-rule bin count — the editor's
+ * "Auto" empty state. A defined value is rounded + clamped to
+ * [HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS] so a hand-typed or pathological value can never reach
+ * the stored spec (mirrors {@link setDomain}'s clamp of the function type's sample count).
+ */
+export function setHistogramBins(spec: GraphSpec, bins: number | undefined): GraphSpec {
+   const histogramData = ensureHistogramData(spec)
+   const { bins: _dropped, ...rest } = histogramData
+   return withHistogramData(spec, bins === undefined ? rest : { ...rest, bins: clampBinCount(bins) })
+}
+
+/** Set the optional dataset name. Seeds `histogramData` from the default first when absent. */
+export function setHistogramName(spec: GraphSpec, name: string): GraphSpec {
+   const histogramData = ensureHistogramData(spec)
+   return withHistogramData(spec, { ...histogramData, name })
+}
+
+/**
+ * Set (or clear) the dataset color override — the histogram-chart counterpart to
+ * {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely, resetting the bars
+ * back to their palette slot. Seeds `histogramData` from the default first when absent.
+ */
+export function setHistogramColor(spec: GraphSpec, color: string | undefined): GraphSpec {
+   const histogramData = ensureHistogramData(spec)
+   const { color: _dropped, ...rest } = histogramData
+   return withHistogramData(spec, color === undefined ? rest : { ...rest, color })
 }

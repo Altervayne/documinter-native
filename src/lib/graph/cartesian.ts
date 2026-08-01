@@ -12,7 +12,7 @@
  * ~10% opacity, recessive hairline gridlines, and a legend whenever there is >1 series.
  */
 
-import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain } from './types'
+import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain, ScatterSeries } from './types'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
@@ -25,9 +25,11 @@ import {
    FUNCTION_MAX_SAMPLES,
 } from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
-import { mean as meanOf, median as medianOf, linearRegression } from './stats'
+import { mean as meanOf, median as medianOf, linearRegression, linearRegressionXY } from './stats'
 import { linearScale, niceTicks, bandScale } from './scale'
 import { compileExpression, evaluate } from './expr'
+import type { CompiledExpression } from './expr'
+import { computeHistogramBins } from './histogram'
 import { buildContinuousXAdapter, renderNumericXAxisLabels } from './continuousAxis'
 import {
    computeCartesianLayout,
@@ -90,6 +92,17 @@ const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
 // rather than a genuine crossing — a pragmatic sign-change + magnitude heuristic (not symbolic
 // limit analysis), per docs/reference/graph_equation_study.md Q4.
 const ASYMPTOTE_MAGNITUDE_MULTIPLIER = 4
+
+// ====== equation overlay (f(x) drawn over an existing cartesian chart) ======
+// Sample count across the host chart's category-index domain [0, labelCount-1]; >=100 keeps a
+// sampled curve reading as smooth at the chart's canvas size (mirrors FUNCTION_DEFAULT_SAMPLES'
+// order of magnitude for the standalone `function` chart type, applied here to a usually-narrower
+// index range instead of a numeric xMin/xMax span).
+const EQUATION_OVERLAY_SAMPLE_COUNT = 120
+// A fixed, distinct palette slot for the equation curve — NEVER a data series' own hue (an
+// arbitrary f(x) is not "series 6"; this just reuses the validated 8-hue palette's violet slot as
+// a stable, always-the-same color via the existing resolveSeriesColor wrap-around).
+const EQUATION_OVERLAY_PALETTE_SLOT = 6
 
 // ####################
 // # PUBLIC RENDERER  #
@@ -386,6 +399,413 @@ function applyAsymptoteGaps(
 }
 
 // #####################
+// # SCATTER PLOT      #
+// #####################
+
+/**
+ * Render a `scatter`-type graph spec (real (x, y) point pairs, no sampled curve, no shared domain)
+ * to its inner SVG markup. Unlike `function`, a scatter chart needs BOTH axes autoscaled from the
+ * data (there is no user-chosen domain), so the x-range gets the SAME nice-tick treatment the
+ * y-range already gets elsewhere in this file — niceTicks once per axis, using `niceMin`/`niceMax`
+ * as the actual scale range (not just the tick-label positions), which also gives points sitting
+ * at the extreme edges of the data some visual breathing room instead of drawing flush against the
+ * plot boundary. Points are drawn directly at `xScale(point.x)`/`yScale(point.y)` — no
+ * `buildPointRuns`/`{center(index)}` adapter needed, since scatter points have no shared sample/
+ * category index to align across series (v1 is points-only; a per-series trendline is a deferred
+ * fast-follow). Never throws on bad/empty input — an empty series list, a series with no points,
+ * or non-finite point coordinates all degrade to a graceful chart with nothing drawn for the
+ * affected point(s), never an exception.
+ */
+export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
+   const options = spec.options ?? {}
+   // v1 caps the number of drawn series at the palette size, same cap every other series-based
+   // chart type already uses.
+   const series = (spec.scatterPlot?.series ?? []).slice(0, MAX_SERIES)
+
+   // ====== domain: autoscale x AND y across every finite point, no forced zero baseline ======
+   const rawDomain = computeScatterPointDomain(series)
+   const xNice = niceTicks(rawDomain.xMin, rawDomain.xMax, TARGET_TICK_COUNT)
+   // A `reference` overlay auto-extends the Y-domain (mirrors computeValueDomain's fold for the
+   // categorical cartesian types) so a target line beyond the plotted points always stays on-canvas.
+   // Done before the yMin/yMax overrides, which still win when the author has pinned an explicit
+   // floor/ceiling. Mean/trend are data-derived (already inside the domain), so they need no fold.
+   const [foldedYMin, foldedYMax] = foldReferenceOverlaysIntoDomain(
+      rawDomain.yMin, rawDomain.yMax, options.overlays)
+   const resolvedYMin = options.yMin !== undefined ? options.yMin : foldedYMin
+   const resolvedYMax = options.yMax !== undefined ? options.yMax : foldedYMax
+   const yNice = niceTicks(resolvedYMin, resolvedYMax, TARGET_TICK_COUNT)
+   const tickLabels = yNice.ticks.map(formatNumber)
+
+   // ====== legend reservation ======
+   // renderLegend/layoutLegend want GraphSeries-shaped input (name + color); scatter series carry
+   // no `values`, so a minimal synthetic GraphSeries list (empty values) is built for the legend
+   // only, mirroring renderFunctionPlot's `drawnSeries` construction from its equations.
+   const legendWanted = options.legend !== false && series.length > 1
+   const legendSeries: GraphSeries[] = series.map(oneSeries => ({
+      name: oneSeries.name, color: oneSeries.color, values: [],
+   }))
+   const legendLabels = legendSeries.map(oneSeries => oneSeries.name)
+   const legendLayout = legendWanted
+      ? layoutLegend(legendLabels, CANVAS_WIDTH - 28)
+      : { rows: [], rowCount: 0, widestRowWidth: 0 }
+
+   // ====== layout ======
+   const layout = computeCartesianLayout({
+      hasTitle: Boolean(options.title),
+      xCaption: options.xLabel,
+      yCaption: options.yLabel,
+      yTickLabels: tickLabels,
+      legendRowCount: legendLayout.rowCount,
+   })
+   const { plot } = layout
+
+   // ====== scales ======
+   // linearScale/niceTicks are the SAME generic primitives the y-axis already uses; reused as-is
+   // for x, per the study's Q2 finding (no new scale primitive needed for a continuous x-axis).
+   const yScale = linearScale([yNice.niceMin, yNice.niceMax], [plot.y + plot.height, plot.y])
+   const xScale = linearScale([xNice.niceMin, xNice.niceMax], [plot.x, plot.x + plot.width])
+   const baselineValue = Math.min(yNice.niceMax, Math.max(yNice.niceMin, 0))
+   const baselineY = yScale(baselineValue)
+
+   // ====== assemble ======
+   const pieces: string[] = []
+   pieces.push(renderGridlines(yNice.ticks, yScale, tickLabels, plot, theme))
+   pieces.push(renderAxes(plot, baselineY, theme))
+   pieces.push(renderNumericXAxisLabels(xNice.niceMin, xNice.niceMax, xScale, plot, theme))
+   pieces.push(renderScatterPoints(series, xScale, yScale, theme))
+
+   // Overlays draw AFTER the data marks (z-order: on top of the data), reusing the same scales.
+   if (options.overlays && options.overlays.length > 0) {
+      pieces.push(renderScatterOverlays(
+         options.overlays, series, xScale, yScale, plot,
+         xNice.niceMin, xNice.niceMax, yNice.niceMin, yNice.niceMax, theme))
+   }
+
+   pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
+   if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
+   if (legendWanted) pieces.push(renderLegend(legendSeries, legendLayout, layout, theme))
+
+   return element('g', {}, pieces.join(''))
+}
+
+/**
+ * The raw (pre-nice-tick) x AND y domain across every FINITE point of every series — the min/max
+ * of `point.x` and `point.y` independently, with NO folded-in zero baseline (matching the
+ * `function` type's autoscale policy: an arbitrary scatter of real-world (x, y) data should not be
+ * crushed against a forced-zero domain on either axis). Falls back to `[0, 1]` on each axis when
+ * nothing finite was plotted (every series empty, or every point non-finite).
+ */
+function computeScatterPointDomain(series: ScatterSeries[]): {
+   xMin: number
+   xMax: number
+   yMin: number
+   yMax: number
+} {
+   let xMin = Infinity
+   let xMax = -Infinity
+   let yMin = Infinity
+   let yMax = -Infinity
+   for (const oneSeries of series) {
+      for (const point of oneSeries.points) {
+         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+         if (point.x < xMin) xMin = point.x
+         if (point.x > xMax) xMax = point.x
+         if (point.y < yMin) yMin = point.y
+         if (point.y > yMax) yMax = point.y
+      }
+   }
+   if (!Number.isFinite(xMin) || !Number.isFinite(xMax)) { xMin = 0; xMax = 1 }
+   if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) { yMin = 0; yMax = 1 }
+   return { xMin, xMax, yMin, yMax }
+}
+
+/**
+ * Draw every series' points as small filled circles (the same >=8px-diameter marker spec — radius
+ * {@link MARKER_RADIUS}, {@link SURFACE_GAP}-wide surface ring — every other mark-with-a-point-
+ * marker already uses in this file), directly at `xScale(point.x)`/`yScale(point.y)`. A non-finite
+ * point is skipped defensively (the domain computation above already excludes it, so this is a
+ * belt-and-suspenders guard, not the expected path).
+ */
+function renderScatterPoints(
+   series: ScatterSeries[],
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   theme: GraphTheme,
+): string {
+   const parts: string[] = []
+   for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
+      const oneSeries = series[seriesIndex]
+      const color = resolveSeriesColor(seriesIndex, oneSeries.color, theme)
+      for (const point of oneSeries.points) {
+         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+         parts.push(element('circle', {
+            cx: xScale(point.x),
+            cy: yScale(point.y),
+            r: MARKER_RADIUS,
+            fill: color,
+            stroke: theme.ink.surface,
+            'stroke-width': SURFACE_GAP,
+         }, titleElement(`${oneSeries.name} (${formatNumber(point.x)}, ${formatNumber(point.y)})`)))
+      }
+   }
+   return element('g', {}, parts.join(''))
+}
+
+// ============ scatter statistical overlays ============
+// Reuses the SAME overlay machinery a categorical cartesian chart draws with (dashed styling, the
+// haloed ink label, the analytic plot-rect clip, `resolveSeriesColor`) — only mean/trend need a
+// scatter-specific computation, since a scatter series has no category-aligned `values` array to
+// feed `mean`/`median`/`linearRegression` with; it carries raw `(x, y)` points instead.
+
+/**
+ * Draw every statistical overlay over a scatter plot. Mirrors {@link renderOverlays}'s per-kind
+ * dispatch: mean/median resolve their target series' stat from the series' own point Y-values,
+ * trend fits {@link linearRegressionXY} over the series' raw `(x, y)` points (NOT the categorical
+ * index-based {@link linearRegression}) and draws the fitted line across the chart's FULL x-domain,
+ * and reference reuses {@link renderReferenceOverlay} verbatim (it only needs `plot`/`yScale`/
+ * `niceMin`/`niceMax`, none of which differ for scatter). `series: 'all'` fans out to one mark per
+ * drawn series; an index not among the drawn series is skipped. `equation` is chart-level but tied
+ * to the categorical index axis scatter doesn't have, so it draws nothing here (a natural
+ * fast-follow, not built in v1 — see docs). Never throws — a series with too few points for a
+ * requested statistic simply draws nothing.
+ */
+function renderScatterOverlays(
+   overlays: Overlay[],
+   series: ScatterSeries[],
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   xNiceMin: number,
+   xNiceMax: number,
+   yNiceMin: number,
+   yNiceMax: number,
+   theme: GraphTheme,
+): string {
+   const singleSeries = series.length <= 1
+   const parts: string[] = []
+
+   for (const overlay of overlays) {
+      if (overlay.kind === 'reference') {
+         parts.push(renderReferenceOverlay(overlay, plot, yScale, yNiceMin, yNiceMax, theme))
+         continue
+      }
+      if (overlay.kind === 'equation') continue // chart-level, categorical-axis only — no scatter analog yet
+
+      // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
+      const targetIndices = overlay.series === 'all'
+         ? series.map((_oneSeries, index) => index)
+         : [typeof overlay.series === 'number' ? overlay.series : 0]
+      for (const seriesIndex of targetIndices) {
+         if (seriesIndex < 0 || seriesIndex >= series.length) continue
+         const oneSeries = series[seriesIndex]
+         const color = resolveSeriesColor(seriesIndex, oneSeries.color, theme)
+         if (overlay.kind === 'trend') {
+            parts.push(renderScatterTrendOverlay(
+               overlay, oneSeries, xScale, yScale, plot, xNiceMin, xNiceMax, color, theme))
+         } else {
+            parts.push(renderScatterStatLineOverlay(
+               overlay, oneSeries, plot, yScale, yNiceMin, yNiceMax, color, singleSeries, theme))
+         }
+      }
+   }
+   return element('g', {}, parts.join(''))
+}
+
+/**
+ * A per-series mean/median line for scatter: same visual as {@link renderStatLineOverlay}, but the
+ * statistic is computed over the target series' own point Y-values (a scatter series carries
+ * `points`, not a category-aligned `values` array).
+ */
+function renderScatterStatLineOverlay(
+   overlay: Overlay,
+   oneSeries: ScatterSeries,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const kind: 'mean' | 'median' = overlay.kind === 'median' ? 'median' : 'mean'
+   const pointYValues = oneSeries.points.map(point => point.y)
+   const stat = kind === 'median' ? medianOf(pointYValues) : meanOf(pointYValues)
+   if (stat === null || stat < niceMin || stat > niceMax) return ''
+   const lineY = yScale(stat)
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultStatLabel(kind, oneSeries.name, stat, singleSeries)
+   return horizontalOverlay(lineY, label, plot, color, OVERLAY_DASH_LINE, theme)
+}
+
+/**
+ * A per-series linear trendline for scatter: {@link linearRegressionXY} fits the target series' raw
+ * `(x, y)` points directly (unlike the categorical {@link linearRegression}, which fits a value
+ * series against its own index). The fitted line is drawn across the chart's FULL x-domain
+ * (`xNiceMin`..`xNiceMax`) — mirroring how the cartesian trend spans the whole category axis rather
+ * than stopping at one series' own data range — then analytically clipped to the plot's vertical
+ * band with the SAME `clipSegmentToBand` helper (no SVG clipPath). A series with fewer than 2
+ * finite points, or every point sharing the same x (an undefined/vertical slope), draws nothing
+ * (`linearRegressionXY` returns null for both).
+ */
+function renderScatterTrendOverlay(
+   overlay: Overlay,
+   oneSeries: ScatterSeries,
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   xNiceMin: number,
+   xNiceMax: number,
+   color: string,
+   theme: GraphTheme,
+): string {
+   const fit = linearRegressionXY(oneSeries.points)
+   if (fit === null) return '' // fewer than 2 finite points, or an undefined (vertical) slope
+
+   const startX = xScale(xNiceMin)
+   const endX = xScale(xNiceMax)
+   const startY = yScale(fit.slope * xNiceMin + fit.intercept)
+   const endY = yScale(fit.slope * xNiceMax + fit.intercept)
+
+   // Analytic clamp to the plot rect (NO SVG clipPath — a fixed id would collide across the many
+   // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
+   const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
+   if (clipped === null) return '' // the whole segment sits off the plot vertically
+
+   const line = selfClosingElement('line', {
+      x1: clipped.x1,
+      y1: clipped.y1,
+      x2: clipped.x2,
+      y2: clipped.y2,
+      stroke: color,
+      'stroke-width': OVERLAY_STROKE_WIDTH,
+      'stroke-dasharray': OVERLAY_DASH_TREND,
+      'stroke-linecap': 'round',
+   })
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
+   // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
+   const labelText = overlayLabel(
+      Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+      clipped.y2 - OVERLAY_LABEL_GAP,
+      'end',
+      label,
+      theme)
+   return element('g', {}, line + labelText)
+}
+
+// #####################
+// # HISTOGRAM         #
+// #####################
+
+/**
+ * Render a `histogram`-type graph spec (a binned frequency distribution over raw numeric samples)
+ * to its inner SVG markup. Bars are drawn CONTIGUOUS (zero inter-bar gap, the defining look of a
+ * histogram — unlike every other bar family in this file, which always leaves a
+ * {@link SURFACE_GAP} between neighbours) over a continuous numeric x-axis of bin edges, reusing
+ * the SAME continuous-x foundation (`renderNumericXAxisLabels`) `function`/`scatter` introduced.
+ * Unlike those two, y = frequency COUNT always draws from a ZERO baseline (a count is never
+ * negative, so — unlike `function`'s/`scatter`'s no-forced-zero autoscale — a zero baseline is
+ * always meaningful here, exactly like the ordinary bar/line-over-real-data types). A single
+ * dataset has no meaningful legend (there is nothing to distinguish it FROM), so none is drawn;
+ * the optional dataset name surfaces only in the chart's accessible `<desc>` (see index.ts's
+ * `describeChart`), never as a drawn legend box. Never throws on bad/empty input — fewer than one
+ * finite sample degrades to a graceful empty plot (axes with no bars), never an exception.
+ */
+export function renderHistogram(spec: GraphSpec, theme: GraphTheme): string {
+   const options = spec.options ?? {}
+   const histogramData = spec.histogramData
+   const samples = histogramData?.samples ?? []
+   const { edges, counts } = computeHistogramBins(samples, histogramData?.bins)
+
+   // ====== y-domain: frequency counts from a ZERO baseline (a count is never negative) ======
+   let maxCount = 0
+   for (const count of counts) if (count > maxCount) maxCount = count
+   const domainMin = options.yMin !== undefined ? options.yMin : 0
+   const domainMax = options.yMax !== undefined ? options.yMax : maxCount
+   const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+   const tickLabels = niceScale.ticks.map(formatNumber)
+
+   // ====== x-domain: the bin edges themselves (an empty result — no finite sample survived —
+   // falls back to [0, 1] so the scale never divides by zero) ======
+   const xMin = edges.length > 0 ? edges[0] : 0
+   const xMax = edges.length > 0 ? edges[edges.length - 1] : 1
+
+   // ====== layout (no legend reservation: a single dataset has nothing to distinguish itself from) ======
+   const layout = computeCartesianLayout({
+      hasTitle: Boolean(options.title),
+      xCaption: options.xLabel,
+      yCaption: options.yLabel,
+      yTickLabels: tickLabels,
+      legendRowCount: 0,
+   })
+   const { plot } = layout
+
+   // ====== scales ======
+   const yScale = linearScale([niceScale.niceMin, niceScale.niceMax], [plot.y + plot.height, plot.y])
+   const xScale = linearScale([xMin, xMax], [plot.x, plot.x + plot.width])
+   const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
+   const baselineY = yScale(baselineValue)
+
+   const color = resolveSeriesColor(0, histogramData?.color, theme)
+
+   // ====== assemble ======
+   const pieces: string[] = []
+   pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
+   pieces.push(renderAxes(plot, baselineY, theme))
+   pieces.push(renderNumericXAxisLabels(xMin, xMax, xScale, plot, theme))
+   pieces.push(renderHistogramBars(
+      edges, counts, xScale, yScale, baselineY, color, options.showValues ?? false, theme))
+   pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
+   if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
+
+   return element('g', {}, pieces.join(''))
+}
+
+/**
+ * Draw one CONTIGUOUS rect per bin — zero inter-bar gap, so adjacent bars' edges exactly touch
+ * (the defining visual difference from every other bar family here). A thin surface-colored
+ * stroke outlines each bar so neighbouring bins still read as distinct bars despite touching
+ * edges, without opening an actual gap in the underlying data.
+ */
+function renderHistogramBars(
+   edges: number[],
+   counts: number[],
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   baselineY: number,
+   color: string,
+   showValues: boolean,
+   theme: GraphTheme,
+): string {
+   const parts: string[] = []
+   for (let binIndex = 0; binIndex < counts.length; binIndex++) {
+      const count = counts[binIndex]
+      const leftX = xScale(edges[binIndex])
+      const rightX = xScale(edges[binIndex + 1])
+      const valueY = yScale(count)
+      const rectY = Math.min(baselineY, valueY)
+      const rectHeight = Math.abs(valueY - baselineY)
+      const rectWidth = Math.max(0, rightX - leftX)
+      const tooltip = `${formatNumber(edges[binIndex])}–${formatNumber(edges[binIndex + 1])}: ${formatNumber(count)}`
+      parts.push(element('rect', {
+         x: leftX,
+         y: rectY,
+         width: rectWidth,
+         height: rectHeight,
+         fill: color,
+         stroke: theme.ink.surface,
+         'stroke-width': 1,
+      }, titleElement(tooltip)))
+      if (showValues && count > 0) {
+         parts.push(valueLabel((leftX + rightX) / 2, rectY - 4, formatNumber(count), theme))
+      }
+   }
+   return element('g', {}, parts.join(''))
+}
+
+// #####################
 // # STATISTIC OVERLAYS #
 // #####################
 
@@ -418,6 +838,10 @@ function renderOverlays(
          parts.push(renderReferenceOverlay(overlay, plot, yScale, niceMin, niceMax, theme))
          continue
       }
+      if (overlay.kind === 'equation') {
+         parts.push(renderEquationOverlay(overlay, labels, xBand, yScale, plot, niceMin, niceMax, theme))
+         continue
+      }
       // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
       const targetIndices = overlay.series === 'all'
          ? drawnSeries.map((_series, index) => index)
@@ -428,7 +852,7 @@ function renderOverlays(
          const color = resolveSeriesColor(seriesIndex, oneSeries.color, theme)
          if (overlay.kind === 'trend') {
             parts.push(renderTrendOverlay(
-               overlay, oneSeries, labels, xBand, yScale, plot, color, singleSeries, theme))
+               overlay, oneSeries, labels, xBand, yScale, plot, color, theme))
          } else {
             parts.push(renderStatLineOverlay(
                overlay, oneSeries, plot, yScale, niceMin, niceMax, color, singleSeries, theme))
@@ -457,6 +881,159 @@ function renderReferenceOverlay(
    return horizontalOverlay(lineY, label, plot, theme.ink.text, OVERLAY_DASH_LINE, theme)
 }
 
+/**
+ * A chart-level `f(x)` curve, sampled across the host chart's category-index domain
+ * `[0, labelCount - 1]` (the SAME x-range the drawn data marks already sit on), reusing the
+ * existing `xBand.center(index)` positioning by INTERPOLATING between two adjacent band centers
+ * for a fractional sample index (see {@link interpolateBandCenter}). Never auto-extends the
+ * y-domain (an arbitrary expression must not squash the real data) — instead, every sampled
+ * segment is analytically clipped to the plot's vertical band with the SAME `clipSegmentToBand`
+ * line-parameter math the trend overlay already uses (NO SVG `clipPath`, per the existing
+ * multi-chart-per-export constraint). An uncompileable/blank expression, or a chart with fewer
+ * than 2 categories (no index range to sample across), draws nothing — never throws.
+ */
+function renderEquationOverlay(
+   overlay: Overlay,
+   labels: string[],
+   xBand: { center(index: number): number },
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   niceMin: number,
+   niceMax: number,
+   theme: GraphTheme,
+): string {
+   const expressionSource = overlay.expression
+   if (expressionSource === undefined || expressionSource.trim() === '') return ''
+   const compiled = compileExpression(expressionSource)
+   if (compiled === null) return ''
+
+   const lastIndex = labels.length - 1
+   if (lastIndex <= 0) return '' // a single category has no index range to sample a curve across
+
+   const runs = computeEquationOverlayRuns(compiled, lastIndex, xBand, yScale, plot, niceMin, niceMax)
+      .filter(run => run.length >= 2) // a lone point cannot form a polyline
+   if (runs.length === 0) return ''
+
+   const color = resolveSeriesColor(EQUATION_OVERLAY_PALETTE_SLOT, undefined, theme)
+   const parts: string[] = []
+   for (const run of runs) {
+      const pointsAttribute = run.map(point => `${roundForPath(point.x)},${roundForPath(point.y)}`).join(' ')
+      parts.push(selfClosingElement('polyline', {
+         points: pointsAttribute,
+         fill: 'none',
+         stroke: color,
+         'stroke-width': OVERLAY_STROKE_WIDTH,
+         'stroke-dasharray': OVERLAY_DASH_TREND,
+         'stroke-linejoin': 'round',
+         'stroke-linecap': 'round',
+      }))
+   }
+
+   // Anchor the label at the last drawn point of the last visible run (mirrors the trend overlay's
+   // "label at the clipped right end"); the expression itself is the default label.
+   const lastRun = runs[runs.length - 1]
+   const lastPoint = lastRun[lastRun.length - 1]
+   const label = overlay.label && overlay.label !== '' ? overlay.label : expressionSource
+   parts.push(overlayLabel(
+      Math.min(lastPoint.x, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+      lastPoint.y - OVERLAY_LABEL_GAP,
+      'end',
+      label,
+      theme))
+
+   return element('g', {}, parts.join(''))
+}
+
+/**
+ * Sample a compiled expression across the fractional index domain `[0, lastIndex]` at
+ * {@link EQUATION_OVERLAY_SAMPLE_COUNT} evenly spaced points, reusing the `function` chart's own
+ * asymptote heuristic ({@link applyAsymptoteGaps}) for domain-error / near-asymptote gaps, then
+ * walks the sampled pixel segments through {@link clipSegmentToBand} ONE SEGMENT AT A TIME — the
+ * exact technique {@link renderTrendOverlay} already uses for its single sloped segment, just
+ * applied per-segment here since an arbitrary f(x) is not a single straight line. A segment fully
+ * outside the plot's vertical band breaks the run (mirrors a null-gap break); a partially-outside
+ * segment is trimmed to the boundary-crossing point, so the curve reads as truly clipped to the
+ * plot rect rather than stopping at the last in-range SAMPLE.
+ */
+function computeEquationOverlayRuns(
+   compiled: CompiledExpression,
+   lastIndex: number,
+   xBand: { center(index: number): number },
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   niceMin: number,
+   niceMax: number,
+): { x: number; y: number }[][] {
+   const sampleCount = EQUATION_OVERLAY_SAMPLE_COUNT
+   const step = lastIndex / (sampleCount - 1)
+
+   const rawValues: (number | null)[] = []
+   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+      rawValues.push(evaluate(compiled, sampleIndex * step))
+   }
+   const gappedValues = applyAsymptoteGaps(rawValues, niceMin, niceMax)
+
+   const runs: { x: number; y: number }[][] = []
+   let currentRun: { x: number; y: number }[] | null = null
+   let previousPoint: { x: number; y: number } | null = null
+
+   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+      const value = gappedValues[sampleIndex]
+      if (value === null) {
+         currentRun = null
+         previousPoint = null
+         continue
+      }
+      const fractionalIndex = sampleIndex * step
+      const currentPoint = { x: interpolateBandCenter(xBand, fractionalIndex), y: yScale(value) }
+
+      if (previousPoint === null) {
+         // First finite sample after a gap: nothing to connect to yet (mirrors buildPointRuns,
+         // which needs two points before a polyline exists).
+         previousPoint = currentPoint
+         continue
+      }
+
+      const clipped = clipSegmentToBand(
+         previousPoint.x, previousPoint.y, currentPoint.x, currentPoint.y, plot.y, plot.y + plot.height)
+      if (clipped === null) {
+         // The whole segment sits off-canvas vertically: break here, exactly like a null-gap.
+         currentRun = null
+      } else if (currentRun === null) {
+         currentRun = [{ x: clipped.x1, y: clipped.y1 }, { x: clipped.x2, y: clipped.y2 }]
+         runs.push(currentRun)
+      } else {
+         // Continuing the same run: the clipped start already matches the run's last point (both
+         // derive from the same shared, un-clipped previousPoint), so only the new end is appended.
+         currentRun.push({ x: clipped.x2, y: clipped.y2 })
+      }
+
+      previousPoint = currentPoint
+   }
+
+   return runs
+}
+
+/**
+ * Interpolate a FRACTIONAL category index to a pixel x by linearly blending the two adjacent
+ * integer band centers (`center(floor(index))` -> `center(ceil(index))`) — the categorical
+ * x-axis has no continuous scale of its own (unlike the `function` chart type's numeric domain),
+ * so this is how an equation overlay's densely-sampled curve rides the SAME band positions the
+ * host chart's bars/lines already sit on.
+ */
+function interpolateBandCenter(
+   xBand: { center(index: number): number },
+   fractionalIndex: number,
+): number {
+   const lowerIndex = Math.floor(fractionalIndex)
+   const upperIndex = Math.ceil(fractionalIndex)
+   if (lowerIndex === upperIndex) return xBand.center(lowerIndex)
+   const lowerCenter = xBand.center(lowerIndex)
+   const upperCenter = xBand.center(upperIndex)
+   const fraction = fractionalIndex - lowerIndex
+   return lowerCenter + (upperCenter - lowerCenter) * fraction
+}
+
 /** A per-series mean/median line: a series-hued horizontal at the computed stat, off-domain skipped. */
 function renderStatLineOverlay(
    overlay: Overlay,
@@ -469,12 +1046,16 @@ function renderStatLineOverlay(
    singleSeries: boolean,
    theme: GraphTheme,
 ): string {
-   const stat = overlay.kind === 'median' ? medianOf(oneSeries.values) : meanOf(oneSeries.values)
+   // `overlay.kind` is narrowed to 'mean' | 'median' by the caller's dispatch, but that narrowing
+   // does not carry across the function boundary — re-derive a literal-typed `kind` here so it can
+   // be passed to defaultStatLabel's narrower parameter type without a widening error.
+   const kind: 'mean' | 'median' = overlay.kind === 'median' ? 'median' : 'mean'
+   const stat = kind === 'median' ? medianOf(oneSeries.values) : meanOf(oneSeries.values)
    if (stat === null || stat < niceMin || stat > niceMax) return ''
    const lineY = yScale(stat)
    const label = overlay.label && overlay.label !== ''
       ? overlay.label
-      : defaultStatLabel(overlay.kind, oneSeries.name, stat, singleSeries)
+      : defaultStatLabel(kind, oneSeries.name, stat, singleSeries)
    return horizontalOverlay(lineY, label, plot, color, OVERLAY_DASH_LINE, theme)
 }
 
@@ -487,7 +1068,6 @@ function renderTrendOverlay(
    yScale: (value: number) => number,
    plot: OverlayPlot,
    color: string,
-   singleSeries: boolean,
    theme: GraphTheme,
 ): string {
    const fit = linearRegression(oneSeries.values)
@@ -692,16 +1272,34 @@ function computeValueDomain(
    // Fold every reference-overlay value into the raw domain so a target line beyond the data always
    // stays on-canvas (the data rescales to fit it). Done before the yMin/yMax overrides below, which
    // still win when the author has pinned an explicit floor/ceiling.
-   for (const overlay of options.overlays ?? []) {
+   const [foldedMin, foldedMax] = foldReferenceOverlaysIntoDomain(dataMin, dataMax, options.overlays)
+
+   const min = options.yMin !== undefined ? options.yMin : foldedMin
+   const max = options.yMax !== undefined ? options.yMax : foldedMax
+   return [min, max]
+}
+
+/**
+ * Fold every finite `reference` overlay value into a raw `[dataMin, dataMax]` domain, so a target
+ * line drawn outside the data range still ends up on-canvas once nice-ticking runs. Shared between
+ * the categorical cartesian domain ({@link computeValueDomain}) and the scatter chart's continuous
+ * y-domain ({@link renderScatterPlot}) — the fold logic itself has no dependency on category vs.
+ * continuous data, only on the raw min/max and the overlay list.
+ */
+function foldReferenceOverlaysIntoDomain(
+   dataMin: number,
+   dataMax: number,
+   overlays: Overlay[] | undefined,
+): [number, number] {
+   let min = dataMin
+   let max = dataMax
+   for (const overlay of overlays ?? []) {
       if (overlay.kind !== 'reference') continue
       const value = overlay.value
       if (value === undefined || !Number.isFinite(value)) continue
-      if (value > dataMax) dataMax = value
-      if (value < dataMin) dataMin = value
+      if (value > max) max = value
+      if (value < min) min = value
    }
-
-   const min = options.yMin !== undefined ? options.yMin : dataMin
-   const max = options.yMax !== undefined ? options.yMax : dataMax
    return [min, max]
 }
 
@@ -1255,12 +1853,12 @@ function renderLegend(
    theme: GraphTheme,
 ): string {
    const parts: string[] = []
-   // Map each series name to its palette color, so legend swatches match the marks.
-   const colorByName = new Map<string, string>()
-   for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
-      colorByName.set(series[seriesIndex].name, resolveSeriesColor(seriesIndex, series[seriesIndex].color, theme))
-   }
+   // Color each swatch by its SERIES INDEX, not by name. The legend items are laid out in input
+   // series order, so a running counter maps swatch -> series positionally. Keying by name (the old
+   // approach) collapses every swatch onto the last series' color whenever names are empty or
+   // duplicated — e.g. scatter series names default to blank. A running index is collision-proof.
    const firstRowY = layout.canvasHeight - layout.margin.bottom + 30
+   let legendItemIndex = 0
    for (let rowIndex = 0; rowIndex < legendLayout.rows.length; rowIndex++) {
       const row = legendLayout.rows[rowIndex]
       const rowWidth = rowWidthOf(row)
@@ -1268,7 +1866,8 @@ function renderLegend(
       const rowY = firstRowY + rowIndex * LEGEND_ROW_HEIGHT
       for (const item of row) {
          const swatchX = rowLeft + item.offsetX
-         const color = colorByName.get(item.label) ?? theme.ink.textMuted
+         const color = resolveSeriesColor(legendItemIndex, series[legendItemIndex]?.color, theme)
+         legendItemIndex++
          parts.push(selfClosingElement('rect', {
             x: swatchX,
             y: rowY - LEGEND_SWATCH_SIZE / 2,

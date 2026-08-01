@@ -496,7 +496,10 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
             {/* ===== Live preview ===== */}
             <div className="flex flex-col gap-2">
                <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.mathBuilderPreview}</span>
-               <div className="math-builder-preview">
+               {/* text-text pins the preview MathML to the APP text color (the builder is app chrome),
+                   so the equation stays visible on a light app theme instead of inheriting a light
+                   document-theme color from the surrounding page. */}
+               <div className="math-builder-preview text-text">
                   {!rendered && <span className="math-loading">{t.blockMathLoading}</span>}
                   {rendered?.ok && (
                      <div className="doc-math">

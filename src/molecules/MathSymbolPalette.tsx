@@ -43,7 +43,10 @@ interface MathSymbolPaletteContentProps {
    autoFocusFilter: boolean
 }
 
-interface MathSymbolPaletteProps extends MathSymbolPaletteContentProps {
+// The anchored popover ALWAYS autofocuses its filter (it's the active surface), so it hardcodes
+// `autoFocusFilter={true}` internally and does not expose it — Omit keeps callers from having to
+// pass a prop the shell discards.
+interface MathSymbolPaletteProps extends Omit<MathSymbolPaletteContentProps, 'autoFocusFilter'> {
    /** The trigger button's viewport rect; the panel clamps itself around it. */
    anchorRect: DOMRect
    /** Close the palette (Escape / outside click). */

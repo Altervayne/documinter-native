@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import { BarChart3, Pencil } from 'lucide-react'
+import { BarChart3, Pencil, X } from 'lucide-react'
 import {
    renderGraphToSvg,
    LIGHT_GRAPH_THEME,
@@ -9,11 +9,14 @@ import {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   compileExpression,
 } from '../../../lib/graph'
 import type { GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
 import { setType, setOption, addOverlay, removeOverlay, updateOverlay } from '../../../lib/graphEdit'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
 import { EquationEditor } from '../../../molecules/EquationEditor'
+import { ScatterEditor } from '../../../molecules/ScatterEditor'
+import { HistogramEditor } from '../../../molecules/HistogramEditor'
 import { GraphTypePicker } from '../../../molecules/GraphTypePicker'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
@@ -51,6 +54,20 @@ const BAR_TYPES = new Set<GraphType>(['bar', 'bar-grouped', 'bar-stacked'])
 const LINE_AREA_TYPES = new Set<GraphType>(['line', 'area', 'function'])
 
 const DEFAULT_DONUT_HOLE = 0.55
+
+/**
+ * The series list the Analysis section's overlay target-series `<select>` reads from, for the
+ * CURRENT chart type. Every cartesian data type but `scatter` targets `data.series` (the ordinary
+ * numeric grid); `scatter` has no `data.series` at all — its points live in `scatterPlot.series` —
+ * so mean/trend need this small name+index projection instead. `GraphSeries` and `ScatterSeries`
+ * otherwise differ in shape (`values` vs `points`), which the select doesn't care about.
+ */
+function overlayTargetSeriesList(spec: GraphSpec): { name: string; index: number }[] {
+   if (spec.type === 'scatter') {
+      return (spec.scatterPlot?.series ?? []).map((series, index) => ({ name: series.name, index }))
+   }
+   return spec.data.series.map((series, index) => ({ name: series.name, index }))
+}
 
 /**
  * Graph (chart) block. Mirrors the math block's render path: the stored `graph` spec is turned
@@ -124,13 +141,16 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    }
 
    // Switching an overlay's kind REPLACES the whole overlay (not a shallow merge) so no stray field
-   // from the previous kind lingers — e.g. a `series` left over after switching to a reference line.
+   // from the previous kind lingers — e.g. a `series` left over after switching to a reference line,
+   // or an `expression` left over after switching AWAY from an equation curve.
    function setOverlayKind(overlayIndex: number, kind: OverlayKind): void {
       const current = working.options.overlays ?? []
       const previous = current[overlayIndex]
       if (!previous) return
       const replacement: Overlay = kind === 'reference'
          ? { kind: 'reference', value: previous.value ?? 0, ...(previous.label ? { label: previous.label } : {}) }
+         : kind === 'equation'
+         ? { kind: 'equation', expression: previous.kind === 'equation' ? (previous.expression ?? '') : '' }
          : { kind, series: previous.series ?? 0, ...(kind === 'trend' && previous.showEquation ? { showEquation: true } : {}) }
       const overlays = current.map((overlay, index) => (index === overlayIndex ? replacement : overlay))
       commit(setOption(working, 'overlays', overlays))
@@ -152,6 +172,8 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    const isBarFamily = BAR_TYPES.has(working.type)
    const isLineArea  = LINE_AREA_TYPES.has(working.type)
    const isFunction  = working.type === 'function'
+   const isScatter   = working.type === 'scatter'
+   const isHistogram = working.type === 'histogram'
    // The point-markers toggle's OWN default, mirroring the renderer's local default (see
    // cartesian.ts's renderFunctionPlot): off for a sampled equation curve, GRAPH_DEFAULT_SHOW_POINTS
    // (on) for a genuine line/area data series.
@@ -164,10 +186,11 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    // ============
    //  Windowed editor body — the full controls + data grid + live preview.
    // ============
-   // The graph editor styles are scoped under `.doc-render` (and `.doc-dark .doc-render` for dark),
-   // but the window portals to <body>, outside that tree. Re-establish the scope here: a `.doc-dark`
-   // wrapper (per the DOCUMENT theme, so the controls match the chart) over a `.doc-render` whose
-   // page padding is neutralized inside the window (see doc.css .block-editor-doc-render).
+   // The editor is APP CHROME, not document content: it mounts directly in the window body (which
+   // portals to <body> under the app's html[data-theme]), so the `.graph-editor`-scoped rules pick
+   // up the app --color-* tokens and flip light/dark automatically — no `.doc-render`/`.doc-dark`
+   // wrapper. The document theme is still used, but only for what shows document content: the
+   // rendered chart SVG and the data color swatches (both via `graphTheme` below).
    // Roving-tab keyboard nav: Left/Right (and Home/End) move between the two tabs.
    function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
       if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'End') {
@@ -233,14 +256,19 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             )}
 
             <div className="graph-toggle-row">
-               <label className="graph-toggle">
-                  <input
-                     type="checkbox"
-                     checked={options.legend ?? true}
-                     onChange={event => commit(setOption(working, 'legend', event.target.checked))}
-                  />
-                  <span>{t.graphOptionLegend}</span>
-               </label>
+               {/* A histogram is always ONE dataset — a legend would have nothing to distinguish
+                   it from, so the toggle is hidden rather than left dead (see cartesian.ts's
+                   renderHistogram, which never reserves/draws a legend for this type). */}
+               {!isHistogram && (
+                  <label className="graph-toggle">
+                     <input
+                        type="checkbox"
+                        checked={options.legend ?? true}
+                        onChange={event => commit(setOption(working, 'legend', event.target.checked))}
+                     />
+                     <span>{t.graphOptionLegend}</span>
+                  </label>
+               )}
                <label className="graph-toggle">
                   <input
                      type="checkbox"
@@ -357,10 +385,14 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       </div>
    )
 
-   // =============== Analysis: statistical overlays (cartesian data-series only) — rendered in the DATA tab ===============
-   // Overlays are computed FROM a `data.series` index, meaningless for radial (no series) AND for
-   // `function` (no `data.series` at all — its payload is `functionPlot`, not the numeric grid).
-   const analysisSection = !isRadial && !isFunction && (
+   // =============== Analysis: statistical overlays — rendered in the DATA tab ===============
+   // Overlays are computed from a target series, meaningless for radial (no series) AND for
+   // `function`/`histogram` (no series payload at all — their data lives in `functionPlot`/
+   // `histogramData`, not a series list). `scatter` DOES get analysis — a trendline/mean is exactly
+   // the point of a scatter plot — targeting `scatterPlot.series` via `overlayTargetSeriesList`
+   // instead of `data.series` (see that helper above). histogram analysis (e.g. a mean/std-dev
+   // overlay) is a v1.1 concern, not built here.
+   const analysisSection = !isRadial && !isFunction && !isHistogram && (
       <div className="graph-options graph-analysis">
          <span className="graph-section-label">{t.graphAnalysisSection}</span>
 
@@ -375,10 +407,13 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                   <option value="mean">{t.graphOverlayMean}</option>
                   <option value="trend">{t.graphOverlayTrend}</option>
                   <option value="reference">{t.graphOverlayReference}</option>
+                  {/* Equation curve is chart-level over the CATEGORICAL index axis; scatter has no
+                      such axis, so it isn't offered there (a natural follow-up, not built in v1). */}
+                  {!isScatter && <option value="equation">{t.graphOverlayEquation}</option>}
                </select>
 
                {/* Computed kinds (mean/trend): a target-series select including "All series". */}
-               {overlay.kind !== 'reference' && (
+               {overlay.kind !== 'reference' && overlay.kind !== 'equation' && (
                   <select
                      className="graph-overlay-select"
                      aria-label={t.graphSeriesName}
@@ -387,9 +422,9 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                         series: event.target.value === 'all' ? 'all' : Number(event.target.value),
                      }))}
                   >
-                     {working.data.series.map((series, seriesIndex) => (
-                        <option key={seriesIndex} value={seriesIndex}>
-                           {series.name || `${t.graphSeriesDefault} ${seriesIndex + 1}`}
+                     {overlayTargetSeriesList(working).map(series => (
+                        <option key={series.index} value={series.index}>
+                           {series.name || `${t.graphSeriesDefault} ${series.index + 1}`}
                         </option>
                      ))}
                      <option value="all">{t.graphOverlayAllSeries}</option>
@@ -409,6 +444,27 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                      <span>{t.graphOverlayShowEquation}</span>
                   </label>
                )}
+
+               {/* Equation curve: a monospace expression input, live-validated via compileExpression
+                   (the same invalid-ring + tooltip affordance EquationEditor's expression cells use). */}
+               {overlay.kind === 'equation' && (() => {
+                  const expressionText = overlay.expression ?? ''
+                  const isInvalidExpression = expressionText.trim() !== '' && compileExpression(expressionText) === null
+                  return (
+                     <input
+                        className={`graph-equation-expression${isInvalidExpression ? ' is-invalid' : ''}`}
+                        type="text"
+                        aria-label={t.graphOverlayEquationExpression}
+                        placeholder={t.graphOverlayEquationPlaceholder}
+                        title={isInvalidExpression ? t.graphInvalidExpression : undefined}
+                        aria-invalid={isInvalidExpression || undefined}
+                        value={expressionText}
+                        onFocus={editStart}
+                        onChange={event => draft(updateOverlay(working, overlayIndex, { expression: event.target.value }))}
+                        onBlur={commitField}
+                     />
+                  )
+               })()}
 
                {/* Reference: a constant value + an optional free-text label (draft/commit-on-blur). */}
                {overlay.kind === 'reference' && (
@@ -446,7 +502,7 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                   aria-label={t.graphRemoveOverlay}
                   title={t.graphRemoveOverlay}
                   onClick={() => commit(removeOverlay(working, overlayIndex))}
-               >×</button>
+               ><X size={13} /></button>
             </div>
          ))}
 
@@ -458,12 +514,33 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       </div>
    )
 
-   // =============== Data tab: the editable table (or, for `function`, the equation editor) + the
-   // analysis section below it (hidden for both radial and `function`, see analysisSection above) ===============
+   // =============== Data tab: the editable table (or, for `function`/`scatter`/`histogram`, their
+   // own dedicated editors) + the analysis section below it (hidden for radial, `function`, AND
+   // `histogram` — scatter DOES get it, see analysisSection above) ===============
    const dataTab = (
       <div className="graph-data-tab">
          {isFunction ? (
             <EquationEditor
+               spec={working}
+               theme={graphTheme}
+               t={t}
+               onEditStart={editStart}
+               onDraft={draft}
+               onCommit={commit}
+               onCommitField={commitField}
+            />
+         ) : isScatter ? (
+            <ScatterEditor
+               spec={working}
+               theme={graphTheme}
+               t={t}
+               onEditStart={editStart}
+               onDraft={draft}
+               onCommit={commit}
+               onCommitField={commitField}
+            />
+         ) : isHistogram ? (
+            <HistogramEditor
                spec={working}
                theme={graphTheme}
                t={t}
@@ -488,8 +565,6 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    )
 
    const editorBody = (
-    <div className={`graph-editor-root${docTheme === 'dark' ? ' doc-dark' : ''}`}>
-     <div className="doc-render block-editor-doc-render">
       <div className="graph-editor">
          {/* No in-window preview: the block renders live BEHIND the non-modal window (that is the
              point of a draggable window), so an in-window copy is redundant. The window holds only
@@ -531,8 +606,6 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             {activeTab === 'visual' ? visualTab : dataTab}
          </div>
       </div>
-     </div>
-    </div>
    )
 
    // ============

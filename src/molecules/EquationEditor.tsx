@@ -2,6 +2,20 @@
 import { useState } from 'react'
 import type React from 'react'
 
+// -- DnD Imports --
+import {
+   DndContext, closestCenter,
+   PointerSensor, useSensor, useSensors,
+   type DragEndEvent, type Modifier,
+} from '@dnd-kit/core'
+import {
+   SortableContext, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
+// -- Library Imports --
+import { GripVertical, X } from 'lucide-react'
+
 // -- Lib Imports --
 import type { GraphSpec, GraphTheme, FunctionPlot } from '../lib/graph'
 import {
@@ -15,6 +29,8 @@ import {
 import {
    addEquation,
    removeEquation,
+   insertEquationAt,
+   moveEquation,
    setEquationField,
    setEquationColor,
    setDomain,
@@ -24,10 +40,35 @@ import type { T } from '../lib/i18n'
 
 // -- Molecule Imports --
 import { GraphSeriesColorPopover } from './GraphDataGrid'
+import { ContextMenu } from './ContextMenu'
+import type { ContextMenuEntry } from './ContextMenu'
+
+// #############
+// # CONSTANTS #
+// #############
+
+/** Positional sortable id prefix: each equation row carries an `equation-<index>` synthetic id
+ *  (an equation has no stable model id), which onDragEnd parses back into the reorder helper. */
+const EQUATION_ID_PREFIX = 'equation-'
+
+/** A single-axis lock: every equation drag glides VERTICALLY only (x pinned), matching the grid's
+ *  category-row behavior without depending on `@dnd-kit/modifiers` (not installed). */
+const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 // #########
 // # TYPES #
 // #########
+
+/** The drag-handle wiring a sortable row hands back to the grip: the activator ref + the
+ *  ARIA/listener props dnd-kit needs on the grab affordance (mirrors GraphDataGrid). */
+type DragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
+
+/** The open equation row right-click menu: which equation it targets, anchored at the click. */
+interface EquationContextMenu {
+   index: number
+   x:     number
+   y:     number
+}
 
 interface EquationEditorProps {
    /** The live working spec (GraphBlock's local draft); the editor renders from + edits this. */
@@ -73,6 +114,44 @@ interface EquationColorTarget {
    rect:  DOMRect
 }
 
+// #####################
+// # SORTABLE WRAPPER   #
+// #####################
+
+interface SortableEquationRowProps {
+   equationIndex: number
+   /** Right-click opens the equation context menu. */
+   onContextMenu: (event: React.MouseEvent) => void
+   /** Render the row's content; receives the grip wiring to place on the leading drag handle. */
+   children:      (handle: DragHandleProps) => React.ReactNode
+}
+
+/**
+ * One equation row made vertically sortable. The row is the sortable NODE; the grab affordance (the
+ * grip at the row's leading edge) is wired via the render-prop `handle` so typing in the name /
+ * expression fields never starts a drag — only the grip carries the listeners (mirrors
+ * GraphDataGrid's SortableCategoryRow).
+ */
+function SortableEquationRow({ equationIndex, onContextMenu, children }: SortableEquationRowProps) {
+   const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
+      useSortable({ id: `${EQUATION_ID_PREFIX}${equationIndex}` })
+   const style: React.CSSProperties = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.4 : 1,
+   }
+   return (
+      <div
+         ref={setNodeRef}
+         style={style}
+         className={`graph-equation-row${isDragging ? ' graph-row-dragging' : ''}`}
+         onContextMenu={onContextMenu}
+      >
+         {children({ attributes, listeners, setActivatorNodeRef })}
+      </div>
+   )
+}
+
 // #############
 // # COMPONENT #
 // #############
@@ -99,6 +178,12 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
    const [editingField, setEditingField] = useState<EditingDomainField | null>(null)
    // Which equation's swatch color popover is open.
    const [colorPopover, setColorPopover] = useState<EquationColorTarget | null>(null)
+   // Which equation's right-click menu is open (null = none), and where it was invoked.
+   const [contextMenu, setContextMenu] = useState<EquationContextMenu | null>(null)
+
+   // One pointer sensor with a 5px activation threshold (matching the grid) so a click on the grip
+   // that doesn't move never registers as a drag.
+   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
    // ================
    //  Domain + y-range fields
@@ -216,16 +301,61 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
    }
 
    // ================
+   //  Drag reorder + context menu
+   // ================
+   function handleDragEnd(event: DragEndEvent): void {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const fromIndex = Number(String(active.id).slice(EQUATION_ID_PREFIX.length))
+      const toIndex   = Number(String(over.id).slice(EQUATION_ID_PREFIX.length))
+      onCommit(moveEquation(spec, fromIndex, toIndex))
+   }
+
+   function openEquationMenu(event: React.MouseEvent, equationIndex: number): void {
+      event.preventDefault()
+      setContextMenu({ index: equationIndex, x: event.clientX, y: event.clientY })
+   }
+
+   /** Insert-before / insert-after / delete for an equation row. Inserts respect MAX_SERIES; delete
+    *  is disabled at the last remaining equation. */
+   function equationMenuEntries(equationIndex: number): ContextMenuEntry[] {
+      const atCap = equations.length >= MAX_SERIES
+      return [
+         { label: t.graphInsertEquationBefore, disabled: atCap, onSelect: () => onCommit(insertEquationAt(spec, equationIndex)) },
+         { label: t.graphInsertEquationAfter,  disabled: atCap, onSelect: () => onCommit(insertEquationAt(spec, equationIndex + 1)) },
+         { type: 'separator' },
+         { label: t.graphRemoveEquation, danger: true, disabled: equations.length <= 1, onSelect: () => onCommit(removeEquation(spec, equationIndex)) },
+      ]
+   }
+
+   /** The grip affordance a sortable row hands its listeners to (mirrors GraphDataGrid's dragHandle). */
+   function dragGrip(handle: DragHandleProps, ariaLabel: string): React.ReactElement {
+      return (
+         <span
+            className="graph-drag-handle"
+            ref={handle.setActivatorNodeRef}
+            {...handle.attributes}
+            {...handle.listeners}
+            aria-label={ariaLabel}
+            title={ariaLabel}
+         >
+            <GripVertical size={13} />
+         </span>
+      )
+   }
+
+   // ================
    //  Equation rows
    // ================
-   function equationRow(equationIndex: number): React.ReactElement {
+   function equationRowContent(equationIndex: number, handle: DragHandleProps): React.ReactNode {
       const equation = equations[equationIndex]
       const resolvedColor = resolveSeriesColor(equationIndex, equation.color, theme)
       const trimmedExpression = equation.expression.trim()
       const isInvalidExpression = trimmedExpression !== '' && compileExpression(equation.expression) === null
 
       return (
-         <div className="graph-equation-row" key={equationIndex}>
+         <>
+            {dragGrip(handle, t.graphReorderEquation)}
             <button
                type="button"
                className="graph-lead-swatch"
@@ -265,30 +395,52 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
                disabled={equations.length <= 1}
                aria-label={t.graphRemoveEquation}
                title={t.graphRemoveEquation}
-            >×</button>
-         </div>
+            ><X size={13} /></button>
+         </>
       )
    }
 
+   const equationIds = equations.map((_equation, equationIndex) => `${EQUATION_ID_PREFIX}${equationIndex}`)
+
    return (
       <div className="graph-equation-editor">
-         {/* =============== Shared domain: x-range + sample count =============== */}
-         <div className="graph-options">
+         {/* =============== Shared domain card: x-range + sample count, then the y-axis range =============== */}
+         <div className="graph-editor-group">
             <span className="graph-section-label">{t.graphDomainSection}</span>
             <div className="graph-domain-row">
                {domainField('xMin', t.graphDomainXMin, domain.xMin)}
                {domainField('xMax', t.graphDomainXMax, domain.xMax)}
                {domainField('samples', t.graphDomainSamples, domain.samples)}
             </div>
+            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain —
+                their own labeled sub-group makes that mapping legible; blank = autoscale. */}
+            <span className="graph-section-label">{t.graphYRangeSection}</span>
             <div className="graph-domain-row">
                {yRangeField('yMin', t.graphDomainYMin, yMin)}
                {yRangeField('yMax', t.graphDomainYMax, yMax)}
             </div>
          </div>
 
-         {/* =============== Equations: one row per curve =============== */}
-         <div className="graph-equation-list">
-            {equations.map((_equation, equationIndex) => equationRow(equationIndex))}
+         {/* =============== Equations card: one draggable row per curve =============== */}
+         <div className="graph-editor-group">
+            <DndContext
+               sensors={sensors}
+               collisionDetection={closestCenter}
+               modifiers={[LOCK_VERTICAL_MODIFIER]}
+               onDragEnd={handleDragEnd}
+            >
+               <SortableContext items={equationIds} strategy={verticalListSortingStrategy}>
+                  {equations.map((_equation, equationIndex) => (
+                     <SortableEquationRow
+                        key={`${EQUATION_ID_PREFIX}${equationIndex}`}
+                        equationIndex={equationIndex}
+                        onContextMenu={event => openEquationMenu(event, equationIndex)}
+                     >
+                        {handle => equationRowContent(equationIndex, handle)}
+                     </SortableEquationRow>
+                  ))}
+               </SortableContext>
+            </DndContext>
             <button
                type="button"
                className="graph-grid-btn graph-equation-add"
@@ -307,6 +459,14 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
                onPick={activePopover.onPick}
                onReset={activePopover.onReset}
                onClose={() => setColorPopover(null)}
+            />
+         )}
+
+         {contextMenu && (
+            <ContextMenu
+               position={{ x: contextMenu.x, y: contextMenu.y }}
+               entries={equationMenuEntries(contextMenu.index)}
+               onClose={() => setContextMenu(null)}
             />
          )}
       </div>

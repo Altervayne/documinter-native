@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
 import { documentToMarkdown, markdownToDocument } from './markdown'
 import { documentToMintdown, mintdownToDocument } from './mintdown'
-import type { GraphSpec, Block, DocMeta, Section } from '../types'
+import type { GraphSpec } from './graph'
+import type { Block, DocMeta, Section } from '../types'
 
 // A graph block serializes as a ```graph fence: chart type + options on the info string, data as
 // a Markdown pipe table body. The `type=` token is load-bearing and rides BOTH .mint and .md.
@@ -305,6 +306,34 @@ describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
       const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
       expect(reparsed.graph).toEqual(spec)
    })
+
+   it('round-trips an equation-curve overlay through an unquoted eq: token (no spaces)', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: { labels: ['Q1', 'Q2', 'Q3'], series: [{ name: 'Revenue', values: [10, 20, 30] }] },
+         options: { overlays: [{ kind: 'equation', expression: 'sin(x)*2' }] },
+      }
+      const { info } = graphSpecToFence(spec)
+      // No spaces in the expression => no quoting needed, same rule every other lean token follows.
+      expect(info).toContain('overlay=eq:sin(x)*2')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('quotes an equation-curve overlay whose expression contains a space', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { overlays: [{ kind: 'equation', expression: 'x + 1' }] },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('overlay="eq:x + 1"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('drops an equation-curve overlay with a blank expression (nothing to plot)', () => {
+      const spec = fenceToGraphSpec('graph type=line overlay=eq: overlay=mean:0', '')
+      expect(spec.options.overlays).toEqual([{ kind: 'mean', series: 0 }])
+   })
 })
 
 describe('Graph fence, function type (equation plots)', () => {
@@ -418,6 +447,261 @@ describe('Graph fence, function type (equation plots)', () => {
 
       const mintdown = documentToMintdown(sections, meta)
       expect(mintdown).toContain('```graph type=function')
+      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
+      expect(reparsedFromMintdown.graph).toEqual(spec)
+   })
+})
+
+describe('Graph fence, scatter type (x/y point pairs)', () => {
+   it('round-trips a multi-series scatter spec (points, names, colors)', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { title: 'Height vs weight', xLabel: 'Height', yLabel: 'Weight' },
+         scatterPlot: {
+            series: [
+               { name: 'Group A', points: [{ x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 5 }] },
+               { name: 'Group B', points: [{ x: 1, y: 6 }, { x: 2, y: 5 }], color: '#eb6834' },
+            ],
+         },
+      }
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('matches the ratified fence grammar: a long-format Series|X|Y body, one row per point', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: {},
+         scatterPlot: {
+            series: [
+               { name: 'A', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
+               { name: 'B', points: [{ x: 5, y: 6 }] },
+            ],
+         },
+      }
+      const { info, body } = graphSpecToFence(spec)
+      expect(info).toContain('type=scatter')
+      expect(body).toContain('| Series | X | Y |')
+      expect(body).toContain('| A | 1 | 2 |')
+      expect(body).toContain('| A | 3 | 4 |')
+      expect(body).toContain('| B | 5 | 6 |')
+   })
+
+   it('skips blank (non-finite) points on serialize, so an unfilled seed never writes a NaN cell', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: {},
+         scatterPlot: {
+            series: [
+               { name: 'A', points: [{ x: 1, y: 2 }, { x: NaN, y: NaN }] },
+            ],
+         },
+      }
+      const { body } = graphSpecToFence(spec)
+      expect(body).toContain('| A | 1 | 2 |')
+      expect(body).not.toContain('NaN')
+      // The blank point is dropped on round-trip (it is never a real datum).
+      expect(roundTripSpec(spec).scatterPlot?.series).toEqual([
+         { name: 'A', points: [{ x: 1, y: 2 }] },
+      ])
+   })
+
+   it('serializes per-series colors on the shared colors= token, series order', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: {},
+         scatterPlot: {
+            series: [
+               { name: 'A', points: [{ x: 1, y: 2 }], color: '#2a78d6' },
+               { name: 'B', points: [{ x: 3, y: 4 }] },
+            ],
+         },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('colors="#2a78d6,"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('a bare `graph type=scatter` fence with no body falls back to empty series', () => {
+      const spec = fenceToGraphSpec('graph type=scatter', '')
+      expect(spec.type).toBe('scatter')
+      expect(spec.data).toEqual({ labels: [], series: [] })
+      expect(spec.scatterPlot).toEqual({ series: [] })
+   })
+
+   it('groups long-format rows back into series by name, preserving first-seen series order', () => {
+      const body = [
+         '| Series | X | Y |',
+         '| ------ | - | - |',
+         '| B | 5 | 6 |',
+         '| A | 1 | 2 |',
+         '| B | 7 | 8 |',
+         '| A | 3 | 4 |',
+      ].join('\n')
+      const spec = fenceToGraphSpec('graph type=scatter', body)
+      expect(spec.scatterPlot?.series).toEqual([
+         { name: 'B', points: [{ x: 5, y: 6 }, { x: 7, y: 8 }] },
+         { name: 'A', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
+      ])
+   })
+
+   it('skips a malformed point row (non-numeric x or y) rather than keeping a broken point', () => {
+      const body = [
+         '| Series | X | Y |',
+         '| ------ | - | - |',
+         '| A | 1 | 2 |',
+         '| A | n/a | 4 |',
+         '| A | 5 | n/a |',
+         '| A | 6 | 7 |',
+      ].join('\n')
+      const spec = fenceToGraphSpec('graph type=scatter', body)
+      expect(spec.scatterPlot?.series).toEqual([
+         { name: 'A', points: [{ x: 1, y: 2 }, { x: 6, y: 7 }] },
+      ])
+   })
+
+   it('carries a scatter spec through the full Markdown and Mintdown document paths', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { title: 'Cluster sample', legend: true },
+         scatterPlot: {
+            series: [
+               { name: 'Cluster 1', points: [{ x: 1, y: 1 }, { x: 2, y: 3 }] },
+               { name: 'Cluster 2', points: [{ x: 5, y: 5 }], color: '#1baf7a' },
+            ],
+         },
+      }
+      const { sections, meta } = wrapGraph(spec)
+
+      const markdown = documentToMarkdown(sections, meta)
+      expect(markdown).toContain('```graph type=scatter')
+      const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
+      expect(reparsedFromMarkdown.graph).toEqual(spec)
+
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('```graph type=scatter')
+      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
+      expect(reparsedFromMintdown.graph).toEqual(spec)
+   })
+
+   // Overlays live on `options.overlays`, which is shared, type-agnostic serialization (the SAME
+   // repeated `overlay=` token grammar every other graph type uses) — the `series` index just
+   // resolves against `scatterPlot.series` at render time, so no scatter-specific fence work was
+   // needed for this. Verified end to end here regardless.
+   it('round-trips mean / trend / reference overlays on a scatter spec', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: {
+            overlays: [
+               { kind: 'mean', series: 0 },
+               { kind: 'trend', series: 1, showEquation: true },
+               { kind: 'reference', value: 100, label: 'Q4 target' },
+            ],
+         },
+         scatterPlot: {
+            series: [
+               { name: 'A', points: [{ x: 1, y: 2 }, { x: 2, y: 4 }] },
+               { name: 'B', points: [{ x: 1, y: 6 }, { x: 2, y: 5 }, { x: 3, y: 9 }] },
+            ],
+         },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('type=scatter')
+      expect(info).toContain('overlay=mean:0')
+      expect(info).toContain('overlay=trend:1:eq')
+      expect(info).toContain('overlay="ref:100:Q4 target"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+})
+
+describe('Graph fence, histogram type (binned frequency distribution)', () => {
+   it('round-trips a histogram spec (samples, manual bins, name, color)', () => {
+      const spec: GraphSpec = {
+         type: 'histogram',
+         data: { labels: [], series: [] },
+         options: { title: 'Response times', xLabel: 'ms', yLabel: 'Count' },
+         histogramData: { samples: [1, 2, 3, 4, 5, 6, 7, 8], bins: 4, name: 'Latency', color: '#eb6834' },
+      }
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('round-trips a histogram spec with NO manual bins (auto/Sturges, left unset)', () => {
+      const spec: GraphSpec = {
+         type: 'histogram',
+         data: { labels: [], series: [] },
+         options: {},
+         histogramData: { samples: [1, 2, 3, 4, 5] },
+      }
+      const next = roundTripSpec(spec)
+      expect(next).toEqual(spec)
+      expect(next.histogramData?.bins).toBeUndefined()
+   })
+
+   it('emits bins= ONLY when manually set, and never a computed default', () => {
+      const withoutBins = graphSpecToFence({
+         type: 'histogram', data: { labels: [], series: [] }, options: {},
+         histogramData: { samples: [1, 2, 3] },
+      })
+      expect(withoutBins.info).not.toContain('bins=')
+
+      const withBins = graphSpecToFence({
+         type: 'histogram', data: { labels: [], series: [] }, options: {},
+         histogramData: { samples: [1, 2, 3], bins: 7 },
+      })
+      expect(withBins.info).toContain('bins=7')
+   })
+
+   it('serializes the samples as a COMPACT comma-separated list, not a pipe table', () => {
+      const { body } = graphSpecToFence({
+         type: 'histogram', data: { labels: [], series: [] }, options: {},
+         histogramData: { samples: [1, 2.5, -3, 40] },
+      })
+      expect(body).toBe('1, 2.5, -3, 40')
+      expect(body).not.toContain('|')
+   })
+
+   it('tolerantly parses a hand-edited samples body (mixed commas, whitespace, newlines, garbage)', () => {
+      const spec = fenceToGraphSpec('graph type=histogram', '1, 2  3\n4,,5 abc 6;7')
+      expect(spec.histogramData?.samples).toEqual([1, 2, 3, 4, 5, 6, 7])
+   })
+
+   it('serializes the dataset name and color via the name= and colors= tokens', () => {
+      const { info } = graphSpecToFence({
+         type: 'histogram', data: { labels: [], series: [] }, options: {},
+         histogramData: { samples: [1, 2], name: 'Weights', color: '#1baf7a' },
+      })
+      expect(info).toContain('name=Weights')
+      expect(info).toContain('colors="#1baf7a"')
+   })
+
+   it('a bare `graph type=histogram` fence with no body falls back to an empty sample list', () => {
+      const spec = fenceToGraphSpec('graph type=histogram', '')
+      expect(spec.type).toBe('histogram')
+      expect(spec.data).toEqual({ labels: [], series: [] })
+      expect(spec.histogramData).toEqual({ samples: [] })
+   })
+
+   it('carries a histogram spec through the full Markdown and Mintdown document paths', () => {
+      const spec: GraphSpec = {
+         type: 'histogram',
+         data: { labels: [], series: [] },
+         options: { title: 'Exam scores' },
+         histogramData: { samples: [55, 62, 70, 71, 73, 80, 85, 90, 91, 95], bins: 5, name: 'Class A' },
+      }
+      const { sections, meta } = wrapGraph(spec)
+
+      const markdown = documentToMarkdown(sections, meta)
+      expect(markdown).toContain('```graph type=histogram')
+      const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
+      expect(reparsedFromMarkdown.graph).toEqual(spec)
+
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('```graph type=histogram')
       const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
       expect(reparsedFromMintdown.graph).toEqual(spec)
    })

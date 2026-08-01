@@ -17,7 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 // -- Library Imports --
 import { ColorPicker } from 'react-piqua-color'
-import { GripVertical, GripHorizontal } from 'lucide-react'
+import { GripVertical, GripHorizontal, X } from 'lucide-react'
 
 // -- Hook Imports --
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
@@ -567,7 +567,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                                  disabled={series.length <= 1}
                                  aria-label={t.graphRemoveSeries}
                                  title={t.graphRemoveSeries}
-                              >×</button>
+                              ><X size={13} /></button>
                            </div>
                         )}
                      </SortableSeriesHeader>
@@ -576,12 +576,12 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                <th className="graph-add-head">
                   <button
                      type="button"
-                     className="graph-icon-btn graph-add-btn"
+                     className="graph-grid-btn"
                      onClick={() => onCommit(addSeries(spec, `${t.graphSeriesDefault} ${series.length + 1}`))}
                      disabled={series.length >= MAX_SERIES}
                      aria-label={t.graphAddSeries}
                      title={t.graphAddSeries}
-                  >+</button>
+                  >{t.graphAddSeries}</button>
                </th>
             </tr>
          </thead>
@@ -613,7 +613,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                                     disabled={labels.length <= 1}
                                     aria-label={t.graphRemoveCategory}
                                     title={t.graphRemoveCategory}
-                                 >×</button>
+                                 ><X size={13} /></button>
                               </div>
                            </th>
                            {series.map((oneSeries, seriesIndex) => (
@@ -682,7 +682,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                                     disabled={labels.length <= 1}
                                     aria-label={singleSeriesRemoveLabel}
                                     title={singleSeriesRemoveLabel}
-                                 >×</button>
+                                 ><X size={13} /></button>
                               </div>
                            </th>
                            <td className="graph-cell">

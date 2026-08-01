@@ -29,9 +29,26 @@ import {
    updateOverlay,
    addEquation,
    removeEquation,
+   insertEquationAt,
+   moveEquation,
    setEquationField,
    setEquationColor,
    setDomain,
+   addScatterSeries,
+   removeScatterSeries,
+   insertScatterSeriesAt,
+   moveScatterSeries,
+   setScatterSeriesName,
+   setScatterSeriesColor,
+   addScatterPoint,
+   removeScatterPoint,
+   insertScatterPointAt,
+   moveScatterPoint,
+   setScatterPointField,
+   setHistogramSamples,
+   setHistogramBins,
+   setHistogramName,
+   setHistogramColor,
 } from './graphEdit'
 import { FUNCTION_DEFAULT_X_MIN, FUNCTION_DEFAULT_X_MAX, FUNCTION_DEFAULT_SAMPLES, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES } from './graph'
 
@@ -48,6 +65,31 @@ function makeFunctionSpec(): GraphSpec {
             { name: 'g', expression: 'cos(x)', color: '#123456' },
          ],
       },
+   }
+}
+
+// A `scatter`-type fixture, mirroring makeFunctionSpec() in spirit but for the point-editing helpers.
+function makeScatterSpec(): GraphSpec {
+   return {
+      type: 'scatter',
+      data: { labels: [], series: [] },
+      options: { legend: true },
+      scatterPlot: {
+         series: [
+            { name: 'A', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
+            { name: 'B', points: [{ x: 5, y: 6 }], color: '#123456' },
+         ],
+      },
+   }
+}
+
+// A `histogram`-type fixture, mirroring makeScatterSpec() in spirit but for the sample-editing helpers.
+function makeHistogramSpec(): GraphSpec {
+   return {
+      type: 'histogram',
+      data: { labels: [], series: [] },
+      options: { legend: true },
+      histogramData: { samples: [1, 2, 3, 4, 5], bins: 3, name: 'A', color: '#123456' },
    }
 }
 
@@ -701,5 +743,514 @@ describe('setDomain', () => {
       const spec = makeFunctionSpec()
       setDomain(spec, { xMin: -5 })
       expect(spec.functionPlot?.domain.xMin).toBe(-10)
+   })
+})
+
+describe('insertEquationAt', () => {
+   it('inserts a fresh blank equation at the position, shifting later equations down', () => {
+      const next = insertEquationAt(makeFunctionSpec(), 1)
+      expect(next.functionPlot?.equations.map(equation => equation.name)).toEqual(['f', 'h', 'g'])
+      expect(next.functionPlot?.equations[1]).toEqual({ name: 'h', expression: '' })
+   })
+
+   it('inserts at the front (index 0)', () => {
+      const next = insertEquationAt(makeFunctionSpec(), 0)
+      expect(next.functionPlot?.equations[0]).toEqual({ name: 'h', expression: '' })
+      expect(next.functionPlot?.equations[1].name).toBe('f')
+   })
+
+   it('inserting at the equation count appends (equivalent to addEquation)', () => {
+      const next = insertEquationAt(makeFunctionSpec(), 2)
+      expect(next.functionPlot?.equations.length).toBe(3)
+      expect(next.functionPlot?.equations[2]).toEqual({ name: 'h', expression: '' })
+   })
+
+   it('is a no-op once MAX_SERIES is reached', () => {
+      let spec = makeFunctionSpec()
+      for (let count = 0; count < 10; count++) spec = addEquation(spec)
+      expect(spec.functionPlot?.equations.length).toBe(8)
+      expect(insertEquationAt(spec, 0).functionPlot?.equations.length).toBe(8)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeFunctionSpec()
+      expect(insertEquationAt(spec, -1).functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+      expect(insertEquationAt(spec, 3).functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeFunctionSpec()
+      insertEquationAt(spec, 0)
+      expect(spec.functionPlot?.equations.length).toBe(2)
+   })
+})
+
+describe('moveEquation', () => {
+   it('reorders the equations array', () => {
+      const next = moveEquation(makeFunctionSpec(), 0, 1)
+      expect(next.functionPlot?.equations.map(equation => equation.name)).toEqual(['g', 'f'])
+      // Each equation keeps its own fields (color included) through the move.
+      expect(next.functionPlot?.equations[0]).toEqual({ name: 'g', expression: 'cos(x)', color: '#123456' })
+   })
+
+   it('is a no-op when the indices are equal or out of range', () => {
+      const spec = makeFunctionSpec()
+      expect(moveEquation(spec, 1, 1).functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+      expect(moveEquation(spec, -1, 0).functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+      expect(moveEquation(spec, 0, 5).functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeFunctionSpec()
+      moveEquation(spec, 0, 1)
+      expect(spec.functionPlot?.equations[0].name).toBe('f')
+   })
+})
+
+// ##################################################
+// # scatterPlot passthrough (the withData/setType/setOption spread)
+// ##################################################
+// Every generic data/option transform already carries `scatterPlot` through unchanged because
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }` (the same spread that
+// fixed the equivalent functionPlot-dropping bug), so no separate fix was needed for scatter — this
+// just locks that behavior in with its own tests.
+
+describe('scatterPlot passthrough', () => {
+   it('setOption preserves scatterPlot on a scatter-type spec', () => {
+      const next = setOption(makeScatterSpec(), 'title', 'My scatter')
+      expect(next.scatterPlot).toEqual(makeScatterSpec().scatterPlot)
+      expect(next.options.title).toBe('My scatter')
+   })
+
+   it('setType preserves an existing scatterPlot when the type stays scatter', () => {
+      const spec = makeScatterSpec()
+      const next = setType(spec, 'scatter')
+      expect(next.scatterPlot).toEqual(spec.scatterPlot)
+   })
+
+   it('setType seeds a default scatterPlot the first time a spec switches to scatter', () => {
+      const next = setType(makeSpec(), 'scatter')
+      expect(next.scatterPlot).toEqual({ series: [{ name: '', points: [{ x: 0, y: 0 }] }] })
+   })
+
+   it('setType leaves scatterPlot untouched when switching between non-scatter types', () => {
+      const next = setType(makeSpec(), 'line')
+      expect(next.scatterPlot).toBeUndefined()
+   })
+})
+
+// ####################################################
+// # histogramData passthrough (the withData/setType/setOption spread)
+// ####################################################
+// Every generic data/option transform already carries `histogramData` through unchanged because
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }` — the same spread that
+// fixed the equivalent functionPlot/scatterPlot-dropping bugs — so no separate fix was needed for
+// histogram either; this just locks that behavior in with its own tests.
+
+describe('histogramData passthrough', () => {
+   it('setOption preserves histogramData on a histogram-type spec', () => {
+      const next = setOption(makeHistogramSpec(), 'title', 'My histogram')
+      expect(next.histogramData).toEqual(makeHistogramSpec().histogramData)
+      expect(next.options.title).toBe('My histogram')
+   })
+
+   it('setType preserves an existing histogramData when the type stays histogram', () => {
+      const spec = makeHistogramSpec()
+      const next = setType(spec, 'histogram')
+      expect(next.histogramData).toEqual(spec.histogramData)
+   })
+
+   it('setType seeds a default histogramData the first time a spec switches to histogram', () => {
+      const next = setType(makeSpec(), 'histogram')
+      expect(next.histogramData).toEqual({ samples: [1, 2, 2, 3, 3, 3, 4, 4, 5] })
+   })
+
+   it('setType leaves histogramData untouched when switching between non-histogram types', () => {
+      const next = setType(makeSpec(), 'line')
+      expect(next.histogramData).toBeUndefined()
+   })
+})
+
+describe('setHistogramSamples', () => {
+   it('replaces the whole raw sample list', () => {
+      const next = setHistogramSamples(makeHistogramSpec(), [10, 20, 30])
+      expect(next.histogramData?.samples).toEqual([10, 20, 30])
+   })
+
+   it('preserves bins/name/color while replacing the samples', () => {
+      const next = setHistogramSamples(makeHistogramSpec(), [10, 20, 30])
+      expect(next.histogramData).toEqual({ samples: [10, 20, 30], bins: 3, name: 'A', color: '#123456' })
+   })
+
+   it('seeds a default histogramData when the spec has never been a histogram chart', () => {
+      const next = setHistogramSamples(makeSpec(), [7, 8])
+      expect(next.histogramData?.samples).toEqual([7, 8])
+   })
+
+   it('accepts an empty sample list (the renderer degrades gracefully, not this transform)', () => {
+      const next = setHistogramSamples(makeHistogramSpec(), [])
+      expect(next.histogramData?.samples).toEqual([])
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeHistogramSpec()
+      setHistogramSamples(spec, [99])
+      expect(spec.histogramData?.samples).toEqual([1, 2, 3, 4, 5])
+   })
+})
+
+describe('setHistogramBins', () => {
+   it('sets a manual bin-count override', () => {
+      const next = setHistogramBins(makeHistogramSpec(), 10)
+      expect(next.histogramData?.bins).toBe(10)
+   })
+
+   it('rounds a fractional bin count', () => {
+      const next = setHistogramBins(makeHistogramSpec(), 10.6)
+      expect(next.histogramData?.bins).toBe(11)
+   })
+
+   it('clamps below HISTOGRAM_MIN_BINS up to 1', () => {
+      const next = setHistogramBins(makeHistogramSpec(), 0)
+      expect(next.histogramData?.bins).toBe(1)
+   })
+
+   it('clamps above HISTOGRAM_MAX_BINS down to 50', () => {
+      const next = setHistogramBins(makeHistogramSpec(), 500)
+      expect(next.histogramData?.bins).toBe(50)
+   })
+
+   it('clears the override (back to auto/Sturges) when passed undefined', () => {
+      const next = setHistogramBins(makeHistogramSpec(), undefined)
+      expect('bins' in next.histogramData!).toBe(false)
+   })
+
+   it('seeds a default histogramData when the spec has never been a histogram chart', () => {
+      const next = setHistogramBins(makeSpec(), 6)
+      expect(next.histogramData?.bins).toBe(6)
+   })
+})
+
+describe('setHistogramName', () => {
+   it('sets the dataset name', () => {
+      const next = setHistogramName(makeHistogramSpec(), 'Renamed')
+      expect(next.histogramData?.name).toBe('Renamed')
+   })
+
+   it('seeds a default histogramData when the spec has never been a histogram chart', () => {
+      const next = setHistogramName(makeSpec(), 'Fresh')
+      expect(next.histogramData?.name).toBe('Fresh')
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeHistogramSpec()
+      setHistogramName(spec, 'Renamed')
+      expect(spec.histogramData?.name).toBe('A')
+   })
+})
+
+describe('setHistogramColor', () => {
+   it('sets a color override', () => {
+      const next = setHistogramColor(makeHistogramSpec(), '#abcdef')
+      expect(next.histogramData?.color).toBe('#abcdef')
+   })
+
+   it('clears the override when passed undefined', () => {
+      const next = setHistogramColor(makeHistogramSpec(), undefined)
+      expect('color' in next.histogramData!).toBe(false)
+   })
+
+   it('seeds a default histogramData when the spec has never been a histogram chart', () => {
+      const next = setHistogramColor(makeSpec(), '#abcdef')
+      expect(next.histogramData?.color).toBe('#abcdef')
+   })
+})
+
+describe('addScatterSeries', () => {
+   it('appends a new series seeded with a single origin point', () => {
+      const next = addScatterSeries(makeScatterSpec(), 'C')
+      expect(next.scatterPlot?.series.length).toBe(3)
+      expect(next.scatterPlot?.series[2]).toEqual({ name: 'C', points: [{ x: 0, y: 0 }] })
+   })
+
+   it('defaults the name to empty string', () => {
+      const next = addScatterSeries(makeScatterSpec())
+      expect(next.scatterPlot?.series[2].name).toBe('')
+   })
+
+   it('seeds a default scatterPlot when the spec has never been a scatter chart', () => {
+      const next = addScatterSeries(makeSpec())
+      expect(next.scatterPlot?.series.length).toBe(2)
+      expect(next.scatterPlot?.series[0]).toEqual({ name: '', points: [{ x: 0, y: 0 }] })
+   })
+
+   it('caps at MAX_SERIES series', () => {
+      let spec = makeScatterSpec()
+      for (let count = 0; count < 10; count++) spec = addScatterSeries(spec)
+      expect(spec.scatterPlot?.series.length).toBe(8)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      addScatterSeries(spec)
+      expect(spec.scatterPlot?.series.length).toBe(2)
+   })
+})
+
+describe('removeScatterSeries', () => {
+   it('removes the series at the index', () => {
+      const next = removeScatterSeries(makeScatterSpec(), 0)
+      expect(next.scatterPlot?.series).toEqual([{ name: 'B', points: [{ x: 5, y: 6 }], color: '#123456' }])
+   })
+
+   it('is a no-op when it would remove the last series', () => {
+      const oneSeries: GraphSpec = {
+         ...makeScatterSpec(),
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }] }] },
+      }
+      const next = removeScatterSeries(oneSeries, 0)
+      expect(next.scatterPlot?.series.length).toBe(1)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeScatterSpec()
+      const next = removeScatterSeries(spec, 9)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+})
+
+describe('setScatterSeriesName', () => {
+   it('sets the name field', () => {
+      const next = setScatterSeriesName(makeScatterSpec(), 0, 'Renamed')
+      expect(next.scatterPlot?.series[0].name).toBe('Renamed')
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeScatterSpec()
+      const next = setScatterSeriesName(spec, 9, 'nope')
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      setScatterSeriesName(spec, 0, 'Renamed')
+      expect(spec.scatterPlot?.series[0].name).toBe('A')
+   })
+})
+
+describe('setScatterSeriesColor', () => {
+   it('sets a color override', () => {
+      const next = setScatterSeriesColor(makeScatterSpec(), 0, '#abcdef')
+      expect(next.scatterPlot?.series[0].color).toBe('#abcdef')
+   })
+
+   it('clears the override when passed undefined', () => {
+      const next = setScatterSeriesColor(makeScatterSpec(), 1, undefined)
+      expect('color' in next.scatterPlot!.series[1]).toBe(false)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeScatterSpec()
+      const next = setScatterSeriesColor(spec, 9, '#abcdef')
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+})
+
+describe('addScatterPoint', () => {
+   it('appends a blank (non-finite) point to the series by default', () => {
+      const next = addScatterPoint(makeScatterSpec(), 1)
+      expect(next.scatterPlot?.series[1].points).toEqual([{ x: 5, y: 6 }, { x: NaN, y: NaN }])
+   })
+
+   it('appends a given point to the series', () => {
+      const next = addScatterPoint(makeScatterSpec(), 0, { x: 9, y: 10 })
+      expect(next.scatterPlot?.series[0].points).toEqual([{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 9, y: 10 }])
+   })
+
+   it('is a no-op (scatterPlot merely seeded) for an out-of-range series index', () => {
+      const spec = makeScatterSpec()
+      const next = addScatterPoint(spec, 9)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      addScatterPoint(spec, 0)
+      expect(spec.scatterPlot?.series[0].points.length).toBe(2)
+   })
+})
+
+describe('removeScatterPoint', () => {
+   it('removes the point at the index', () => {
+      const next = removeScatterPoint(makeScatterSpec(), 0, 0)
+      expect(next.scatterPlot?.series[0].points).toEqual([{ x: 3, y: 4 }])
+   })
+
+   it('is a no-op when it would remove a series last point', () => {
+      const next = removeScatterPoint(makeScatterSpec(), 1, 0)
+      expect(next.scatterPlot?.series[1].points).toEqual([{ x: 5, y: 6 }])
+   })
+
+   it('is a no-op for an out-of-range series index', () => {
+      const spec = makeScatterSpec()
+      const next = removeScatterPoint(spec, 9, 0)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('is a no-op for an out-of-range point index', () => {
+      const spec = makeScatterSpec()
+      const next = removeScatterPoint(spec, 0, 9)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+})
+
+describe('setScatterPointField', () => {
+   it('sets the x field', () => {
+      const next = setScatterPointField(makeScatterSpec(), 0, 1, 'x', 30)
+      expect(next.scatterPlot?.series[0].points[1]).toEqual({ x: 30, y: 4 })
+   })
+
+   it('sets the y field', () => {
+      const next = setScatterPointField(makeScatterSpec(), 0, 1, 'y', 40)
+      expect(next.scatterPlot?.series[0].points[1]).toEqual({ x: 3, y: 40 })
+   })
+
+   it('is a no-op for an out-of-range series index', () => {
+      const spec = makeScatterSpec()
+      const next = setScatterPointField(spec, 9, 0, 'x', 1)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('is a no-op for an out-of-range point index', () => {
+      const spec = makeScatterSpec()
+      const next = setScatterPointField(spec, 0, 9, 'x', 1)
+      expect(next.scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      setScatterPointField(spec, 0, 0, 'x', 99)
+      expect(spec.scatterPlot?.series[0].points[0]).toEqual({ x: 1, y: 2 })
+   })
+})
+
+describe('insertScatterSeriesAt', () => {
+   it('inserts a fresh series (one origin point) at the position, shifting later series down', () => {
+      const next = insertScatterSeriesAt(makeScatterSpec(), 1)
+      expect(next.scatterPlot?.series.map(series => series.name)).toEqual(['A', '', 'B'])
+      expect(next.scatterPlot?.series[1]).toEqual({ name: '', points: [{ x: 0, y: 0 }] })
+   })
+
+   it('inserts at the front (index 0) with a given name', () => {
+      const next = insertScatterSeriesAt(makeScatterSpec(), 0, 'First')
+      expect(next.scatterPlot?.series[0]).toEqual({ name: 'First', points: [{ x: 0, y: 0 }] })
+      expect(next.scatterPlot?.series[1].name).toBe('A')
+   })
+
+   it('inserting at the series count appends (equivalent to addScatterSeries)', () => {
+      const next = insertScatterSeriesAt(makeScatterSpec(), 2, 'End')
+      expect(next.scatterPlot?.series[2]).toEqual({ name: 'End', points: [{ x: 0, y: 0 }] })
+   })
+
+   it('is a no-op once MAX_SERIES is reached', () => {
+      let spec = makeScatterSpec()
+      for (let count = 0; count < 10; count++) spec = addScatterSeries(spec)
+      expect(spec.scatterPlot?.series.length).toBe(8)
+      expect(insertScatterSeriesAt(spec, 0).scatterPlot?.series.length).toBe(8)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeScatterSpec()
+      expect(insertScatterSeriesAt(spec, -1).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(insertScatterSeriesAt(spec, 3).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      insertScatterSeriesAt(spec, 0, 'First')
+      expect(spec.scatterPlot?.series.length).toBe(2)
+   })
+})
+
+describe('moveScatterSeries', () => {
+   it('reorders the series array', () => {
+      const next = moveScatterSeries(makeScatterSpec(), 0, 1)
+      expect(next.scatterPlot?.series.map(series => series.name)).toEqual(['B', 'A'])
+      // Each series keeps its own points (color included) through the move.
+      expect(next.scatterPlot?.series[0]).toEqual({ name: 'B', points: [{ x: 5, y: 6 }], color: '#123456' })
+   })
+
+   it('is a no-op when the indices are equal or out of range', () => {
+      const spec = makeScatterSpec()
+      expect(moveScatterSeries(spec, 1, 1).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(moveScatterSeries(spec, -1, 0).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(moveScatterSeries(spec, 0, 5).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      moveScatterSeries(spec, 0, 1)
+      expect(spec.scatterPlot?.series[0].name).toBe('A')
+   })
+})
+
+describe('insertScatterPointAt', () => {
+   it('inserts a blank (non-finite) point at the position within the series, shifting later points down', () => {
+      const next = insertScatterPointAt(makeScatterSpec(), 0, 1)
+      expect(next.scatterPlot?.series[0].points).toEqual([{ x: 1, y: 2 }, { x: NaN, y: NaN }, { x: 3, y: 4 }])
+   })
+
+   it('inserts a given point at the front (index 0)', () => {
+      const next = insertScatterPointAt(makeScatterSpec(), 0, 0, { x: 9, y: 10 })
+      expect(next.scatterPlot?.series[0].points).toEqual([{ x: 9, y: 10 }, { x: 1, y: 2 }, { x: 3, y: 4 }])
+   })
+
+   it('inserting at the point count appends (equivalent to addScatterPoint)', () => {
+      const next = insertScatterPointAt(makeScatterSpec(), 1, 1, { x: 7, y: 8 })
+      expect(next.scatterPlot?.series[1].points).toEqual([{ x: 5, y: 6 }, { x: 7, y: 8 }])
+   })
+
+   it('leaves the other series untouched', () => {
+      const next = insertScatterPointAt(makeScatterSpec(), 0, 0, { x: 9, y: 10 })
+      expect(next.scatterPlot?.series[1].points).toEqual([{ x: 5, y: 6 }])
+   })
+
+   it('is a no-op for an out-of-range series or point index', () => {
+      const spec = makeScatterSpec()
+      expect(insertScatterPointAt(spec, 9, 0).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(insertScatterPointAt(spec, 0, 9).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      insertScatterPointAt(spec, 0, 0, { x: 9, y: 10 })
+      expect(spec.scatterPlot?.series[0].points.length).toBe(2)
+   })
+})
+
+describe('moveScatterPoint', () => {
+   it('reorders the points within one series only', () => {
+      const next = moveScatterPoint(makeScatterSpec(), 0, 0, 1)
+      expect(next.scatterPlot?.series[0].points).toEqual([{ x: 3, y: 4 }, { x: 1, y: 2 }])
+      // The other series is untouched.
+      expect(next.scatterPlot?.series[1].points).toEqual([{ x: 5, y: 6 }])
+   })
+
+   it('is a no-op when the point indices are equal or out of range', () => {
+      const spec = makeScatterSpec()
+      expect(moveScatterPoint(spec, 0, 1, 1).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(moveScatterPoint(spec, 0, -1, 0).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+      expect(moveScatterPoint(spec, 0, 0, 5).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('is a no-op for an out-of-range series index', () => {
+      const spec = makeScatterSpec()
+      expect(moveScatterPoint(spec, 9, 0, 1).scatterPlot?.series).toEqual(spec.scatterPlot?.series)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeScatterSpec()
+      moveScatterPoint(spec, 0, 0, 1)
+      expect(spec.scatterPlot?.series[0].points).toEqual([{ x: 1, y: 2 }, { x: 3, y: 4 }])
    })
 })
