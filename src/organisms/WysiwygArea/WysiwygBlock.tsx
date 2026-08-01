@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // -- Library Imports --
 import { useSortable } from '@dnd-kit/sortable'
@@ -9,6 +9,7 @@ import { GripVertical, TriangleAlert } from 'lucide-react'
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { useDocumentHandles } from '../../contexts/DocumentHandlesContext'
+import { useBlockEditorWindow } from '../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../contexts/LangContext'
 import { useAnchorEditor } from './useAnchorEditor'
 import { useBlockContextMenu } from './useBlockContextMenu'
@@ -91,10 +92,21 @@ export function WysiwygBlock({
    onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
    onInsertListItemAfter, onUpdateListItemRichText, onReorderListItems, onToggleChecklistItem,
 }: WysiwygBlockProps) {
-   const ctx        = useDocumentMutations()
-   const { t }      = useLang()
-   const allHandles = useDocumentHandles()
+   const ctx          = useDocumentMutations()
+   const { t }        = useLang()
+   const allHandles   = useDocumentHandles()
+   const editorWindow = useBlockEditorWindow()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
+   // The block's editor window is open → highlight it and drop its inline controls (block-owned).
+   const isWindowOpen = !readOnly && editorWindow.isEditing(block.id)
+
+   // Unmount safety: a deleted / undone-away block clears its own open id so the context never
+   // holds a dangling reference. Deliberately unmount-only (block.id is stable per instance) — the
+   // functional clear (see clearIfEditing) keeps the captured context reference stale-closure safe.
+   // Depending on `editorWindow` would re-run the cleanup on every openBlockId change and wrongly
+   // clear the just-opened block, so it is intentionally excluded.
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   useEffect(() => () => editorWindow.clearIfEditing(block.id), [block.id])
 
    const [hovered,       setHovered]       = useState(false)
    const [pendingInsert, setPendingInsert] = useState<'before' | 'after' | null>(null)
@@ -235,6 +247,7 @@ export function WysiwygBlock({
             'relative rounded-md transition-colors my-4',
             !readOnly && hovered ? 'doc-block-hover' : '',
             isAnchorDupe ? 'ring-2 ring-amber-400/60' : '',
+            isWindowOpen ? 'doc-block-editing' : '',
          ].join(' ')}
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}

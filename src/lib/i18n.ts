@@ -156,6 +156,11 @@ export const translations = {
       graphOptionLegend:    'Legend',
       graphOptionValues:    'Show values',
       graphOptionHole:      'Hole size',
+      graphWindowTitle:     'Edit chart',
+      graphEditChart:       'Edit chart',
+      // Block editor window (floating, draggable, non-modal editor host)
+      blockWindowClose:     'Close editor',
+      blockWindowResize:    'Resize editor',
       blockMathSize:         'Equation size',
       blockMathSizeIncrease: 'Increase equation size',
       blockMathSizeDecrease: 'Decrease equation size',
@@ -547,6 +552,11 @@ export const translations = {
       graphOptionLegend:    'Légende',
       graphOptionValues:    'Afficher les valeurs',
       graphOptionHole:      'Taille du trou',
+      graphWindowTitle:     'Modifier le graphique',
+      graphEditChart:       'Modifier le graphique',
+      // Block editor window (floating, draggable, non-modal editor host)
+      blockWindowClose:     'Fermer l\'éditeur',
+      blockWindowResize:    'Redimensionner l\'éditeur',
       blockMathSize:         'Taille de l\'équation',
       blockMathSizeIncrease: 'Agrandir l\'équation',
       blockMathSizeDecrease: 'Réduire l\'équation',

@@ -216,6 +216,27 @@
 /* Live preview: the rendered SVG under the grid; overrides doc-graph's default top margin. */
 .doc-render .graph-preview     { margin: 0.5rem 0 0; }
 
+/* Inline graph (editor mode, window closed): the rendered chart carries a hover-reveal Edit pill,
+   pinned top-right, mirroring the DnD grip's opacity reveal. The full editor lives in the window. */
+.doc-render .graph-block-output { position: relative; }
+.doc-render .graph-edit-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.28rem 0.55rem; box-sizing: border-box; border-radius: 6px;
+  background: var(--color-raised); border: 1px solid var(--color-border); color: var(--color-text);
+  font-family: var(--font-sans); font-size: 0.72rem; font-weight: 600; line-height: 1; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  opacity: 0; transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+.doc-render .graph-edit-btn-visible { opacity: 1; }
+.doc-render .graph-edit-btn:hover {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  color: var(--doc-accent, var(--color-accent));
+}
+.doc-render .graph-edit-btn:focus-visible {
+  opacity: 1; outline: 2px solid var(--doc-accent, var(--color-accent)); outline-offset: 1px;
+}
+
 /* ============ Dark theme ============ */
 .doc-dark .doc-render .graph-control-label,
 .doc-dark .doc-render .graph-grid-corner { color: #7d8490; }
@@ -229,6 +250,82 @@
 .doc-dark .doc-render .graph-toggle,
 .doc-dark .doc-render .graph-range-value { color: #9aa4b2; }
 .doc-dark .doc-render .graph-color-swatch { border-color: color-mix(in srgb, #fff 20%, transparent); }
+
+/* ############################################################
+   Block editor window (floating, draggable, NON-modal editor host)
+   Portaled to <body>, so these rules are UNSCOPED (like .math-symbol-palette). App --color-*
+   tokens drive the chrome; the body content re-establishes its own doc-theme scope.
+   ############################################################ */
+
+/* The open block's accent highlight ring — mirrors the anchor-dupe amber ring mechanism, one class. */
+.doc-block-editing {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 60%, transparent);
+}
+
+.block-editor-window {
+  position: fixed; z-index: 9000; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--color-border); border-radius: 12px;
+  background: var(--color-raised);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+  animation: menu-in 130ms ease-out both;
+}
+.block-editor-window:focus { outline: none; }
+
+/* Title bar = the drag handle. touch-action:none lets Pointer Events own the gesture on touch. */
+.block-editor-window-titlebar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0.55rem 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-raised);
+  cursor: grab; user-select: none; touch-action: none;
+}
+.block-editor-window-titlebar:active { cursor: grabbing; }
+.block-editor-window-icon  { display: inline-flex; flex: 0 0 auto; color: var(--color-accent); }
+.block-editor-window-title {
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--font-sans); font-size: 0.82rem; font-weight: 600; color: var(--color-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.block-editor-window-close {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem; padding: 0; border-radius: 6px;
+  border: none; background: transparent; color: var(--color-muted); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.block-editor-window-close:hover {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text);
+}
+
+/* Body scrolls within the window; content supplies its own colors. */
+.block-editor-window-body {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  padding: 0.85rem 0.95rem; background: var(--color-bg);
+}
+
+/* Bottom-right resize grip: a small diagonal-hatch corner. */
+.block-editor-window-resize {
+  position: absolute; right: 2px; bottom: 2px;
+  width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
+  background: linear-gradient(135deg,
+     transparent 0 45%, var(--color-border) 45% 55%,
+     transparent 55% 68%, var(--color-border) 68% 78%, transparent 78%);
+}
+
+/* Narrow-viewport fallback: a near-full-screen sheet, drag + resize disabled. */
+.block-editor-window-sheet {
+  top: 3vh; left: 3vw; width: 94vw; height: 94vh;
+}
+.block-editor-window-sheet .block-editor-window-titlebar { cursor: default; }
+
+/* The graph editor body re-uses the .doc-render-scoped graph-* styles; neutralize the page padding
+   the document canvas applies so the controls sit flush in the window body. */
+.block-editor-window .block-editor-doc-render {
+  padding: 0; width: 100%;
+  font-family: var(--font-sans); font-size: 14px; line-height: 1.5;
+  color: var(--color-text); background: transparent;
+}
 
 /* Math block editor, monospaced LaTeX source over a live preview. */
 .doc-render .math-block   { margin: 1.25rem 0; }

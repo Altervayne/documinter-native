@@ -12,6 +12,7 @@ const noopStrategy: SortingStrategy = () => null
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { DocThemeProvider } from '../../contexts/DocThemeContext'
+import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
@@ -33,12 +34,14 @@ interface WysiwygAreaProps {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
+   /** Active tab key; a change closes any open block-editor window (it belongs to the outgoing tab). */
+   activeTabKey?: string
    onUpdateMeta:  (patch: Partial<DocMeta>) => void
    onAddSection?: () => void
    readOnly?: boolean
 }
 
-export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta, onAddSection, readOnly }: WysiwygAreaProps) {
+export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey, onUpdateMeta, onAddSection, readOnly }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
 
@@ -258,6 +261,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
    return (
       <DocumentHandlesProvider handles={allHandles}>
        <DocThemeProvider theme={docTheme}>
+        <BlockEditorWindowProvider resetKey={activeTabKey}>
          {!readOnly && <FormatToolbar sections={sections} />}
          <div className="flex-1 h-full w-full overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
             <div
@@ -358,6 +362,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
             </div>
             </div>
          </div>
+        </BlockEditorWindowProvider>
        </DocThemeProvider>
       </DocumentHandlesProvider>
    )

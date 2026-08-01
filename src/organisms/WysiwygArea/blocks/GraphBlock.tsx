@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { BarChart3, Pencil } from 'lucide-react'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from '../../../lib/graph'
 import type { GraphSpec, GraphType } from '../../../lib/graph'
 import { setType, setOption } from '../../../lib/graphEdit'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
+import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
+import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
@@ -43,22 +46,38 @@ const DEFAULT_DONUT_HOLE = 0.55
  * `dangerouslySetInnerHTML` inside a `.doc-graph` wrapper — no runtime, no external font. The
  * SVG bakes literal theme hex, so the theme is picked from the document theme (light/dark).
  *
- * STAGE 3 scope: a full interactive editor — a chart-type selector, an editable data grid
- * (categories x series, with a per-series color picker), option controls, and a live preview.
- * The editing model mirrors the math block: a local working spec keeps typing smooth (the
- * preview renders from it live), external changes sync in only when not actively editing, and
- * the document is committed via `patch({ graph })` on blur + immediately on discrete changes.
+ * WINDOWED EDITOR (block-editor-window adopter #1): inline, the block shows only its rendered
+ * chart plus a hover-reveal Edit pill; the full editor — chart-type selector, editable data grid,
+ * option controls, live preview — moves into a floating BlockEditorWindow opened via the
+ * BlockEditorWindowContext. The draft/commit-on-blur model is unchanged (a local working spec
+ * keeps typing smooth, committed via `patch({ graph })`); it simply lives in the window now. The
+ * window is rendered inline by this component only while this block is the open one, so deleting
+ * the block unmounts the window with it for free.
  */
 export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
-   const { t }      = useLang()
-   const docTheme   = useDocTheme()
-   const graphTheme = docTheme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
+   const { t }        = useLang()
+   const docTheme     = useDocTheme()
+   const graphTheme   = docTheme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
+   const editorWindow = useBlockEditorWindow()
+   const isEditing    = !readOnly && editorWindow.isEditing(block.id)
 
    // Local working spec so the preview + grid update live on every keystroke without spamming a
    // document mutation; committed via `patch({ graph })` on blur / discrete change. Mirrors the
    // math block's not-editing sync pattern.
    const [working, setWorking] = useState<GraphSpec>(block.graph ?? FALLBACK_SPEC)
    const editing = useRef(false)
+   // Hover state for the inline Edit pill (opacity-reveal, mirroring the DnD grip affordance).
+   const [outputHovered, setOutputHovered] = useState(false)
+   // The block's own root, measured (in the Edit handler, never during render) for the window's
+   // initial placement anchor; the captured rect drives the window's opening position.
+   const rootRef = useRef<HTMLDivElement>(null)
+   const [anchorRect, setAnchorRect] = useState<DOMRect>(() => new DOMRect())
+
+   // Capture the block's rect at click time, then open the window (single-window context lever).
+   function openEditorWindow(): void {
+      setAnchorRect(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
+      editorWindow.openEditor(block.id)
+   }
 
    // External changes (undo, tab switch, load) sync in only when not actively editing.
    useEffect(() => {
@@ -100,14 +119,25 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    }
 
    // ============
-   //  Editor view
+   //  Shared bits
    // ============
-   const isRadial = RADIAL_TYPES.has(working.type)
-   const options  = working.options
+   const isRadial   = RADIAL_TYPES.has(working.type)
+   const options    = working.options
+   // Both the inline output and the in-window preview render from the live working spec, so the
+   // inline chart updates as the window's controls are used.
    const previewSvg = renderGraphToSvg(working, graphTheme)
 
-   return (
-      <div className="graph-block">
+   // ============
+   //  Windowed editor body — the full controls + data grid + live preview.
+   // ============
+   // The graph editor styles are scoped under `.doc-render` (and `.doc-dark .doc-render` for dark),
+   // but the window portals to <body>, outside that tree. Re-establish the scope here: a `.doc-dark`
+   // wrapper (per the DOCUMENT theme, so the controls match the chart) over a `.doc-render` whose
+   // page padding is neutralized inside the window (see doc.css .block-editor-doc-render).
+   const editorBody = (
+    <div className={docTheme === 'dark' ? 'doc-dark' : undefined}>
+     <div className="doc-render block-editor-doc-render">
+      <div className="graph-editor">
          {/* =============== Chart-type selector + options =============== */}
          <div className="graph-controls">
             <label className="graph-control">
@@ -212,6 +242,46 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
 
          {/* =============== Live preview =============== */}
          <div className="graph-preview doc-graph" dangerouslySetInnerHTML={{ __html: previewSvg }} />
+      </div>
+     </div>
+    </div>
+   )
+
+   // ============
+   //  Inline: output only + a hover-reveal Edit opener. The controls live in the window.
+   // ============
+   return (
+      <div className="graph-block" ref={rootRef}>
+         <div
+            className="graph-block-output"
+            onMouseEnter={() => setOutputHovered(true)}
+            onMouseLeave={() => setOutputHovered(false)}
+         >
+            <div className="doc-graph" dangerouslySetInnerHTML={{ __html: previewSvg }} />
+            {!isEditing && (
+               <button
+                  type="button"
+                  className={`graph-edit-btn${outputHovered ? ' graph-edit-btn-visible' : ''}`}
+                  aria-label={t.graphEditChart}
+                  title={t.graphEditChart}
+                  onClick={openEditorWindow}
+               >
+                  <Pencil size={13} />
+                  <span>{t.graphEditChart}</span>
+               </button>
+            )}
+         </div>
+
+         {isEditing && (
+            <BlockEditorWindow
+               title={t.graphWindowTitle}
+               icon={<BarChart3 size={15} />}
+               anchorRect={anchorRect}
+               onClose={editorWindow.closeEditor}
+            >
+               {editorBody}
+            </BlockEditorWindow>
+         )}
       </div>
    )
 }

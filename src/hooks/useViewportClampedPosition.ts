@@ -34,7 +34,9 @@ const DEFAULT_MARGIN = 8
 // Two-sided clamp: never past the far edge (Math.min) and never before the near
 // edge (Math.max). The near-edge floor is the fix for the audited bug — a Math.min-only
 // clamp lets `viewport − size − margin` go negative and pushes the popover off-screen.
-function clampAxis(desired: number, size: number, viewportSize: number, margin: number): number {
+// Exported so the draggable-window primitive reuses the exact same clamp rule rather than
+// re-deriving it (single source of truth for "can never leave the viewport").
+export function clampAxis(desired: number, size: number, viewportSize: number, margin: number): number {
    return Math.max(margin, Math.min(desired, viewportSize - size - margin))
 }
 

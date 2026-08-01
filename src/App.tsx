@@ -821,6 +821,7 @@ export default function App() {
                               sections={sections}
                               docTheme={docTheme}
                               docAccent={docAccent}
+                              activeTabKey={activeTabKey}
                               onUpdateMeta={handleMetaChange}
                               onAddSection={sectionMutations.addSection}
                               readOnly={mode === 'preview'}
