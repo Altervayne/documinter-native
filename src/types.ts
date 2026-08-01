@@ -212,6 +212,9 @@ export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void
    insertBlockAt:  (secId: string, blkId: string, side: Side, index: number, type: BlockType) => void
+   /** Inserts an already-built block right after `innerBlkId` (no `mkBlock` default — the caller
+    *  supplies the full block, e.g. the graph<->table one-shot extract actions). */
+   insertBlockAfter: (secId: string, blkId: string, side: Side, innerBlkId: string, newBlock: Block) => void
    duplicateBlock: (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    removeBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    moveBlock:      (secId: string, blkId: string, side: Side, from: number, to: number) => void

@@ -257,6 +257,9 @@
    right-clicking a row or a series header opens an insert/delete menu. Numeric cells are tabular. */
 .graph-data-tab    { display: flex; flex-direction: column; gap: 1rem; }
 .graph-data-grid   { margin: 0; }
+/* "Extract data to a table" (the graph->table one-shot extract): a compact pill directly under
+   the grid, same shape as graph-overlay-add, not stretched full-width by the flex column. */
+.graph-extract-table-btn { align-self: flex-start; }
 
 /* One shared group-card primitive (cohesion): the reusable "one editor unit" container the equation
    list, each scatter series, and the histogram body all wrap in. Card radius 8px, rows within a card
@@ -476,6 +479,41 @@
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
+/* ============ Data tab (tabular types): table-link management (stage 2b) ============ */
+/* One `.graph-editor-group` card, two states. UNLINKED: just the picker `<select>` (the caller still
+   renders the ordinary editable grid alongside it). LINKED: the picker is gone, replaced by a
+   banner + a READ-ONLY preview (reusing the grid's own table/cell chrome — .graph-grid-table /
+   .graph-lead-cell / .graph-cell — so it reads as a peer of the editable grid, just inert) + the
+   mapping row + a change-table / unlink action row. */
+.graph-link-panel        { gap: 0.6rem; }
+.graph-link-select       { width: 100%; }
+.graph-link-banner       {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.8rem; color: var(--graph-muted-strong);
+}
+.graph-link-banner-icon  { flex: 0 0 auto; color: var(--color-accent); }
+.graph-link-banner-text strong { color: var(--color-text); font-weight: 600; }
+/* Dangling notice reuses .graph-source-missing's document-themed styling everywhere else in the
+   app, but this copy sits in the APP-CHROME editor window, not `.doc-render` — so it needs its own
+   (chrome-token) declaration rather than inheriting the `.doc-render`-scoped rule. */
+.graph-link-dangling     {
+  margin-top: 0; font-size: 0.74rem; font-style: italic;
+  color: color-mix(in srgb, var(--color-accent) 55%, #9a6a1a);
+}
+/* The preview shares the grid's scroll/border/table chrome but is shorter (it's a glance, not a
+   working surface) and every cell is inert — no focus ring, no pointer cursor, muted numerals so it
+   visually reads as "display", not "input". */
+.graph-link-preview-scroll { max-height: 14rem; }
+.graph-link-preview-cell   {
+  padding: 0.28rem 0.55rem; text-align: right; font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--graph-muted-strong);
+}
+.graph-link-mapping-row  { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.graph-link-mapping-row .graph-field { flex: 1 1 10rem; min-width: 8rem; }
+.graph-link-actions      { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.graph-link-actions .graph-link-select { flex: 1 1 12rem; width: auto; }
+.graph-link-unlink       { flex: 0 0 auto; }
+
 /* Inline graph (editor mode, window closed): the rendered chart carries a hover-reveal Edit pill,
    pinned top-right, mirroring the DnD grip's opacity reveal. The full editor lives in the window.
    This pill sits ON the document (over the rendered chart), so its base surface follows the
@@ -501,6 +539,16 @@
 }
 .doc-dark .doc-render .graph-edit-btn {
   background: #161b22; border-color: #21262d; color: #c9d1d9;
+}
+
+/* Dangling-link notice (linked graph whose source table handle is missing). An unobtrusive
+   in-editor hint under the chart; never serialized, never in the read view / export. */
+.doc-render .graph-source-missing {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, #9a6a1a);
+  opacity: 0.85;
 }
 
 /* The editor CHROME (tabs / cards / inputs / grid / buttons above) is app-themed via the app

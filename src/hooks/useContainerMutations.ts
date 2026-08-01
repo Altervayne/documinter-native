@@ -60,6 +60,19 @@ export function useContainerMutations(
          })
       }, [setSections]),
 
+      // Inserts an already-built block right after innerBlkId. Mirrors duplicateBlock's
+      // find-splice shape, but the caller supplies the whole block instead of a clone (the
+      // graph<->table one-shot extract actions), same as the top-level useBlockMutations twin.
+      insertBlockAfter: useCallback((secId, blkId, side, innerBlkId, newBlock) => {
+         mutateContainer(setSections, secId, blkId, side, blocks => {
+            const blockIndex = blocks.findIndex(block => block.id === innerBlkId)
+            if (blockIndex === -1) return blocks
+            const next = [...blocks]
+            next.splice(blockIndex + 1, 0, newBlock)
+            return next
+         })
+      }, [setSections]),
+
       removeBlock: useCallback((secId, blkId, side, innerBlkId) => {
          mutateContainer(setSections, secId, blkId, side, blocks => blocks.filter(block => block.id !== innerBlkId))
       }, [setSections]),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cloneBlock, moveItem, generateHandle, blkPreview, mkSection, mkBlock } from './document'
+import { cloneBlock, moveItem, generateHandle, generateUniqueHandle, blkPreview, mkSection, mkBlock } from './document'
 import { translations } from './i18n'
 import { normalizeIds } from '../test/normalizeIds'
 import type { Block, DocMeta, DocState } from '../types'
@@ -60,6 +60,28 @@ describe('generateHandle', () => {
 
    it('falls back to an 8-char id fragment when there is no usable text', () => {
       expect(generateHandle({ id: 'x', type: 'p', richText: [{ text: '' }] })).toMatch(/^[0-9a-f]{8}$/)
+   })
+})
+
+describe('generateUniqueHandle', () => {
+   it('returns the plain generateHandle slug when it does not collide', () => {
+      const block: Block = { id: 'x', type: 'p', richText: [{ text: 'Sales 2026' }] }
+      expect(generateUniqueHandle(block, ['other-handle'])).toBe('sales-2026')
+   })
+
+   it('appends -2 on a single collision', () => {
+      const block: Block = { id: 'x', type: 'p', richText: [{ text: 'Sales 2026' }] }
+      expect(generateUniqueHandle(block, ['sales-2026'])).toBe('sales-2026-2')
+   })
+
+   it('keeps incrementing the suffix until a free slug is found', () => {
+      const block: Block = { id: 'x', type: 'p', richText: [{ text: 'Sales 2026' }] }
+      expect(generateUniqueHandle(block, ['sales-2026', 'sales-2026-2', 'sales-2026-3'])).toBe('sales-2026-4')
+   })
+
+   it('is a no-op against an empty handle list', () => {
+      const block: Block = { id: 'x', type: 'p', richText: [{ text: 'Sales 2026' }] }
+      expect(generateUniqueHandle(block, [])).toBe('sales-2026')
    })
 })
 

@@ -788,3 +788,90 @@ describe('Graph fence, full-document serialization (.md and .mint both carry typ
       expect(reparsed.graph).toEqual(pieSpec)
    })
 })
+
+// A LINKED graph (stage 2a live link) carries a `source=<handle>` token plus optional `labelCol=`/
+// `orient=` mapping tokens on the info string, AND keeps the pipe-table body as a materialized
+// snapshot of the last-resolved data (so a `.md`/foreign viewer or a dangling link still shows it).
+describe('Graph fence, live table link (source=)', () => {
+   it('emits source= and keeps the snapshot body, round-tripping a plainly-linked graph', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: {
+            labels: ['Q1', 'Q2', 'Q3'],
+            series: [{ name: 'Revenue', values: [120, 150, 90] }],
+         },
+         options: { title: 'Revenue' },
+         source: { handle: 'sales-2026' },
+      }
+      const { info, body } = graphSpecToFence(spec)
+      // The link rides the info string right after type=; default mapping ⇒ no labelCol/orient.
+      expect(info).toContain('source=sales-2026')
+      expect(info).not.toContain('labelCol=')
+      expect(info).not.toContain('orient=')
+      // The body is the materialized snapshot (the pipe table), NOT empty.
+      expect(body).toContain('| Revenue |')
+      expect(body).toContain('| Q1 | 120 |')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('emits and round-trips the non-default mapping tokens (labelCol + orient)', () => {
+      const spec: GraphSpec = {
+         type: 'bar-grouped',
+         data: {
+            labels: ['A', 'B'],
+            series: [{ name: 'S1', values: [1, 2] }, { name: 'S2', values: [3, 4] }],
+         },
+         options: {},
+         source: { handle: 'grid', labelColumn: 2, orient: 'rows' },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('source=grid')
+      expect(info).toContain('labelCol=2')
+      expect(info).toContain('orient=rows')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('an unlinked graph never emits source= and stays byte-identical (no stray source field)', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A'], series: [{ name: 'V', values: [1] }] },
+         options: {},
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).not.toContain('source=')
+      const parsed = roundTripSpec(spec)
+      expect(parsed).toEqual(spec)
+      expect(parsed.source).toBeUndefined()
+   })
+
+   it('quotes a handle containing spaces on the info string', () => {
+      const spec: GraphSpec = {
+         type: 'pie',
+         data: { labels: ['A', 'B'], series: [{ name: 'V', values: [1, 2] }] },
+         options: {},
+         source: { handle: 'my table' },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('source="my table"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('round-trips a linked graph through the full Mintdown AND Markdown document paths', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'V', values: [10, 20] }] },
+         options: { title: 'Linked' },
+         source: { handle: 'src', labelColumn: 1 },
+      }
+      const { sections, meta } = wrapGraph(spec)
+
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('source=src')
+      expect(mintdown).toContain('labelCol=1')
+      expect(mintdownToDocument(mintdown).sections[0].blocks[0].graph).toEqual(spec)
+
+      const markdown = documentToMarkdown(sections, meta)
+      expect(markdown).toContain('source=src')
+      expect(markdownToDocument(markdown).sections[0].blocks[0].graph).toEqual(spec)
+   })
+})

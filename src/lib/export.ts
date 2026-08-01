@@ -5,6 +5,8 @@ import { blockAnchor } from './document'
 import { highlight } from './highlight'
 import { renderLatexToMathML, TEMML_STYLES } from './math'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
+import { collectTableSources, resolveGraphSpec } from './graphTableData'
+import type { GraphTableCatalog } from './graphTableData'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
@@ -13,6 +15,10 @@ export interface ExportOptions {
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
+
+// A shared empty catalog for the no-tables fallback (an unlinked graph never touches it; a linked
+// one resolves as dangling → its snapshot). Avoids allocating a fresh Map per graph block.
+const EMPTY_TABLE_CATALOG: GraphTableCatalog = new Map()
 
 /** Render an InlineContent array to export-safe HTML. */
 function richToHtml(richText: InlineContent | undefined): string {
@@ -25,7 +31,7 @@ function withHandle(block: Block, html: string): string {
    return `<div id="${blockAnchor(block)}" style="scroll-margin-top:1.5rem">${html}</div>`
 }
 
-function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
+function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark'; tables?: GraphTableCatalog }): string {
    if (block.type === 'p')       return withHandle(block, `<p>${richToHtml(block.richText)}</p>`)
    if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
    if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
@@ -55,7 +61,11 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       // so the graph theme is resolved from the export theme rather than a live CSS variable.
       if (!block.graph) return ''
       const graphTheme = options?.theme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
-      const svg = renderGraphToSvg(block.graph, graphTheme)
+      // A linked graph resolves to concrete data from the document's table catalog and bakes a
+      // static SVG — export stays zero-runtime. A dangling source (handle missing at export) falls
+      // back to the materialized snapshot in `block.graph.data`; `resolveGraphSpec` handles both.
+      const { renderSpec } = resolveGraphSpec(block.graph, options?.tables ?? EMPTY_TABLE_CATALOG)
+      const svg = renderGraphToSvg(renderSpec, graphTheme)
       return withHandle(block, `<div class="doc-graph">${svg}</div>`)
    }
    if (block.type === 'list') {
@@ -129,7 +139,10 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
  * Pass `{ imagePlaceholder: true }` to render src-less images as a muted placeholder.
  */
 export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
-   return blocks.map(block => exportBlock(block, options)).join('\n')
+   // Build the table catalog from THIS block slice so a linked graph resolves against any table
+   // present in the same preview (a table outside the slice simply dangles → its snapshot).
+   const tables = collectTableSources(blocks)
+   return blocks.map(block => exportBlock(block, { ...options, tables })).join('\n')
 }
 
 interface Colors {
@@ -451,12 +464,18 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    const colors  = getColors(theme)
    const styles  = buildStyles(accent, colors)
 
+   // Build the document-wide `handle -> table cells` catalog ONCE (from all sections, including
+   // container columns), then thread it into every block export so a linked graph resolves to
+   // concrete data and bakes a static SVG — the exported HTML carries no live link, dangling falls
+   // back to the graph's materialized snapshot.
+   const tables = collectTableSources(sections.flatMap(section => section.blocks))
+
    const navLinks = sections.map((section, sectionIndex) =>
       `        <a href="#section-${section.id}" class="nav-link">${sectionIndex + 1}. ${esc(section.title)}</a>`
    ).join('\n')
 
    const sectionsHTML = sections.map((sec, sectionIndex) => {
-      const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block, { theme })).join('\n')
+      const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block, { theme, tables })).join('\n')
       return `
             <div class="doc-section" id="section-${sec.id}">
                   <h2>${sectionIndex + 1}. ${esc(sec.title)}</h2>

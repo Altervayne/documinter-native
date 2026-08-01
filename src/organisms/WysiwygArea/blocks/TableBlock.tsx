@@ -1,5 +1,6 @@
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { useLang } from '../../../contexts/LangContext'
+import { graphDataFromTable } from '../../../lib/graphTableData'
 import type { Block, InlineContent } from '../../../types'
 
 interface TableBlockProps {
@@ -8,13 +9,32 @@ interface TableBlockProps {
    onAddRow:    () => void
    onAddCol:    () => void
    onRemoveRow: () => void
+   /** Inserts an already-built block right after this table block (the "Create chart from this
+    *  table" one-shot extract — see docs/reference/graph_table_linking_study.md, stage 1). */
+   onInsertBlockAfter: (newBlock: Block) => void
    readOnly?:   boolean
 }
 
-export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, readOnly }: TableBlockProps) {
+export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, onInsertBlockAfter, readOnly }: TableBlockProps) {
    const { t } = useLang()
    const richHeaders = block.richHeaders ?? []
    const richRows    = block.richRows    ?? []
+
+   // One-shot extract: build a default bar chart from this table's current data and drop it in
+   // right after the table. Pure data mapping (graphDataFromTable); no link is retained — this is
+   // stage 1 of graph<->table linking, the live link is a separate, unbuilt stage 2.
+   function handleCreateChart(): void {
+      const newBlock: Block = {
+         id:   crypto.randomUUID(),
+         type: 'graph',
+         graph: {
+            type:    'bar',
+            data:    graphDataFromTable(richHeaders, richRows),
+            options: { legend: true },
+         },
+      }
+      onInsertBlockAfter(newBlock)
+   }
 
    return (
       <>
@@ -84,6 +104,12 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, read
                   }}
                >
                   {t.removeRow}
+               </button>
+               <button
+                  onClick={handleCreateChart}
+                  className="px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all border-current/20 opacity-50 hover:opacity-80 ml-auto"
+               >
+                  {t.tableCreateChart}
                </button>
             </div>
          )}

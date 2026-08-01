@@ -194,6 +194,22 @@ export const translations = {
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Add overlay',
       graphRemoveOverlay:   'Remove overlay',
+      // Graph <-> table one-shot extract (stage 1 of graph/table linking)
+      graphExtractTable:    'Extract data to a table',
+      // Graph <-> table live link (stage 2) — dangling-source notice (falls back to last data)
+      graphSourceMissing:   'Linked table not found — showing last saved data',
+      // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
+      graphLinkSection:       'Table link',
+      graphLinkPickTable:     'Link to a table…',
+      graphLinkChangeTable:   'Change source table…',
+      graphLinkUntitledTable: 'Untitled table',
+      graphLinkedTo:          'Linked to',
+      graphUnlink:            'Unlink (keep current data)',
+      graphMappingLabelColumn: 'Label column',
+      graphMappingOrient:      'Orientation',
+      graphMappingOrientColumns: 'Columns are series',
+      graphMappingOrientRows:    'Rows are series',
+      graphMappingColumn:        'Column',
       // Graph block editor — function (equation) chart type
       graphTypeFunction:    'Function',
       graphDomainSection:   'Domain',
@@ -278,6 +294,8 @@ export const translations = {
       addRow:            '+ Row',
       addCol:            '+ Col',
       removeRow:         '− Row',
+      // Table -> graph one-shot extract (stage 1 of graph/table linking)
+      tableCreateChart:  'Create chart from this table',
       // Export modal
       exportOptions: 'Export options',
       exportFormat:         'Format',
@@ -663,6 +681,22 @@ export const translations = {
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Ajouter une superposition',
       graphRemoveOverlay:   'Supprimer la superposition',
+      // Graph <-> table one-shot extract (stage 1 of graph/table linking)
+      graphExtractTable:    'Extraire les données vers un tableau',
+      // Graph <-> table live link (stage 2) — dangling-source notice (falls back to last data)
+      graphSourceMissing:   'Tableau lié introuvable — affichage des dernières données',
+      // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
+      graphLinkSection:       'Liaison au tableau',
+      graphLinkPickTable:     'Lier à un tableau…',
+      graphLinkChangeTable:   'Changer de tableau source…',
+      graphLinkUntitledTable: 'Tableau sans titre',
+      graphLinkedTo:          'Lié à',
+      graphUnlink:            'Délier (conserver les données actuelles)',
+      graphMappingLabelColumn: 'Colonne des étiquettes',
+      graphMappingOrient:      'Orientation',
+      graphMappingOrientColumns: 'Les colonnes sont les séries',
+      graphMappingOrientRows:    'Les lignes sont les séries',
+      graphMappingColumn:        'Colonne',
       // Graph block editor — function (equation) chart type
       graphTypeFunction:    'Fonction',
       graphDomainSection:   'Domaine',
@@ -747,6 +781,8 @@ export const translations = {
       addRow:            '+ Ligne',
       addCol:            '+ Col.',
       removeRow:         '− Ligne',
+      // Table -> graph one-shot extract (stage 1 of graph/table linking)
+      tableCreateChart:  'Créer un graphique à partir de ce tableau',
       // Export modal
       exportOptions: 'Options d\'export',
       exportFormat:         'Format',

@@ -11,15 +11,25 @@ import {
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
    compileExpression,
 } from '../../../lib/graph'
-import type { GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
-import { setType, setOption, addOverlay, removeOverlay, updateOverlay } from '../../../lib/graphEdit'
+import type { GraphSource, GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
+import {
+   setType, setOption, addOverlay, removeOverlay, updateOverlay,
+   setSource, updateSourceMapping, unlinkSource,
+} from '../../../lib/graphEdit'
+import { tableFromGraphData, graphDataFromTable, resolveGraphSpec, graphDataEquals } from '../../../lib/graphTableData'
+import type { LinkableTable } from '../../../lib/graphTableData'
+import { generateUniqueHandle } from '../../../lib/document'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
 import { EquationEditor } from '../../../molecules/EquationEditor'
 import { ScatterEditor } from '../../../molecules/ScatterEditor'
 import { HistogramEditor } from '../../../molecules/HistogramEditor'
 import { GraphTypePicker } from '../../../molecules/GraphTypePicker'
+import { GraphLinkPanel } from '../../../molecules/GraphLinkPanel'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
+import { useDocumentTables, useLinkableTables } from '../../../contexts/DocumentTablesContext'
+import { useDocumentHandles } from '../../../contexts/DocumentHandlesContext'
+import { useDocumentMutations } from '../../../contexts/DocumentMutationsContext'
 import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
@@ -27,6 +37,9 @@ import type { Block } from '../../../types'
 interface GraphBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
+   /** Inserts an already-built block right after this graph block (the "Extract data to a table"
+    *  one-shot extract — see docs/reference/graph_table_linking_study.md, stage 1). */
+   onInsertBlockAfter: (newBlock: Block) => void
    readOnly?: boolean
 }
 
@@ -56,6 +69,13 @@ const LINE_AREA_TYPES = new Set<GraphType>(['line', 'area', 'function'])
 const DEFAULT_DONUT_HOLE = 0.55
 
 /**
+ * Debounce for the linked-graph snapshot write-back (see the effect in GraphBlock). A run of table
+ * keystrokes coalesces into ONE snapshot patch this long after the last edit, so a fast typist in
+ * the source table does not spray a mutation per character.
+ */
+const SNAPSHOT_WRITEBACK_DELAY_MS = 400
+
+/**
  * The series list the Analysis section's overlay target-series `<select>` reads from, for the
  * CURRENT chart type. Every cartesian data type but `scatter` targets `data.series` (the ordinary
  * numeric grid); `scatter` has no `data.series` at all — its points live in `scatterPlot.series` —
@@ -83,12 +103,24 @@ function overlayTargetSeriesList(spec: GraphSpec): { name: string; index: number
  * window is rendered inline by this component only while this block is the open one, so deleting
  * the block unmounts the window with it for free.
  */
-export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
+export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: GraphBlockProps) {
    const { t }        = useLang()
    const docTheme     = useDocTheme()
    const graphTheme   = docTheme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
    const editorWindow = useBlockEditorWindow()
    const isEditing    = !readOnly && editorWindow.isEditing(block.id)
+   // The document-wide `handle -> table cells` catalog a LINKED graph resolves its data from. A
+   // table edit changes this map's identity, which re-renders this block and re-resolves the link.
+   const documentTables = useDocumentTables()
+   // The "Link to a table…" picker's full listing (every table, handled or not) — stage 2b, the
+   // editor UX built here. Unused in readOnly, but hooks must still run unconditionally.
+   const linkableTables = useLinkableTables()
+   // Every handle in the document, for generating a collision-free handle when auto-assigning one to
+   // a handle-less table on link (see handleLinkTable below).
+   const allHandles = useDocumentHandles()
+   // Cross-block mutations: linking a graph to a handle-less table patches THAT table's block, which
+   // is outside this block's own scoped `patch` — needs the raw mutation context.
+   const documentMutations = useDocumentMutations()
 
    // Local working spec so the preview + grid update live on every keystroke without spamming a
    // document mutation; committed via `patch({ graph })` on blur / discrete change. Mirrors the
@@ -115,6 +147,40 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       if (!editing.current) setWorking(block.graph ?? FALLBACK_SPEC)
    }, [block.graph])
 
+   // ==================================================================
+   //  Linked-graph snapshot write-back (avoids a mutation ping-pong)
+   // ==================================================================
+   // A linked graph keeps a MATERIALIZED SNAPSHOT of the resolved table data in `block.graph.data`
+   // so it still serializes (the fence body) and still renders when the link dangles. This effect
+   // keeps that snapshot current when the source table changes. Three guards make it loop-safe:
+   //   1. IDENTITY GUARD — it patches only when the freshly resolved data STRUCTURALLY differs from
+   //      the stored snapshot (`graphDataEquals`), so the patch it emits — which changes `sections`
+   //      and thus re-runs this effect — immediately compares equal and stops. No ping-pong.
+   //   2. NOT-DURING-RENDER — it runs in an effect, never in the render that READS the snapshot.
+   //   3. DEBOUNCED — a rapid run of source-table keystrokes coalesces into one patch; the cleanup
+   //      cancels a pending write whenever `block.graph`/`documentTables` changes, so the timer only
+   //      ever fires with the latest committed spec (stale option edits can't overwrite fresher ones).
+   // Skipped entirely in readOnly (no mutations) and for unlinked graphs (no `source`).
+   const snapshotTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+   useEffect(() => {
+      if (readOnly) return
+      const stored = block.graph
+      const source = stored?.source
+      if (!source) return
+      const entry = documentTables.get(source.handle)
+      if (!entry) return // dangling: keep the last-known snapshot untouched
+      const resolved = graphDataFromTable(entry.richHeaders, entry.richRows, {
+         labelColumn: source.labelColumn,
+         orient:      source.orient,
+      })
+      if (graphDataEquals(resolved, stored.data)) return // already current: nothing to write
+      clearTimeout(snapshotTimer.current)
+      snapshotTimer.current = setTimeout(() => {
+         patch({ graph: { ...stored, data: resolved } })
+      }, SNAPSHOT_WRITEBACK_DELAY_MS)
+      return () => clearTimeout(snapshotTimer.current)
+   }, [readOnly, block.graph, documentTables, patch])
+
    // ============
    //  Edit levers
    // ============
@@ -140,6 +206,17 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       editing.current = true
    }
 
+   // One-shot extract: build a table block from this chart's current tabular data and drop it in
+   // right after the graph. Pure data mapping (tableFromGraphData); no link is retained — this is
+   // stage 1 of graph<->table linking, the live link is a separate, unbuilt stage 2. Only offered
+   // for the tabular chart types (see the `dataTab` gate below — `function`/`scatter`/`histogram`
+   // carry no `GraphData`).
+   function handleExtractTable(): void {
+      const { richHeaders, richRows } = tableFromGraphData(working.data)
+      const newBlock: Block = { id: crypto.randomUUID(), type: 'table', richHeaders, richRows }
+      onInsertBlockAfter(newBlock)
+   }
+
    // Switching an overlay's kind REPLACES the whole overlay (not a shallow merge) so no stray field
    // from the previous kind lingers — e.g. a `series` left over after switching to a reference line,
    // or an `expression` left over after switching AWAY from an equation curve.
@@ -160,7 +237,11 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    //  Read-only view
    // ================
    if (readOnly) {
-      const svg = block.graph ? renderGraphToSvg(block.graph, graphTheme) : ''
+      if (!block.graph) return null
+      // Resolve a live table link (if any) to concrete data before the pure renderer; a dangling
+      // link falls back to the materialized snapshot, so the read view never blanks or throws.
+      const { renderSpec } = resolveGraphSpec(block.graph, documentTables)
+      const svg = renderGraphToSvg(renderSpec, graphTheme)
       if (!svg) return null
       return <div className="doc-graph" dangerouslySetInnerHTML={{ __html: svg }} />
    }
@@ -180,8 +261,46 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    const defaultShowPoints = isFunction ? false : GRAPH_DEFAULT_SHOW_POINTS
    const options    = working.options
    // The inline output renders from the live working spec, so the chart updates behind the window
-   // as the window's controls are used — no separate in-window preview needed.
-   const previewSvg = renderGraphToSvg(working, graphTheme)
+   // as the window's controls are used — no separate in-window preview needed. A linked graph
+   // resolves its data from the document's tables first (dangling → the materialized snapshot);
+   // the pure renderer only ever sees concrete data, never `source`.
+   const { renderSpec: previewRenderSpec, dangling: sourceDangling } = resolveGraphSpec(working, documentTables)
+   const previewSvg = renderGraphToSvg(previewRenderSpec, graphTheme)
+
+   // ==================================================================
+   //  Table-link editing (stage 2b): link / re-link, mapping, unlink
+   // ==================================================================
+   // Link (or re-link) this graph to a table picked from GraphLinkPanel's picker. A handle-less
+   // table is auto-assigned a fresh, document-unique handle FIRST (a mutation on that OTHER block,
+   // routed through the raw mutation context — outside this graph's own scoped `patch` — addressed
+   // via the picked entry's `container`, if any). `data` is deliberately left untouched: the
+   // existing debounced snapshot write-back effect above refreshes it from the newly linked table on
+   // the next resolve, exactly like any other source change.
+   function handleLinkTable(entry: LinkableTable): void {
+      let handle = entry.handle
+      if (!handle) {
+         handle = generateUniqueHandle({ id: entry.blockId, type: 'table' }, allHandles)
+         if (entry.container) {
+            documentMutations.containerMutations.updateBlock(
+               entry.sectionId, entry.container.blockId, entry.container.side, entry.blockId, { handle },
+            )
+         } else {
+            documentMutations.updateBlock(entry.sectionId, entry.blockId, { handle })
+         }
+      }
+      commit(setSource(working, handle))
+   }
+
+   // Mapping change (label column / orientation): a discrete `<select>` edit, commits immediately.
+   function handleUpdateMapping(partial: Partial<Omit<GraphSource, 'handle'>>): void {
+      commit(updateSourceMapping(working, partial))
+   }
+
+   // Unlink: materialize the CURRENTLY resolved data (the live remap, or the last snapshot if
+   // dangling — exactly what the read-only preview is already showing) onto `data`, drop `source`.
+   function handleUnlink(): void {
+      commit(unlinkSource(working, previewRenderSpec.data))
+   }
 
    // ============
    //  Windowed editor body — the full controls + data grid + live preview.
@@ -550,15 +669,40 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                onCommitField={commitField}
             />
          ) : (
-            <GraphDataGrid
-               spec={working}
-               theme={graphTheme}
-               t={t}
-               onEditStart={editStart}
-               onDraft={draft}
-               onCommit={commit}
-               onCommitField={commitField}
-            />
+            <>
+               {/* Table link (stage 2b): a compact picker above the grid while unlinked, or the
+                   whole linked-state management UI (banner + read-only preview + mapping + unlink)
+                   REPLACING the grid entirely once `working.source` is set. Tabular types only —
+                   function/scatter/histogram never reach this branch. */}
+               <GraphLinkPanel
+                  spec={working}
+                  t={t}
+                  linkableTables={linkableTables}
+                  resolvedData={previewRenderSpec.data}
+                  dangling={sourceDangling}
+                  onLinkTable={handleLinkTable}
+                  onUpdateMapping={handleUpdateMapping}
+                  onUnlink={handleUnlink}
+               />
+               {!working.source && (
+                  <>
+                     <GraphDataGrid
+                        spec={working}
+                        theme={graphTheme}
+                        t={t}
+                        onEditStart={editStart}
+                        onDraft={draft}
+                        onCommit={commit}
+                        onCommitField={commitField}
+                     />
+                     <button
+                        type="button"
+                        className="graph-grid-btn graph-extract-table-btn"
+                        onClick={handleExtractTable}
+                     >{t.graphExtractTable}</button>
+                  </>
+               )}
+            </>
          )}
          {analysisSection}
       </div>
@@ -619,6 +763,12 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             onMouseLeave={() => setOutputHovered(false)}
          >
             <div className="doc-graph" dangerouslySetInnerHTML={{ __html: previewSvg }} />
+            {/* Dangling link: the source table's handle wasn't found. The chart still renders from
+                the materialized snapshot (see resolveGraphSpec); this is a quiet in-editor hint, not
+                serialized and never shown in the read view / export (those bake the snapshot). */}
+            {sourceDangling && (
+               <div className="graph-source-missing" role="status">{t.graphSourceMissing}</div>
+            )}
             {!isEditing && (
                <button
                   type="button"

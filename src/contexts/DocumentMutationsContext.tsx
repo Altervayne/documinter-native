@@ -17,6 +17,9 @@ export interface DocumentMutations {
    updateBlock:       (secId: string, blkId: string, patch: Partial<Block>) => void
    addBlock:          (secId: string, type: BlockType) => void
    insertBlockAt:     (secId: string, index: number, type: BlockType) => void
+   /** Inserts an already-built block right after `blkId` (no `mkBlock` default — the caller
+    *  supplies the full block, e.g. the graph<->table one-shot extract actions). */
+   insertBlockAfter:  (secId: string, blkId: string, newBlock: Block) => void
    removeBlock:       (secId: string, blkId: string) => void
    duplicateBlock:    (secId: string, blkId: string) => void
    reorderBlocks:     (secId: string, oldIdx: number, newIdx: number) => void

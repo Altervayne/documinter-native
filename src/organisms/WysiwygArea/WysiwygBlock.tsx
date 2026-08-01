@@ -58,6 +58,10 @@ interface WysiwygBlockProps {
    onUpdate?:        (secId: string, blkId: string, patch: Partial<Block>) => void
    onRemove?:        () => void
    onDuplicate?:     () => void
+   /** Inner-block-only lever for inserting an already-built sibling block right after this one
+    *  (the graph<->table one-shot extract actions: "Create chart from this table" / "Extract
+    *  data to a table"). Outer (non-inner) blocks route straight through ctx.insertBlockAfter. */
+   onInsertBlockAfter?: (newBlock: Block) => void
    onAddListItem?: () => void
    onAddTableRow?:      () => void
    onRemoveLastRow?:    () => void
@@ -85,7 +89,7 @@ export function WysiwygBlock({
    inner, draggable, gripSide = 'left', readOnly,
    onInsertBefore, onInsertAfter,
    onMoveUp, onMoveDown,
-   onUpdate, onRemove, onDuplicate,
+   onUpdate, onRemove, onDuplicate, onInsertBlockAfter,
    onAddListItem,
    onAddTableRow, onRemoveLastRow, onAddTableCol,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
@@ -137,6 +141,7 @@ export function WysiwygBlock({
 
    const handleRemove    = inner ? onRemove!    : () => ctx.removeBlock(secId, block.id)
    const handleDuplicate = inner ? onDuplicate! : () => ctx.duplicateBlock(secId, block.id)
+   const handleInsertBlockAfter = inner ? onInsertBlockAfter! : (newBlock: Block) => ctx.insertBlockAfter(secId, block.id, newBlock)
    const handleListAdd          = inner ? onAddListItem!       : () => ctx.addListItem(secId, block.id)
    const handleRowAdd           = inner ? onAddTableRow!       : () => ctx.addTableRow(secId, block.id)
    const handleRowDel           = inner ? onRemoveLastRow!     : () => ctx.removeLastRow(secId, block.id)
@@ -223,13 +228,13 @@ export function WysiwygBlock({
       if (block.type === 'math')
          return <MathBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'graph')
-         return <GraphBlock block={block} patch={patch} readOnly={readOnly} />
+         return <GraphBlock block={block} patch={patch} onInsertBlockAfter={handleInsertBlockAfter} readOnly={readOnly} />
       if (block.type === 'list')
          return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'checklist')
          return <ChecklistBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'table')
-         return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} readOnly={readOnly} />
+         return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} onInsertBlockAfter={handleInsertBlockAfter} readOnly={readOnly} />
       if (block.type === 'image')
          return <ImageBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'container' && (containerMutations || readOnly))

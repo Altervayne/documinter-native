@@ -4,7 +4,7 @@
  *
  * Exports:
  *   Factories:  mkSection, mkBlock, cloneBlock
- *   Display:    blockAnchor, generateHandle, blkPreview
+ *   Display:    blockAnchor, generateHandle, generateUniqueHandle, blkPreview
  *   Utilities:  moveItem, mutateSec
  *
  * moveItem and mutateSec were previously duplicated across useBlockMutations,
@@ -133,6 +133,27 @@ export function generateHandle(block: Block): string {
       .replace(/^-|-$/g, '')
       .substring(0, 28)
    return slug || crypto.randomUUID().substring(0, 8)
+}
+
+/**
+ * Generate a handle for `block` GUARANTEED not to collide with `existingHandles` (the document-wide
+ * handle list, e.g. from `useDocumentHandles()`). Starts from {@link generateHandle}; on a collision,
+ * appends `-2`, `-3`, … until a free slug is found. Used when auto-assigning a durable handle to a
+ * handle-less table on the graph<->table live link (see
+ * docs/reference/graph_table_linking_study.md, stage 2b) — the anchor editor's own confirm flow does
+ * NOT dedupe (it only warns), but an auto-assignment happening behind the scenes must never silently
+ * collide with an existing anchor.
+ */
+export function generateUniqueHandle(block: Block, existingHandles: string[]): string {
+   const base = generateHandle(block)
+   if (!existingHandles.includes(base)) return base
+   let suffix = 2
+   let candidate = `${base}-${suffix}`
+   while (existingHandles.includes(candidate)) {
+      suffix += 1
+      candidate = `${base}-${suffix}`
+   }
+   return candidate
 }
 
 /** Short plain-text preview of a block's content, used in the panel. */

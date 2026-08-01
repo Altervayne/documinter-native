@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import type { GraphSpec } from './graph'
+import type { GraphSpec, GraphData } from './graph'
 import {
    addCategory,
    removeCategory,
@@ -49,6 +49,9 @@ import {
    setHistogramBins,
    setHistogramName,
    setHistogramColor,
+   setSource,
+   updateSourceMapping,
+   unlinkSource,
 } from './graphEdit'
 import { FUNCTION_DEFAULT_X_MIN, FUNCTION_DEFAULT_X_MAX, FUNCTION_DEFAULT_SAMPLES, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES } from './graph'
 
@@ -1252,5 +1255,80 @@ describe('moveScatterPoint', () => {
       const spec = makeScatterSpec()
       moveScatterPoint(spec, 0, 0, 1)
       expect(spec.scatterPlot?.series[0].points).toEqual([{ x: 1, y: 2 }, { x: 3, y: 4 }])
+   })
+})
+
+// ##############################
+// # TABLE LINK (STAGE 2b EDITOR) #
+// ##############################
+
+describe('setSource', () => {
+   it('sets source to the default mapping ({ handle }) on an unlinked spec', () => {
+      const next = setSource(makeSpec(), 'sales-2026')
+      expect(next.source).toEqual({ handle: 'sales-2026' })
+   })
+
+   it('overwrites an existing source (re-link / change table)', () => {
+      const spec: GraphSpec = { ...makeSpec(), source: { handle: 'old', labelColumn: 1, orient: 'rows' } }
+      const next = setSource(spec, 'new-table')
+      expect(next.source).toEqual({ handle: 'new-table' })
+   })
+
+   it('leaves data untouched', () => {
+      const spec = makeSpec()
+      const next = setSource(spec, 'sales-2026')
+      expect(next.data).toBe(spec.data)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      setSource(spec, 'sales-2026')
+      expect(spec.source).toBeUndefined()
+   })
+})
+
+describe('updateSourceMapping', () => {
+   it('shallow-merges labelColumn / orient onto the existing source', () => {
+      const spec: GraphSpec = { ...makeSpec(), source: { handle: 'sales-2026' } }
+      const next = updateSourceMapping(spec, { labelColumn: 2 })
+      expect(next.source).toEqual({ handle: 'sales-2026', labelColumn: 2 })
+      const next2 = updateSourceMapping(next, { orient: 'rows' })
+      expect(next2.source).toEqual({ handle: 'sales-2026', labelColumn: 2, orient: 'rows' })
+   })
+
+   it('is a no-op when the spec is not linked', () => {
+      const spec = makeSpec()
+      expect(updateSourceMapping(spec, { labelColumn: 1 })).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec: GraphSpec = { ...makeSpec(), source: { handle: 'sales-2026' } }
+      updateSourceMapping(spec, { labelColumn: 2 })
+      expect(spec.source).toEqual({ handle: 'sales-2026' })
+   })
+})
+
+describe('unlinkSource', () => {
+   it('materializes the given snapshot onto data and drops source', () => {
+      const spec: GraphSpec = { ...makeSpec(), source: { handle: 'sales-2026', labelColumn: 1 } }
+      const snapshot: GraphData = { labels: ['X'], series: [{ name: 'Live', values: [42] }] }
+      const next = unlinkSource(spec, snapshot)
+      expect(next.source).toBeUndefined()
+      expect(next.data).toEqual(snapshot)
+   })
+
+   it('is a no-op on source when the spec was never linked (still applies the snapshot)', () => {
+      const spec = makeSpec()
+      const snapshot: GraphData = { labels: ['X'], series: [{ name: 'Live', values: [42] }] }
+      const next = unlinkSource(spec, snapshot)
+      expect(next.source).toBeUndefined()
+      expect(next.data).toEqual(snapshot)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec: GraphSpec = { ...makeSpec(), source: { handle: 'sales-2026' } }
+      const snapshot: GraphData = { labels: ['X'], series: [{ name: 'Live', values: [42] }] }
+      unlinkSource(spec, snapshot)
+      expect(spec.source).toEqual({ handle: 'sales-2026' })
    })
 })

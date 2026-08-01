@@ -98,6 +98,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
             cm.updateBlock(secId, blkId, side, innerBlkId, patch),
          onRemove:        () => cm.removeBlock(secId, blkId, side, innerBlock.id),
          onDuplicate:     () => cm.duplicateBlock(secId, blkId, side, innerBlock.id),
+         onInsertBlockAfter: (newBlock: Block) => cm.insertBlockAfter(secId, blkId, side, innerBlock.id, newBlock),
          onInsertBefore:  (type: BlockType) => cm.insertBlockAt(secId, blkId, side, idx, type),
          onInsertAfter:   (type: BlockType) => cm.insertBlockAt(secId, blkId, side, idx + 1, type),
          onMoveUp:         idx > 0                ? () => cm.moveBlock(secId, blkId, side, idx, idx - 1) : undefined,

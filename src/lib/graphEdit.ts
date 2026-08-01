@@ -19,7 +19,7 @@
  */
 
 import type {
-   GraphSpec, GraphData, GraphType, GraphOptions, Overlay,
+   GraphSpec, GraphData, GraphType, GraphOptions, Overlay, GraphSource,
    FunctionDomain, FunctionPlot, ScatterPlot, ScatterPoint, HistogramData,
 } from './graph'
 import {
@@ -854,4 +854,45 @@ export function setHistogramColor(spec: GraphSpec, color: string | undefined): G
    const histogramData = ensureHistogramData(spec)
    const { color: _dropped, ...rest } = histogramData
    return withHistogramData(spec, color === undefined ? rest : { ...rest, color })
+}
+
+// ##############################
+// # TABLE LINK (STAGE 2b EDITOR) #
+// ##############################
+//
+// The graph<->table LIVE LINK's editing surface: link/re-link to a table, adjust the label-column /
+// orientation mapping, and unlink. Unlike every family above, these three helpers do NOT touch
+// `data`/`options`/`functionPlot` shape invariants — they only ever read/write `spec.source`.
+// `data` itself is left for the caller: on link/re-link it stays as-is (GraphBlock's existing
+// debounced snapshot write-back — see docs/reports/2026-08-01-graph-table-link-arch.md — refreshes
+// it from the newly linked table on the next resolve); on unlink the caller supplies the just-
+// resolved snapshot to materialize (this module has no document/table access to resolve one itself).
+
+/**
+ * Link the spec to a table by `handle`, with the default mapping (label column 0, orient
+ * `columns`). Overwrites any existing `source` (a re-link/change-table pick). `data` is left
+ * untouched.
+ */
+export function setSource(spec: GraphSpec, handle: string): GraphSpec {
+   return { ...spec, source: { handle } }
+}
+
+/**
+ * Shallow-merge a mapping change (`labelColumn` and/or `orient`) onto the existing `source`. No-op
+ * (returns the spec unchanged) if the spec isn't currently linked — defensive, since the editor's
+ * mapping panel only ever renders while linked.
+ */
+export function updateSourceMapping(spec: GraphSpec, partial: Partial<Omit<GraphSource, 'handle'>>): GraphSpec {
+   if (!spec.source) return spec
+   return { ...spec, source: { ...spec.source, ...partial } }
+}
+
+/**
+ * Unlink: materialize `snapshot` (the caller's just-resolved table data — see `resolveGraphSpec` in
+ * `graphTableData.ts`) onto `data` and drop `source` entirely, so the graph reverts to a normal
+ * self-contained, editable chart — the safe escape hatch, and the inverse of {@link setSource}.
+ */
+export function unlinkSource(spec: GraphSpec, snapshot: GraphData): GraphSpec {
+   const { source: _dropped, ...rest } = spec
+   return { ...rest, data: snapshot }
 }

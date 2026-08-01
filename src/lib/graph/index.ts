@@ -195,6 +195,7 @@ export type {
    GraphData,
    GraphOptions,
    GraphSpec,
+   GraphSource,
    GraphTheme,
    GraphInk,
    Overlay,

@@ -316,11 +316,52 @@ export interface HistogramData {
 export const HISTOGRAM_MIN_BINS = 1
 export const HISTOGRAM_MAX_BINS = 50
 
+// ##########################
+// # TABLE LINK (LIVE SOURCE) #
+// ##########################
+
+/**
+ * A live link from a graph to a document `table` block, identifying the table by its durable
+ * {@link Block.handle} (the one per-block identity that survives a `.mint`/`.md` round-trip — see
+ * docs/reference/graph_table_linking_study.md). Present on {@link GraphSpec.source} ⇒ the graph is
+ * LINKED: its `data` is a materialized SNAPSHOT resolved from the referenced table (not authored),
+ * refreshed live whenever the table edits. Absent ⇒ the graph owns its `data` exactly as before
+ * this feature (byte-identical). The pure renderer NEVER sees this field — the block resolves the
+ * link to concrete `data` first (see GraphBlock / graphTableData.ts's `resolveGraphSpec`).
+ *
+ * Only the TABULAR chart types (bar family / line / area / pie / donut) can be linked; the
+ * continuous-x types (`function`/`scatter`/`histogram`) carry no category×series grid to map a
+ * table onto, so they never attach a `source`.
+ */
+export interface GraphSource {
+   /** The referenced table block's {@link Block.handle}. */
+   handle: string
+   /**
+    * Which table column supplies the category labels (orient `columns`) or the series names
+    * (orient `rows`). Default 0. An out-of-range value (a reshaped, narrower table) is clamped
+    * back to 0 by the resolver rather than throwing — the "never breaks the chart" contract.
+    */
+   labelColumn?: number
+   /**
+    * Table orientation. `columns` (default): each non-label COLUMN becomes a series (the fence's
+    * own pipe-table convention). `rows`: each ROW becomes a series and the header row supplies the
+    * category labels (the transpose, for tables laid out the other way).
+    */
+   orient?: 'columns' | 'rows'
+}
+
 /** The full spec stored on a graph block: type + data + presentation options. */
 export interface GraphSpec {
    type: GraphType
    data: GraphData
    options: GraphOptions
+   /**
+    * Present ⇒ this graph is LINKED to a document table (see {@link GraphSource}); `data` is then a
+    * materialized snapshot of the resolved table data, kept current by a debounced write-back so it
+    * still serializes + survives a dangling link. Absent ⇒ the graph owns its `data` (byte-identical
+    * to before this feature). Only the tabular chart types ever carry a source.
+    */
+   source?: GraphSource
    /** Only used when type === 'function'. Absent/empty on every other type — a spec that has
     *  never been a function chart stays byte-identical to today. */
    functionPlot?: FunctionPlot

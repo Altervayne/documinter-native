@@ -770,6 +770,7 @@ export default function App() {
                updateBlock:       blockMutations.updateBlock,
                addBlock:          blockMutations.addBlock,
                insertBlockAt:     blockMutations.insertBlockAt,
+               insertBlockAfter:  blockMutations.insertBlockAfter,
                removeBlock:       blockMutations.removeBlk,
                duplicateBlock:    blockMutations.duplicateBlock,
                reorderBlocks:     blockMutations.reorderBlocks,

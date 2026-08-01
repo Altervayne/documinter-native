@@ -11,6 +11,7 @@ const noopStrategy: SortingStrategy = () => null
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
+import { DocumentTablesProvider, LinkableTablesProvider } from '../../contexts/DocumentTablesContext'
 import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../contexts/LangContext'
@@ -25,6 +26,7 @@ import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --
+import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
 import type { DocMeta, Section } from '../../types'
 
 import './doc.css'
@@ -239,6 +241,19 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
          ])
       ).filter((handle): handle is string => !!handle),
    [sections])
+
+   // The document-wide `handle -> table cells` catalog a linked graph resolves against. Same
+   // `useMemo`-over-`sections` seam as `allHandles`, one axis over; `collectTableSources` walks
+   // container columns too. Recomputes on any table edit -> every linked GraphBlock re-resolves.
+   const documentTables = useMemo(
+      () => collectTableSources(sections.flatMap(section => section.blocks)),
+   [sections])
+
+   // The full "Link to a table…" picker listing (stage 2b, the editor UX): every table, handled or
+   // not, with enough addressing to route a link/handle-assignment mutation back at a pick. Same
+   // `useMemo`-over-`sections` seam as `documentTables`, one axis over (see `LinkableTable`).
+   const linkableTables = useMemo(() => collectLinkableTables(sections), [sections])
+
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
@@ -260,6 +275,8 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
 
    return (
       <DocumentHandlesProvider handles={allHandles}>
+       <DocumentTablesProvider tables={documentTables}>
+       <LinkableTablesProvider tables={linkableTables}>
        <DocThemeProvider theme={docTheme}>
         <BlockEditorWindowProvider resetKey={activeTabKey}>
          {!readOnly && <FormatToolbar sections={sections} />}
@@ -364,6 +381,8 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
          </div>
         </BlockEditorWindowProvider>
        </DocThemeProvider>
+       </LinkableTablesProvider>
+       </DocumentTablesProvider>
       </DocumentHandlesProvider>
    )
 }

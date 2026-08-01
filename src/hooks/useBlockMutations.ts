@@ -99,6 +99,19 @@ export function useBlockMutations(
       })
    }, [setSections])
 
+   // Inserts an already-built block right after blkId. Mirrors duplicateBlock's find-splice
+   // shape, but the caller supplies the whole block instead of a clone (the graph<->table
+   // one-shot extract actions: "Create chart from this table" / "Extract data to a table").
+   const insertBlockAfter = useCallback((secId: string, blkId: string, newBlock: Block) => {
+      mutateSec(setSections, secId, sec => {
+         const blockIndex = sec.blocks.findIndex(block => block.id === blkId)
+         if (blockIndex === -1) return sec
+         const next = [...sec.blocks]
+         next.splice(blockIndex + 1, 0, newBlock)
+         return { ...sec, blocks: next }
+      })
+   }, [setSections])
+
    const addListItem = useCallback((secId: string, blkId: string) => {
       mutateSec(setSections, secId, sec => ({
          ...sec,
@@ -328,7 +341,7 @@ export function useBlockMutations(
    }, [setSections])
 
    return {
-      addBlock, insertBlockAt, updateBlock, removeBlk,
+      addBlock, insertBlockAt, insertBlockAfter, updateBlock, removeBlk,
       moveBlkUp, moveBlkDown, reorderBlocks, duplicateBlock,
       addListItem, removeLastItem,
       addTableRow, removeLastRow, addTableCol,

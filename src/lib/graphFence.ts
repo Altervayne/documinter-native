@@ -18,7 +18,7 @@
 
 import type {
    GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay,
-   EquationSeries, FunctionDomain, ScatterSeries, HistogramData,
+   EquationSeries, FunctionDomain, ScatterSeries, HistogramData, GraphSource,
 } from './graph'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
@@ -130,6 +130,11 @@ interface ParsedInfo {
    /** `bins=`/`name=` tokens (histogram type only); undefined `bins` = "auto (Sturges)", undefined
     *  `name` = "no dataset name". Harmlessly parsed-but-unused for every other type. */
    histogramMeta:       { bins?: number; name?: string }
+   /** `source=`/`labelCol=`/`orient=` tokens (live table link, tabular types only). `handle`
+    *  undefined = the graph is NOT linked (self-contained); the mapping fields are only meaningful
+    *  when `handle` is set. Applied by the caller (see fenceToGraphSpec), which attaches a
+    *  {@link GraphSource} only on the tabular path. */
+   source:              { handle?: string; labelColumn?: number; orient?: 'columns' | 'rows' }
 }
 
 // ============ overlay token grammar (compact, colon-separated, quote-safe) ============
@@ -217,6 +222,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
    const pendingOverlays: Overlay[] = []
    const functionDomain: { xMin?: number; xMax?: number; samples?: number } = {}
    const histogramMeta: { bins?: number; name?: string } = {}
+   const source: { handle?: string; labelColumn?: number; orient?: 'columns' | 'rows' } = {}
 
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -283,6 +289,18 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
          case 'name':
             if (value !== '') histogramMeta.name = value
             break
+         // ============ live table link (tabular types only) ============
+         case 'source':
+            if (value !== '') source.handle = value
+            break
+         case 'labelCol': {
+            const parsed = Number(value)
+            if (Number.isInteger(parsed)) source.labelColumn = parsed
+            break
+         }
+         case 'orient':
+            if (value === 'rows' || value === 'columns') source.orient = value
+            break
          case 'barWidth': {
             const parsed = Number(value)
             if (Number.isFinite(parsed)) options.barWidth = parsed
@@ -330,13 +348,27 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
 
    if (pendingOverlays.length > 0) options.overlays = pendingOverlays
 
-   return { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta }
+   return { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta, source }
 }
 
 /** Serialize the presentation options + type into the ordered `key=value` token list. */
 function serializeInfoTokens(spec: GraphSpec): string[] {
    const tokens: string[] = [`type=${spec.type}`]
    const options = spec.options ?? {}
+
+   // Live table link (tabular types only): `source=<handle>` rides the info string like every other
+   // token, right after `type=` so a linked fence reads "type=… source=…" up front. The mapping
+   // tokens `labelCol=`/`orient=` are emitted ONLY when non-default (label column 0 / `columns`),
+   // keeping a plainly-linked fence lean — same default-diff rule barWidth=/lineWidth=/etc. follow.
+   // The pipe-table body stays the materialized snapshot (serializeTableBody reads spec.data), so a
+   // `.md`/foreign viewer, or a dangling link, still shows the last-known data.
+   if (spec.source && spec.source.handle) {
+      tokens.push(`source=${serializeInfoValue(spec.source.handle)}`)
+      if (spec.source.labelColumn !== undefined && spec.source.labelColumn !== 0)
+         tokens.push(`labelCol=${spec.source.labelColumn}`)
+      if (spec.source.orient === 'rows')
+         tokens.push('orient=rows')
+   }
 
    if (options.title !== undefined && options.title !== '')
       tokens.push(`title=${serializeInfoValue(options.title)}`)
@@ -453,8 +485,11 @@ function isSeparatorRow(cells: string[]): boolean {
  * Parse a single data cell into a `number | null`. Blank / non-numeric cells (`—`, `n/a`, an
  * empty cell) become `null` (a gap the renderer handles per type). Numbers are read forgivingly:
  * surrounding whitespace and thousands-grouping commas are stripped before parsing.
+ *
+ * Exported so `lib/graphTableData.ts` (the table↔graph one-shot extract) reuses the EXACT same
+ * numeric-parse semantics as the fence, keeping both mappings in lockstep by construction.
  */
-function parseNumericCell(raw: string | undefined): number | null {
+export function parseNumericCell(raw: string | undefined): number | null {
    if (raw === undefined) return null
    const cleaned = raw.trim().replace(/\s+/g, '').replace(/,/g, '')
    if (cleaned === '') return null
@@ -692,7 +727,7 @@ export function graphSpecToFence(spec: GraphSpec): { info: string; body: string 
  * (possibly empty), never an exception.
  */
 export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
-   const { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta } = parseInfoString(fenceInfo)
+   const { type, options, colorOverrides, sliceColorOverrides, functionDomain, histogramMeta, source } = parseInfoString(fenceInfo)
 
    if (type === 'function') {
       const domain: FunctionDomain = {
@@ -760,5 +795,17 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
       data.categoryColors = labels.map((_label, index) => sliceColorOverrides[index])
    }
 
-   return { type, data, options }
+   const spec: GraphSpec = { type, data, options }
+
+   // A live table link attaches ONLY on the tabular path (function/scatter/histogram return above —
+   // they carry no category×series grid to map a table onto, so a stray `source=` on one of those is
+   // harmlessly ignored). Mapping fields ride along only when non-default, mirroring serialization.
+   if (source.handle !== undefined) {
+      const graphSource: GraphSource = { handle: source.handle }
+      if (source.labelColumn !== undefined && source.labelColumn !== 0) graphSource.labelColumn = source.labelColumn
+      if (source.orient === 'rows') graphSource.orient = source.orient
+      spec.source = graphSource
+   }
+
+   return spec
 }
