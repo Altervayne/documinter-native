@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { BlockType } from '../types'
 import { useLang } from '../contexts/LangContext'
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
@@ -46,6 +46,7 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       { type: 'math',      Icon: Sigma,     label: t.blockMath,      description: t.blockMathDesc,      category: 'codeMath' },
       { type: 'image',     Icon: Image,     label: t.blockImage,      description: t.blockImageDesc,      category: 'mediaData' },
       { type: 'table',     Icon: Table,     label: t.blockTable,      description: t.blockTableDesc,      category: 'mediaData' },
+      { type: 'graph',     Icon: BarChart3, label: t.blockGraph,      description: t.blockGraphDesc,      category: 'mediaData' },
       { type: 'container', Icon: Columns2,           label: t.blockContainer, description: t.blockContainerDesc, category: 'layout' },
       { type: 'hr',        Icon: SeparatorHorizontal, label: t.blockHr,        description: t.blockHrDesc,        category: 'layout' },
    ]

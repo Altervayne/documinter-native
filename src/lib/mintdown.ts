@@ -2,6 +2,7 @@ import type { Block, CalloutStyle, CodeLang, DocMeta, Section } from '../types'
 import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
+import { fenceToGraphSpec } from './graphFence'
 import { slugify } from './text'
 
 // #############
@@ -45,6 +46,11 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       const block: Block = { id: crypto.randomUUID(), type: 'math', latex: body }
       if (scale !== undefined) block.mathScale = scale
       return block
+   }
+   if (langTag.toLowerCase() === 'graph') {
+      // Pass the FULL info string so the graph parser can tokenize quoted options itself;
+      // malformed fences degrade gracefully (default type + empty data), never throw.
+      return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
    }
    const lang: CodeLang = FENCE_TO_CODE_LANG[langTag.toLowerCase()] ?? 'plain'
    return { id: crypto.randomUUID(), type: 'code', lang, code: body }

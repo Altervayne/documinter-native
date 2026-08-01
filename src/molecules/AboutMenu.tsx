@@ -91,7 +91,10 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
                      : <LogoMono className="h-6 w-auto shrink-0" style={{ color: 'var(--color-accent)' }} />
                   }
                   <div>
-                     <div className="font-mono text-xs font-bold text-accent">documinter</div>
+                     <div className="flex items-baseline gap-1.5">
+                        <div className="font-mono text-xs font-bold text-accent">documinter</div>
+                        <span className="font-mono text-[10px] text-muted">v{__APP_VERSION__}</span>
+                     </div>
                      <div className="text-[10px] text-muted leading-tight">{t.aboutTagline}</div>
                   </div>
                </div>

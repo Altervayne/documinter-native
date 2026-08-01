@@ -4,6 +4,7 @@ import { renderInlineContent } from './inline'
 import { blockAnchor } from './document'
 import { highlight } from './highlight'
 import { renderLatexToMathML, TEMML_STYLES } from './math'
+import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
@@ -24,7 +25,7 @@ function withHandle(block: Block, html: string): string {
    return `<div id="${blockAnchor(block)}" style="scroll-margin-top:1.5rem">${html}</div>`
 }
 
-function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): string {
+function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
    if (block.type === 'p')       return withHandle(block, `<p>${richToHtml(block.richText)}</p>`)
    if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
    if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
@@ -47,6 +48,15 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
       const scale     = block.mathScale
       const styleAttr = scale !== undefined && scale !== 1 ? ` style="font-size:${scale}em"` : ''
       return withHandle(block, `<div class="doc-math"${styleAttr}>${inner}</div>`)
+   }
+   if (block.type === 'graph') {
+      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Colors are
+      // baked as literal hex for the export's single theme (matching the math block's MathML),
+      // so the graph theme is resolved from the export theme rather than a live CSS variable.
+      if (!block.graph) return ''
+      const graphTheme = options?.theme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
+      const svg = renderGraphToSvg(block.graph, graphTheme)
+      return withHandle(block, `<div class="doc-graph">${svg}</div>`)
    }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {
@@ -118,7 +128,7 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean }): st
  * preview to render each preview section's blocks inside a `.doc-render` wrapper.
  * Pass `{ imagePlaceholder: true }` to render src-less images as a muted placeholder.
  */
-export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean }): string {
+export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
    return blocks.map(block => exportBlock(block, options)).join('\n')
 }
 
@@ -305,6 +315,10 @@ function buildStyles(accent: string, colors: Colors): string {
             .doc-render .doc-math math  { display: inline-block; text-align: initial; }
             .doc-render .doc-math-error { color: ${colors.calloutDangerBorder}; }
 
+            /* Graph block, self-contained inline SVG (colors baked for this export's theme). */
+            .doc-render .doc-graph      { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
+            .doc-render .doc-graph svg  { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
             /* Callouts */
             .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${colors.textP}; }
             .doc-render .callout.info    { background: ${colors.calloutInfoBg}; border-color: ${colors.calloutInfoBorder}; }
@@ -442,7 +456,7 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    ).join('\n')
 
    const sectionsHTML = sections.map((sec, sectionIndex) => {
-      const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block)).join('\n')
+      const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block, { theme })).join('\n')
       return `
             <div class="doc-section" id="section-${sec.id}">
                   <h2>${sectionIndex + 1}. ${esc(sec.title)}</h2>

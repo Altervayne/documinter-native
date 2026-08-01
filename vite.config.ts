@@ -1,10 +1,21 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Read the app version from package.json at config-load time and expose it to the client
+// as the compile-time constant __APP_VERSION__ (see src/global.d.ts). This keeps the single
+// source of truth in package.json without importing it into the bundle.
+const { version: appVersion } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+)
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   optimizeDeps: {
     // Vite's dependency pre-bundler mangles Temml's LaTeX tokenizer — it truncates
     // every control word to its first letter (\pi -> \p, \frac -> \f), so equations

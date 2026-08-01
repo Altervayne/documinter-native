@@ -1,6 +1,7 @@
 import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, Section } from '../types'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
+import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
 import { slugify } from './text'
 
 // #############
@@ -121,6 +122,17 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
          return `${fence}${info}\n${latex}\n${fence}`
       }
 
+      case 'graph': {
+         // A ```graph fence: chart type + options on the info string, data as a Markdown pipe
+         // table body. `type=` is load-bearing and rides BOTH flavours (no mintdown branch) —
+         // a graph fence is Documint-specific in either format. The rendered SVG is never
+         // serialized; it is re-derived from this spec on load.
+         const spec = block.graph
+         if (!spec) return '```graph type=bar\n|  |\n| --- |\n```'
+         const { info, body } = graphSpecToFence(spec)
+         return `\`\`\`graph ${info}\n${body}\n\`\`\``
+      }
+
       case 'list': {
          const items = block.items ?? []
          if (items.length === 0) return ''
@@ -238,6 +250,11 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       const block: Block = { id: crypto.randomUUID(), type: 'math', latex: body }
       if (scale !== undefined) block.mathScale = scale
       return block
+   }
+   if (langTag.toLowerCase() === 'graph') {
+      // Pass the FULL info string (not the pre-split tokens) so the graph parser can tokenize
+      // quoted options itself. Malformed fences degrade gracefully inside fenceToGraphSpec.
+      return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
    }
    return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(langTag), code: body }
 }

@@ -57,6 +57,17 @@ export function mkBlock(type: BlockType, t: T): Block {
       case 'callout': return { id, type, style: 'info', richText: [{ text: t.blockDefaultCallout }] }
       case 'code':      return { id, type, code: t.blockDefaultCode, lang: 'windev' }
       case 'math':      return { id, type, latex: '' }
+      case 'graph':     return {
+         id, type,
+         graph: {
+            type: 'bar',
+            data: {
+               labels: ['A', 'B', 'C'],
+               series: [{ name: 'Series 1', values: [4, 7, 5] }],
+            },
+            options: { legend: true },
+         },
+      }
       case 'list':      return {
          id, type,
          items: [
@@ -134,6 +145,14 @@ export function blkPreview(block: Block): string {
       return (block.code ?? '').substring(0, 32)
    if (block.type === 'math')
       return (block.latex ?? '').substring(0, 32)
+   if (block.type === 'graph') {
+      const graph = block.graph
+      const title = graph?.options?.title?.trim()
+      if (title) return title.substring(0, 32)
+      const chartType   = graph?.type ?? 'bar'
+      const seriesCount = graph?.data?.series?.length ?? 0
+      return `Graph — ${chartType} (${seriesCount} series)`
+   }
    if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)
    if (block.type === 'table')

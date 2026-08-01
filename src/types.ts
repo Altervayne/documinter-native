@@ -1,4 +1,6 @@
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
+import type { GraphSpec } from './lib/graph'
+
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -67,6 +69,7 @@ export interface Block {
    lang?: CodeLang       // code, default 'windev'
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
    mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
+   graph?: GraphSpec     // graph: chart type + data + presentation options (rendered to inline SVG)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table

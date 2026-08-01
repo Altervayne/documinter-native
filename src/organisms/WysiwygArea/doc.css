@@ -96,6 +96,140 @@
 .doc-render .doc-math math  { display: inline-block; text-align: initial; }
 .doc-render .doc-math-error { color: var(--callout-danger-accent); font-family: 'JetBrains Mono', monospace; }
 
+/* Graph block, self-contained inline SVG. The SVG bakes literal theme hex (picked from the doc
+   theme), so it needs no theming here — only layout: fill the column, scale responsively. */
+.doc-render .doc-graph      { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
+.doc-render .doc-graph svg  { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
+/* Graph block editor (stage 3): a type selector + option controls, an editable data grid
+   (categories x series, per-series color), and a live preview. Light + dark, app tokens. */
+.doc-render .graph-block       { margin: 1.25rem 0; }
+.doc-render .graph-block .doc-graph { margin: 0; }
+.doc-render .graph-editor-note { margin-top: 0.5rem; font-size: 0.78rem; color: #767676; font-style: italic; text-align: center; }
+.doc-dark .doc-render .graph-editor-note { color: #7d8490; }
+
+/* Controls row: chart-type selector + title / axis captions + toggles, wrapping compactly. */
+.doc-render .graph-controls    { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem 0.9rem; margin-bottom: 0.75rem; }
+.doc-render .graph-control     { display: flex; flex-direction: column; gap: 0.2rem; }
+.doc-render .graph-control-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767676; }
+.doc-render .graph-type-select,
+.doc-render .graph-text-input  {
+  height: 1.85rem; padding: 0 0.5rem; box-sizing: border-box;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;
+  color: #334155; font-family: inherit; font-size: 0.8rem; line-height: 1;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.doc-render .graph-text-input  { min-width: 9rem; }
+.doc-render .graph-type-select:focus,
+.doc-render .graph-text-input:focus {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent);
+}
+
+/* On/off toggles (legend, values) share a small inline layout. */
+.doc-render .graph-toggles     { display: flex; align-items: center; gap: 0.9rem; padding-bottom: 0.25rem; }
+.doc-render .graph-toggle      { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: #475569; cursor: pointer; }
+.doc-render .graph-toggle input { cursor: pointer; accent-color: var(--doc-accent, var(--color-accent)); }
+
+/* Donut hole slider, only shown for the donut type. */
+.doc-render .graph-control-hole { flex-direction: row; align-items: center; gap: 0.5rem; }
+.doc-render .graph-range-input  { width: 8rem; accent-color: var(--doc-accent, var(--color-accent)); }
+.doc-render .graph-range-value  { min-width: 2.6rem; font-size: 0.75rem; font-variant-numeric: tabular-nums; color: #475569; }
+
+/* Data grid: rows = categories, columns = series. Scrolls horizontally when series are many. */
+.doc-render .graph-data-grid   { margin: 0.25rem 0 0.75rem; }
+.doc-render .graph-grid-scroll { overflow-x: auto; border-radius: 6px; }
+.doc-render .graph-grid-table  { border-collapse: separate; border-spacing: 0.35rem; }
+.doc-render .graph-grid-corner { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767676; text-align: left; font-weight: 600; padding: 0 0.2rem; }
+
+/* Series header cell: a name input above a swatch + remove control. */
+.doc-render .graph-series-head { vertical-align: bottom; }
+.doc-render .graph-series-name {
+  display: block; width: 100%; min-width: 6rem; box-sizing: border-box;
+  height: 1.7rem; padding: 0 0.4rem; margin-bottom: 0.25rem;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;
+  color: #334155; font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.doc-render .graph-series-tools { display: flex; align-items: center; justify-content: space-between; gap: 0.3rem; }
+.doc-render .graph-color-swatch {
+  flex: 1 1 auto; height: 1.1rem; padding: 0; border-radius: 4px;
+  border: 1px solid color-mix(in srgb, #000 15%, transparent); cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.12s;
+}
+.doc-render .graph-color-swatch:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 30%, transparent); }
+
+/* Row (category) header cell: a label input + a remove control. */
+.doc-render .graph-row-head    { vertical-align: middle; white-space: nowrap; }
+.doc-render .graph-label-input {
+  width: 100%; min-width: 5rem; box-sizing: border-box;
+  height: 1.7rem; padding: 0 0.4rem;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;
+  color: #334155; font-family: inherit; font-size: 0.78rem; line-height: 1;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+/* Numeric data cells. */
+.doc-render .graph-cell        { vertical-align: middle; }
+.doc-render .graph-cell-input  {
+  width: 4.5rem; box-sizing: border-box;
+  height: 1.7rem; padding: 0 0.4rem;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;
+  color: #334155; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+  text-align: right; font-variant-numeric: tabular-nums; line-height: 1;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.doc-render .graph-series-name:focus,
+.doc-render .graph-label-input:focus,
+.doc-render .graph-cell-input:focus {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent);
+}
+
+/* Small × remove control + the + add buttons (add row / add series / add category). */
+.doc-render .graph-icon-btn    {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.1rem; height: 1.1rem; padding: 0; border-radius: 4px;
+  background: transparent; border: 1px solid #e2e8f0; color: #64748b;
+  font-family: inherit; font-size: 0.8rem; line-height: 1; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.doc-render .graph-icon-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--callout-danger-accent) 40%, transparent);
+  color: var(--callout-danger-accent);
+  background: color-mix(in srgb, var(--callout-danger-accent) 8%, transparent);
+}
+.doc-render .graph-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.doc-render .graph-grid-btn    {
+  padding: 0.25rem 0.6rem; border-radius: 5px;
+  background: #f8fafc; border: 1px solid #e2e8f0; color: #475569;
+  font-family: inherit; font-size: 0.74rem; font-weight: 600; line-height: 1; cursor: pointer; white-space: nowrap;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.doc-render .graph-grid-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  color: var(--doc-accent, var(--color-accent));
+}
+.doc-render .graph-grid-btn:disabled { opacity: 0.4; cursor: default; }
+.doc-render .graph-grid-add    { vertical-align: bottom; }
+
+/* Live preview: the rendered SVG under the grid; overrides doc-graph's default top margin. */
+.doc-render .graph-preview     { margin: 0.5rem 0 0; }
+
+/* ============ Dark theme ============ */
+.doc-dark .doc-render .graph-control-label,
+.doc-dark .doc-render .graph-grid-corner { color: #7d8490; }
+.doc-dark .doc-render .graph-type-select,
+.doc-dark .doc-render .graph-text-input,
+.doc-dark .doc-render .graph-series-name,
+.doc-dark .doc-render .graph-label-input,
+.doc-dark .doc-render .graph-cell-input,
+.doc-dark .doc-render .graph-grid-btn    { background: #0d1117; border-color: #21262d; color: #c9d1d9; }
+.doc-dark .doc-render .graph-icon-btn    { border-color: #21262d; color: #8b949e; }
+.doc-dark .doc-render .graph-toggle,
+.doc-dark .doc-render .graph-range-value { color: #9aa4b2; }
+.doc-dark .doc-render .graph-color-swatch { border-color: color-mix(in srgb, #fff 20%, transparent); }
+
 /* Math block editor, monospaced LaTeX source over a live preview. */
 .doc-render .math-block   { margin: 1.25rem 0; }
 

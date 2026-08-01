@@ -11,6 +11,7 @@ const noopStrategy: SortingStrategy = () => null
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
+import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
@@ -256,6 +257,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
 
    return (
       <DocumentHandlesProvider handles={allHandles}>
+       <DocThemeProvider theme={docTheme}>
          {!readOnly && <FormatToolbar sections={sections} />}
          <div className="flex-1 h-full w-full overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
             <div
@@ -356,6 +358,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, onUpdateMeta,
             </div>
             </div>
          </div>
+       </DocThemeProvider>
       </DocumentHandlesProvider>
    )
 }

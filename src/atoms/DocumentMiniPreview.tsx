@@ -38,7 +38,7 @@ export function DocumentMiniPreview({ meta, previewSections, docTheme, docAccent
 
    const sections = previewSections.map((section, index) =>
       `<div class="doc-section"><h2>${index + 1}. ${esc(section.title)}</h2>${
-         renderBlocksToDocHtml(section.blocks, { imagePlaceholder: true })
+         renderBlocksToDocHtml(section.blocks, { imagePlaceholder: true, theme: docTheme })
       }</div>`,
    ).join('')
 
