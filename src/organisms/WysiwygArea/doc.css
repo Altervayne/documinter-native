@@ -462,6 +462,11 @@
   color: var(--color-text); background: transparent;
 }
 
+/* When the window hosts the symbol palette (a tool window), drop the body padding: the palette's
+   own filter / scroll margins already supply the inset, and the palette must fill the body so its
+   inner scroll — not the body — owns the overflow. */
+.block-editor-window-body:has(.math-symbol-palette-content) { padding: 0; overflow: hidden; }
+
 /* Math block editor, monospaced LaTeX source over a live preview. */
 .doc-render .math-block   { margin: 1.25rem 0; }
 
@@ -522,6 +527,13 @@
   background: var(--color-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   overflow: hidden;
 }
+/* Presentation-agnostic palette body. In the popover it is the sole flex child (capped by the
+   box's inline max-height); in a BlockEditorWindow it fills the window body (height:100%, which
+   resolves to auto — a no-op — inside the auto-height popover). Either way the inner scroll area
+   owns the overflow, so the filter + generator row stay pinned and only the grids scroll. */
+.math-symbol-palette-content {
+  display: flex; flex-direction: column; min-height: 0; height: 100%;
+}
 .math-symbol-palette-filter {
   flex: 0 0 auto; margin: 0.5rem 0.5rem 0.25rem; padding: 0.45rem 0.65rem; box-sizing: border-box;
   border: 1px solid var(--color-border); border-radius: 8px;
@@ -558,7 +570,7 @@
 .math-symbol-palette-generator-btn svg { flex: 0 0 auto; }
 
 /* Inner scroll (not the rounded outer box) so the scrollbar never squares off the corners. */
-.math-symbol-palette-scroll { min-height: 0; overflow-y: auto; padding: 0 0.5rem 0.5rem; }
+.math-symbol-palette-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 0.5rem 0.5rem; }
 .math-symbol-palette-group { margin-top: 0.2rem; }
 /* Category heading is a full-width accordion toggle: chevron, label, entry count. */
 .math-symbol-palette-heading {

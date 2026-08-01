@@ -40,6 +40,13 @@ interface BlockEditorWindowProps {
    anchorRect: DOMRect
    /** Optional leading icon in the title bar. */
    icon?: ReactNode
+   /**
+    * Move focus into the window on open (and restore the previously-focused element on close).
+    * Defaults to true for a block editor. Set false for a TOOL window that acts on a surface
+    * underneath it (the math symbol palette), so the underlying textarea keeps focus and the
+    * user can keep typing while the window stays open.
+    */
+   focusOnOpen?: boolean
    /** Close the window (close button / Escape). */
    onClose: () => void
    /** The block's expanded editor UI. */
@@ -92,7 +99,7 @@ function computeInitialPosition(
  * Lifecycle is owned by the caller: the window is rendered inline by the block component only while
  * that block is the open one, so a deleted block unmounts and takes the window with it for free.
  */
-export function BlockEditorWindow({ title, anchorRect, icon, onClose, children }: BlockEditorWindowProps) {
+export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true, onClose, children }: BlockEditorWindowProps) {
    const { t } = useLang()
 
    // Narrow-viewport sheet fallback, tracked live so a resize across the breakpoint re-renders.
@@ -121,14 +128,16 @@ export function BlockEditorWindow({ title, anchorRect, icon, onClose, children }
    const windowRef = useRef<HTMLDivElement>(null)
 
    // Focus moves into the window on open; the previously-focused element is restored on close.
-   // Non-modal, so no focus trap — the user may Tab back out to the document.
+   // Non-modal, so no focus trap — the user may Tab back out to the document. Skipped entirely
+   // when focusOnOpen is false (a tool window that must leave the underlying textarea focused).
    useEffect(() => {
+      if (!focusOnOpen) return
       const previouslyFocused = document.activeElement as HTMLElement | null
       windowRef.current?.focus()
       return () => {
          if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus()
       }
-   }, [])
+   }, [focusOnOpen])
 
    // Escape closes; stop-propagation so it does not also reach the editor / block underneath.
    useEffect(() => {

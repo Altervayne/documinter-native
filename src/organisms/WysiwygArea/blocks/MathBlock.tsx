@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { renderLatexToMathML, ensureTemmlStyles, isTemmlReady, onTemmlReady } from '../../../lib/math'
 import { DEFAULT_MATH_SCALE, MATH_SCALE_STEPS, stepMathScale } from '../../../lib/mathScale'
 import { buildSnippetInsertion } from '../../../lib/mathSymbols'
-import { MathSymbolPalette } from '../../../molecules/MathSymbolPalette'
+import { MathSymbolPaletteContent } from '../../../molecules/MathSymbolPalette'
 import { MathBuilderModal } from '../../../molecules/MathBuilderModal'
+import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import type { MathBuilderKind, MatrixBracket } from '../../../lib/mathStructures'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
@@ -35,10 +36,15 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const [draft, setDraft] = useState(block.latex ?? '')
    const editing = useRef(false)
 
-   // Symbol palette: a pure-UI assisted-input panel over the same `latex` source. The textarea
-   // ref lets an inserted snippet read the live caret/selection and hand focus straight back.
+   // Symbol palette: a pure-UI assisted-input tool over the same `latex` source, hosted in a
+   // persistent, draggable BlockEditorWindow (NOT a modal / not the block-editor-window context —
+   // it is a per-block tool). The textarea ref lets an inserted snippet read the live
+   // caret/selection and hand focus straight back; the palette opens with focusOnOpen={false} so
+   // the source textarea keeps focus and the user can keep typing while inserting symbols.
    const textareaRef = useRef<HTMLTextAreaElement>(null)
+   const rootRef = useRef<HTMLDivElement>(null)
    const [paletteOpen,   setPaletteOpen]   = useState(false)
+   // The math block's viewport rect at open time; the window sits offset from it, then clamps.
    const [paletteAnchor, setPaletteAnchor] = useState<DOMRect | null>(null)
 
    // A snippet insert mutates `draft` synchronously, then this pending caret offset restores
@@ -128,9 +134,11 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       setBuilderCaret(null)
    }
 
-   function togglePalette(event: React.MouseEvent<HTMLButtonElement>): void {
+   function togglePalette(): void {
       if (paletteOpen) { setPaletteOpen(false); return }
-      setPaletteAnchor(event.currentTarget.getBoundingClientRect())
+      // Anchor the window offset from the whole math block, so it sits beside the source/preview
+      // rather than crowding the tiny ƒ(x) button.
+      setPaletteAnchor(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
       setPaletteOpen(true)
    }
 
@@ -175,7 +183,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    }
 
    return (
-      <div className="math-block">
+      <div className="math-block" ref={rootRef}>
          <div className="math-toolbar">
             <button
                type="button"
@@ -231,13 +239,19 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
             {rendered && !rendered.ok && <span className="math-error">{rendered.error}</span>}
          </div>
          {paletteOpen && paletteAnchor && (
-            <MathSymbolPalette
+            <BlockEditorWindow
+               title={t.blockMathInsertSymbol}
                anchorRect={paletteAnchor}
-               onInsert={insertSnippet}
-               onOpenBuilder={openBuilder}
-               showGenerators={true}
+               focusOnOpen={false}
                onClose={() => setPaletteOpen(false)}
-            />
+            >
+               <MathSymbolPaletteContent
+                  onInsert={insertSnippet}
+                  onOpenBuilder={openBuilder}
+                  showGenerators={true}
+                  autoFocusFilter={false}
+               />
+            </BlockEditorWindow>
          )}
          {builderKind && (
             <MathBuilderModal
