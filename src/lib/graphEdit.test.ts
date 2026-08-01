@@ -23,7 +23,29 @@ import {
    addOverlay,
    removeOverlay,
    updateOverlay,
+   addEquation,
+   removeEquation,
+   setEquationField,
+   setEquationColor,
+   setDomain,
 } from './graphEdit'
+import { FUNCTION_DEFAULT_X_MIN, FUNCTION_DEFAULT_X_MAX, FUNCTION_DEFAULT_SAMPLES, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES } from './graph'
+
+// A `function`-type fixture, mirroring makeSpec() in spirit but for the equation-editing helpers.
+function makeFunctionSpec(): GraphSpec {
+   return {
+      type: 'function',
+      data: { labels: [], series: [] },
+      options: { legend: true },
+      functionPlot: {
+         domain: { xMin: -10, xMax: 10, samples: 200 },
+         equations: [
+            { name: 'f', expression: 'sin(x)' },
+            { name: 'g', expression: 'cos(x)', color: '#123456' },
+         ],
+      },
+   }
+}
 
 // A small, well-formed two-series / three-category fixture rebuilt per test (no shared mutation).
 function makeSpec(): GraphSpec {
@@ -354,5 +376,168 @@ describe('updateOverlay', () => {
       const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
       updateOverlay(withOne, 0, { series: 'all' })
       expect(withOne.options.overlays).toEqual([{ kind: 'mean', series: 0 }])
+   })
+})
+
+// ##################################################
+// # functionPlot passthrough (the withData/setType/setOption fix)
+// ##################################################
+// Every generic data/option transform must carry an existing `functionPlot` through unchanged —
+// before this fix, `withData`/`setType`/`setOption` rebuilt the spec from named fields and
+// silently dropped it, which would have wiped an author's equations on the very next option
+// toggle (title, legend, ...) on a `function` chart.
+
+describe('functionPlot passthrough', () => {
+   it('setOption preserves functionPlot on a function-type spec', () => {
+      const next = setOption(makeFunctionSpec(), 'title', 'My curve')
+      expect(next.functionPlot).toEqual(makeFunctionSpec().functionPlot)
+      expect(next.options.title).toBe('My curve')
+   })
+
+   it('setType preserves an existing functionPlot when the type stays function', () => {
+      const spec = makeFunctionSpec()
+      const next = setType(spec, 'function')
+      expect(next.functionPlot).toEqual(spec.functionPlot)
+   })
+
+   it('setType seeds a default functionPlot the first time a spec switches to function', () => {
+      const next = setType(makeSpec(), 'function')
+      expect(next.functionPlot).toBeDefined()
+      expect(next.functionPlot?.domain).toEqual({
+         xMin: FUNCTION_DEFAULT_X_MIN,
+         xMax: FUNCTION_DEFAULT_X_MAX,
+         samples: FUNCTION_DEFAULT_SAMPLES,
+      })
+      expect(next.functionPlot?.equations.length).toBe(1)
+   })
+
+   it('setType leaves functionPlot untouched when switching between non-function types', () => {
+      const next = setType(makeSpec(), 'line')
+      expect(next.functionPlot).toBeUndefined()
+   })
+})
+
+describe('addEquation', () => {
+   it('appends a new blank equation', () => {
+      const next = addEquation(makeFunctionSpec())
+      expect(next.functionPlot?.equations.length).toBe(3)
+      expect(next.functionPlot?.equations[2]).toEqual({ name: 'h', expression: '' })
+   })
+
+   it('seeds a default functionPlot when the spec has never been a function chart', () => {
+      const next = addEquation(makeSpec())
+      expect(next.functionPlot?.equations.length).toBe(2)
+      expect(next.functionPlot?.domain).toEqual({
+         xMin: FUNCTION_DEFAULT_X_MIN,
+         xMax: FUNCTION_DEFAULT_X_MAX,
+         samples: FUNCTION_DEFAULT_SAMPLES,
+      })
+   })
+
+   it('caps at MAX_SERIES equations', () => {
+      let spec = makeFunctionSpec()
+      for (let count = 0; count < 10; count++) spec = addEquation(spec)
+      expect(spec.functionPlot?.equations.length).toBe(8)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeFunctionSpec()
+      addEquation(spec)
+      expect(spec.functionPlot?.equations.length).toBe(2)
+   })
+})
+
+describe('removeEquation', () => {
+   it('removes the equation at the index', () => {
+      const next = removeEquation(makeFunctionSpec(), 0)
+      expect(next.functionPlot?.equations).toEqual([{ name: 'g', expression: 'cos(x)', color: '#123456' }])
+   })
+
+   it('is a no-op when it would remove the last equation', () => {
+      const oneEquation: GraphSpec = {
+         ...makeFunctionSpec(),
+         functionPlot: { domain: { xMin: -10, xMax: 10, samples: 200 }, equations: [{ name: 'f', expression: 'sin(x)' }] },
+      }
+      const next = removeEquation(oneEquation, 0)
+      expect(next.functionPlot?.equations.length).toBe(1)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeFunctionSpec()
+      const next = removeEquation(spec, 9)
+      expect(next.functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+   })
+})
+
+describe('setEquationField', () => {
+   it('sets the name field', () => {
+      const next = setEquationField(makeFunctionSpec(), 0, 'name', 'sine')
+      expect(next.functionPlot?.equations[0]).toEqual({ name: 'sine', expression: 'sin(x)' })
+   })
+
+   it('sets the expression field, even to an uncompileable value', () => {
+      const next = setEquationField(makeFunctionSpec(), 0, 'expression', 'sin(')
+      expect(next.functionPlot?.equations[0].expression).toBe('sin(')
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeFunctionSpec()
+      const next = setEquationField(spec, 9, 'name', 'nope')
+      expect(next.functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeFunctionSpec()
+      setEquationField(spec, 0, 'name', 'sine')
+      expect(spec.functionPlot?.equations[0].name).toBe('f')
+   })
+})
+
+describe('setEquationColor', () => {
+   it('sets a color override', () => {
+      const next = setEquationColor(makeFunctionSpec(), 0, '#abcdef')
+      expect(next.functionPlot?.equations[0].color).toBe('#abcdef')
+   })
+
+   it('clears the override when passed undefined', () => {
+      const next = setEquationColor(makeFunctionSpec(), 1, undefined)
+      expect('color' in next.functionPlot!.equations[1]).toBe(false)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeFunctionSpec()
+      const next = setEquationColor(spec, 9, '#abcdef')
+      expect(next.functionPlot?.equations).toEqual(spec.functionPlot?.equations)
+   })
+})
+
+describe('setDomain', () => {
+   it('shallow-merges a partial onto the domain', () => {
+      const next = setDomain(makeFunctionSpec(), { xMin: -5 })
+      expect(next.functionPlot?.domain).toEqual({ xMin: -5, xMax: 10, samples: 200 })
+   })
+
+   it('clamps samples to FUNCTION_MIN_SAMPLES..FUNCTION_MAX_SAMPLES', () => {
+      const tooFew = setDomain(makeFunctionSpec(), { samples: 1 })
+      expect(tooFew.functionPlot?.domain.samples).toBe(FUNCTION_MIN_SAMPLES)
+      const tooMany = setDomain(makeFunctionSpec(), { samples: 999999 })
+      expect(tooMany.functionPlot?.domain.samples).toBe(FUNCTION_MAX_SAMPLES)
+   })
+
+   it('rounds a fractional sample count', () => {
+      const next = setDomain(makeFunctionSpec(), { samples: 150.6 })
+      expect(next.functionPlot?.domain.samples).toBe(151)
+   })
+
+   it('seeds a default functionPlot when the spec has never been a function chart', () => {
+      const next = setDomain(makeSpec(), { xMin: -3 })
+      expect(next.functionPlot?.domain.xMin).toBe(-3)
+      expect(next.functionPlot?.domain.xMax).toBe(FUNCTION_DEFAULT_X_MAX)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeFunctionSpec()
+      setDomain(spec, { xMin: -5 })
+      expect(spec.functionPlot?.domain.xMin).toBe(-10)
    })
 })

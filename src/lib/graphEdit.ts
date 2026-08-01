@@ -18,8 +18,15 @@
  * editing model, not about preventing a crash.
  */
 
-import type { GraphSpec, GraphData, GraphSeries, GraphType, GraphOptions, Overlay } from './graph'
-import { MAX_SERIES } from './graph'
+import type { GraphSpec, GraphData, GraphType, GraphOptions, Overlay, FunctionDomain, FunctionPlot } from './graph'
+import {
+   MAX_SERIES,
+   FUNCTION_DEFAULT_X_MIN,
+   FUNCTION_DEFAULT_X_MAX,
+   FUNCTION_DEFAULT_SAMPLES,
+   FUNCTION_MIN_SAMPLES,
+   FUNCTION_MAX_SAMPLES,
+} from './graph'
 
 // ###########
 // # HELPERS #
@@ -41,9 +48,15 @@ function cloneData(spec: GraphSpec): GraphData {
    return cloned
 }
 
-/** Reassemble a fresh spec from freshly-cloned data, carrying type + options through unchanged. */
+/**
+ * Reassemble a fresh spec from freshly-cloned data, carrying type + options + (when present)
+ * functionPlot through unchanged. Spreading `spec` first (rather than listing `type`/`data`/
+ * `options` by hand) is what keeps a spec's `functionPlot` payload alive across every data-editing
+ * transform below — dropping it here would silently wipe an author's equations the next time they,
+ * say, add a category on an unrelated bar chart's spec object reached via a shared helper.
+ */
 function withData(spec: GraphSpec, data: GraphData): GraphSpec {
-   return { type: spec.type, data, options: spec.options }
+   return { ...spec, data }
 }
 
 /**
@@ -194,15 +207,26 @@ export function setCell(spec: GraphSpec, rowIndex: number, seriesIndex: number, 
 // # TYPE & OPTIONS   #
 // ####################
 
-/** Switch the chart type, carrying data + options through unchanged. */
+/**
+ * Switch the chart type, carrying data + options + any existing functionPlot through unchanged.
+ * Switching TO `function` for the first time (no functionPlot yet) seeds one from the
+ * FUNCTION_DEFAULT_* constants + a single blank equation, so the Data tab's EquationEditor always
+ * has something real to render the moment the type card is clicked — never an undefined payload.
+ */
 export function setType(spec: GraphSpec, type: GraphType): GraphSpec {
-   return { type, data: spec.data, options: spec.options }
+   const next: GraphSpec = { ...spec, type }
+   if (type === 'function' && !next.functionPlot) {
+      next.functionPlot = ensureFunctionPlot(spec)
+   }
+   return next
 }
 
 /**
  * Set one presentation option. Passing `undefined` DELETES the key (keeps a freshly-toggled-off
  * option out of the serialized spec, so the stored graph stays lean — the same "absent means
- * default" discipline the renderer's options already follow).
+ * default" discipline the renderer's options already follow). Carries `functionPlot` through
+ * unchanged (via the `{ ...spec }` spread) — an option toggle on a `function` chart must never
+ * wipe its equations.
  */
 export function setOption<Key extends keyof GraphOptions>(
    spec: GraphSpec,
@@ -215,7 +239,7 @@ export function setOption<Key extends keyof GraphOptions>(
    } else {
       options[key] = value
    }
-   return { type: spec.type, data: spec.data, options }
+   return { ...spec, options }
 }
 
 // ####################
@@ -254,4 +278,130 @@ export function updateOverlay(spec: GraphSpec, overlayIndex: number, partial: Pa
    const overlays = current.map((overlay, index) =>
       index === overlayIndex ? { ...overlay, ...partial } : overlay)
    return setOption(spec, 'overlays', overlays)
+}
+
+// ############################
+// # EQUATIONS (function type) #
+// ############################
+//
+// The `function` chart type's payload (`GraphSpec.functionPlot`) is a completely different shape
+// from `data`/`series` — a shared domain plus a list of named equations — so it gets its own small
+// family of transforms here rather than being shoehorned through the category/series helpers
+// above. Every helper below shares the same two invariants as the rest of this file:
+//   - NON-EMPTY: the last remaining equation is never removed (keep >= 1).
+//   - SANE DOMAIN: `samples` is always clamped to [FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES].
+// and additionally SEEDS a `functionPlot` from the FUNCTION_DEFAULT_* constants whenever one is
+// absent (a spec that has never been a `function` chart, or was switched away and back), so an
+// author can never be looking at an editor with nothing to edit.
+
+/** Default equation names for freshly added equations: f, g, h, ... wrapping through the alphabet
+ *  (starting at "f" to echo the fence-grammar example in the stage-2 report / study). */
+const EQUATION_NAME_LETTERS = 'fghijklmnopqrstuvwxyzabcde'
+
+function defaultEquationName(equationIndex: number): string {
+   return EQUATION_NAME_LETTERS[equationIndex % EQUATION_NAME_LETTERS.length]
+}
+
+/** The sane out-of-the-box functionPlot: the FUNCTION_DEFAULT_* domain + one blank equation. */
+function defaultFunctionPlot(): FunctionPlot {
+   return {
+      domain: { xMin: FUNCTION_DEFAULT_X_MIN, xMax: FUNCTION_DEFAULT_X_MAX, samples: FUNCTION_DEFAULT_SAMPLES },
+      equations: [{ name: defaultEquationName(0), expression: '' }],
+   }
+}
+
+/** Return the spec's existing `functionPlot`, or a freshly seeded default when absent. */
+function ensureFunctionPlot(spec: GraphSpec): FunctionPlot {
+   return spec.functionPlot ?? defaultFunctionPlot()
+}
+
+/** Clamp a requested sample count into [FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES], rounding first
+ *  so a fractional drag-slider value never sneaks a non-integer sample count into the spec. */
+function clampSamples(samples: number): number {
+   return Math.min(FUNCTION_MAX_SAMPLES, Math.max(FUNCTION_MIN_SAMPLES, Math.round(samples)))
+}
+
+/** Reassemble a fresh spec carrying a new `functionPlot`, everything else unchanged. */
+function withFunctionPlot(spec: GraphSpec, functionPlot: FunctionPlot): GraphSpec {
+   return { ...spec, functionPlot }
+}
+
+/**
+ * Append a new equation (capped at MAX_SERIES, matching the same palette-slot cap the numeric
+ * data grid's series enforce, so equation colors stay inside the validated 8-hue set). Seeds
+ * `functionPlot` from the defaults first when the spec has never carried one.
+ */
+export function addEquation(spec: GraphSpec): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   if (functionPlot.equations.length >= MAX_SERIES) return withFunctionPlot(spec, functionPlot)
+   const equations = [
+      ...functionPlot.equations,
+      { name: defaultEquationName(functionPlot.equations.length), expression: '' },
+   ]
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+/**
+ * Remove the equation at `equationIndex`. No-op (equations unchanged, but `functionPlot` is still
+ * seeded if it was absent) when it would remove the last equation or the index is out of range,
+ * honoring the keep-at-least-one invariant.
+ */
+export function removeEquation(spec: GraphSpec, equationIndex: number): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   if (functionPlot.equations.length <= 1) return withFunctionPlot(spec, functionPlot)
+   if (equationIndex < 0 || equationIndex >= functionPlot.equations.length) return withFunctionPlot(spec, functionPlot)
+   const equations = functionPlot.equations.filter((_equation, index) => index !== equationIndex)
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+/**
+ * Set the `name` or `expression` text of the equation at `equationIndex`. Out-of-range returns the
+ * spec with `functionPlot` merely seeded (no equation changed). An unparseable `expression` is
+ * still written here — {@link addEquation}'s "never breaks the chart" contract means an
+ * uncompileable expression simply draws nothing until it parses; validating and blocking the
+ * keystroke is the editor's job (a live invalid-ring affordance), not this pure transform's.
+ */
+export function setEquationField(
+   spec: GraphSpec,
+   equationIndex: number,
+   field: 'name' | 'expression',
+   value: string,
+): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   if (equationIndex < 0 || equationIndex >= functionPlot.equations.length) return withFunctionPlot(spec, functionPlot)
+   const equations = functionPlot.equations.map((equation, index) =>
+      index === equationIndex ? { ...equation, [field]: value } : equation)
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+/**
+ * Set (or clear) the per-equation color override at `equationIndex` — the function-chart
+ * counterpart to {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely,
+ * resetting the curve back to its palette slot. Out-of-range returns the spec with `functionPlot`
+ * merely seeded.
+ */
+export function setEquationColor(spec: GraphSpec, equationIndex: number, color: string | undefined): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   if (equationIndex < 0 || equationIndex >= functionPlot.equations.length) return withFunctionPlot(spec, functionPlot)
+   const equations = functionPlot.equations.map((equation, index) => {
+      if (index !== equationIndex) return equation
+      const { color: _dropped, ...rest } = equation
+      return color === undefined ? rest : { ...rest, color }
+   })
+   return withFunctionPlot(spec, { ...functionPlot, equations })
+}
+
+/**
+ * Shallow-merge `partial` onto the shared domain (`xMin`/`xMax`/`samples`). `samples`, if present
+ * in `partial`, is clamped to [FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES] so a hand-typed or
+ * pathological value can never reach the stored spec (mirrors the renderer's own tolerant
+ * `resolveFunctionDomain` clamp, applied here at the editing boundary instead).
+ */
+export function setDomain(spec: GraphSpec, partial: Partial<FunctionDomain>): GraphSpec {
+   const functionPlot = ensureFunctionPlot(spec)
+   const domain: FunctionDomain = { ...functionPlot.domain, ...partial }
+   if (partial.samples !== undefined) {
+      domain.samples = clampSamples(partial.samples)
+   }
+   return withFunctionPlot(spec, { ...functionPlot, domain })
 }

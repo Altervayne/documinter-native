@@ -196,6 +196,28 @@ describe('Graph fence, spec round-trip', () => {
       expect(spec.options.barWidth).toBeUndefined()
       expect(spec.options.lineWidth).toBeUndefined()
    })
+
+   it('round-trips barPeakLine via the peakline= token', () => {
+      const spec: GraphSpec = {
+         type: 'bar-grouped',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { barPeakLine: true },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('peakline=on')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('omits the peakline= token when unset (keeps the fence lean)', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: {},
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).not.toContain('peakline=')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
 })
 
 describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
@@ -282,6 +304,122 @@ describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
       expect(mintdown).toContain('overlay=ref:5')
       const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
       expect(reparsed.graph).toEqual(spec)
+   })
+})
+
+describe('Graph fence, function type (equation plots)', () => {
+   it('round-trips a multi-equation function spec (domain, names, expressions, colors)', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { title: 'Damped oscillation', xLabel: 'x', yLabel: 'f(x)' },
+         functionPlot: {
+            domain: { xMin: -10, xMax: 10, samples: 200 },
+            equations: [
+               { name: 'f', expression: 'sin(x) * exp(-x/5)' },
+               { name: 'g', expression: 'exp(-x/5)', color: '#eb6834' },
+            ],
+         },
+      }
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('matches the ratified fence grammar: xmin=/xmax=/samples= on the info string, a Name|Expression|Color body', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { title: 'Damped oscillation', xLabel: 'x', yLabel: 'f(x)' },
+         functionPlot: {
+            domain: { xMin: -10, xMax: 10, samples: 200 },
+            equations: [
+               { name: 'f', expression: 'sin(x) * exp(-x/5)' },
+               { name: 'g', expression: 'exp(-x/5)', color: '#eb6834' },
+            ],
+         },
+      }
+      const { info, body } = graphSpecToFence(spec)
+      expect(info).toContain('type=function')
+      // -10/10/200 ARE the sane defaults per docs/reference/graph_equation_study.md Q5 — a fence
+      // at the default domain stays lean and omits the tokens entirely.
+      expect(info).not.toContain('xmin=')
+      expect(info).not.toContain('xmax=')
+      expect(info).not.toContain('samples=')
+      expect(body).toContain('| Name | Expression | Color |')
+      expect(body).toContain('| f | sin(x) * exp(-x/5) |  |')
+      expect(body).toContain('| g | exp(-x/5) | #eb6834 |')
+   })
+
+   it('emits xmin=/xmax=/samples= only when they differ from the default domain', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: {},
+         functionPlot: {
+            domain: { xMin: -5, xMax: 5, samples: 80 },
+            equations: [{ name: 'f', expression: 'x^2' }],
+         },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('xmin=-5')
+      expect(info).toContain('xmax=5')
+      expect(info).toContain('samples=80')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('a bare `graph type=function` fence with no body falls back to the default domain and no equations', () => {
+      const spec = fenceToGraphSpec('graph type=function', '')
+      expect(spec.type).toBe('function')
+      expect(spec.data).toEqual({ labels: [], series: [] })
+      expect(spec.functionPlot).toEqual({
+         domain: { xMin: -10, xMax: 10, samples: 200 },
+         equations: [],
+      })
+   })
+
+   it('skips a malformed equation row (blank expression) rather than keeping a dead equation', () => {
+      const body = [
+         '| Name | Expression | Color |',
+         '| ---- | ---------- | ----- |',
+         '| f    | sin(x)     |       |',
+         '| bad  |            |       |', // blank expression: skipped
+         '| g    | cos(x)     |       |',
+      ].join('\n')
+      const spec = fenceToGraphSpec('graph type=function', body)
+      expect(spec.functionPlot?.equations).toEqual([
+         { name: 'f', expression: 'sin(x)' },
+         { name: 'g', expression: 'cos(x)' },
+      ])
+   })
+
+   it('ignores non-finite xmin=/xmax=/samples= tokens rather than throwing, falling back to defaults', () => {
+      const spec = fenceToGraphSpec('graph type=function xmin=nope xmax=nope samples=nope', '')
+      expect(spec.functionPlot?.domain).toEqual({ xMin: -10, xMax: 10, samples: 200 })
+   })
+
+   it('carries a function spec through the full Markdown and Mintdown document paths', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { title: 'Trig pair', legend: true },
+         functionPlot: {
+            domain: { xMin: -6.28, xMax: 6.28, samples: 100 },
+            equations: [
+               { name: 'sine', expression: 'sin(x)' },
+               { name: 'cosine', expression: 'cos(x)', color: '#1baf7a' },
+            ],
+         },
+      }
+      const { sections, meta } = wrapGraph(spec)
+
+      const markdown = documentToMarkdown(sections, meta)
+      expect(markdown).toContain('```graph type=function')
+      const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
+      expect(reparsedFromMarkdown.graph).toEqual(spec)
+
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('```graph type=function')
+      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
+      expect(reparsedFromMintdown.graph).toEqual(spec)
    })
 })
 

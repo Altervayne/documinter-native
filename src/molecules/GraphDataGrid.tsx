@@ -504,7 +504,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
 // # COLOR POPOVER     #
 // #####################
 
-interface GraphSeriesColorPopoverProps {
+export interface GraphSeriesColorPopoverProps {
    /** Viewport rect of the swatch trigger; drives the clamped placement below/above it. */
    anchorRect: DOMRect
    /** The color the picker opens on (the series' or slice's current resolved color). */
@@ -522,12 +522,13 @@ interface GraphSeriesColorPopoverProps {
 }
 
 /**
- * Floating color popover reused for BOTH the per-series swatch (cartesian) and the per-slice swatch
- * (radial): the react-piqua-color ColorPicker plus a "reset to default" action that clears the
- * override so the mark falls back to its palette slot. Portaled to document.body and viewport-
+ * Floating color popover reused for the per-series swatch (cartesian), the per-slice swatch
+ * (radial), AND (exported for `molecules/EquationEditor.tsx`) the per-equation swatch on a
+ * `function` chart: the react-piqua-color ColorPicker plus a "reset to default" action that clears
+ * the override so the mark falls back to its palette slot. Portaled to document.body and viewport-
  * clamped, mirroring MetaFieldColorPopover's shell.
  */
-function GraphSeriesColorPopover({ anchorRect, value, title, resetLabel, onPick, onReset, onClose }: GraphSeriesColorPopoverProps) {
+export function GraphSeriesColorPopover({ anchorRect, value, title, resetLabel, onPick, onReset, onClose }: GraphSeriesColorPopoverProps) {
    const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'rect', rect: anchorRect })
 
    // Dismiss on a pointerdown outside the popover, ignoring the swatch trigger (its own click

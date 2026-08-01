@@ -35,6 +35,7 @@ type GraphTypeLabelKey =
    | 'graphTypeArea'
    | 'graphTypePie'
    | 'graphTypeDonut'
+   | 'graphTypeFunction'
 
 const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
    { type: 'bar',         labelKey: 'graphTypeBar' },
@@ -44,6 +45,7 @@ const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
    { type: 'area',        labelKey: 'graphTypeArea' },
    { type: 'pie',         labelKey: 'graphTypePie' },
    { type: 'donut',       labelKey: 'graphTypeDonut' },
+   { type: 'function',    labelKey: 'graphTypeFunction' },
 ]
 
 // ################
@@ -101,6 +103,17 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
                ],
             },
             options: { legend: false },
+         }
+      case 'function':
+         // The 8th card's thumbnail: a canned sin(x) curve over a small domain, illustrative only.
+         return {
+            type,
+            data: { labels: [], series: [] },
+            options: { legend: false },
+            functionPlot: {
+               domain: { xMin: -6.5, xMax: 6.5, samples: 120 },
+               equations: [{ name: 'f', expression: 'sin(x)' }],
+            },
          }
    }
 }

@@ -352,6 +352,34 @@
 /* Trailing gutter cells carry no grid lines, so they read as an outer margin, not an empty column. */
 .doc-render .graph-grid-gutter { vertical-align: middle; border-right: none; border-bottom: none; background: transparent; padding: 0.3rem 0.4rem; }
 
+/* ============ Data tab (function type): equation-list editor ============ */
+/* Replaces the spreadsheet-lite grid for `function` charts: a shared domain (x-range + sample
+   count, plus an optional pinned y-range — blank means autoscale) above a list of equation rows.
+   Each row reuses the grid's own swatch (.graph-lead-swatch) + name input (.graph-lead-name)
+   classes verbatim, so only the wider monospace expression field + the row/domain layout are new. */
+.doc-render .graph-equation-editor    { display: flex; flex-direction: column; gap: 1rem; }
+.doc-render .graph-domain-row         { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.doc-render .graph-domain-field       { flex: 0 0 auto; }
+.doc-render .graph-domain-input       { width: 6.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+.doc-render .graph-equation-list      { display: flex; flex-direction: column; gap: 0.4rem; }
+.doc-render .graph-equation-row       { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.doc-render .graph-equation-expression {
+  flex: 1 1 auto; min-width: 8rem; box-sizing: border-box;
+  height: 1.95rem; padding: 0 0.55rem;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+  color: #334155; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.doc-render .graph-equation-expression::placeholder { color: #cbd5e1; }
+.doc-render .graph-equation-expression:focus {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 20%, transparent);
+}
+.doc-render .graph-equation-expression.is-invalid {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--callout-danger-accent) 55%, transparent);
+}
+.doc-render .graph-equation-add       { align-self: flex-start; }
+
 /* Inline graph (editor mode, window closed): the rendered chart carries a hover-reveal Edit pill,
    pinned top-right, mirroring the DnD grip's opacity reveal. The full editor lives in the window. */
 .doc-render .graph-block-output { position: relative; }
@@ -410,6 +438,11 @@
 .doc-dark .doc-render .graph-grid-btn    { background: #0d1117; border-color: #30363d; color: #9aa4b2; }
 .doc-dark .doc-render .graph-icon-btn    { border-color: #21262d; color: #8b949e; }
 .doc-dark .doc-render .graph-lead-swatch { border-color: color-mix(in srgb, #fff 20%, transparent); }
+
+/* Equation editor (function type): the monospace expression field, same dark surface as every
+   other text control above. */
+.doc-dark .doc-render .graph-equation-expression { background: #0d1117; border-color: #21262d; color: #c9d1d9; }
+.doc-dark .doc-render .graph-equation-expression::placeholder { color: #3b424c; }
 
 /* ############################################################
    Block editor window (floating, draggable, NON-modal editor host)

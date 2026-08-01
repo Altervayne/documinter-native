@@ -16,12 +16,15 @@
  * data), so a hand-edited file can never break the document.
  */
 
-import type { GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay } from './graph'
+import type { GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay, EquationSeries, FunctionDomain } from './graph'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   FUNCTION_DEFAULT_X_MIN,
+   FUNCTION_DEFAULT_X_MAX,
+   FUNCTION_DEFAULT_SAMPLES,
 } from './graph'
 import { parsePipeTableRow } from './markdown'
 
@@ -31,7 +34,7 @@ import { parsePipeTableRow } from './markdown'
 
 /** Every chart type the v1 renderer accepts; the parse default when the `type=` token is bad. */
 const VALID_GRAPH_TYPES: ReadonlySet<GraphType> = new Set<GraphType>([
-   'bar', 'bar-grouped', 'bar-stacked', 'line', 'area', 'pie', 'donut',
+   'bar', 'bar-grouped', 'bar-stacked', 'line', 'area', 'pie', 'donut', 'function',
 ])
 
 const DEFAULT_GRAPH_TYPE: GraphType = 'bar'
@@ -118,6 +121,9 @@ interface ParsedInfo {
    options:             GraphOptions
    colorOverrides:      (string | undefined)[]
    sliceColorOverrides: (string | undefined)[]
+   /** `xmin=`/`xmax=`/`samples=` tokens (function type only); undefined field = "use the default"
+    *  (applied by the caller, since the default depends on nothing this parser knows about). */
+   functionDomain:      { xMin?: number; xMax?: number; samples?: number }
 }
 
 // ============ overlay token grammar (compact, colon-separated, quote-safe) ============
@@ -185,6 +191,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
    // assigning), which is attached to options.overlays only if non-empty (so a graph with none keeps
    // the field absent and round-trips unchanged).
    const pendingOverlays: Overlay[] = []
+   const functionDomain: { xMin?: number; xMax?: number; samples?: number } = {}
 
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -228,6 +235,21 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
             if (Number.isFinite(parsed)) options.yMax = parsed
             break
          }
+         case 'xmin': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) functionDomain.xMin = parsed
+            break
+         }
+         case 'xmax': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) functionDomain.xMax = parsed
+            break
+         }
+         case 'samples': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) functionDomain.samples = parsed
+            break
+         }
          case 'barWidth': {
             const parsed = Number(value)
             if (Number.isFinite(parsed)) options.barWidth = parsed
@@ -241,6 +263,10 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
          case 'points':
             if (value === 'on')  options.showPoints = true
             if (value === 'off') options.showPoints = false
+            break
+         case 'peakline':
+            if (value === 'on')  options.barPeakLine = true
+            if (value === 'off') options.barPeakLine = false
             break
          case 'areaOpacity': {
             const parsed = Number(value)
@@ -271,7 +297,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
 
    if (pendingOverlays.length > 0) options.overlays = pendingOverlays
 
-   return { type, options, colorOverrides, sliceColorOverrides }
+   return { type, options, colorOverrides, sliceColorOverrides, functionDomain }
 }
 
 /** Serialize the presentation options + type into the ordered `key=value` token list. */
@@ -281,6 +307,19 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
 
    if (options.title !== undefined && options.title !== '')
       tokens.push(`title=${serializeInfoValue(options.title)}`)
+
+   // Domain tokens (function type only), emitted only when they differ from the sane defaults so
+   // an untouched function chart's fence stays lean — same pattern barWidth=/lineWidth=/etc. follow.
+   if (spec.type === 'function') {
+      const domain = spec.functionPlot?.domain
+      const xMin = domain?.xMin ?? FUNCTION_DEFAULT_X_MIN
+      const xMax = domain?.xMax ?? FUNCTION_DEFAULT_X_MAX
+      const samples = domain?.samples ?? FUNCTION_DEFAULT_SAMPLES
+      if (xMin !== FUNCTION_DEFAULT_X_MIN) tokens.push(`xmin=${xMin}`)
+      if (xMax !== FUNCTION_DEFAULT_X_MAX) tokens.push(`xmax=${xMax}`)
+      if (samples !== FUNCTION_DEFAULT_SAMPLES) tokens.push(`samples=${samples}`)
+   }
+
    if (options.xLabel !== undefined && options.xLabel !== '')
       tokens.push(`x=${serializeInfoValue(options.xLabel)}`)
    if (options.yLabel !== undefined && options.yLabel !== '')
@@ -307,6 +346,10 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       tokens.push(`points=${options.showPoints ? 'on' : 'off'}`)
    if (options.areaFillOpacity !== undefined && options.areaFillOpacity !== GRAPH_DEFAULT_AREA_FILL_OPACITY)
       tokens.push(`areaOpacity=${options.areaFillOpacity}`)
+   // barPeakLine is a plain boolean display toggle (no GRAPH_DEFAULT_* — off is the render default),
+   // mirroring showValues: emitted only when true, so an untouched graph stays byte-lean.
+   if (options.barPeakLine === true)
+      tokens.push('peakline=on')
 
    // Statistical overlays ride REPEATED `overlay=` tokens, one per overlay, emitted only when
    // present (a graph with none emits nothing and round-trips identically). Labels with spaces are
@@ -406,6 +449,52 @@ function parseTableBody(body: string): { labels: string[]; series: GraphSeries[]
    return { labels, series }
 }
 
+/**
+ * Parse the `function` type's pipe-table body — `| Name | Expression | Color |`, one row per
+ * equation — into an {@link EquationSeries} list. Never throws: an unusable body yields an empty
+ * list, and a row with a blank Expression cell (the load-bearing field) is skipped rather than
+ * kept as a dead equation, so a hand-edited fence can never produce an equation with nothing to
+ * plot.
+ */
+function parseEquationTableBody(body: string): EquationSeries[] {
+   const rows = body.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('|'))
+
+   if (rows.length === 0) return []
+
+   // Skip the header row; skip an optional separator row directly after it.
+   let bodyStart = 1
+   if (rows.length > 1 && isSeparatorRow(parsePipeTableRow(rows[1]))) bodyStart = 2
+
+   const equations: EquationSeries[] = []
+   for (const row of rows.slice(bodyStart)) {
+      const cells = parsePipeTableRow(row)
+      const expression = (cells[1] ?? '').trim()
+      if (expression === '') continue // malformed/empty row: skip, never a dead equation
+      const equation: EquationSeries = { name: cells[0] ?? '', expression }
+      const color = cells[2]?.trim()
+      if (color) equation.color = color
+      equations.push(equation)
+   }
+   return equations
+}
+
+/** Serialize an {@link EquationSeries} list to the `function` type's pipe-table body. */
+function serializeEquationTableBody(equations: EquationSeries[]): string {
+   const headerRow    = '| Name | Expression | Color |'
+   const separatorRow = '| ---- | ---------- | ----- |'
+   const bodyRows = equations.map(equation => {
+      const cells = [
+         escapePipeCell(equation.name ?? ''),
+         escapePipeCell(equation.expression ?? ''),
+         equation.color ?? '',
+      ]
+      return `| ${cells.join(' | ')} |`
+   })
+   return [headerRow, separatorRow, ...bodyRows].join('\n')
+}
+
 /** Serialize GraphData to the pipe-table body: header + separator + one row per label. */
 function serializeTableBody(spec: GraphSpec): string {
    const labels = spec.data?.labels ?? []
@@ -443,7 +532,9 @@ function serializeTableBody(spec: GraphSpec): string {
 export function graphSpecToFence(spec: GraphSpec): { info: string; body: string } {
    return {
       info: serializeInfoTokens(spec).join(' '),
-      body: serializeTableBody(spec),
+      body: spec.type === 'function'
+         ? serializeEquationTableBody(spec.functionPlot?.equations ?? [])
+         : serializeTableBody(spec),
    }
 }
 
@@ -453,7 +544,22 @@ export function graphSpecToFence(spec: GraphSpec): { info: string; body: string 
  * (possibly empty), never an exception.
  */
 export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
-   const { type, options, colorOverrides, sliceColorOverrides } = parseInfoString(fenceInfo)
+   const { type, options, colorOverrides, sliceColorOverrides, functionDomain } = parseInfoString(fenceInfo)
+
+   if (type === 'function') {
+      const domain: FunctionDomain = {
+         xMin:    functionDomain.xMin    ?? FUNCTION_DEFAULT_X_MIN,
+         xMax:    functionDomain.xMax    ?? FUNCTION_DEFAULT_X_MAX,
+         samples: functionDomain.samples ?? FUNCTION_DEFAULT_SAMPLES,
+      }
+      return {
+         type,
+         data: { labels: [], series: [] },
+         options,
+         functionPlot: { domain, equations: parseEquationTableBody(body) },
+      }
+   }
+
    const { labels, series } = parseTableBody(body)
 
    // Apply the per-series color overrides positionally onto the parsed series.

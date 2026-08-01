@@ -15,11 +15,13 @@
 // #########
 
 /**
- * The chart types the v1 renderer supports. Two rendering cores:
- *   - cartesian: bar, bar-grouped, bar-stacked, line, area
- *   - radial:    pie, donut
- * `scatter` is deliberately deferred (a second data model + continuous x-axis); the union
- * is written so a future `| 'scatter'` slots in without touching the existing members.
+ * The chart types the v1 renderer supports. Three rendering cores:
+ *   - cartesian:          bar, bar-grouped, bar-stacked, line, area
+ *   - radial:             pie, donut
+ *   - continuous-x plot:  function (sampled equation curves over a numeric domain)
+ * `scatter` is deliberately deferred (real (x,y) point pairs instead of a sampled curve, but it
+ * shares the SAME continuous-x foundation `function` introduces); the union is written so a
+ * future `| 'scatter'` slots in without touching the existing members.
  */
 export type GraphType =
    | 'bar'
@@ -29,6 +31,7 @@ export type GraphType =
    | 'area'
    | 'pie'
    | 'donut'
+   | 'function'
 // v1.1: | 'scatter'
 
 /**
@@ -149,6 +152,13 @@ export interface GraphOptions {
     * or empty = no overlays, so a graph that has none is byte-identical to before this feature.
     */
    overlays?: Overlay[]
+   /**
+    * Draw a line through each drawn series' bar-top peaks (a bar+line combo). Bar family only
+    * (bar / bar-grouped / bar-stacked); ignored elsewhere. Undefined/false = off, the pre-option
+    * behavior. This is a DISPLAY option (it traces the raw data already on the bars), not a
+    * computed statistic, so it is unrelated to {@link overlays}.
+    */
+   barPeakLine?: boolean
 }
 
 // ####################
@@ -167,11 +177,67 @@ export const GRAPH_DEFAULT_LINE_WIDTH = 2         // stroke width in px
 export const GRAPH_DEFAULT_SHOW_POINTS = true     // markers drawn at each datum
 export const GRAPH_DEFAULT_AREA_FILL_OPACITY = 0.1 // area fill alpha 0..1
 
+// ###########################
+// # FUNCTION PLOT (EQUATION) #
+// ###########################
+
+/**
+ * One named equation curve on a `function` chart. Mirrors {@link GraphSeries}' name+color shape
+ * so the same palette / color-picker machinery applies unchanged.
+ */
+export interface EquationSeries {
+   name: string
+   /** Raw source text in one variable x, e.g. "sin(x) + 0.5*x". Compiled by the renderer via
+    *  `graph/expr.ts`; an uncompileable expression draws nothing for this curve (never breaks
+    *  the chart) rather than being rejected at the model level. */
+   expression: string
+   /** Optional per-equation color override, same semantics as {@link GraphSeries.color}. */
+   color?: string
+}
+
+/**
+ * The numeric domain a `function` chart samples over — one shared domain for every equation on
+ * the chart (equations differ in formula, not in range).
+ */
+export interface FunctionDomain {
+   xMin: number
+   xMax: number
+   /** Sample count across [xMin, xMax], inclusive of both ends. Clamped to a sane range
+    *  ({@link FUNCTION_MIN_SAMPLES}..{@link FUNCTION_MAX_SAMPLES}) by the renderer so a
+    *  hand-edited fence can never request a pathological sample count. */
+   samples: number
+}
+
+/**
+ * The `function`-type payload, additive and sibling to `data`/`options`. Present + meaningful
+ * only when `type === 'function'`; `data` stays `{ labels: [], series: [] }` for this type (kept
+ * present, not made optional, so GraphSpec's shape stays uniform across every type — simpler than
+ * making `data` itself optional).
+ */
+export interface FunctionPlot {
+   domain: FunctionDomain
+   equations: EquationSeries[]
+}
+
+/**
+ * The sane fence/renderer defaults for an unset {@link FunctionDomain} — one source of truth so
+ * the renderer's domain resolution and the fence serializer's "only emit when it differs from the
+ * default" lean-serialization rule agree exactly (mirrors the `GRAPH_DEFAULT_*` pattern above).
+ */
+export const FUNCTION_DEFAULT_X_MIN = -10
+export const FUNCTION_DEFAULT_X_MAX = 10
+export const FUNCTION_DEFAULT_SAMPLES = 200
+export const FUNCTION_MIN_SAMPLES = 20
+export const FUNCTION_MAX_SAMPLES = 2000
+
 /** The full spec stored on a graph block: type + data + presentation options. */
 export interface GraphSpec {
    type: GraphType
    data: GraphData
    options: GraphOptions
+   /** Only used when type === 'function'. Absent/empty on every other type — a spec that has
+    *  never been a function chart stays byte-identical to today. */
+   functionPlot?: FunctionPlot
 }
 
 // ###############

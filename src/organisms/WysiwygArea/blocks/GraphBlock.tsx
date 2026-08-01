@@ -13,6 +13,7 @@ import {
 import type { GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
 import { setType, setOption, addOverlay, removeOverlay, updateOverlay } from '../../../lib/graphEdit'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
+import { EquationEditor } from '../../../molecules/EquationEditor'
 import { GraphTypePicker } from '../../../molecules/GraphTypePicker'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
@@ -42,8 +43,12 @@ const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 /** The bar family — the only types that show the bar-width control. */
 const BAR_TYPES = new Set<GraphType>(['bar', 'bar-grouped', 'bar-stacked'])
 
-/** Line & area — the types that show the line-thickness control and the point-markers toggle. */
-const LINE_AREA_TYPES = new Set<GraphType>(['line', 'area'])
+/** Line & area — the types that show the line-thickness control and the point-markers toggle.
+ *  `function` curves are drawn with the SAME line renderer, so they earn the line-thickness
+ *  control too; the point-markers toggle needs its own per-type default (see `defaultShowPoints`
+ *  below) rather than reusing GRAPH_DEFAULT_SHOW_POINTS, since the renderer defaults points OFF
+ *  for a sampled equation curve. */
+const LINE_AREA_TYPES = new Set<GraphType>(['line', 'area', 'function'])
 
 const DEFAULT_DONUT_HOLE = 0.55
 
@@ -146,6 +151,11 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    const isRadial   = RADIAL_TYPES.has(working.type)
    const isBarFamily = BAR_TYPES.has(working.type)
    const isLineArea  = LINE_AREA_TYPES.has(working.type)
+   const isFunction  = working.type === 'function'
+   // The point-markers toggle's OWN default, mirroring the renderer's local default (see
+   // cartesian.ts's renderFunctionPlot): off for a sampled equation curve, GRAPH_DEFAULT_SHOW_POINTS
+   // (on) for a genuine line/area data series.
+   const defaultShowPoints = isFunction ? false : GRAPH_DEFAULT_SHOW_POINTS
    const options    = working.options
    // The inline output renders from the live working spec, so the chart updates behind the window
    // as the window's controls are used — no separate in-window preview needed.
@@ -278,6 +288,20 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                </label>
             )}
 
+            {/* ============ Per-type: connect bar tops with a line (bar family only) ============ */}
+            {isBarFamily && (
+               <div className="graph-toggle-row">
+                  <label className="graph-toggle">
+                     <input
+                        type="checkbox"
+                        checked={options.barPeakLine ?? false}
+                        onChange={event => commit(setOption(working, 'barPeakLine', event.target.checked || undefined))}
+                     />
+                     <span>{t.graphOptionPeakLine}</span>
+                  </label>
+               </div>
+            )}
+
             {/* ============ Per-type: line thickness (line & area only) ============ */}
             {isLineArea && (
                <label className="graph-field">
@@ -303,7 +327,7 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                   <label className="graph-toggle">
                      <input
                         type="checkbox"
-                        checked={options.showPoints ?? GRAPH_DEFAULT_SHOW_POINTS}
+                        checked={options.showPoints ?? defaultShowPoints}
                         onChange={event => commit(setOption(working, 'showPoints', event.target.checked))}
                      />
                      <span>{t.graphOptionPoints}</span>
@@ -333,9 +357,10 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       </div>
    )
 
-   // =============== Analysis: statistical overlays (cartesian only) — rendered in the DATA tab ===============
-   // Overlays are computed FROM the data, so they belong beside the data table, not the visual controls.
-   const analysisSection = !isRadial && (
+   // =============== Analysis: statistical overlays (cartesian data-series only) — rendered in the DATA tab ===============
+   // Overlays are computed FROM a `data.series` index, meaningless for radial (no series) AND for
+   // `function` (no `data.series` at all — its payload is `functionPlot`, not the numeric grid).
+   const analysisSection = !isRadial && !isFunction && (
       <div className="graph-options graph-analysis">
          <span className="graph-section-label">{t.graphAnalysisSection}</span>
 
@@ -433,18 +458,31 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       </div>
    )
 
-   // =============== Data tab: the editable table + the analysis section below it ===============
+   // =============== Data tab: the editable table (or, for `function`, the equation editor) + the
+   // analysis section below it (hidden for both radial and `function`, see analysisSection above) ===============
    const dataTab = (
       <div className="graph-data-tab">
-         <GraphDataGrid
-            spec={working}
-            theme={graphTheme}
-            t={t}
-            onEditStart={editStart}
-            onDraft={draft}
-            onCommit={commit}
-            onCommitField={commitField}
-         />
+         {isFunction ? (
+            <EquationEditor
+               spec={working}
+               theme={graphTheme}
+               t={t}
+               onEditStart={editStart}
+               onDraft={draft}
+               onCommit={commit}
+               onCommitField={commitField}
+            />
+         ) : (
+            <GraphDataGrid
+               spec={working}
+               theme={graphTheme}
+               t={t}
+               onEditStart={editStart}
+               onDraft={draft}
+               onCommit={commit}
+               onCommitField={commitField}
+            />
+         )}
          {analysisSection}
       </div>
    )

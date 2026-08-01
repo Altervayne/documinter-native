@@ -12,16 +12,23 @@
  * ~10% opacity, recessive hairline gridlines, and a legend whenever there is >1 series.
  */
 
-import type { GraphSpec, GraphTheme, GraphSeries, Overlay } from './types'
+import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain } from './types'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   FUNCTION_DEFAULT_X_MIN,
+   FUNCTION_DEFAULT_X_MAX,
+   FUNCTION_DEFAULT_SAMPLES,
+   FUNCTION_MIN_SAMPLES,
+   FUNCTION_MAX_SAMPLES,
 } from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
 import { mean as meanOf, median as medianOf, linearRegression } from './stats'
 import { linearScale, niceTicks, bandScale } from './scale'
+import { compileExpression, evaluate } from './expr'
+import { buildContinuousXAdapter, renderNumericXAxisLabels } from './continuousAxis'
 import {
    computeCartesianLayout,
    layoutLegend,
@@ -69,9 +76,20 @@ const OVERLAY_DASH_TREND = '5 3'   // the sloped trendline, a touch tighter
 const OVERLAY_LABEL_HALO_WIDTH = 3 // the surface-color halo behind a label, via paint-order:stroke
 const OVERLAY_LABEL_GAP = 4        // px the label sits off its line
 
+// The bar-peak-line stroke weight: a sensible ~2px, matching GRAPH_DEFAULT_LINE_WIDTH so a bar+line
+// combo reads like the line chart's own default weight rather than inventing a new visual language.
+const BAR_PEAK_LINE_STROKE_WIDTH = 2
+
 const LEGEND_SWATCH_SIZE = 12
 const LEGEND_SWATCH_TEXT_GAP = 6
 const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
+
+// ====== function-plot discontinuity heuristic ======
+// Two adjacent finite samples with OPPOSITE sign, where at least one's magnitude is this many
+// times the resolved y-domain's half-range, are treated as straddling an asymptote (tan(x), 1/x)
+// rather than a genuine crossing — a pragmatic sign-change + magnitude heuristic (not symbolic
+// limit analysis), per docs/reference/graph_equation_study.md Q4.
+const ASYMPTOTE_MAGNITUDE_MULTIPLIER = 4
 
 // ####################
 // # PUBLIC RENDERER  #
@@ -149,6 +167,13 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
       pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme, lineStrokeWidth, showPoints))
    }
 
+   // The bar-top peak line is a DISPLAY option (traces the raw bars already drawn), so it is drawn
+   // right after the bar marks — on top of them — and before the statistic overlays below. Bar
+   // family only; a `line`/`area`/radial spec silently ignores the option.
+   if ((type === 'bar' || type === 'bar-grouped' || type === 'bar-stacked') && options.barPeakLine === true) {
+      pieces.push(renderBarPeakLines(type, labels, drawnSeries, xBand, yScale, theme))
+   }
+
    // Overlays draw AFTER the data marks (z-order: on top of the data), reusing the same scales.
    if (options.overlays && options.overlays.length > 0) {
       pieces.push(renderOverlays(
@@ -160,6 +185,204 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    if (legendWanted) pieces.push(renderLegend(drawnSeries, legendLayout, layout, theme))
 
    return element('g', {}, pieces.join(''))
+}
+
+// #####################
+// # FUNCTION PLOT     #
+// #####################
+
+/**
+ * Render a `function`-type graph spec (sampled equation curves over a continuous numeric domain)
+ * to its inner SVG markup. Reuses the EXISTING, unmodified `renderLineSeries`/`buildPointRuns`
+ * (via the {@link buildContinuousXAdapter} adapter from continuousAxis.ts) instead of a categorical
+ * `BandScale`; the categorical `bar`/`bar-grouped`/`bar-stacked`/`line`/`area` paths above are
+ * completely untouched by this function. Never throws on bad/empty input — an uncompileable
+ * equation, an empty equation list, or a degenerate domain all degrade to a graceful chart with an
+ * empty (or partially empty) curve set, never an exception.
+ */
+export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
+   const options = spec.options ?? {}
+   // v1 caps the number of drawn equations at the palette size, same cap every other series-based
+   // chart type already uses.
+   const equations = (spec.functionPlot?.equations ?? []).slice(0, MAX_SERIES)
+   const { xMin, xMax, samples } = resolveFunctionDomain(spec.functionPlot?.domain)
+   const sampleXPositions = sampleXValuesAcrossDomain(xMin, xMax, samples)
+   // Used only as buildPointRuns'/renderMarkers' per-point tooltip label (point markers default OFF
+   // for function charts, see below) — formatted x-values read sensibly if points are ever enabled.
+   const sampleLabels = sampleXPositions.map(formatNumber)
+
+   // ====== compile + sample each equation ======
+   // An uncompileable expression contributes an all-null value list (draws nothing, never dropped
+   // from the list) so its legend entry / palette slot still lines up with the other equations —
+   // matching the "invalid never breaks the chart" contract every other graph/math parser honors.
+   const rawValueLists: (number | null)[][] = equations.map(equation => {
+      const compiled = compileExpression(equation.expression)
+      if (compiled === null) return sampleXPositions.map(() => null)
+      return sampleXPositions.map(x => evaluate(compiled, x))
+   })
+
+   // ====== y-domain: autoscale to the finite sampled range, NO forced zero baseline ======
+   // (an arbitrary f(x), e.g. "100 + 0.001*x", should not be crushed against a forced-zero domain
+   // the way bar/line-over-real-data charts are — see docs/reference/graph_equation_study.md Q4/6).
+   const [domainMin, domainMax] = computeFunctionValueDomain(rawValueLists, options)
+   const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+   const tickLabels = niceScale.ticks.map(formatNumber)
+
+   // ====== discontinuity handling ======
+   // True domain errors (sqrt(-1), 1/0, ...) are already `null` from evaluate() and fall straight
+   // into the existing null-gap-breaks-the-polyline mechanism below with zero new code. The
+   // asymptote heuristic additionally breaks a run between two finite-but-huge, opposite-signed
+   // adjacent samples (tan(x), 1/x near zero) that would otherwise draw a near-vertical spike.
+   const gappedValueLists = rawValueLists.map(
+      values => applyAsymptoteGaps(values, niceScale.niceMin, niceScale.niceMax))
+
+   const drawnSeries: GraphSeries[] = equations.map((equation, equationIndex) => ({
+      name: equation.name,
+      values: gappedValueLists[equationIndex],
+      color: equation.color,
+   }))
+
+   // ====== legend reservation ======
+   const legendWanted = options.legend !== false && drawnSeries.length > 1
+   const legendLabels = drawnSeries.map(series => series.name)
+   const legendLayout = legendWanted
+      ? layoutLegend(legendLabels, CANVAS_WIDTH - 28)
+      : { rows: [], rowCount: 0, widestRowWidth: 0 }
+
+   // ====== layout ======
+   const layout = computeCartesianLayout({
+      hasTitle: Boolean(options.title),
+      xCaption: options.xLabel,
+      yCaption: options.yLabel,
+      yTickLabels: tickLabels,
+      legendRowCount: legendLayout.rowCount,
+   })
+   const { plot } = layout
+
+   // ====== scales ======
+   // linearScale is the SAME generic affine map the y-axis already uses; reused as-is for x, per
+   // the study's Q2 finding (no new scale primitive needed for a continuous x-axis).
+   const yScale = linearScale([niceScale.niceMin, niceScale.niceMax], [plot.y + plot.height, plot.y])
+   const xScale = linearScale([xMin, xMax], [plot.x, plot.x + plot.width])
+   const xAdapter = buildContinuousXAdapter(sampleXPositions, xScale)
+   const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
+   const baselineY = yScale(baselineValue)
+
+   const lineStrokeWidth = clamp(
+      options.lineWidth ?? GRAPH_DEFAULT_LINE_WIDTH, MIN_LINE_WIDTH, MAX_LINE_WIDTH)
+   // Point markers default OFF for function charts (a sampled curve of dozens/hundreds of points is
+   // visual noise, unlike a small genuine categorical series) — a LOCAL default distinct from
+   // GRAPH_DEFAULT_SHOW_POINTS (true), which stays correct for real bar/line/area data.
+   const showPoints = options.showPoints ?? false
+
+   // ====== assemble ======
+   const pieces: string[] = []
+   pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
+   pieces.push(renderAxes(plot, baselineY, theme))
+   pieces.push(renderNumericXAxisLabels(xMin, xMax, xScale, plot, theme))
+   pieces.push(renderLineSeries(sampleLabels, drawnSeries, xAdapter, yScale, theme, lineStrokeWidth, showPoints))
+   pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
+   if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
+   if (legendWanted) pieces.push(renderLegend(drawnSeries, legendLayout, layout, theme))
+
+   return element('g', {}, pieces.join(''))
+}
+
+/**
+ * Resolve a (possibly absent/partial/malformed) {@link FunctionDomain} to sane, finite, ordered
+ * bounds + a clamped sample count. A hand-edited fence can never produce a broken domain: any
+ * non-finite field falls back to the documented default, an inverted range is swapped, and a
+ * degenerate (equal) range is nudged open by 1.
+ */
+function resolveFunctionDomain(domain: FunctionDomain | undefined): {
+   xMin: number
+   xMax: number
+   samples: number
+} {
+   let xMin = domain?.xMin
+   let xMax = domain?.xMax
+   let samples = domain?.samples
+
+   if (xMin === undefined || !Number.isFinite(xMin)) xMin = FUNCTION_DEFAULT_X_MIN
+   if (xMax === undefined || !Number.isFinite(xMax)) xMax = FUNCTION_DEFAULT_X_MAX
+   if (xMin > xMax) { const swap = xMin; xMin = xMax; xMax = swap }
+   if (xMin === xMax) xMax = xMin + 1
+
+   if (samples === undefined || !Number.isFinite(samples)) samples = FUNCTION_DEFAULT_SAMPLES
+   samples = Math.round(clamp(samples, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES))
+
+   return { xMin, xMax, samples }
+}
+
+/** Evenly spaced sample x-values across `[xMin, xMax]`, inclusive of both ends. */
+function sampleXValuesAcrossDomain(xMin: number, xMax: number, samples: number): number[] {
+   if (samples <= 1) return [xMin]
+   const step = (xMax - xMin) / (samples - 1)
+   const values: number[] = []
+   for (let sampleIndex = 0; sampleIndex < samples; sampleIndex++) {
+      values.push(xMin + sampleIndex * step)
+   }
+   return values
+}
+
+/**
+ * The raw (pre-nice-tick) y-domain for a function chart: the min/max across every FINITE sampled
+ * value of every equation, with NO folded-in zero baseline (decision 6 — bars/lines-over-real-data
+ * fold in zero via {@link computeValueDomain}; an arbitrary f(x) should not be). Falls back to
+ * [0, 1] when nothing finite was sampled (every equation invalid/empty). `yMin`/`yMax` overrides
+ * still win, identical to every other cartesian type.
+ */
+function computeFunctionValueDomain(
+   valueLists: (number | null)[][],
+   options: GraphSpec['options'],
+): [number, number] {
+   let dataMin = Infinity
+   let dataMax = -Infinity
+   for (const values of valueLists) {
+      for (const value of values) {
+         if (value === null || value === undefined || !Number.isFinite(value)) continue
+         if (value < dataMin) dataMin = value
+         if (value > dataMax) dataMax = value
+      }
+   }
+   if (!Number.isFinite(dataMin) || !Number.isFinite(dataMax)) {
+      dataMin = 0
+      dataMax = 1
+   }
+   const min = options.yMin !== undefined ? options.yMin : dataMin
+   const max = options.yMax !== undefined ? options.yMax : dataMax
+   return [min, max]
+}
+
+/**
+ * Apply the asymptote heuristic: break the run between two adjacent FINITE samples that have
+ * opposite sign AND at least one magnitude >= {@link ASYMPTOTE_MAGNITUDE_MULTIPLIER} x the
+ * resolved y-domain's half-range, by nulling the second of the pair. This is deliberately a
+ * pragmatic threshold, not an exact discontinuity detector (a pathological function could still
+ * fool it) — see docs/reference/graph_equation_study.md Q4 for the documented rationale. A `null`
+ * sample from a true domain error (sqrt(-1), 1/0, ...) already breaks the run via the existing
+ * {@link buildPointRuns} gap logic and needs no help from this function.
+ */
+function applyAsymptoteGaps(
+   values: (number | null)[],
+   niceMin: number,
+   niceMax: number,
+): (number | null)[] {
+   const halfRange = (niceMax - niceMin) / 2
+   if (!Number.isFinite(halfRange) || halfRange <= 0) return values
+   const magnitudeThreshold = halfRange * ASYMPTOTE_MAGNITUDE_MULTIPLIER
+   const result = values.slice()
+   for (let index = 0; index < result.length - 1; index++) {
+      const current = result[index]
+      const next = result[index + 1]
+      if (current === null || next === null) continue
+      const oppositeSign = (current > 0 && next < 0) || (current < 0 && next > 0)
+      if (!oppositeSign) continue
+      if (Math.abs(current) >= magnitudeThreshold || Math.abs(next) >= magnitudeThreshold) {
+         result[index + 1] = null
+      }
+   }
+   return result
 }
 
 // #####################
@@ -710,6 +933,117 @@ function renderStackedBars(
          const tooltip = `${series[seriesIndex].name} - ${labels[categoryIndex]}: ${formatNumber(value)}`
          parts.push(barRect(rectX, topY, barWidth, rectHeight, color, tooltip))
       }
+   }
+   return element('g', {}, parts.join(''))
+}
+
+// ####################
+// # BAR PEAK LINE     #
+// ####################
+
+/**
+ * Draw a line through each drawn series' bar-top peaks — a bar+line combo — for the bar-family
+ * chart types only. Reuses `buildPointRuns` (defined below, in the LINE/AREA section) so `null`
+ * gaps break the line exactly like a line chart does, and reuses the same round-capped polyline
+ * draw. Called AFTER the bar marks push their pieces (see `renderCartesian`), so it sits visually
+ * on top of the bars.
+ *
+ *   - bar (single series): the line follows the one drawn series' bar tops (band center x).
+ *   - bar-grouped: one line PER drawn series, each through that series' own sub-bars (its own x
+ *     offset within each category's band — the same `bandStart + subStep*seriesIndex + subStep/2`
+ *     center {@link renderGroupedBars} places its rects at).
+ *   - bar-stacked: ONE line through each category's cumulative stack top (the total across every
+ *     drawn series), colored with the topmost (last) series' color since that is the segment the
+ *     line visually rides along.
+ */
+function renderBarPeakLines(
+   type: GraphSpec['type'],
+   labels: string[],
+   series: GraphSeries[],
+   xBand: { start(index: number): number; center(index: number): number; bandwidth: number },
+   yScale: (value: number) => number,
+   theme: GraphTheme,
+): string {
+   if (series.length === 0) return ''
+
+   if (type === 'bar-stacked') {
+      const topSeriesIndex = series.length - 1
+      const color = resolveSeriesColor(topSeriesIndex, series[topSeriesIndex].color, theme)
+      const stackedTotals = computeStackedTotals(labels, series)
+      const totalsSeries: GraphSeries = { name: '', values: stackedTotals }
+      return renderOnePeakLine(labels, totalsSeries, xBand, yScale, color)
+   }
+
+   if (type === 'bar-grouped') {
+      const seriesCount = series.length
+      const subStep = xBand.bandwidth / seriesCount
+      const parts: string[] = []
+      for (let seriesIndex = 0; seriesIndex < seriesCount; seriesIndex++) {
+         const color = resolveSeriesColor(seriesIndex, series[seriesIndex].color, theme)
+         const perSeriesXBand = {
+            center: (categoryIndex: number): number =>
+               xBand.start(categoryIndex) + subStep * seriesIndex + subStep / 2,
+         }
+         parts.push(renderOnePeakLine(labels, series[seriesIndex], perSeriesXBand, yScale, color))
+      }
+      return element('g', {}, parts.join(''))
+   }
+
+   // 'bar' (single series): the same band-center x every renderSingleBars rect already sits at.
+   const color = resolveSeriesColor(0, series[0].color, theme)
+   return renderOnePeakLine(labels, series[0], xBand, yScale, color)
+}
+
+/**
+ * Per-category cumulative total across every drawn series, for the bar-stacked peak line. A
+ * missing/malformed cell contributes zero (mirrors how {@link renderStackedBars} treats it — the
+ * cursor simply does not move for that series), matching the "bar treats a gap as zero" semantics
+ * documented on {@link GraphSeries}. A category is a gap (`null`, breaking the line) only when
+ * EVERY series is missing there — the stack has no drawn segment at all to trace a peak through.
+ */
+function computeStackedTotals(labels: string[], series: GraphSeries[]): (number | null)[] {
+   const totals: (number | null)[] = []
+   for (let categoryIndex = 0; categoryIndex < labels.length; categoryIndex++) {
+      let total = 0
+      let sawFiniteValue = false
+      for (const oneSeries of series) {
+         const value = oneSeries.values[categoryIndex]
+         if (value === null || value === undefined || !Number.isFinite(value)) continue
+         total += value
+         sawFiniteValue = true
+      }
+      totals.push(sawFiniteValue ? total : null)
+   }
+   return totals
+}
+
+/**
+ * Draw one peak-line series as a round-capped polyline per contiguous run (breaking across `null`
+ * gaps), reusing {@link buildPointRuns}. No point markers — kept visually distinct from a full
+ * line chart, per the bar-peak-line display option's intent.
+ */
+function renderOnePeakLine(
+   labels: string[],
+   series: GraphSeries,
+   xBand: { center(index: number): number },
+   yScale: (value: number) => number,
+   color: string,
+): string {
+   const runs = buildPointRuns(labels, series, xBand, yScale)
+   const parts: string[] = []
+   for (const run of runs) {
+      if (run.points.length < 2) continue // a lone peak has nothing to connect to
+      const pointsAttribute = run.points
+         .map(point => `${roundForPath(point.x)},${roundForPath(point.y)}`)
+         .join(' ')
+      parts.push(selfClosingElement('polyline', {
+         points: pointsAttribute,
+         fill: 'none',
+         stroke: color,
+         'stroke-width': BAR_PEAK_LINE_STROKE_WIDTH,
+         'stroke-linejoin': 'round',
+         'stroke-linecap': 'round',
+      }))
    }
    return element('g', {}, parts.join(''))
 }

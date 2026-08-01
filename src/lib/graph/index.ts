@@ -16,7 +16,7 @@
 
 import type { GraphSpec, GraphTheme, GraphType } from './types'
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './layout'
-import { renderCartesian } from './cartesian'
+import { renderCartesian, renderFunctionPlot } from './cartesian'
 import { renderRadial } from './radial'
 import { titleElement, descElement, textElement, element } from './svg'
 
@@ -39,9 +39,11 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
       return renderEmptyState(spec, theme)
    }
 
-   const body = RADIAL_TYPES.has(spec.type)
-      ? renderRadial(spec, theme)
-      : renderCartesian(spec, theme)
+   const body = spec.type === 'function'
+      ? renderFunctionPlot(spec, theme)
+      : RADIAL_TYPES.has(spec.type)
+         ? renderRadial(spec, theme)
+         : renderCartesian(spec, theme)
 
    const accessibleTitle = spec.options.title ?? `${humanType(spec.type)} chart`
    const accessibleDesc = describeChart(spec)
@@ -54,10 +56,18 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
 // #####################
 
 /**
- * Whether a spec has anything to draw: at least one label, at least one series, and at least
- * one finite numeric cell across those series. Anything less renders the empty-state.
+ * Whether a spec has anything to draw. A `function` chart uses a completely different payload
+ * (`functionPlot`, not `data`) — it is renderable as soon as it names at least one equation with a
+ * non-blank expression string (whether that expression actually COMPILES is a renderer-level
+ * concern, handled gracefully per-equation, not a reason to fall back to the empty-state chart).
+ * Every other type: at least one label, at least one series, and at least one finite numeric cell
+ * across those series. Anything less renders the empty-state.
  */
 function hasRenderableData(spec: GraphSpec): boolean {
+   if (spec.type === 'function') {
+      const equations = spec.functionPlot?.equations ?? []
+      return equations.some(equation => equation.expression.trim() !== '')
+   }
    const { labels, series } = spec.data
    if (!labels || labels.length === 0) return false
    if (!series || series.length === 0) return false
@@ -114,6 +124,7 @@ function humanType(type: GraphType): string {
       case 'area':        return 'Area'
       case 'pie':         return 'Pie'
       case 'donut':       return 'Donut'
+      case 'function':    return 'Function'
    }
 }
 
@@ -122,9 +133,14 @@ function humanType(type: GraphType): string {
  * `<desc>` builder escapes it, so escaping here would double-encode.
  */
 function describeChart(spec: GraphSpec): string {
+   const name = humanType(spec.type).toLowerCase()
+   if (spec.type === 'function') {
+      const equationCount = spec.functionPlot?.equations.length ?? 0
+      const equationWord = equationCount === 1 ? 'equation' : 'equations'
+      return `${name} chart plotting ${equationCount} ${equationWord}.`
+   }
    const labelCount = spec.data.labels.length
    const seriesCount = spec.data.series.length
-   const name = humanType(spec.type).toLowerCase()
    if (RADIAL_TYPES.has(spec.type)) {
       const sliceWord = labelCount === 1 ? 'slice' : 'slices'
       return `${name} chart with ${labelCount} ${sliceWord}.`
@@ -147,6 +163,9 @@ export type {
    GraphInk,
    Overlay,
    OverlayKind,
+   EquationSeries,
+   FunctionDomain,
+   FunctionPlot,
 } from './types'
 
 export {
@@ -166,7 +185,22 @@ export {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   FUNCTION_DEFAULT_X_MIN,
+   FUNCTION_DEFAULT_X_MAX,
+   FUNCTION_DEFAULT_SAMPLES,
+   FUNCTION_MIN_SAMPLES,
+   FUNCTION_MAX_SAMPLES,
 } from './types'
+
+export {
+   compileExpression,
+   evaluate,
+   evaluateExpression,
+} from './expr'
+
+export type {
+   CompiledExpression,
+} from './expr'
 
 export {
    GRAPH_SERIES_LIGHT,

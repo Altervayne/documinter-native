@@ -210,6 +210,60 @@ describe('per-type parameter: areaFillOpacity', () => {
    })
 })
 
+// #############################
+// # DISPLAY OPTION: barPeakLine #
+// #############################
+
+describe('display option: barPeakLine', () => {
+   it('adds no polyline when unset (bar family unchanged by default)', () => {
+      const svg = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<polyline')).toBe(0)
+   })
+
+   it('draws one peak-line polyline through a simple bar chart\'s tops', () => {
+      const plain = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      const withPeakLine = renderGraphToSvg(makeSpec('bar', { barPeakLine: true }), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(plain, '<polyline')).toBe(0)
+      expect(countOccurrences(withPeakLine, '<polyline')).toBe(1)
+      // The one drawn series (Product A, palette slot 0) colors the peak line.
+      expect(withPeakLine).toContain('<polyline points="')
+      expect(withPeakLine).toContain('stroke="#2a78d6"')
+   })
+
+   it('draws one peak-line polyline per drawn series for grouped bars', () => {
+      const svg = renderGraphToSvg(makeSpec('bar-grouped', { barPeakLine: true }), LIGHT_GRAPH_THEME)
+      // Two series -> two peak-line polylines, on top of the 6 grouped-bar rects.
+      expect(countOccurrences(svg, '<rect')).toBe(6)
+      expect(countOccurrences(svg, '<polyline')).toBe(2)
+   })
+
+   it('draws a single cumulative-total peak-line for stacked bars', () => {
+      const svg = renderGraphToSvg(makeSpec('bar-stacked', { barPeakLine: true }), LIGHT_GRAPH_THEME)
+      // Two series stacked -> one peak line through the per-category totals, not one per series.
+      expect(countOccurrences(svg, '<polyline')).toBe(1)
+   })
+
+   it('is a no-op for line, area, and radial chart types', () => {
+      for (const type of ['line', 'area', 'pie', 'donut'] as const) {
+         const withoutFlag = renderGraphToSvg(makeSpec(type), LIGHT_GRAPH_THEME)
+         const withFlag = renderGraphToSvg(makeSpec(type, { barPeakLine: true }), LIGHT_GRAPH_THEME)
+         expect(withFlag).toBe(withoutFlag)
+      }
+   })
+
+   it('breaks the peak line across a null gap, same as a line chart', () => {
+      const gapped: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B', 'C', 'D'], series: [{ name: 'S', values: [1, null, 3, 4] }] },
+         options: { legend: false, barPeakLine: true },
+      }
+      const svg = renderGraphToSvg(gapped, LIGHT_GRAPH_THEME)
+      // Same run-splitting as the line-chart gap test: the [3,4] run forms one polyline, the lone
+      // [1] point has nothing to connect to and draws none.
+      expect(countOccurrences(svg, '<polyline')).toBe(1)
+   })
+})
+
 describe('radial marks', () => {
    it('draws N arc paths for a pie chart', () => {
       const svg = renderGraphToSvg(makeSpec('pie'), LIGHT_GRAPH_THEME)
@@ -421,5 +475,154 @@ describe('edge cases', () => {
          options: {},
       }
       expect(() => renderGraphToSvg(malformed, LIGHT_GRAPH_THEME)).not.toThrow()
+   })
+})
+
+// #####################
+// # FUNCTION CHARTS   #
+// #####################
+// Stage 2 (docs/reference/graph_equation_study.md): the `function` chart type — sampled equation
+// curves over a continuous numeric domain, drawn via the SAME line-rendering machinery every other
+// cartesian type uses, through a continuous-x adapter (see continuousAxis.ts) instead of a band.
+
+/** A `function`-type spec: no `data`, an equation list + domain instead. */
+function makeFunctionSpec(
+   equations: { name: string; expression: string; color?: string }[],
+   overrides: Partial<GraphSpec['options']> = {},
+   domain: { xMin: number; xMax: number; samples: number } = { xMin: -10, xMax: 10, samples: 50 },
+): GraphSpec {
+   return {
+      type: 'function',
+      data: { labels: [], series: [] },
+      options: { legend: false, ...overrides },
+      functionPlot: { domain, equations },
+   }
+}
+
+describe('function chart (equation plot)', () => {
+   it('emits a well-formed responsive <svg> with title/desc', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }], { title: 'A sine wave' }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg.startsWith('<svg')).toBe(true)
+      expect(svg.endsWith('</svg>')).toBe(true)
+      expect(svg).toContain('viewBox="0 0 720 440"')
+      expect(svg).toContain('<title>A sine wave</title>')
+   })
+
+   it('draws a sampled line curve for a valid equation, with point markers OFF by default', () => {
+      const svg = renderGraphToSvg(makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }]), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<polyline')).toBeGreaterThanOrEqual(1)
+      expect(countOccurrences(svg, '<circle')).toBe(0)
+   })
+
+   it('draws a numeric x-axis tick reflecting the domain (not a category label)', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'x' }], {}, { xMin: 0, xMax: 100, samples: 20 }),
+         LIGHT_GRAPH_THEME,
+      )
+      // niceTicks(0, 100, 5) lands clean ticks at 0/20/40/60/80/100 — none of which is a category name.
+      expect(svg).toMatch(/>0<\/text>/)
+      expect(svg).toMatch(/>100<\/text>/)
+   })
+
+   it('autoscales y without forcing a zero baseline for an offset, near-constant function', () => {
+      // f(x) = 100 + 0.001x over [1,21] (kept off zero on the x-axis too, so the only "0" this
+      // test could see would come from a forced y-baseline) stays in ~[100.001, 100.021]; a
+      // forced-zero baseline (like bar/line-over-real-data uses) would crush this into a sliver.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: '100 + 0.001*x' }], {}, { xMin: 1, xMax: 21, samples: 50 }),
+         LIGHT_GRAPH_THEME)
+      expect(svg).not.toMatch(/>0<\/text>/)
+      expect(svg).toContain('100')
+   })
+
+   it('honors an explicit yMin/yMax override, same as every other cartesian type', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }], { yMin: -5, yMax: 5 }), LIGHT_GRAPH_THEME)
+      expect(svg).toMatch(/>-5<\/text>/)
+      expect(svg).toMatch(/>5<\/text>/)
+   })
+
+   it('draws no curve, but still a valid chart, for an uncompileable expression', () => {
+      const svg = renderGraphToSvg(makeFunctionSpec([{ name: 'bad', expression: 'sinx(' }]), LIGHT_GRAPH_THEME)
+      expect(svg.startsWith('<svg')).toBe(true)
+      expect(countOccurrences(svg, '<polyline')).toBe(0)
+   })
+
+   it('breaks the curve at a true domain error (division by zero), same null-gap mechanism as a line chart', () => {
+      // 33 evenly spaced samples over [-4,4] land exactly on x=0 -> evaluate(1/x, 0) is null,
+      // splitting the 32 remaining (monotonic, same-magnitude-at-worst-4) samples into two runs.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: '1/x' }], {}, { xMin: -4, xMax: 4, samples: 33 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(countOccurrences(svg, '<polyline')).toBe(2)
+   })
+
+   it('applies the asymptote heuristic to break a near-pole tan(x) curve into separate runs', () => {
+      // A sample lands (up to float precision) essentially ON tan's pole at pi/2, producing a huge
+      // finite value (never Infinity/NaN, so the plain null-gap mechanism alone would NOT catch it);
+      // pinning yMin/yMax keeps the heuristic's magnitude threshold sane despite that huge sample.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: 'tan(x)' }],
+            { yMin: -15, yMax: 15 },
+            { xMin: Math.PI / 2 - 0.4, xMax: Math.PI / 2 + 0.4, samples: 21 },
+         ),
+         LIGHT_GRAPH_THEME,
+      )
+      // Without the heuristic these 21 finite samples (no true domain error anywhere) would connect
+      // as ONE polyline; the heuristic must split it into two runs around the pole.
+      expect(countOccurrences(svg, '<polyline')).toBe(2)
+   })
+
+   it('shows a legend with equation names when more than one equation is drawn', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([
+            { name: 'sine', expression: 'sin(x)' },
+            { name: 'cosine', expression: 'cos(x)' },
+         ], { legend: true }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(countOccurrences(svg, '<polyline')).toBe(2)
+      expect(svg).toContain('sine')
+      expect(svg).toContain('cosine')
+   })
+
+   it('honors a per-equation color override', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'x', color: '#abcdef' }]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('#abcdef')
+   })
+
+   it('caps drawn equations at 8, mirroring the series cap', () => {
+      const manyEquations: GraphSpec = makeFunctionSpec(
+         Array.from({ length: 10 }, (_, index) => ({ name: `f${index}`, expression: 'x' })))
+      const svg = renderGraphToSvg(manyEquations, LIGHT_GRAPH_THEME)
+      expect(countOccurrences(svg, '<polyline')).toBe(8)
+   })
+
+   it('renders a graceful empty-state placeholder for an empty equation list', () => {
+      const svg = renderGraphToSvg(makeFunctionSpec([]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('No data to chart')
+   })
+
+   it('renders a graceful empty-state placeholder for a blank expression', () => {
+      const svg = renderGraphToSvg(makeFunctionSpec([{ name: 'f', expression: '' }]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('No data to chart')
+   })
+
+   it('never throws on a degenerate domain (xMin === xMax) or a zero/negative sample count', () => {
+      const degenerateDomain = makeFunctionSpec(
+         [{ name: 'f', expression: 'x' }], {}, { xMin: 5, xMax: 5, samples: 0 })
+      expect(() => renderGraphToSvg(degenerateDomain, LIGHT_GRAPH_THEME)).not.toThrow()
+   })
+
+   it('is deterministic — identical input yields identical output', () => {
+      const spec = makeFunctionSpec([{ name: 'f', expression: 'sin(x) + 0.5*x' }])
+      expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
    })
 })
