@@ -141,6 +141,43 @@ describe('per-type parameter: barWidth', () => {
    })
 })
 
+// #########################
+// # PER-BAR COLOR (SIMPLE)  #
+// #########################
+
+/** A single-series bar spec (three bars, no color override) plus optional per-category colors. */
+function makeSimpleBar(categoryColors?: (string | undefined)[]): GraphSpec {
+   return {
+      type: 'bar',
+      data: {
+         labels: ['Q1', 'Q2', 'Q3'],
+         series: [{ name: 'Revenue', values: [42, 55, 48] }],
+         ...(categoryColors ? { categoryColors } : {}),
+      },
+      options: { legend: false },
+   }
+}
+
+describe('per-bar color: simple bar categoryColors', () => {
+   it('paints every bar the ONE uniform series base color by default', () => {
+      const svg = renderGraphToSvg(makeSimpleBar(), LIGHT_GRAPH_THEME)
+      // No override -> palette slot 0 (light blue) on all three bars, nowhere else in the SVG.
+      expect(countOccurrences(svg, 'fill="#2a78d6"')).toBe(3)
+   })
+
+   it('recolors a single bar via categoryColors while the rest stay the uniform base', () => {
+      const svg = renderGraphToSvg(makeSimpleBar(['#abcdef', undefined, undefined]), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('fill="#abcdef"')                  // the one overridden bar
+      expect(countOccurrences(svg, 'fill="#2a78d6"')).toBe(2)  // the two un-overridden bars
+   })
+
+   it('is byte-identical to no override when every categoryColors slot is undefined', () => {
+      const plain = renderGraphToSvg(makeSimpleBar(), LIGHT_GRAPH_THEME)
+      const allUndefined = renderGraphToSvg(makeSimpleBar([undefined, undefined, undefined]), LIGHT_GRAPH_THEME)
+      expect(allUndefined).toBe(plain)
+   })
+})
+
 describe('per-type parameter: lineWidth', () => {
    it('a non-default lineWidth changes the line stroke width', () => {
       const thin = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
@@ -182,6 +219,85 @@ describe('radial marks', () => {
    it('draws N arc paths for a donut chart', () => {
       const svg = renderGraphToSvg(makeSpec('donut'), LIGHT_GRAPH_THEME)
       expect(countOccurrences(svg, '<path')).toBe(3)
+   })
+})
+
+// #####################
+// # STAT OVERLAYS     #
+// #####################
+
+/** Count dashed overlay lines (mean/median/reference horizontals + the trend segment carry a dash). */
+function countDashedLines(svg: string): number {
+   return countOccurrences(svg, 'stroke-dasharray=')
+}
+
+describe('statistical overlays', () => {
+   it('adds a dashed mean line and an R-free mean label, absent without the overlay', () => {
+      const plain = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+      const withMean = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'mean', series: 0 }] }), LIGHT_GRAPH_THEME)
+      expect(countDashedLines(plain)).toBe(0)
+      expect(countDashedLines(withMean)).toBe(1)
+      // Product A = [42,55,48] -> mean 48.333333 -> formatNumber rounds to 48.333333
+      expect(withMean).toContain('mean 48.333333')
+      // A haloed label uses paint-order:stroke over the surface color.
+      expect(withMean).toContain('paint-order="stroke"')
+   })
+
+   it('draws a trendline with an R^2 label and, opt-in, the equation', () => {
+      const rOnly = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'trend', series: 0 }] }), LIGHT_GRAPH_THEME)
+      expect(countDashedLines(rOnly)).toBe(1)
+      expect(rOnly).toContain('R²')
+      expect(rOnly).not.toContain('y =')
+
+      const withEquation = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'trend', series: 0, showEquation: true }] }), LIGHT_GRAPH_THEME)
+      expect(withEquation).toContain('y =')
+      expect(withEquation).toContain('R²')
+   })
+
+   it('fans out an all-series overlay to one line per drawn series', () => {
+      const svg = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'mean', series: 'all' }] }), LIGHT_GRAPH_THEME)
+      // Two drawn series -> two dashed mean lines.
+      expect(countDashedLines(svg)).toBe(2)
+   })
+
+   it('auto-extends the y-domain so a reference line above the data stays visible', () => {
+      // Data maxes at 55; a reference at 200 must still land on-canvas (domain rescales to include it).
+      const svg = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 200, label: 'Cap' }] }), LIGHT_GRAPH_THEME)
+      expect(countDashedLines(svg)).toBe(1)
+      expect(svg).toContain('Cap')
+      // The auto-extended axis now shows a 200 tick that a plain chart of this data would not.
+      const plain = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      expect(plain).not.toContain('>200<')
+      expect(svg).toContain('>200<')
+   })
+
+   it('reference line uses neutral ink, not a series hue', () => {
+      const svg = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 40 }] }), LIGHT_GRAPH_THEME)
+      // The neutral ink.text (#0b0b0b) strokes the reference line; the series blue does not appear on it.
+      const referenceLine = /<line[^>]*stroke-dasharray[^>]*\/>/.exec(svg)?.[0] ?? ''
+      expect(referenceLine).toContain('#0b0b0b')
+   })
+
+   it('never throws and draws nothing for a degenerate trend (single point)', () => {
+      const single: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A'], series: [{ name: 'S', values: [7] }] },
+         options: { overlays: [{ kind: 'trend', series: 0 }] },
+      }
+      expect(() => renderGraphToSvg(single, LIGHT_GRAPH_THEME)).not.toThrow()
+      expect(countDashedLines(renderGraphToSvg(single, LIGHT_GRAPH_THEME))).toBe(0)
+   })
+
+   it('radial ignores overlays entirely', () => {
+      const svg = renderGraphToSvg(
+         makeSpec('pie', { overlays: [{ kind: 'reference', value: 40 }] }), LIGHT_GRAPH_THEME)
+      expect(countDashedLines(svg)).toBe(0)
    })
 })
 

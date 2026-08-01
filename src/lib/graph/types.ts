@@ -49,13 +49,52 @@ export interface GraphData {
    labels: string[]
    series: GraphSeries[]
    /**
-    * Optional per-category (per-slice) color overrides, positionally aligned to {@link labels}
-    * (sparse is allowed — an `undefined`/missing slot means "no override, use the palette slot").
-    * Honored by RADIAL rendering only (pie/donut), where each label is one colored slice; the
-    * cartesian families color by series, not by category, and ignore this field. This mirrors the
-    * per-series {@link GraphSeries.color} hook, one axis over.
+    * Optional per-category color overrides, positionally aligned to {@link labels} (sparse is
+    * allowed — an `undefined`/missing slot means "no override, use the default"). Honored by the
+    * SINGLE-SERIES families, where each label maps to one colored mark:
+    *   - RADIAL (pie/donut): each label is a slice; the default (no override) is a palette slot per
+    *     index (multicolor).
+    *   - SIMPLE BAR: each label is a bar; the default is the ONE series' uniform base color, so an
+    *     override recolors just that bar while an un-overridden chart stays uniform.
+    * The multi-series cartesian families (grouped/stacked bar, line, area) color by series, not by
+    * category, and ignore this field. This mirrors the per-series {@link GraphSeries.color} hook,
+    * one axis over.
     */
    categoryColors?: (string | undefined)[]
+}
+
+// #####################
+// # STATISTIC OVERLAYS #
+// #####################
+
+/**
+ * The computed reference marks an author can draw over a CARTESIAN plot (radial ignores overlays):
+ *   - mean:      a horizontal line at a target series' arithmetic mean.
+ *   - median:    a horizontal line at a target series' median (RESERVED — not yet wired to the
+ *                editor, but the render + serialization paths handle it so it is a one-line follow).
+ *   - trend:     a linear least-squares trendline for a target series, labelled with its R^2.
+ *   - reference: a horizontal line at a per-chart constant y (a target / threshold), no series.
+ */
+export type OverlayKind = 'mean' | 'median' | 'trend' | 'reference'
+
+/**
+ * One computed reference mark drawn over a cartesian plot. Every field is optional-with-a-default,
+ * so a bare `{ kind: 'mean' }` is valid and serializes lean.
+ */
+export interface Overlay {
+   kind: OverlayKind
+   /**
+    * The target series for the computed kinds (mean / median / trend): a series index, or `'all'`
+    * to fan out one mark per drawn series (each echoing that series' hue). Defaults to 0. Ignored
+    * by `reference` (a constant belongs to no series).
+    */
+   series?: number | 'all'
+   /** The constant y for a `reference` overlay (required in effect). Ignored by the computed kinds. */
+   value?: number
+   /** Optional label override; falls back to a computed default per kind (see cartesian.ts). */
+   label?: string
+   /** Trend only: append `y = m*x + b` to the label (R^2 is shown regardless). Default false. */
+   showEquation?: boolean
 }
 
 /**
@@ -105,6 +144,11 @@ export interface GraphOptions {
     * the pre-option fill opacity.
     */
    areaFillOpacity?: number
+   /**
+    * Statistical overlays drawn over the plot (CARTESIAN only; radial ignores this field). Absent
+    * or empty = no overlays, so a graph that has none is byte-identical to before this feature.
+    */
+   overlays?: Overlay[]
 }
 
 // ####################

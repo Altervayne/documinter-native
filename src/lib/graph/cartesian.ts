@@ -12,7 +12,7 @@
  * ~10% opacity, recessive hairline gridlines, and a legend whenever there is >1 series.
  */
 
-import type { GraphSpec, GraphTheme, GraphSeries } from './types'
+import type { GraphSpec, GraphTheme, GraphSeries, Overlay } from './types'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
@@ -20,6 +20,7 @@ import {
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
 } from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
+import { mean as meanOf, median as medianOf, linearRegression } from './stats'
 import { linearScale, niceTicks, bandScale } from './scale'
 import {
    computeCartesianLayout,
@@ -58,6 +59,16 @@ const MIN_LINE_WIDTH = 0.5
 const MAX_LINE_WIDTH = 12
 const MIN_FILL_OPACITY = 0
 const MAX_FILL_OPACITY = 1
+
+// ====== overlay styling (dataviz: annotation reads distinct from the solid hairline grid) ======
+// Dashed so an overlay never masquerades as a gridline (never dashed) or a data line (solid,
+// heavier). ~1.5px round-capped sits between the 1px grid and the 2px data stroke.
+const OVERLAY_STROKE_WIDTH = 1.5
+const OVERLAY_DASH_LINE = '6 4'    // mean / median / reference horizontals
+const OVERLAY_DASH_TREND = '5 3'   // the sloped trendline, a touch tighter
+const OVERLAY_LABEL_HALO_WIDTH = 3 // the surface-color halo behind a label, via paint-order:stroke
+const OVERLAY_LABEL_GAP = 4        // px the label sits off its line
+
 const LEGEND_SWATCH_SIZE = 12
 const LEGEND_SWATCH_TEXT_GAP = 6
 const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
@@ -80,6 +91,9 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    const drawnSeries: GraphSeries[] = type === 'bar' ? cappedSeries.slice(0, 1) : cappedSeries
 
    // ====== value domain + nice ticks ======
+   // Reference overlays AUTO-EXTEND the domain (before nice-ticks) so a target line outside the data
+   // range is always visible — the data rescales to fit it. Mean/trend are data-derived (already
+   // inside the domain), so they need no extension.
    const [domainMin, domainMax] = computeValueDomain(type, labels, drawnSeries, options)
    const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
    const tickLabels = niceScale.ticks.map(formatNumber)
@@ -123,7 +137,7 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    pieces.push(renderCategoryLabels(labels, xBand, plot, theme))
 
    if (type === 'bar') {
-      pieces.push(renderSingleBars(labels, drawnSeries[0], xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
+      pieces.push(renderSingleBars(labels, drawnSeries[0], data.categoryColors, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
    } else if (type === 'bar-grouped') {
       pieces.push(renderGroupedBars(labels, drawnSeries, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
    } else if (type === 'bar-stacked') {
@@ -135,11 +149,280 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
       pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme, lineStrokeWidth, showPoints))
    }
 
+   // Overlays draw AFTER the data marks (z-order: on top of the data), reusing the same scales.
+   if (options.overlays && options.overlays.length > 0) {
+      pieces.push(renderOverlays(
+         options.overlays, labels, drawnSeries, xBand, yScale, plot, niceScale.niceMin, niceScale.niceMax, theme))
+   }
+
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
    if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
    if (legendWanted) pieces.push(renderLegend(drawnSeries, legendLayout, layout, theme))
 
    return element('g', {}, pieces.join(''))
+}
+
+// #####################
+// # STATISTIC OVERLAYS #
+// #####################
+
+/** A plot rect passed around the overlay helpers (matches the layout's PlotRect shape). */
+interface OverlayPlot { x: number; y: number; width: number; height: number }
+
+/**
+ * Draw every statistical overlay over the plot. Reuses the computed `yScale` / `xBand` / `plot`.
+ * Per-series kinds (mean / median / trend) expand `series: 'all'` to one mark per drawn series
+ * (each echoing that series' hue); a specific index that is not among the drawn series is skipped.
+ * Reference is a single per-chart horizontal in neutral ink. Never throws on degenerate data — a
+ * series with too few points, or a value off the domain, simply draws nothing.
+ */
+function renderOverlays(
+   overlays: Overlay[],
+   labels: string[],
+   drawnSeries: GraphSeries[],
+   xBand: { center(index: number): number },
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   niceMin: number,
+   niceMax: number,
+   theme: GraphTheme,
+): string {
+   const singleSeries = drawnSeries.length <= 1
+   const parts: string[] = []
+
+   for (const overlay of overlays) {
+      if (overlay.kind === 'reference') {
+         parts.push(renderReferenceOverlay(overlay, plot, yScale, niceMin, niceMax, theme))
+         continue
+      }
+      // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
+      const targetIndices = overlay.series === 'all'
+         ? drawnSeries.map((_series, index) => index)
+         : [typeof overlay.series === 'number' ? overlay.series : 0]
+      for (const seriesIndex of targetIndices) {
+         if (seriesIndex < 0 || seriesIndex >= drawnSeries.length) continue
+         const oneSeries = drawnSeries[seriesIndex]
+         const color = resolveSeriesColor(seriesIndex, oneSeries.color, theme)
+         if (overlay.kind === 'trend') {
+            parts.push(renderTrendOverlay(
+               overlay, oneSeries, labels, xBand, yScale, plot, color, singleSeries, theme))
+         } else {
+            parts.push(renderStatLineOverlay(
+               overlay, oneSeries, plot, yScale, niceMin, niceMax, color, singleSeries, theme))
+         }
+      }
+   }
+   return element('g', {}, parts.join(''))
+}
+
+/** A per-chart reference line: a neutral-ink horizontal at the constant value, off-domain skipped. */
+function renderReferenceOverlay(
+   overlay: Overlay,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   theme: GraphTheme,
+): string {
+   const value = overlay.value
+   if (value === undefined || !Number.isFinite(value)) return ''
+   // The domain was auto-extended to include this value, so it is normally in range; the clip is a
+   // defensive guard (e.g. a hand-pinned yMin/yMax that excludes it).
+   if (value < niceMin || value > niceMax) return ''
+   const lineY = yScale(value)
+   const label = overlay.label && overlay.label !== '' ? overlay.label : formatNumber(value)
+   return horizontalOverlay(lineY, label, plot, theme.ink.text, OVERLAY_DASH_LINE, theme)
+}
+
+/** A per-series mean/median line: a series-hued horizontal at the computed stat, off-domain skipped. */
+function renderStatLineOverlay(
+   overlay: Overlay,
+   oneSeries: GraphSeries,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const stat = overlay.kind === 'median' ? medianOf(oneSeries.values) : meanOf(oneSeries.values)
+   if (stat === null || stat < niceMin || stat > niceMax) return ''
+   const lineY = yScale(stat)
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultStatLabel(overlay.kind, oneSeries.name, stat, singleSeries)
+   return horizontalOverlay(lineY, label, plot, color, OVERLAY_DASH_LINE, theme)
+}
+
+/** A per-series linear trendline: a series-hued sloped segment analytically clipped to the plot rect. */
+function renderTrendOverlay(
+   overlay: Overlay,
+   oneSeries: GraphSeries,
+   labels: string[],
+   xBand: { center(index: number): number },
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const fit = linearRegression(oneSeries.values)
+   if (fit === null) return '' // fewer than 2 finite points: no line to draw
+
+   const lastIndex = labels.length - 1
+   const startX = xBand.center(0)
+   const endX = xBand.center(lastIndex)
+   const startY = yScale(fit.intercept)
+   const endY = yScale(fit.intercept + fit.slope * lastIndex)
+
+   // Analytic clamp to the plot rect (NO SVG clipPath — a fixed id would collide across the many
+   // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
+   const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
+   if (clipped === null) return '' // the whole segment sits off the plot vertically
+
+   const line = selfClosingElement('line', {
+      x1: clipped.x1,
+      y1: clipped.y1,
+      x2: clipped.x2,
+      y2: clipped.y2,
+      stroke: color,
+      'stroke-width': OVERLAY_STROKE_WIDTH,
+      'stroke-dasharray': OVERLAY_DASH_TREND,
+      'stroke-linecap': 'round',
+   })
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
+   // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
+   const labelText = overlayLabel(
+      Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+      clipped.y2 - OVERLAY_LABEL_GAP,
+      'end',
+      label,
+      theme)
+   return element('g', {}, line + labelText)
+}
+
+/** Draw a full-width horizontal dashed overlay at `lineY` with a right-anchored haloed label. */
+function horizontalOverlay(
+   lineY: number,
+   label: string,
+   plot: OverlayPlot,
+   color: string,
+   dash: string,
+   theme: GraphTheme,
+): string {
+   const line = selfClosingElement('line', {
+      x1: plot.x,
+      y1: lineY,
+      x2: plot.x + plot.width,
+      y2: lineY,
+      stroke: color,
+      'stroke-width': OVERLAY_STROKE_WIDTH,
+      'stroke-dasharray': dash,
+      'stroke-linecap': 'round',
+   })
+   const labelText = overlayLabel(
+      plot.x + plot.width - OVERLAY_LABEL_GAP,
+      lineY - OVERLAY_LABEL_GAP,
+      'end',
+      label,
+      theme)
+   return element('g', {}, line + labelText)
+}
+
+/**
+ * A small overlay label in PRIMARY ink (never a series hue — a light categorical color is illegible
+ * as text), wearing a surface-color halo via `paint-order:stroke` so it stays readable where it
+ * crosses gridlines and data marks (the same "surface doing the separating" principle as a marker ring).
+ */
+function overlayLabel(
+   x: number,
+   y: number,
+   anchor: 'start' | 'middle' | 'end',
+   text: string,
+   theme: GraphTheme,
+): string {
+   return textElement({
+      x,
+      y,
+      'text-anchor': anchor,
+      'font-size': TICK_FONT_SIZE,
+      'font-variant-numeric': 'tabular-nums',
+      fill: theme.ink.text,
+      stroke: theme.ink.surface,
+      'stroke-width': OVERLAY_LABEL_HALO_WIDTH,
+      'stroke-linejoin': 'round',
+      'paint-order': 'stroke',
+   }, text)
+}
+
+/** The default label for a mean/median line: `mean 42.3`, or `Revenue · mean 42.3` when multi-series. */
+function defaultStatLabel(
+   kind: 'mean' | 'median',
+   seriesName: string,
+   value: number,
+   singleSeries: boolean,
+   ): string {
+   const word = kind === 'median' ? 'median' : 'mean'
+   const stat = `${word} ${formatNumber(value)}`
+   return singleSeries || seriesName === '' ? stat : `${seriesName} · ${stat}`
+}
+
+/** The default trend label: `R² 0.94`, plus `y = 2.5x + 1` prepended when `showEquation`. */
+function defaultTrendLabel(
+   slope: number,
+   intercept: number,
+   rSquared: number,
+   showEquation: boolean,
+): string {
+   const rSquaredText = `R² ${formatNumber(roundToDigits(rSquared, 3))}`
+   if (!showEquation) return rSquaredText
+   const sign = intercept < 0 ? '-' : '+'
+   const equation = `y = ${formatNumber(roundToDigits(slope, 3))}x ${sign} ${formatNumber(roundToDigits(Math.abs(intercept), 3))}`
+   return `${equation} · ${rSquaredText}`
+}
+
+/**
+ * Clip the segment (x1,y1)-(x2,y2) to the horizontal band [bandTop, bandBottom] (the plot's vertical
+ * extent; x already sits within the plot). Returns the trimmed endpoints, or null when the whole
+ * segment lies above or below the band. Pure line-parameter math — no SVG clipPath needed.
+ */
+function clipSegmentToBand(
+   x1: number,
+   y1: number,
+   x2: number,
+   y2: number,
+   bandTop: number,
+   bandBottom: number,
+): { x1: number; y1: number; x2: number; y2: number } | null {
+   const deltaY = y2 - y1
+   let parameterMin = 0
+   let parameterMax = 1
+   if (deltaY === 0) {
+      // A flat segment: either wholly inside the band or wholly outside it.
+      if (y1 < bandTop || y1 > bandBottom) return null
+   } else {
+      const parameterAtTop = (bandTop - y1) / deltaY
+      const parameterAtBottom = (bandBottom - y1) / deltaY
+      parameterMin = Math.max(0, Math.min(parameterAtTop, parameterAtBottom))
+      parameterMax = Math.min(1, Math.max(parameterAtTop, parameterAtBottom))
+      if (parameterMin > parameterMax) return null // segment entirely outside the band
+   }
+   const deltaX = x2 - x1
+   return {
+      x1: x1 + deltaX * parameterMin,
+      y1: y1 + deltaY * parameterMin,
+      x2: x1 + deltaX * parameterMax,
+      y2: y1 + deltaY * parameterMax,
+   }
+}
+
+/** Round a value to a fixed number of fractional digits (kills float drift on displayed stats). */
+function roundToDigits(value: number, digits: number): number {
+   const factor = 10 ** digits
+   return Math.round(value * factor) / factor
 }
 
 // #####################
@@ -181,6 +464,17 @@ function computeValueDomain(
             if (value < dataMin) dataMin = value
          }
       }
+   }
+
+   // Fold every reference-overlay value into the raw domain so a target line beyond the data always
+   // stays on-canvas (the data rescales to fit it). Done before the yMin/yMax overrides below, which
+   // still win when the author has pinned an explicit floor/ceiling.
+   for (const overlay of options.overlays ?? []) {
+      if (overlay.kind !== 'reference') continue
+      const value = overlay.value
+      if (value === undefined || !Number.isFinite(value)) continue
+      if (value > dataMax) dataMax = value
+      if (value < dataMin) dataMin = value
    }
 
    const min = options.yMin !== undefined ? options.yMin : dataMin
@@ -293,10 +587,19 @@ function barRect(
    }, titleElement(tooltip))
 }
 
-/** Single-series bars: one rect per category, capped at 24px and centered in its band. */
+/**
+ * Single-series bars: one rect per category, capped at 24px and centered in its band.
+ *
+ * Coloring is UNIFORM by default (every bar wears the one series' resolved base color, so a plain
+ * simple-bar chart is byte-identical to before per-bar color existed). A per-category override in
+ * `categoryColors[categoryIndex]` recolors just that one bar — the same `categoryColors` array the
+ * radial families use for per-slice color, here defaulting to the uniform base instead of a palette
+ * slot per index.
+ */
 function renderSingleBars(
    labels: string[],
    series: GraphSeries,
+   categoryColors: (string | undefined)[] | undefined,
    xBand: { center(index: number): number; bandwidth: number },
    yScale: (value: number) => number,
    baselineY: number,
@@ -304,7 +607,7 @@ function renderSingleBars(
    showValues: boolean,
    barWidthFraction: number,
 ): string {
-   const color = resolveSeriesColor(0, series.color, theme)
+   const baseColor = resolveSeriesColor(0, series.color, theme)
    // The band-capped base thickness is what the bar draws at full width today; the fraction then
    // scales it down (at 1, the default, the bar is unchanged), so the control always has an effect
    // even for wide bands where the 24px cap already governs.
@@ -318,6 +621,9 @@ function renderSingleBars(
       const rectY = Math.min(baselineY, valueY)
       const rectHeight = Math.abs(valueY - baselineY)
       const rectX = xBand.center(index) - barWidth / 2
+      // Per-bar override wins; otherwise the uniform series base color (default -> byte-identical).
+      const override = categoryColors?.[index]
+      const color = override && override.trim() !== '' ? override : baseColor
       parts.push(barRect(rectX, rectY, barWidth, rectHeight, color, `${labels[index]}: ${formatNumber(value)}`))
       if (showValues) {
          parts.push(valueLabel(xBand.center(index), rectY - 4, formatNumber(value), theme))

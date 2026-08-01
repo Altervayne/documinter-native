@@ -198,6 +198,93 @@ describe('Graph fence, spec round-trip', () => {
    })
 })
 
+describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
+   it('round-trips mean / trend / reference overlays through repeated overlay= tokens', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: {
+            labels: ['Q1', 'Q2', 'Q3'],
+            series: [{ name: 'Revenue', values: [10, 20, 30] }],
+         },
+         options: {
+            overlays: [
+               { kind: 'mean', series: 0 },
+               { kind: 'trend', series: 0, showEquation: true },
+               { kind: 'reference', value: 100, label: 'Q4 target' },
+            ],
+         },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('overlay=mean:0')
+      // No spaces => not quoted; the quote-safe machinery only kicks in for the spaced ref label.
+      expect(info).toContain('overlay=trend:0:eq')
+      expect(info).toContain('overlay="ref:100:Q4 target"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('serializes an all-series overlay with the `all` token', () => {
+      const spec: GraphSpec = {
+         type: 'bar-grouped',
+         data: {
+            labels: ['A', 'B'],
+            series: [
+               { name: 'One', values: [1, 2] },
+               { name: 'Two', values: [3, 4] },
+            ],
+         },
+         options: { overlays: [{ kind: 'mean', series: 'all' }] },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('overlay=mean:all')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('serializes a bare reference (no label) without quotes', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { overlays: [{ kind: 'reference', value: 42 }] },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('overlay=ref:42')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('emits no overlay= token when there are no overlays', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A'], series: [{ name: 'S', values: [1] }] },
+         options: {},
+      }
+      expect(graphSpecToFence(spec).info).not.toContain('overlay=')
+      expect('overlays' in roundTripSpec(spec).options).toBe(false)
+   })
+
+   it('drops a reference token with a non-finite value, and skips an unknown kind', () => {
+      const spec = fenceToGraphSpec('graph type=line overlay=ref:notanumber overlay=bogus:0 overlay=mean:0', '')
+      expect(spec.options.overlays).toEqual([{ kind: 'mean', series: 0 }])
+   })
+
+   it('parses a reference label that itself contains a colon', () => {
+      const spec = fenceToGraphSpec('graph type=line overlay="ref:100:Deadline: EOD"', '')
+      expect(spec.options.overlays).toEqual([{ kind: 'reference', value: 100, label: 'Deadline: EOD' }])
+   })
+
+   it('carries overlays through the full Mintdown document path', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B', 'C'], series: [{ name: 'S', values: [1, 2, 3] }] },
+         options: { overlays: [{ kind: 'trend', series: 0 }, { kind: 'reference', value: 5 }] },
+      }
+      const { sections, meta } = wrapGraph(spec)
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('overlay=trend:0')
+      expect(mintdown).toContain('overlay=ref:5')
+      const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
+      expect(reparsed.graph).toEqual(spec)
+   })
+})
+
 describe('Graph fence, malformed / degenerate input never throws', () => {
    it('a bare ```graph fence yields the default type and empty data', () => {
       const spec = fenceToGraphSpec('graph', '')

@@ -145,7 +145,21 @@ export type {
    GraphSpec,
    GraphTheme,
    GraphInk,
+   Overlay,
+   OverlayKind,
 } from './types'
+
+export {
+   mean,
+   median,
+   linearRegression,
+   linearRegressionXY,
+} from './stats'
+
+export type {
+   LinearFit,
+   Point,
+} from './stats'
 
 export {
    GRAPH_DEFAULT_BAR_WIDTH,

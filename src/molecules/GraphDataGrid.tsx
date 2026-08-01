@@ -29,8 +29,9 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-/** The radial families: a single series whose CATEGORIES are the colored slices (so the grid flips
- *  to rows = slices). Everything else is cartesian (rows = series, columns = categories). */
+/** The radial families: a single series whose CATEGORIES are the colored slices. They share the
+ *  single-series table shape with the simple `bar` (which also renders series[0] only); the
+ *  distinction the table keeps between them is wording + the per-category color default. */
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 
 // #########
@@ -65,7 +66,8 @@ interface EditingCell {
    invalid:       boolean
 }
 
-/** Which swatch popover is open: a per-series color (cartesian) or a per-slice color (radial). */
+/** Which swatch popover is open: a per-series color (multi-series table) or a per-category color
+ *  (single-series table — a radial slice or a simple-bar bar). */
 type ColorTarget =
    | { kind: 'series'; index: number; rect: DOMRect }
    | { kind: 'slice';  index: number; rect: DOMRect }
@@ -106,15 +108,19 @@ function parseCellNumber(raw: string): number | null {
 // #############
 
 /**
- * The editable data table for a graph block, ADAPTING to the chart type:
+ * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series
+ * or MANY (not radial-vs-cartesian — a simple `bar` is single-series and shares the radial shape):
  *
- *   - CARTESIAN (bar/line/area families): transposed — rows = series (a sticky leading column with
- *     the series' color swatch + name + remove), columns = categories (a sticky header row of
- *     label inputs + remove, plus a trailing "+" to add a category). A "+ Series" footer row adds
- *     a series (capped at MAX_SERIES). Body cells are numeric, series x category.
- *   - RADIAL (pie/donut): a single series' CATEGORIES are the slices, so rows = slices — each row
- *     is the slice's own color swatch (per-category color) + label + its single value + remove. A
- *     "+ Slice" footer row adds a category. The lone series' name is irrelevant and hidden.
+ *   - MULTI-SERIES (grouped/stacked bar, line, area): transposed — rows = series (a sticky leading
+ *     column with the series' color swatch + name + remove), columns = categories (a sticky header
+ *     row of label inputs + remove, plus a trailing "+" to add a category). A "+ Series" footer row
+ *     adds a series (capped at MAX_SERIES). Body cells are numeric, series x category.
+ *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows — each is
+ *     the category's own color swatch (per-category color) + label + its single value + remove, with
+ *     a "+" footer that adds a category. No "Add series". Radial reads "slice" and defaults each
+ *     swatch to a palette slot per index; simple bar reads "bar"/"category" and defaults each swatch
+ *     to the ONE series' uniform base color (so an un-overridden bar chart stays uniform). Both write
+ *     `categoryColors` via `setCategoryColor`; only the fallback color differs by type.
  *
  * Both shapes share the draft/commit model: numeric typing drafts on every keystroke (instant
  * preview) and commits on blur; structural + color edits commit immediately; a TSV paste auto-grows
@@ -123,7 +129,29 @@ function parseCellNumber(raw: string): number | null {
  */
 export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: GraphDataGridProps) {
    const { labels, series, categoryColors } = spec.data
+   // Radial keeps its "slice" identity; a simple `bar` is ALSO single-series (it renders series[0]
+   // only), so it shares the category-row table shape — the difference is only wording + the
+   // per-category color default (radial = a palette slot per index; bar = the one uniform base).
    const isRadial = RADIAL_TYPES.has(spec.type)
+   const isSingleSeries = isRadial || spec.type === 'bar'
+
+   // ================
+   //  Single-series wording (radial reads "slice", simple bar reads "category"/"bar")
+   // ================
+   const singleSeriesAddLabel    = isRadial ? t.graphAddSlice : t.graphAddCategory
+   const singleSeriesRemoveLabel = isRadial ? t.graphRemoveSlice : t.graphRemoveCategory
+   const singleSeriesColorLabel  = isRadial ? t.graphSliceColor : t.graphBarColor
+
+   /**
+    * The swatch display color for a single-series row: radial defaults to a palette slot PER index
+    * (multicolor slices), simple bar defaults to the ONE series' uniform base color, and either is
+    * overridden by an explicit `categoryColors[index]`.
+    */
+   function singleSeriesSwatchColor(categoryIndex: number): string {
+      if (isRadial) return resolveSeriesColor(categoryIndex, categoryColors?.[categoryIndex], theme)
+      const uniformBase = resolveSeriesColor(0, series[0]?.color, theme)
+      return resolveSeriesColor(0, categoryColors?.[categoryIndex] ?? uniformBase, theme)
+   }
 
    // The one cell mid-edit, letting an un-parseable intermediate ("1.", "-") stay on screen.
    const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
@@ -180,7 +208,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell, auto-
    // growing categories (and, for cartesian, series up to MAX_SERIES) so a bigger paste expands the
    // grid. Non-numeric cells land as null. Applied over the pure transforms, committed once.
-   function handleCartesianPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
+   function handleMultiSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
       if (!isMultiCellPaste(grid)) return // a plain single value falls through to normal typing.
       event.preventDefault()
@@ -204,14 +232,14 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       onCommit(next)
    }
 
-   function handleRadialPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number): void {
+   function handleSingleSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
       if (!isMultiCellPaste(grid)) return
       event.preventDefault()
       setEditingCell(null)
       let next = spec
-      // Each pasted row is one slice, filling downward from the focused slice. Two columns read as
-      // (label, value); a single column is values only.
+      // Each pasted row is one category (slice / bar), filling downward from the focused row. Two
+      // columns read as (label, value); a single column is values only.
       for (let rowOffset = 0; rowOffset < grid.length; rowOffset++) {
          const categoryIndex = focusCategoryIndex + rowOffset
          while (categoryIndex >= next.data.labels.length) next = addCategory(next)
@@ -248,8 +276,8 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
          }
       }
       return {
-         value:   resolveSeriesColor(target.index, categoryColors?.[target.index], theme),
-         title:   t.graphSliceColor,
+         value:   singleSeriesSwatchColor(target.index),
+         title:   singleSeriesColorLabel,
          onPick:  (hex: string) => onCommit(setCategoryColor(spec, target.index, hex)),
          onReset: () => { onCommit(setCategoryColor(spec, target.index, undefined)); setColorPopover(null) },
       }
@@ -292,10 +320,10 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       )
    }
 
-   // #############
-   // # CARTESIAN #  (transposed: rows = series, columns = categories)
-   // #############
-   const cartesianTable = (
+   // ################
+   // # MULTI-SERIES #  (transposed: rows = series, columns = categories)
+   // ################
+   const multiSeriesTable = (
       <table className="graph-grid-table">
          {/* =============== Category header row =============== */}
          <thead>
@@ -307,6 +335,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                         <input
                            className="graph-cat-input"
                            type="text"
+                           size={Math.max(2, label.length)}
                            value={label}
                            placeholder={t.graphCategoryLabel}
                            aria-label={t.graphCategoryLabel}
@@ -346,6 +375,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                         <input
                            className="graph-lead-name"
                            type="text"
+                           size={Math.max(2, oneSeries.name.length)}
                            value={oneSeries.name}
                            placeholder={t.graphSeriesName}
                            aria-label={t.graphSeriesName}
@@ -365,7 +395,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                   </th>
                   {labels.map((_label, categoryIndex) => (
                      <td key={categoryIndex} className="graph-cell">
-                        {numericCell(categoryIndex, seriesIndex, oneSeries.values[categoryIndex], event => handleCartesianPaste(event, categoryIndex, seriesIndex))}
+                        {numericCell(categoryIndex, seriesIndex, oneSeries.values[categoryIndex], event => handleMultiSeriesPaste(event, categoryIndex, seriesIndex))}
                      </td>
                   ))}
                   <td className="graph-grid-gutter" />
@@ -388,10 +418,10 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       </table>
    )
 
-   // ##########
-   // # RADIAL #  (rows = slices/categories: swatch + label + value + remove)
-   // ##########
-   const radialTable = (
+   // #################
+   // # SINGLE-SERIES #  (rows = categories: swatch + label + value + remove — radial slices AND
+   // #################   simple bars; wording + swatch-color default branch on the chart type)
+   const singleSeriesTable = (
       <table className="graph-grid-table">
          <thead>
             <tr>
@@ -404,10 +434,11 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                <tr key={categoryIndex}>
                   <th className="graph-lead-cell" scope="row">
                      <div className="graph-lead-inner">
-                        {swatchButton('slice', categoryIndex, resolveSeriesColor(categoryIndex, categoryColors?.[categoryIndex], theme), t.graphSliceColor)}
+                        {swatchButton('slice', categoryIndex, singleSeriesSwatchColor(categoryIndex), singleSeriesColorLabel)}
                         <input
                            className="graph-lead-name"
                            type="text"
+                           size={Math.max(2, label.length)}
                            value={label}
                            placeholder={t.graphCategoryLabel}
                            aria-label={t.graphCategoryLabel}
@@ -420,25 +451,25 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                            className="graph-icon-btn"
                            onClick={() => onCommit(removeCategory(spec, categoryIndex))}
                            disabled={labels.length <= 1}
-                           aria-label={t.graphRemoveSlice}
-                           title={t.graphRemoveSlice}
+                           aria-label={singleSeriesRemoveLabel}
+                           title={singleSeriesRemoveLabel}
                         >×</button>
                      </div>
                   </th>
                   <td className="graph-cell">
-                     {numericCell(categoryIndex, 0, series[0]?.values[categoryIndex], event => handleRadialPaste(event, categoryIndex))}
+                     {numericCell(categoryIndex, 0, series[0]?.values[categoryIndex], event => handleSingleSeriesPaste(event, categoryIndex))}
                   </td>
                </tr>
             ))}
-            {/* =============== Add-slice footer =============== */}
+            {/* =============== Add-category footer =============== */}
             <tr>
                <th className="graph-lead-cell graph-add-row-cell" scope="row">
                   <button
                      type="button"
                      className="graph-grid-btn"
                      onClick={() => onCommit(addCategory(spec))}
-                     title={t.graphAddSlice}
-                  >{t.graphAddSlice}</button>
+                     title={singleSeriesAddLabel}
+                  >{singleSeriesAddLabel}</button>
                </th>
                <td className="graph-grid-gutter" />
             </tr>
@@ -451,7 +482,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    return (
       <div className="graph-data-grid">
          <div className="graph-grid-scroll">
-            {isRadial ? radialTable : cartesianTable}
+            {isSingleSeries ? singleSeriesTable : multiSeriesTable}
          </div>
 
          {colorPopover && activePopover && (

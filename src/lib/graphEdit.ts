@@ -18,7 +18,7 @@
  * editing model, not about preventing a crash.
  */
 
-import type { GraphSpec, GraphData, GraphSeries, GraphType, GraphOptions } from './graph'
+import type { GraphSpec, GraphData, GraphSeries, GraphType, GraphOptions, Overlay } from './graph'
 import { MAX_SERIES } from './graph'
 
 // ###########
@@ -216,4 +216,42 @@ export function setOption<Key extends keyof GraphOptions>(
       options[key] = value
    }
    return { type: spec.type, data: spec.data, options }
+}
+
+// ####################
+// # OVERLAYS          #
+// ####################
+
+/**
+ * Append one statistical overlay to the spec (mean / trend / reference; median is reserved). Builds
+ * on {@link setOption} so the whole options object stays freshly cloned and the spec is brand-new.
+ */
+export function addOverlay(spec: GraphSpec, overlay: Overlay): GraphSpec {
+   const overlays = [...(spec.options.overlays ?? []), overlay]
+   return setOption(spec, 'overlays', overlays)
+}
+
+/**
+ * Remove the overlay at `overlayIndex`. Out-of-range returns unchanged. Removing the last overlay
+ * DELETES the `overlays` key entirely (via setOption's undefined path), so a graph whose overlays
+ * were all cleared serializes lean and compares equal to one that never had any.
+ */
+export function removeOverlay(spec: GraphSpec, overlayIndex: number): GraphSpec {
+   const current = spec.options.overlays ?? []
+   if (overlayIndex < 0 || overlayIndex >= current.length) return spec
+   const overlays = current.filter((_overlay, index) => index !== overlayIndex)
+   return setOption(spec, 'overlays', overlays.length > 0 ? overlays : undefined)
+}
+
+/**
+ * Shallow-merge `partial` onto the overlay at `overlayIndex` (change its kind, target series, value,
+ * label, or equation flag). Out-of-range returns unchanged. The merged overlay is a fresh object, so
+ * the input spec is never mutated.
+ */
+export function updateOverlay(spec: GraphSpec, overlayIndex: number, partial: Partial<Overlay>): GraphSpec {
+   const current = spec.options.overlays ?? []
+   if (overlayIndex < 0 || overlayIndex >= current.length) return spec
+   const overlays = current.map((overlay, index) =>
+      index === overlayIndex ? { ...overlay, ...partial } : overlay)
+   return setOption(spec, 'overlays', overlays)
 }

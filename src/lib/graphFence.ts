@@ -16,7 +16,7 @@
  * data), so a hand-edited file can never break the document.
  */
 
-import type { GraphSpec, GraphType, GraphSeries, GraphOptions } from './graph'
+import type { GraphSpec, GraphType, GraphSeries, GraphOptions, Overlay } from './graph'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
@@ -120,6 +120,55 @@ interface ParsedInfo {
    sliceColorOverrides: (string | undefined)[]
 }
 
+// ============ overlay token grammar (compact, colon-separated, quote-safe) ============
+// One `overlay=` token per Overlay (a REPEATED key — the only one in the fence). Grammar:
+//   mean:<series>            median:<series>            trend:<series>[:eq]
+//   ref:<value>[:<label>]
+// where <series> is a slot index or the literal `all`. A reference label may contain spaces (and
+// colons), so the whole token is double-quoted by serializeInfoValue when it needs it.
+
+/** Serialize one overlay to its token VALUE (before quoting), or null if it can't round-trip. */
+function serializeOverlay(overlay: Overlay): string | null {
+   if (overlay.kind === 'reference') {
+      if (overlay.value === undefined || !Number.isFinite(overlay.value)) return null
+      const base = `ref:${overlay.value}`
+      return overlay.label && overlay.label !== '' ? `${base}:${overlay.label}` : base
+   }
+   // Computed kinds carry a series target (index or 'all'); trend carries the optional `eq` flag.
+   const seriesToken = overlay.series === 'all' ? 'all' : String(overlay.series ?? 0)
+   let token = `${overlay.kind}:${seriesToken}`
+   if (overlay.kind === 'trend' && overlay.showEquation) token += ':eq'
+   return token
+}
+
+/** Parse one overlay token VALUE back to an Overlay; null for an unknown kind or a bad reference. */
+function parseOverlay(raw: string): Overlay | null {
+   const segments = raw.split(':')
+   const kindToken = segments[0]
+   if (kindToken === 'ref') {
+      const value = Number(segments[1])
+      if (!Number.isFinite(value)) return null
+      const label = segments.slice(2).join(':')
+      const overlay: Overlay = { kind: 'reference', value }
+      if (label !== '') overlay.label = label
+      return overlay
+   }
+   if (kindToken === 'mean' || kindToken === 'median' || kindToken === 'trend') {
+      const seriesToken = segments[1]
+      let series: number | 'all'
+      if (seriesToken === 'all') {
+         series = 'all'
+      } else {
+         const parsed = Number(seriesToken)
+         series = Number.isFinite(parsed) ? parsed : 0
+      }
+      const overlay: Overlay = { kind: kindToken, series }
+      if (kindToken === 'trend' && segments.slice(2).includes('eq')) overlay.showEquation = true
+      return overlay
+   }
+   return null // unknown kind: skip (tolerant, forward-compatible)
+}
+
 /**
  * Parse the info string (the whole `graph …` line after the backticks) into a chart type,
  * presentation options, and the per-series color-override list. Unknown tokens are ignored
@@ -132,6 +181,10 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
    let type: GraphType = DEFAULT_GRAPH_TYPE
    let colorOverrides: (string | undefined)[] = []
    let sliceColorOverrides: (string | undefined)[] = []
+   // `overlay=` is the fence's one REPEATED key: every occurrence pushes onto this array (instead of
+   // assigning), which is attached to options.overlays only if non-empty (so a graph with none keeps
+   // the field absent and round-trips unchanged).
+   const pendingOverlays: Overlay[] = []
 
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -206,10 +259,17 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
                return trimmed === '' ? undefined : trimmed
             })
             break
+         case 'overlay': {
+            const overlay = parseOverlay(value)
+            if (overlay !== null) pendingOverlays.push(overlay)
+            break
+         }
          default:
             break
       }
    }
+
+   if (pendingOverlays.length > 0) options.overlays = pendingOverlays
 
    return { type, options, colorOverrides, sliceColorOverrides }
 }
@@ -248,6 +308,15 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    if (options.areaFillOpacity !== undefined && options.areaFillOpacity !== GRAPH_DEFAULT_AREA_FILL_OPACITY)
       tokens.push(`areaOpacity=${options.areaFillOpacity}`)
 
+   // Statistical overlays ride REPEATED `overlay=` tokens, one per overlay, emitted only when
+   // present (a graph with none emits nothing and round-trips identically). Labels with spaces are
+   // double-quoted by serializeInfoValue, so no new escaping machinery is needed.
+   for (const overlay of options.overlays ?? []) {
+      const serialized = serializeOverlay(overlay)
+      if (serialized === null) continue
+      tokens.push(`overlay=${serializeInfoValue(serialized)}`)
+   }
+
    // Per-series color overrides ride ONE `colors=` token in series order, empty slot = no
    // override. Emitted only when at least one series actually carries a color.
    const series = spec.data?.series ?? []
@@ -258,9 +327,9 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       tokens.push(`colors="${slots.join(',')}"`)
    }
 
-   // Per-category (per-slice) color overrides ride ONE `sliceColors=` token in LABEL order, empty
-   // slot = no override. Radial-only in effect, but the token rides both formats losslessly; it is
-   // emitted only when at least one slice actually carries a color.
+   // Per-category color overrides ride ONE `sliceColors=` token in LABEL order, empty slot = no
+   // override. Honored by the single-series types (radial slices + simple-bar bars); the token rides
+   // both formats losslessly and is emitted only when at least one category actually carries a color.
    const labels = spec.data?.labels ?? []
    const categoryColors = spec.data?.categoryColors
    if (categoryColors && categoryColors.some(color => color !== undefined && color !== '')) {

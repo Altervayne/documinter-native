@@ -10,8 +10,8 @@ import {
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
 } from '../../../lib/graph'
-import type { GraphSpec, GraphType } from '../../../lib/graph'
-import { setType, setOption } from '../../../lib/graphEdit'
+import type { GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
+import { setType, setOption, addOverlay, removeOverlay, updateOverlay } from '../../../lib/graphEdit'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
 import { GraphTypePicker } from '../../../molecules/GraphTypePicker'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
@@ -116,6 +116,19 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    }
    function editStart(): void {
       editing.current = true
+   }
+
+   // Switching an overlay's kind REPLACES the whole overlay (not a shallow merge) so no stray field
+   // from the previous kind lingers — e.g. a `series` left over after switching to a reference line.
+   function setOverlayKind(overlayIndex: number, kind: OverlayKind): void {
+      const current = working.options.overlays ?? []
+      const previous = current[overlayIndex]
+      if (!previous) return
+      const replacement: Overlay = kind === 'reference'
+         ? { kind: 'reference', value: previous.value ?? 0, ...(previous.label ? { label: previous.label } : {}) }
+         : { kind, series: previous.series ?? 0, ...(kind === 'trend' && previous.showEquation ? { showEquation: true } : {}) }
+      const overlays = current.map((overlay, index) => (index === overlayIndex ? replacement : overlay))
+      commit(setOption(working, 'overlays', overlays))
    }
 
    // ================
@@ -320,17 +333,120 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
       </div>
    )
 
-   // =============== Data tab: the editable spreadsheet-lite table ===============
+   // =============== Analysis: statistical overlays (cartesian only) — rendered in the DATA tab ===============
+   // Overlays are computed FROM the data, so they belong beside the data table, not the visual controls.
+   const analysisSection = !isRadial && (
+      <div className="graph-options graph-analysis">
+         <span className="graph-section-label">{t.graphAnalysisSection}</span>
+
+         {(options.overlays ?? []).map((overlay, overlayIndex) => (
+            <div className="graph-overlay-row" key={overlayIndex}>
+               <select
+                  className="graph-overlay-select"
+                  aria-label={t.graphAnalysisSection}
+                  value={overlay.kind}
+                  onChange={event => setOverlayKind(overlayIndex, event.target.value as OverlayKind)}
+               >
+                  <option value="mean">{t.graphOverlayMean}</option>
+                  <option value="trend">{t.graphOverlayTrend}</option>
+                  <option value="reference">{t.graphOverlayReference}</option>
+               </select>
+
+               {/* Computed kinds (mean/trend): a target-series select including "All series". */}
+               {overlay.kind !== 'reference' && (
+                  <select
+                     className="graph-overlay-select"
+                     aria-label={t.graphSeriesName}
+                     value={overlay.series === 'all' ? 'all' : String(overlay.series ?? 0)}
+                     onChange={event => commit(updateOverlay(working, overlayIndex, {
+                        series: event.target.value === 'all' ? 'all' : Number(event.target.value),
+                     }))}
+                  >
+                     {working.data.series.map((series, seriesIndex) => (
+                        <option key={seriesIndex} value={seriesIndex}>
+                           {series.name || `${t.graphSeriesDefault} ${seriesIndex + 1}`}
+                        </option>
+                     ))}
+                     <option value="all">{t.graphOverlayAllSeries}</option>
+                  </select>
+               )}
+
+               {/* Trend: opt-in equation label. */}
+               {overlay.kind === 'trend' && (
+                  <label className="graph-toggle">
+                     <input
+                        type="checkbox"
+                        checked={overlay.showEquation ?? false}
+                        onChange={event => commit(updateOverlay(working, overlayIndex, {
+                           showEquation: event.target.checked || undefined,
+                        }))}
+                     />
+                     <span>{t.graphOverlayShowEquation}</span>
+                  </label>
+               )}
+
+               {/* Reference: a constant value + an optional free-text label (draft/commit-on-blur). */}
+               {overlay.kind === 'reference' && (
+                  <>
+                     <input
+                        className="graph-text-input graph-overlay-value"
+                        type="number"
+                        aria-label={t.graphOverlayValue}
+                        placeholder={t.graphOverlayValue}
+                        value={overlay.value ?? ''}
+                        onFocus={editStart}
+                        onChange={event => draft(updateOverlay(working, overlayIndex, {
+                           value: event.target.value === '' ? undefined : Number(event.target.value),
+                        }))}
+                        onBlur={commitField}
+                     />
+                     <input
+                        className="graph-text-input graph-overlay-label"
+                        type="text"
+                        aria-label={t.graphOverlayLabel}
+                        placeholder={t.graphOverlayLabel}
+                        value={overlay.label ?? ''}
+                        onFocus={editStart}
+                        onChange={event => draft(updateOverlay(working, overlayIndex, {
+                           label: event.target.value || undefined,
+                        }))}
+                        onBlur={commitField}
+                     />
+                  </>
+               )}
+
+               <button
+                  type="button"
+                  className="graph-icon-btn graph-overlay-remove"
+                  aria-label={t.graphRemoveOverlay}
+                  title={t.graphRemoveOverlay}
+                  onClick={() => commit(removeOverlay(working, overlayIndex))}
+               >×</button>
+            </div>
+         ))}
+
+         <button
+            type="button"
+            className="graph-grid-btn graph-overlay-add"
+            onClick={() => commit(addOverlay(working, { kind: 'mean', series: 0 }))}
+         >{t.graphAddOverlay}</button>
+      </div>
+   )
+
+   // =============== Data tab: the editable table + the analysis section below it ===============
    const dataTab = (
-      <GraphDataGrid
-         spec={working}
-         theme={graphTheme}
-         t={t}
-         onEditStart={editStart}
-         onDraft={draft}
-         onCommit={commit}
-         onCommitField={commitField}
-      />
+      <div className="graph-data-tab">
+         <GraphDataGrid
+            spec={working}
+            theme={graphTheme}
+            t={t}
+            onEditStart={editStart}
+            onDraft={draft}
+            onCommit={commit}
+            onCommitField={commitField}
+         />
+         {analysisSection}
+      </div>
    )
 
    const editorBody = (

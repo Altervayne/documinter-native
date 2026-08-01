@@ -20,6 +20,9 @@ import {
    setCell,
    setType,
    setOption,
+   addOverlay,
+   removeOverlay,
+   updateOverlay,
 } from './graphEdit'
 
 // A small, well-formed two-series / three-category fixture rebuilt per test (no shared mutation).
@@ -281,5 +284,75 @@ describe('setOption', () => {
       const spec = makeSpec()
       setOption(spec, 'title', 'Sales')
       expect(spec.options.title).toBeUndefined()
+   })
+})
+
+describe('addOverlay', () => {
+   it('appends an overlay, creating the array on the first add', () => {
+      const next = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      expect(next.options.overlays).toEqual([{ kind: 'mean', series: 0 }])
+   })
+
+   it('appends to an existing overlay array in order', () => {
+      const one = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      const two = addOverlay(one, { kind: 'reference', value: 5 })
+      expect(two.options.overlays).toEqual([
+         { kind: 'mean', series: 0 },
+         { kind: 'reference', value: 5 },
+      ])
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      addOverlay(spec, { kind: 'mean', series: 0 })
+      expect(spec.options.overlays).toBeUndefined()
+   })
+})
+
+describe('removeOverlay', () => {
+   it('removes the overlay at the index', () => {
+      const withTwo = addOverlay(
+         addOverlay(makeSpec(), { kind: 'mean', series: 0 }),
+         { kind: 'trend', series: 1 },
+      )
+      const next = removeOverlay(withTwo, 0)
+      expect(next.options.overlays).toEqual([{ kind: 'trend', series: 1 }])
+   })
+
+   it('drops the overlays key entirely once the last one is removed', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      const next = removeOverlay(withOne, 0)
+      expect('overlays' in next.options).toBe(false)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      expect(removeOverlay(withOne, 9)).toBe(withOne)
+      expect(removeOverlay(withOne, -1)).toBe(withOne)
+   })
+})
+
+describe('updateOverlay', () => {
+   it('shallow-merges a partial onto the overlay at the index', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      const next = updateOverlay(withOne, 0, { series: 'all' })
+      expect(next.options.overlays).toEqual([{ kind: 'mean', series: 'all' }])
+   })
+
+   it('can change the kind and add fields', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'trend', series: 0 })
+      const next = updateOverlay(withOne, 0, { showEquation: true })
+      expect(next.options.overlays).toEqual([{ kind: 'trend', series: 0, showEquation: true }])
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      expect(updateOverlay(withOne, 5, { series: 1 })).toBe(withOne)
+   })
+
+   it('does not mutate the input spec', () => {
+      const withOne = addOverlay(makeSpec(), { kind: 'mean', series: 0 })
+      updateOverlay(withOne, 0, { series: 'all' })
+      expect(withOne.options.overlays).toEqual([{ kind: 'mean', series: 0 }])
    })
 })
