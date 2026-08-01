@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
+import type React from 'react'
 import { BarChart3, Pencil } from 'lucide-react'
-import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from '../../../lib/graph'
+import {
+   renderGraphToSvg,
+   LIGHT_GRAPH_THEME,
+   DARK_GRAPH_THEME,
+   GRAPH_DEFAULT_BAR_WIDTH,
+   GRAPH_DEFAULT_LINE_WIDTH,
+   GRAPH_DEFAULT_SHOW_POINTS,
+   GRAPH_DEFAULT_AREA_FILL_OPACITY,
+} from '../../../lib/graph'
 import type { GraphSpec, GraphType } from '../../../lib/graph'
 import { setType, setOption } from '../../../lib/graphEdit'
 import { GraphDataGrid } from '../../../molecules/GraphDataGrid'
+import { GraphTypePicker } from '../../../molecules/GraphTypePicker'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
 import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
@@ -16,17 +26,8 @@ interface GraphBlockProps {
    readOnly?: boolean
 }
 
-// The 7 chart types in the order they appear in the selector, each paired with the i18n key for
-// its label. Kept here (next to the block) so the selector and the type union never drift.
-const GRAPH_TYPES: { type: GraphType; labelKey: 'graphTypeBar' | 'graphTypeBarGrouped' | 'graphTypeBarStacked' | 'graphTypeLine' | 'graphTypeArea' | 'graphTypePie' | 'graphTypeDonut' }[] = [
-   { type: 'bar',         labelKey: 'graphTypeBar' },
-   { type: 'bar-grouped', labelKey: 'graphTypeBarGrouped' },
-   { type: 'bar-stacked', labelKey: 'graphTypeBarStacked' },
-   { type: 'line',        labelKey: 'graphTypeLine' },
-   { type: 'area',        labelKey: 'graphTypeArea' },
-   { type: 'pie',         labelKey: 'graphTypePie' },
-   { type: 'donut',       labelKey: 'graphTypeDonut' },
-]
+/** The two editor tabs: the visual controls (type + display options) and the data table. */
+type GraphEditorTab = 'visual' | 'data'
 
 /** A safe fallback so the editor never operates on an undefined spec (mkBlock always sets one). */
 const FALLBACK_SPEC: GraphSpec = {
@@ -38,6 +39,12 @@ const FALLBACK_SPEC: GraphSpec = {
 /** The radial types have no axes; hide the x/y caption fields (and show the donut hole for donut). */
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 
+/** The bar family — the only types that show the bar-width control. */
+const BAR_TYPES = new Set<GraphType>(['bar', 'bar-grouped', 'bar-stacked'])
+
+/** Line & area — the types that show the line-thickness control and the point-markers toggle. */
+const LINE_AREA_TYPES = new Set<GraphType>(['line', 'area'])
+
 const DEFAULT_DONUT_HOLE = 0.55
 
 /**
@@ -48,7 +55,7 @@ const DEFAULT_DONUT_HOLE = 0.55
  *
  * WINDOWED EDITOR (block-editor-window adopter #1): inline, the block shows only its rendered
  * chart plus a hover-reveal Edit pill; the full editor — chart-type selector, editable data grid,
- * option controls, live preview — moves into a floating BlockEditorWindow opened via the
+ * option controls — moves into a floating BlockEditorWindow opened via the
  * BlockEditorWindowContext. The draft/commit-on-blur model is unchanged (a local working spec
  * keeps typing smooth, committed via `patch({ graph })`); it simply lives in the window now. The
  * window is rendered inline by this component only while this block is the open one, so deleting
@@ -66,6 +73,8 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    // math block's not-editing sync pattern.
    const [working, setWorking] = useState<GraphSpec>(block.graph ?? FALLBACK_SPEC)
    const editing = useRef(false)
+   // Which editor tab is showing.
+   const [activeTab, setActiveTab] = useState<GraphEditorTab>('visual')
    // Hover state for the inline Edit pill (opacity-reveal, mirroring the DnD grip affordance).
    const [outputHovered, setOutputHovered] = useState(false)
    // The block's own root, measured (in the Edit handler, never during render) for the window's
@@ -122,9 +131,11 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    //  Shared bits
    // ============
    const isRadial   = RADIAL_TYPES.has(working.type)
+   const isBarFamily = BAR_TYPES.has(working.type)
+   const isLineArea  = LINE_AREA_TYPES.has(working.type)
    const options    = working.options
-   // Both the inline output and the in-window preview render from the live working spec, so the
-   // inline chart updates as the window's controls are used.
+   // The inline output renders from the live working spec, so the chart updates behind the window
+   // as the window's controls are used — no separate in-window preview needed.
    const previewSvg = renderGraphToSvg(working, graphTheme)
 
    // ============
@@ -134,27 +145,32 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
    // but the window portals to <body>, outside that tree. Re-establish the scope here: a `.doc-dark`
    // wrapper (per the DOCUMENT theme, so the controls match the chart) over a `.doc-render` whose
    // page padding is neutralized inside the window (see doc.css .block-editor-doc-render).
-   const editorBody = (
-    <div className={docTheme === 'dark' ? 'doc-dark' : undefined}>
-     <div className="doc-render block-editor-doc-render">
-      <div className="graph-editor">
-         {/* =============== Chart-type selector + options =============== */}
-         <div className="graph-controls">
-            <label className="graph-control">
-               <span className="graph-control-label">{t.graphChartType}</span>
-               <select
-                  className="graph-type-select"
-                  value={working.type}
-                  onChange={event => commit(setType(working, event.target.value as GraphType))}
-               >
-                  {GRAPH_TYPES.map(({ type, labelKey }) => (
-                     <option key={type} value={type}>{t[labelKey]}</option>
-                  ))}
-               </select>
-            </label>
+   // Roving-tab keyboard nav: Left/Right (and Home/End) move between the two tabs.
+   function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'End') {
+         event.preventDefault()
+         setActiveTab('visual')
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown' || event.key === 'Home') {
+         event.preventDefault()
+         setActiveTab('data')
+      }
+   }
 
-            <label className="graph-control">
-               <span className="graph-control-label">{t.graphOptionTitle}</span>
+   // =============== Visual tab: chart-type cards + grouped display options ===============
+   const visualTab = (
+      <div className="graph-visual-tab">
+         <GraphTypePicker
+            value={working.type}
+            onChange={type => commit(setType(working, type))}
+            theme={graphTheme}
+            t={t}
+         />
+
+         <div className="graph-options">
+            <span className="graph-section-label">{t.graphDisplaySection}</span>
+
+            <label className="graph-field">
+               <span className="graph-field-label">{t.graphOptionTitle}</span>
                <input
                   className="graph-text-input"
                   type="text"
@@ -166,8 +182,8 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             </label>
 
             {!isRadial && (
-               <label className="graph-control">
-                  <span className="graph-control-label">{t.graphOptionXLabel}</span>
+               <label className="graph-field">
+                  <span className="graph-field-label">{t.graphOptionXLabel}</span>
                   <input
                      className="graph-text-input"
                      type="text"
@@ -180,8 +196,8 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             )}
 
             {!isRadial && (
-               <label className="graph-control">
-                  <span className="graph-control-label">{t.graphOptionYLabel}</span>
+               <label className="graph-field">
+                  <span className="graph-field-label">{t.graphOptionYLabel}</span>
                   <input
                      className="graph-text-input"
                      type="text"
@@ -193,7 +209,7 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
                </label>
             )}
 
-            <div className="graph-toggles">
+            <div className="graph-toggle-row">
                <label className="graph-toggle">
                   <input
                      type="checkbox"
@@ -213,35 +229,153 @@ export function GraphBlock({ block, patch, readOnly }: GraphBlockProps) {
             </div>
 
             {working.type === 'donut' && (
-               <label className="graph-control graph-control-hole">
-                  <span className="graph-control-label">{t.graphOptionHole}</span>
-                  <input
-                     className="graph-range-input"
-                     type="range"
-                     min={0}
-                     max={0.9}
-                     step={0.05}
-                     value={options.donutHole ?? DEFAULT_DONUT_HOLE}
-                     onChange={event => commit(setOption(working, 'donutHole', Number(event.target.value)))}
-                  />
-                  <span className="graph-range-value">{Math.round((options.donutHole ?? DEFAULT_DONUT_HOLE) * 100)}%</span>
+               <label className="graph-field graph-field-hole">
+                  <span className="graph-field-label">{t.graphOptionHole}</span>
+                  <div className="graph-range-row">
+                     <input
+                        className="graph-range-input"
+                        type="range"
+                        min={0}
+                        max={0.9}
+                        step={0.05}
+                        value={options.donutHole ?? DEFAULT_DONUT_HOLE}
+                        onChange={event => commit(setOption(working, 'donutHole', Number(event.target.value)))}
+                     />
+                     <span className="graph-range-value">{Math.round((options.donutHole ?? DEFAULT_DONUT_HOLE) * 100)}%</span>
+                  </div>
+               </label>
+            )}
+
+            {/* ============ Per-type: bar width (bar family only) ============ */}
+            {isBarFamily && (
+               <label className="graph-field">
+                  <span className="graph-field-label">{t.graphOptionBarWidth}</span>
+                  <div className="graph-range-row">
+                     <input
+                        className="graph-range-input"
+                        type="range"
+                        min={0.3}
+                        max={1}
+                        step={0.05}
+                        value={options.barWidth ?? GRAPH_DEFAULT_BAR_WIDTH}
+                        onChange={event => commit(setOption(working, 'barWidth', Number(event.target.value)))}
+                     />
+                     <span className="graph-range-value">{Math.round((options.barWidth ?? GRAPH_DEFAULT_BAR_WIDTH) * 100)}%</span>
+                  </div>
+               </label>
+            )}
+
+            {/* ============ Per-type: line thickness (line & area only) ============ */}
+            {isLineArea && (
+               <label className="graph-field">
+                  <span className="graph-field-label">{t.graphOptionLineWidth}</span>
+                  <div className="graph-range-row">
+                     <input
+                        className="graph-range-input"
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={0.5}
+                        value={options.lineWidth ?? GRAPH_DEFAULT_LINE_WIDTH}
+                        onChange={event => commit(setOption(working, 'lineWidth', Number(event.target.value)))}
+                     />
+                     <span className="graph-range-value">{options.lineWidth ?? GRAPH_DEFAULT_LINE_WIDTH}px</span>
+                  </div>
+               </label>
+            )}
+
+            {/* ============ Per-type: point markers toggle (line & area only) ============ */}
+            {isLineArea && (
+               <div className="graph-toggle-row">
+                  <label className="graph-toggle">
+                     <input
+                        type="checkbox"
+                        checked={options.showPoints ?? GRAPH_DEFAULT_SHOW_POINTS}
+                        onChange={event => commit(setOption(working, 'showPoints', event.target.checked))}
+                     />
+                     <span>{t.graphOptionPoints}</span>
+                  </label>
+               </div>
+            )}
+
+            {/* ============ Per-type: fill opacity (area only) ============ */}
+            {working.type === 'area' && (
+               <label className="graph-field">
+                  <span className="graph-field-label">{t.graphOptionFillOpacity}</span>
+                  <div className="graph-range-row">
+                     <input
+                        className="graph-range-input"
+                        type="range"
+                        min={0.05}
+                        max={0.7}
+                        step={0.05}
+                        value={options.areaFillOpacity ?? GRAPH_DEFAULT_AREA_FILL_OPACITY}
+                        onChange={event => commit(setOption(working, 'areaFillOpacity', Number(event.target.value)))}
+                     />
+                     <span className="graph-range-value">{Math.round((options.areaFillOpacity ?? GRAPH_DEFAULT_AREA_FILL_OPACITY) * 100)}%</span>
+                  </div>
                </label>
             )}
          </div>
+      </div>
+   )
 
-         {/* =============== Data grid =============== */}
-         <GraphDataGrid
-            spec={working}
-            theme={graphTheme}
-            t={t}
-            onEditStart={editStart}
-            onDraft={draft}
-            onCommit={commit}
-            onCommitField={commitField}
-         />
+   // =============== Data tab: the editable spreadsheet-lite table ===============
+   const dataTab = (
+      <GraphDataGrid
+         spec={working}
+         theme={graphTheme}
+         t={t}
+         onEditStart={editStart}
+         onDraft={draft}
+         onCommit={commit}
+         onCommitField={commitField}
+      />
+   )
 
-         {/* =============== Live preview =============== */}
-         <div className="graph-preview doc-graph" dangerouslySetInnerHTML={{ __html: previewSvg }} />
+   const editorBody = (
+    <div className={`graph-editor-root${docTheme === 'dark' ? ' doc-dark' : ''}`}>
+     <div className="doc-render block-editor-doc-render">
+      <div className="graph-editor">
+         {/* No in-window preview: the block renders live BEHIND the non-modal window (that is the
+             point of a draggable window), so an in-window copy is redundant. The window holds only
+             the controls; the chart updates inline as you edit. */}
+
+         {/* =============== Tab bar =============== */}
+         <div className="graph-editor-tabs" role="tablist" aria-label={t.graphWindowTitle}>
+            <button
+               type="button"
+               role="tab"
+               id="graph-tab-visual"
+               aria-selected={activeTab === 'visual'}
+               aria-controls="graph-tabpanel-visual"
+               tabIndex={activeTab === 'visual' ? 0 : -1}
+               className={`graph-editor-tab${activeTab === 'visual' ? ' is-active' : ''}`}
+               onClick={() => setActiveTab('visual')}
+               onKeyDown={handleTabKeyDown}
+            >{t.graphTabVisual}</button>
+            <button
+               type="button"
+               role="tab"
+               id="graph-tab-data"
+               aria-selected={activeTab === 'data'}
+               aria-controls="graph-tabpanel-data"
+               tabIndex={activeTab === 'data' ? 0 : -1}
+               className={`graph-editor-tab${activeTab === 'data' ? ' is-active' : ''}`}
+               onClick={() => setActiveTab('data')}
+               onKeyDown={handleTabKeyDown}
+            >{t.graphTabData}</button>
+         </div>
+
+         {/* =============== Tab content (scrolls in the remaining space) =============== */}
+         <div
+            className="graph-editor-tabpanel"
+            role="tabpanel"
+            id={activeTab === 'visual' ? 'graph-tabpanel-visual' : 'graph-tabpanel-data'}
+            aria-labelledby={activeTab === 'visual' ? 'graph-tab-visual' : 'graph-tab-data'}
+         >
+            {activeTab === 'visual' ? visualTab : dataTab}
+         </div>
       </div>
      </div>
     </div>

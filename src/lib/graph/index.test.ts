@@ -110,6 +110,69 @@ describe('cartesian marks', () => {
    })
 })
 
+// #########################
+// # PER-TYPE PARAMETERS    #
+// #########################
+
+/** Pull the numeric `width="…"` of the first drawn bar rect (rects with a `rx`/`fill`, not swatches). */
+function firstBarWidth(svg: string): number {
+   const match = /<rect[^>]*\bwidth="([\d.]+)"[^>]*fill="#/.exec(svg)
+   return match ? Number(match[1]) : Number.NaN
+}
+
+describe('per-type parameter: barWidth', () => {
+   it('a non-default barWidth changes the single-bar output and narrows the bars', () => {
+      const wide = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      const narrow = renderGraphToSvg(makeSpec('bar', { barWidth: 0.4 }), LIGHT_GRAPH_THEME)
+      expect(narrow).not.toBe(wide)
+      expect(firstBarWidth(narrow)).toBeLessThan(firstBarWidth(wide))
+   })
+
+   it('an at-default barWidth renders identically to leaving it unset', () => {
+      const unset = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      const atDefault = renderGraphToSvg(makeSpec('bar', { barWidth: 1 }), LIGHT_GRAPH_THEME)
+      expect(atDefault).toBe(unset)
+   })
+
+   it('narrows grouped bars too', () => {
+      const wide = renderGraphToSvg(makeSpec('bar-grouped'), LIGHT_GRAPH_THEME)
+      const narrow = renderGraphToSvg(makeSpec('bar-grouped', { barWidth: 0.5 }), LIGHT_GRAPH_THEME)
+      expect(firstBarWidth(narrow)).toBeLessThan(firstBarWidth(wide))
+   })
+})
+
+describe('per-type parameter: lineWidth', () => {
+   it('a non-default lineWidth changes the line stroke width', () => {
+      const thin = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+      const thick = renderGraphToSvg(makeSpec('line', { lineWidth: 4 }), LIGHT_GRAPH_THEME)
+      expect(thin).toContain('stroke-width="2"')
+      expect(thick).toContain('stroke-width="4"')
+      expect(thick).not.toBe(thin)
+   })
+})
+
+describe('per-type parameter: showPoints', () => {
+   it('omits point markers when showPoints is false (line)', () => {
+      const withPoints = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+      const withoutPoints = renderGraphToSvg(makeSpec('line', { showPoints: false }), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(withPoints, '<circle')).toBe(6)
+      expect(countOccurrences(withoutPoints, '<circle')).toBe(0)
+   })
+
+   it('omits point markers when showPoints is false (area)', () => {
+      const withoutPoints = renderGraphToSvg(makeSpec('area', { showPoints: false }), LIGHT_GRAPH_THEME)
+      expect(countOccurrences(withoutPoints, '<circle')).toBe(0)
+   })
+})
+
+describe('per-type parameter: areaFillOpacity', () => {
+   it('a non-default areaFillOpacity sets the fill alpha', () => {
+      const svg = renderGraphToSvg(makeSpec('area', { areaFillOpacity: 0.35 }), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('fill-opacity="0.35"')
+      expect(svg).not.toContain('fill-opacity="0.1"')
+   })
+})
+
 describe('radial marks', () => {
    it('draws N arc paths for a pie chart', () => {
       const svg = renderGraphToSvg(makeSpec('pie'), LIGHT_GRAPH_THEME)

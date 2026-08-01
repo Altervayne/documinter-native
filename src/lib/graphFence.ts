@@ -17,6 +17,12 @@
  */
 
 import type { GraphSpec, GraphType, GraphSeries, GraphOptions } from './graph'
+import {
+   GRAPH_DEFAULT_BAR_WIDTH,
+   GRAPH_DEFAULT_LINE_WIDTH,
+   GRAPH_DEFAULT_SHOW_POINTS,
+   GRAPH_DEFAULT_AREA_FILL_OPACITY,
+} from './graph'
 import { parsePipeTableRow } from './markdown'
 
 // #############
@@ -108,9 +114,10 @@ function tokenizeInfoString(info: string): string[] {
 
 /** Parsed pieces of a graph fence info string. */
 interface ParsedInfo {
-   type:           GraphType
-   options:        GraphOptions
-   colorOverrides: (string | undefined)[]
+   type:                GraphType
+   options:             GraphOptions
+   colorOverrides:      (string | undefined)[]
+   sliceColorOverrides: (string | undefined)[]
 }
 
 /**
@@ -124,6 +131,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
    const options: GraphOptions = {}
    let type: GraphType = DEFAULT_GRAPH_TYPE
    let colorOverrides: (string | undefined)[] = []
+   let sliceColorOverrides: (string | undefined)[] = []
 
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -167,8 +175,33 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
             if (Number.isFinite(parsed)) options.yMax = parsed
             break
          }
+         case 'barWidth': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) options.barWidth = parsed
+            break
+         }
+         case 'lineWidth': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) options.lineWidth = parsed
+            break
+         }
+         case 'points':
+            if (value === 'on')  options.showPoints = true
+            if (value === 'off') options.showPoints = false
+            break
+         case 'areaOpacity': {
+            const parsed = Number(value)
+            if (Number.isFinite(parsed)) options.areaFillOpacity = parsed
+            break
+         }
          case 'colors':
             colorOverrides = value.split(',').map(slot => {
+               const trimmed = slot.trim()
+               return trimmed === '' ? undefined : trimmed
+            })
+            break
+         case 'sliceColors':
+            sliceColorOverrides = value.split(',').map(slot => {
                const trimmed = slot.trim()
                return trimmed === '' ? undefined : trimmed
             })
@@ -178,7 +211,7 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
       }
    }
 
-   return { type, options, colorOverrides }
+   return { type, options, colorOverrides, sliceColorOverrides }
 }
 
 /** Serialize the presentation options + type into the ordered `key=value` token list. */
@@ -203,6 +236,18 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    if (options.yMax !== undefined)
       tokens.push(`ymax=${options.yMax}`)
 
+   // Per-type presentation options ride the info string ONLY when set AND different from the
+   // render default (an at-default value renders identically without a token, keeping the fence
+   // lean). Defaults are the single source of truth in graph/types.ts.
+   if (options.barWidth !== undefined && options.barWidth !== GRAPH_DEFAULT_BAR_WIDTH)
+      tokens.push(`barWidth=${options.barWidth}`)
+   if (options.lineWidth !== undefined && options.lineWidth !== GRAPH_DEFAULT_LINE_WIDTH)
+      tokens.push(`lineWidth=${options.lineWidth}`)
+   if (options.showPoints !== undefined && options.showPoints !== GRAPH_DEFAULT_SHOW_POINTS)
+      tokens.push(`points=${options.showPoints ? 'on' : 'off'}`)
+   if (options.areaFillOpacity !== undefined && options.areaFillOpacity !== GRAPH_DEFAULT_AREA_FILL_OPACITY)
+      tokens.push(`areaOpacity=${options.areaFillOpacity}`)
+
    // Per-series color overrides ride ONE `colors=` token in series order, empty slot = no
    // override. Emitted only when at least one series actually carries a color.
    const series = spec.data?.series ?? []
@@ -211,6 +256,16 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       // clearly as one value and stays robust if a slot ever carries something exotic.
       const slots = series.map(oneSeries => oneSeries.color ?? '')
       tokens.push(`colors="${slots.join(',')}"`)
+   }
+
+   // Per-category (per-slice) color overrides ride ONE `sliceColors=` token in LABEL order, empty
+   // slot = no override. Radial-only in effect, but the token rides both formats losslessly; it is
+   // emitted only when at least one slice actually carries a color.
+   const labels = spec.data?.labels ?? []
+   const categoryColors = spec.data?.categoryColors
+   if (categoryColors && categoryColors.some(color => color !== undefined && color !== '')) {
+      const slots = labels.map((_label, index) => categoryColors[index] ?? '')
+      tokens.push(`sliceColors="${slots.join(',')}"`)
    }
 
    return tokens
@@ -329,7 +384,7 @@ export function graphSpecToFence(spec: GraphSpec): { info: string; body: string 
  * (possibly empty), never an exception.
  */
 export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
-   const { type, options, colorOverrides } = parseInfoString(fenceInfo)
+   const { type, options, colorOverrides, sliceColorOverrides } = parseInfoString(fenceInfo)
    const { labels, series } = parseTableBody(body)
 
    // Apply the per-series color overrides positionally onto the parsed series.
@@ -338,5 +393,16 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
       return override ? { ...oneSeries, color: override } : oneSeries
    })
 
-   return { type, data: { labels, series: coloredSeries }, options }
+   const data: { labels: string[]; series: GraphSeries[]; categoryColors?: (string | undefined)[] } = {
+      labels,
+      series: coloredSeries,
+   }
+   // Apply the per-category (per-slice) color overrides in label order, but ONLY when at least one
+   // slot carries a color — an all-empty token leaves the field absent so a never-colored spec
+   // round-trips to an identical object (no stray `categoryColors` key).
+   if (sliceColorOverrides.some(color => color !== undefined)) {
+      data.categoryColors = labels.map((_label, index) => sliceColorOverrides[index])
+   }
+
+   return { type, data, options }
 }

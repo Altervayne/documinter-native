@@ -48,6 +48,14 @@ export interface GraphSeries {
 export interface GraphData {
    labels: string[]
    series: GraphSeries[]
+   /**
+    * Optional per-category (per-slice) color overrides, positionally aligned to {@link labels}
+    * (sparse is allowed — an `undefined`/missing slot means "no override, use the palette slot").
+    * Honored by RADIAL rendering only (pie/donut), where each label is one colored slice; the
+    * cartesian families color by series, not by category, and ignore this field. This mirrors the
+    * per-series {@link GraphSeries.color} hook, one axis over.
+    */
+   categoryColors?: (string | undefined)[]
 }
 
 /**
@@ -75,7 +83,45 @@ export interface GraphOptions {
    yMin?: number
    /** Optional y-axis ceiling. Default the nice-max of the data. */
    yMax?: number
+   /**
+    * Bar thickness as a FRACTION (0..1) of the category band (for grouped bars, of each series'
+    * sub-slot within the band). Bar family only (bar / bar-grouped / bar-stacked). Undefined =
+    * {@link GRAPH_DEFAULT_BAR_WIDTH} (1 = fill the band, still capped at the 24px max thickness),
+    * i.e. identical to the pre-option behavior.
+    */
+   barWidth?: number
+   /**
+    * Line / area stroke width in PX. Line & area only. Undefined = {@link GRAPH_DEFAULT_LINE_WIDTH}
+    * (2px), the pre-option stroke width.
+    */
+   lineWidth?: number
+   /**
+    * Whether to draw circle markers at each datum. Line & area only. Undefined =
+    * {@link GRAPH_DEFAULT_SHOW_POINTS} (true — markers were always drawn before this option).
+    */
+   showPoints?: boolean
+   /**
+    * Area fill alpha (0..1). Area only. Undefined = {@link GRAPH_DEFAULT_AREA_FILL_OPACITY} (0.1),
+    * the pre-option fill opacity.
+    */
+   areaFillOpacity?: number
 }
+
+// ####################
+// # OPTION DEFAULTS  #
+// ####################
+
+/**
+ * The render defaults for the per-type presentation options above, kept as ONE source of truth so
+ * three consumers agree: the renderer falls back to these when an option is unset, the serializer
+ * drops a token whose value equals its default (keeping the fence lean), and the editor seeds its
+ * range / toggle controls from them. Units are documented on each matching {@link GraphOptions}
+ * field. An unset option therefore renders, serializes, and edits exactly as before this feature.
+ */
+export const GRAPH_DEFAULT_BAR_WIDTH = 1          // fraction 0..1 of the category band
+export const GRAPH_DEFAULT_LINE_WIDTH = 2         // stroke width in px
+export const GRAPH_DEFAULT_SHOW_POINTS = true     // markers drawn at each datum
+export const GRAPH_DEFAULT_AREA_FILL_OPACITY = 0.1 // area fill alpha 0..1
 
 /** The full spec stored on a graph block: type + data + presentation options. */
 export interface GraphSpec {

@@ -91,6 +91,35 @@ describe('Graph fence, spec round-trip', () => {
       expect(graphSpecToFence(spec).info).not.toContain('colors=')
    })
 
+   it('round-trips per-slice (per-category) color overrides via the sliceColors= token', () => {
+      const spec: GraphSpec = {
+         type: 'pie',
+         data: {
+            labels: ['Direct', 'Search', 'Social'],
+            series: [{ name: 'Sessions', values: [1200, 3400, 800] }],
+            categoryColors: ['#2a78d6', undefined, '#eb6834'],
+         },
+         options: {},
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('sliceColors="#2a78d6,,#eb6834"')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('emits no sliceColors= token when no slice carries a color', () => {
+      const spec: GraphSpec = {
+         type: 'pie',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: {},
+      }
+      expect(graphSpecToFence(spec).info).not.toContain('sliceColors=')
+   })
+
+   it('leaves categoryColors absent (not an all-undefined array) when sliceColors= is empty', () => {
+      const spec = fenceToGraphSpec('graph type=pie sliceColors=",,"', '')
+      expect('categoryColors' in spec.data).toBe(false)
+   })
+
    it('round-trips null / gap values as blank cells', () => {
       const spec: GraphSpec = {
          type: 'line',
@@ -112,6 +141,60 @@ describe('Graph fence, spec round-trip', () => {
       expect(info).toContain('hole=0.6')
       expect(info).toContain('legend=off')
       expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('round-trips a non-default barWidth via the barWidth= token', () => {
+      const spec: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { barWidth: 0.6 },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('barWidth=0.6')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('round-trips line thickness + point markers via lineWidth= and points=', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { lineWidth: 3, showPoints: false },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('lineWidth=3')
+      expect(info).toContain('points=off')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('round-trips an area fill opacity via the areaOpacity= token', () => {
+      const spec: GraphSpec = {
+         type: 'area',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { areaFillOpacity: 0.3 },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('areaOpacity=0.3')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('omits per-type tokens whose value equals the render default (keeps the fence lean)', () => {
+      const spec: GraphSpec = {
+         type: 'area',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         // Every one of these is the current render default, so none should serialize.
+         options: { barWidth: 1, lineWidth: 2, showPoints: true, areaFillOpacity: 0.1 },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).not.toContain('barWidth=')
+      expect(info).not.toContain('lineWidth=')
+      expect(info).not.toContain('points=')
+      expect(info).not.toContain('areaOpacity=')
+   })
+
+   it('ignores a garbage per-type token rather than throwing', () => {
+      const spec = fenceToGraphSpec('graph type=bar barWidth=wide lineWidth=NaN', '')
+      expect(spec.options.barWidth).toBeUndefined()
+      expect(spec.options.lineWidth).toBeUndefined()
    })
 })
 
@@ -176,6 +259,23 @@ describe('Graph fence, full-document serialization (.md and .mint both carry typ
       }
       const { sections, meta } = wrapGraph(pieSpec)
       const reparsed = markdownToDocument(documentToMarkdown(sections, meta)).sections[0].blocks[0]
+      expect(reparsed.graph).toEqual(pieSpec)
+   })
+
+   it('a pie chart with per-slice colors round-trips through the full Mintdown document path', () => {
+      const pieSpec: GraphSpec = {
+         type: 'donut',
+         data: {
+            labels: ['Direct', 'Search', 'Social'],
+            series: [{ name: 'Sessions', values: [1200, 3400, 800] }],
+            categoryColors: ['#2a78d6', undefined, '#eb6834'],
+         },
+         options: { title: 'Traffic by source', donutHole: 0.6 },
+      }
+      const { sections, meta } = wrapGraph(pieSpec)
+      const mintdown = documentToMintdown(sections, meta)
+      expect(mintdown).toContain('sliceColors="#2a78d6,,#eb6834"')
+      const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
       expect(reparsed.graph).toEqual(pieSpec)
    })
 })

@@ -13,6 +13,12 @@
  */
 
 import type { GraphSpec, GraphTheme, GraphSeries } from './types'
+import {
+   GRAPH_DEFAULT_BAR_WIDTH,
+   GRAPH_DEFAULT_LINE_WIDTH,
+   GRAPH_DEFAULT_SHOW_POINTS,
+   GRAPH_DEFAULT_AREA_FILL_OPACITY,
+} from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
 import { linearScale, niceTicks, bandScale } from './scale'
 import {
@@ -41,9 +47,17 @@ const MAX_BAR_THICKNESS = 24
 const BAR_CORNER_RADIUS = 3
 const SURFACE_GAP = 2
 const MARKER_RADIUS = 4
-const LINE_WIDTH = 2
-const AREA_FILL_OPACITY = 0.1
 const TARGET_TICK_COUNT = 5
+
+// ====== per-type option clamp bounds ======
+// The renderer resolves each per-type option to its GRAPH_DEFAULT_* fallback (see types.ts) when
+// unset, then clamps to these sane bounds so a hand-edited fence can never produce a broken chart.
+const MIN_BAR_WIDTH_FRACTION = 0.1
+const MAX_BAR_WIDTH_FRACTION = 1
+const MIN_LINE_WIDTH = 0.5
+const MAX_LINE_WIDTH = 12
+const MIN_FILL_OPACITY = 0
+const MAX_FILL_OPACITY = 1
 const LEGEND_SWATCH_SIZE = 12
 const LEGEND_SWATCH_TEXT_GAP = 6
 const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
@@ -93,6 +107,15 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
    const baselineY = yScale(baselineValue)
 
+   // ====== resolve per-type options (unset => GRAPH_DEFAULT_*, then clamped) ======
+   const barWidthFraction = clamp(
+      options.barWidth ?? GRAPH_DEFAULT_BAR_WIDTH, MIN_BAR_WIDTH_FRACTION, MAX_BAR_WIDTH_FRACTION)
+   const lineStrokeWidth = clamp(
+      options.lineWidth ?? GRAPH_DEFAULT_LINE_WIDTH, MIN_LINE_WIDTH, MAX_LINE_WIDTH)
+   const showPoints = options.showPoints ?? GRAPH_DEFAULT_SHOW_POINTS
+   const areaFillOpacity = clamp(
+      options.areaFillOpacity ?? GRAPH_DEFAULT_AREA_FILL_OPACITY, MIN_FILL_OPACITY, MAX_FILL_OPACITY)
+
    // ====== assemble ======
    const pieces: string[] = []
    pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
@@ -100,16 +123,16 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    pieces.push(renderCategoryLabels(labels, xBand, plot, theme))
 
    if (type === 'bar') {
-      pieces.push(renderSingleBars(labels, drawnSeries[0], xBand, yScale, baselineY, theme, options.showValues ?? false))
+      pieces.push(renderSingleBars(labels, drawnSeries[0], xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
    } else if (type === 'bar-grouped') {
-      pieces.push(renderGroupedBars(labels, drawnSeries, xBand, yScale, baselineY, theme, options.showValues ?? false))
+      pieces.push(renderGroupedBars(labels, drawnSeries, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
    } else if (type === 'bar-stacked') {
-      pieces.push(renderStackedBars(labels, drawnSeries, xBand, yScale, theme))
+      pieces.push(renderStackedBars(labels, drawnSeries, xBand, yScale, theme, barWidthFraction))
    } else if (type === 'area') {
-      pieces.push(renderAreaSeries(labels, drawnSeries, xBand, yScale, baselineY, theme))
+      pieces.push(renderAreaSeries(labels, drawnSeries, xBand, yScale, baselineY, theme, lineStrokeWidth, showPoints, areaFillOpacity))
    } else {
       // 'line'
-      pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme))
+      pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme, lineStrokeWidth, showPoints))
    }
 
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
@@ -279,9 +302,14 @@ function renderSingleBars(
    baselineY: number,
    theme: GraphTheme,
    showValues: boolean,
+   barWidthFraction: number,
 ): string {
    const color = resolveSeriesColor(0, series.color, theme)
-   const barWidth = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
+   // The band-capped base thickness is what the bar draws at full width today; the fraction then
+   // scales it down (at 1, the default, the bar is unchanged), so the control always has an effect
+   // even for wide bands where the 24px cap already governs.
+   const cappedBase = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
+   const barWidth = cappedBase * barWidthFraction
    const parts: string[] = []
    for (let index = 0; index < labels.length; index++) {
       const value = series.values[index]
@@ -307,10 +335,14 @@ function renderGroupedBars(
    baselineY: number,
    theme: GraphTheme,
    showValues: boolean,
+   barWidthFraction: number,
 ): string {
    const seriesCount = series.length
    const subStep = xBand.bandwidth / seriesCount
-   const barWidth = Math.max(1, Math.min(subStep - SURFACE_GAP, MAX_BAR_THICKNESS))
+   // Base sub-bar thickness (full sub-slot minus the 2px surface gap, capped) is today's width; the
+   // fraction scales it down (at 1, the default, it is unchanged), floored at 1px so it stays drawn.
+   const cappedBase = Math.min(subStep - SURFACE_GAP, MAX_BAR_THICKNESS)
+   const barWidth = Math.max(1, cappedBase * barWidthFraction)
    const parts: string[] = []
    for (let categoryIndex = 0; categoryIndex < labels.length; categoryIndex++) {
       const bandStart = xBand.start(categoryIndex)
@@ -340,8 +372,11 @@ function renderStackedBars(
    xBand: { center(index: number): number; bandwidth: number },
    yScale: (value: number) => number,
    theme: GraphTheme,
+   barWidthFraction: number,
 ): string {
-   const barWidth = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
+   // Band-capped base thickness (today's width) scaled by the fraction (unchanged at 1, the default).
+   const cappedBase = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
+   const barWidth = cappedBase * barWidthFraction
    const parts: string[] = []
    for (let categoryIndex = 0; categoryIndex < labels.length; categoryIndex++) {
       const rectX = xBand.center(categoryIndex) - barWidth / 2
@@ -426,13 +461,15 @@ function renderMarkers(runs: PointRun[], seriesName: string, color: string, them
    return parts.join('')
 }
 
-/** Line series: one polyline per contiguous run, 2px round-capped, plus point markers. */
+/** Line series: one polyline per contiguous run, round-capped, plus optional point markers. */
 function renderLineSeries(
    labels: string[],
    series: GraphSeries[],
    xBand: { center(index: number): number },
    yScale: (value: number) => number,
    theme: GraphTheme,
+   lineStrokeWidth: number,
+   showPoints: boolean,
 ): string {
    const parts: string[] = []
    for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
@@ -450,17 +487,17 @@ function renderLineSeries(
             points: pointsAttribute,
             fill: 'none',
             stroke: color,
-            'stroke-width': LINE_WIDTH,
+            'stroke-width': lineStrokeWidth,
             'stroke-linejoin': 'round',
             'stroke-linecap': 'round',
          }))
       }
-      parts.push(renderMarkers(runs, series[seriesIndex].name, color, theme))
+      if (showPoints) parts.push(renderMarkers(runs, series[seriesIndex].name, color, theme))
    }
    return element('g', {}, parts.join(''))
 }
 
-/** Area series: a filled polygon to the baseline at ~10% opacity, plus the line and markers. */
+/** Area series: a filled polygon to the baseline, plus the line and optional point markers. */
 function renderAreaSeries(
    labels: string[],
    series: GraphSeries[],
@@ -468,6 +505,9 @@ function renderAreaSeries(
    yScale: (value: number) => number,
    baselineY: number,
    theme: GraphTheme,
+   lineStrokeWidth: number,
+   showPoints: boolean,
+   areaFillOpacity: number,
 ): string {
    const parts: string[] = []
    for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
@@ -484,7 +524,7 @@ function renderAreaSeries(
          parts.push(selfClosingElement('path', {
             d: areaPath,
             fill: color,
-            'fill-opacity': AREA_FILL_OPACITY,
+            'fill-opacity': areaFillOpacity,
             stroke: 'none',
          }))
          if (run.points.length > 1) {
@@ -493,13 +533,13 @@ function renderAreaSeries(
                points: linePoints,
                fill: 'none',
                stroke: color,
-               'stroke-width': LINE_WIDTH,
+               'stroke-width': lineStrokeWidth,
                'stroke-linejoin': 'round',
                'stroke-linecap': 'round',
             }))
          }
       }
-      parts.push(renderMarkers(runs, series[seriesIndex].name, color, theme))
+      if (showPoints) parts.push(renderMarkers(runs, series[seriesIndex].name, color, theme))
    }
    return element('g', {}, parts.join(''))
 }
@@ -624,4 +664,10 @@ function rowWidthOf(row: { offsetX: number; width: number }[]): number {
 function roundForPath(value: number): number {
    if (!Number.isFinite(value)) return 0
    return Math.round(value * 100) / 100
+}
+
+/** Clamp a value into [min, max]; a non-finite input falls back to the min (defensive). */
+function clamp(value: number, min: number, max: number): number {
+   if (!Number.isFinite(value)) return min
+   return Math.min(max, Math.max(min, value))
 }

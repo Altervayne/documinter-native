@@ -92,7 +92,9 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
       const startAngle = cursorAngle
       const endAngle = cursorAngle + fraction * 360
       cursorAngle = endAngle
-      const color = resolveSeriesColor(index, undefined, theme)
+      // Each slice resolves its color from the per-category override (categoryColors[index]) when
+      // set, else the palette slot by slice index — mirroring how a series resolves its own color.
+      const color = resolveSeriesColor(index, data.categoryColors?.[index], theme)
       const pathData = innerRadius > 0
          ? donutSegmentPath(centerX, centerY, radius, innerRadius, startAngle, endAngle)
          : pieSlicePath(centerX, centerY, radius, startAngle, endAngle)
@@ -119,7 +121,7 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
       }
    }
 
-   if (legendWanted) pieces.push(renderLegend(labels, legendLayout, theme))
+   if (legendWanted) pieces.push(renderLegend(labels, legendLayout, theme, data.categoryColors))
 
    return element('g', {}, pieces.join(''))
 }
@@ -227,11 +229,12 @@ function renderLegend(
    labels: string[],
    legendLayout: { rows: { label: string; offsetX: number; width: number }[][] },
    theme: GraphTheme,
+   categoryColors: (string | undefined)[] | undefined,
 ): string {
    const parts: string[] = []
    const colorByLabel = new Map<string, string>()
    for (let index = 0; index < labels.length; index++) {
-      colorByLabel.set(labels[index], resolveSeriesColor(index, undefined, theme))
+      colorByLabel.set(labels[index], resolveSeriesColor(index, categoryColors?.[index], theme))
    }
    const firstRowY = CANVAS_HEIGHT - (16 + legendHeight(legendLayout.rows.length)) + 24
    for (let rowIndex = 0; rowIndex < legendLayout.rows.length; rowIndex++) {

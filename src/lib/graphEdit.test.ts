@@ -12,6 +12,7 @@ import {
    addCategory,
    removeCategory,
    setLabel,
+   setCategoryColor,
    addSeries,
    removeSeries,
    setSeriesName,
@@ -147,6 +148,61 @@ describe('removeSeries', () => {
    it('is a no-op for an out-of-range index', () => {
       const spec = makeSpec()
       expect(removeSeries(spec, 5)).toBe(spec)
+   })
+})
+
+describe('setCategoryColor', () => {
+   it('sets a per-category (per-slice) color override, padding the array to the label count', () => {
+      const next = setCategoryColor(makeSpec(), 1, '#abcdef')
+      expect(next.data.categoryColors).toEqual([undefined, '#abcdef', undefined])
+   })
+
+   it('clears the override and drops the whole array once every slot is cleared again', () => {
+      const colored = setCategoryColor(makeSpec(), 2, '#abcdef')
+      const cleared = setCategoryColor(colored, 2, undefined)
+      expect('categoryColors' in cleared.data).toBe(false)
+   })
+
+   it('keeps other overrides when clearing one of several', () => {
+      let spec = setCategoryColor(makeSpec(), 0, '#111111')
+      spec = setCategoryColor(spec, 2, '#222222')
+      const cleared = setCategoryColor(spec, 0, undefined)
+      expect(cleared.data.categoryColors).toEqual([undefined, undefined, '#222222'])
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const spec = makeSpec()
+      expect(setCategoryColor(spec, 9, '#abcdef')).toBe(spec)
+      expect(setCategoryColor(spec, -1, '#abcdef')).toBe(spec)
+   })
+
+   it('does not mutate the input spec', () => {
+      const spec = makeSpec()
+      setCategoryColor(spec, 0, '#abcdef')
+      expect(spec.data.categoryColors).toBeUndefined()
+   })
+})
+
+describe('categoryColors alignment across add / remove category', () => {
+   it('addCategory appends an undefined slot so the array stays aligned to labels', () => {
+      const colored = setCategoryColor(makeSpec(), 0, '#111111')
+      const next = addCategory(colored, 'D')
+      expect(next.data.labels).toEqual(['A', 'B', 'C', 'D'])
+      expect(next.data.categoryColors).toEqual(['#111111', undefined, undefined, undefined])
+   })
+
+   it('removeCategory splices the matching slot out so the array stays aligned to labels', () => {
+      const colored = setCategoryColor(makeSpec(), 2, '#222222')
+      const next = removeCategory(colored, 0)
+      expect(next.data.labels).toEqual(['B', 'C'])
+      expect(next.data.categoryColors).toEqual([undefined, '#222222'])
+   })
+
+   it('removeCategory drops the array entirely if it removes the last colored slot', () => {
+      const colored = setCategoryColor(makeSpec(), 1, '#222222')
+      const next = removeCategory(colored, 1)
+      expect(next.data.labels).toEqual(['A', 'C'])
+      expect('categoryColors' in next.data).toBe(false)
    })
 })
 

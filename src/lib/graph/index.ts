@@ -148,6 +148,13 @@ export type {
 } from './types'
 
 export {
+   GRAPH_DEFAULT_BAR_WIDTH,
+   GRAPH_DEFAULT_LINE_WIDTH,
+   GRAPH_DEFAULT_SHOW_POINTS,
+   GRAPH_DEFAULT_AREA_FILL_OPACITY,
+} from './types'
+
+export {
    GRAPH_SERIES_LIGHT,
    GRAPH_SERIES_DARK,
    MAX_SERIES,

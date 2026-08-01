@@ -18,24 +18,42 @@
  * editing model, not about preventing a crash.
  */
 
-import type { GraphSpec, GraphSeries, GraphType, GraphOptions } from './graph'
+import type { GraphSpec, GraphData, GraphSeries, GraphType, GraphOptions } from './graph'
 import { MAX_SERIES } from './graph'
 
 // ###########
 // # HELPERS #
 // ###########
 
-/** Shallow-clone the spec's data with a fresh series array (each series object also fresh). */
-function cloneData(spec: GraphSpec): { labels: string[]; series: GraphSeries[] } {
-   return {
+/**
+ * Shallow-clone the spec's data with a fresh series array (each series object also fresh) and,
+ * when present, a fresh `categoryColors` array so the per-slice overrides survive every transform
+ * (a plain `{ labels, series }` clone would silently DROP them).
+ */
+function cloneData(spec: GraphSpec): GraphData {
+   const cloned: GraphData = {
       labels: [...spec.data.labels],
       series: spec.data.series.map(series => ({ ...series, values: [...series.values] })),
    }
+   if (spec.data.categoryColors) {
+      cloned.categoryColors = [...spec.data.categoryColors]
+   }
+   return cloned
 }
 
 /** Reassemble a fresh spec from freshly-cloned data, carrying type + options through unchanged. */
-function withData(spec: GraphSpec, data: { labels: string[]; series: GraphSeries[] }): GraphSpec {
+function withData(spec: GraphSpec, data: GraphData): GraphSpec {
    return { type: spec.type, data, options: spec.options }
+}
+
+/**
+ * Drop a `categoryColors` array that carries no actual override (all slots undefined), so a spec
+ * whose per-slice colors were all reset serializes lean and compares equal to a never-colored one.
+ */
+function pruneCategoryColors(data: GraphData): void {
+   if (data.categoryColors && data.categoryColors.every(color => color === undefined)) {
+      delete data.categoryColors
+   }
 }
 
 // #############
@@ -51,6 +69,10 @@ export function addCategory(spec: GraphSpec, label: string = ''): GraphSpec {
    data.labels.push(label)
    for (const series of data.series) {
       series.values.push(null)
+   }
+   // Keep the per-slice color array aligned to labels: the new category has no override yet.
+   if (data.categoryColors) {
+      data.categoryColors.push(undefined)
    }
    return withData(spec, data)
 }
@@ -68,6 +90,11 @@ export function removeCategory(spec: GraphSpec, rowIndex: number): GraphSpec {
    for (const series of data.series) {
       series.values.splice(rowIndex, 1)
    }
+   // Keep the per-slice color array aligned to labels: drop the removed slot too.
+   if (data.categoryColors) {
+      data.categoryColors.splice(rowIndex, 1)
+      pruneCategoryColors(data)
+   }
    return withData(spec, data)
 }
 
@@ -76,6 +103,25 @@ export function setLabel(spec: GraphSpec, rowIndex: number, text: string): Graph
    if (rowIndex < 0 || rowIndex >= spec.data.labels.length) return spec
    const data = cloneData(spec)
    data.labels[rowIndex] = text
+   return withData(spec, data)
+}
+
+/**
+ * Set (or clear) the per-category (per-slice) color override at `categoryIndex` — the radial
+ * counterpart to {@link setSeriesColor}. Passing `undefined` clears the slot back to the palette
+ * color; if that leaves every slot cleared, the whole `categoryColors` array is dropped so the
+ * spec stays lean. The array is padded with `undefined` up to the label count so it stays aligned
+ * even when only a later slice is colored. Out-of-range returns unchanged.
+ */
+export function setCategoryColor(spec: GraphSpec, categoryIndex: number, color: string | undefined): GraphSpec {
+   if (categoryIndex < 0 || categoryIndex >= spec.data.labels.length) return spec
+   const data = cloneData(spec)
+   const categoryColors = data.categoryColors ? [...data.categoryColors] : []
+   // Pad to the label count so a sparse override array never drifts short of its labels.
+   while (categoryColors.length < data.labels.length) categoryColors.push(undefined)
+   categoryColors[categoryIndex] = color
+   data.categoryColors = categoryColors
+   pruneCategoryColors(data)
    return withData(spec, data)
 }
 
