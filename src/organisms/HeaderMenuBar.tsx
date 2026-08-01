@@ -119,6 +119,11 @@ interface HeaderMenuBarProps {
    onImportMintdownFile: (file: File) => Promise<void>
    onDocThemeChange: (theme: 'light' | 'dark') => void
    onDocAccentChange:(hex: string) => void
+   /** Export dialog open state, lifted to App.tsx so the document background context menu's
+    *  "Export..." item and this header's File -> Export... / Ctrl+E both drive the same modal. */
+   exportOpen:       boolean
+   onOpenExport:     () => void
+   onCloseExport:    () => void
 }
 
 // #############
@@ -129,8 +134,8 @@ export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
    onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
+   exportOpen, onOpenExport, onCloseExport,
 }: HeaderMenuBarProps) {
-   const [exportOpen, setExportOpen]       = useState(false)
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
 
@@ -144,12 +149,12 @@ export function HeaderMenuBar({
       function handleKeyDown(event: KeyboardEvent) {
          if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'e') {
             event.preventDefault()
-            setExportOpen(true)
+            onOpenExport()
          }
       }
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
-   }, [isDocumentMode])
+   }, [isDocumentMode, onOpenExport])
 
    // Placeholder for features not built this session (Tin, Save as, binder-mode imports).
    function comingSoon() {
@@ -221,7 +226,7 @@ export function HeaderMenuBar({
                onOpen={handleOpen}
                onSave={onManualSave}
                onSaveAs={onSaveAs}
-               onExport={() => setExportOpen(true)}
+               onExport={onOpenExport}
                onImportDocumint={comingSoon}
                onImportMarkdown={comingSoon}
                onImportMintdown={comingSoon}
@@ -284,7 +289,7 @@ export function HeaderMenuBar({
                defaultTheme={docTheme}
                defaultAccent={docAccent}
                lang={lang}
-               onClose={() => setExportOpen(false)}
+               onClose={onCloseExport}
             />
          )}
       </>

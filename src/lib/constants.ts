@@ -4,10 +4,35 @@ import type { LucideIcon } from 'lucide-react'
 
 // -- Type Imports --
 import type { BlockType } from '../types'
+import type { T } from './i18n'
 
 export const ACCENT_PRESETS: string[] = [
    '#f97316', '#2563eb', '#16a34a', '#7c3aed', '#e11d48', '#0891b2', '#2dcea8',
 ]
+
+// ==========================================================
+//  Accent preset friendly names
+// ==========================================================
+// The document background context menu's accent rows show a human name (this lookup) rather
+// than the raw hex — the color swatch icon still conveys the exact value. Keyed by hex so a
+// caller can resolve a name for any ACCENT_PRESETS entry without relying on array position.
+export const ACCENT_PRESET_NAME_KEYS: Record<string, keyof T> = {
+   '#f97316': 'accentNameOrange',
+   '#2563eb': 'accentNameBlue',
+   '#16a34a': 'accentNameGreen',
+   '#7c3aed': 'accentNameViolet',
+   '#e11d48': 'accentNameRose',
+   '#0891b2': 'accentNameCyan',
+   '#2dcea8': 'accentNameTeal',
+}
+
+/** Resolves an ACCENT_PRESETS hex to its localized friendly name, falling back to the raw hex
+ *  for any color with no entry in ACCENT_PRESET_NAME_KEYS (defensive — every current preset has
+ *  one, but a future preset added without a name shouldn't render a blank label). */
+export function accentPresetName(hex: string, t: T): string {
+   const nameKey = ACCENT_PRESET_NAME_KEYS[hex]
+   return nameKey ? t[nameKey] : hex
+}
 
 /** Curated font-color palette, base/light pairs across the hue wheel plus neutrals. */
 export const FONT_COLOR_PALETTE = [

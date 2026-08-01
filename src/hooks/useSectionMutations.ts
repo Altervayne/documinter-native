@@ -25,6 +25,17 @@ export function useSectionMutations(
       setSections(sections => [...sections, mkSection(t.defaultSectionTitle)])
    }, [setSections, t])
 
+   /** Insert an already-built section at a specific index (the section-menu "insert above/below"
+    *  actions). Mirrors useBlockMutations' insertBlockAfter — the caller supplies the full
+    *  section (mkSection default), no implicit factory call here. */
+   const insertSectionAt = useCallback((index: number, section: Section) => {
+      setSections(sections => {
+         const next = [...sections]
+         next.splice(index, 0, section)
+         return next
+      })
+   }, [setSections])
+
    const toggleSec = useCallback((secId: string) => {
       setSections(sections => sections.map(sec => sec.id === secId ? { ...sec, collapsed: !sec.collapsed } : sec))
    }, [setSections])
@@ -95,5 +106,5 @@ export function useSectionMutations(
       })
    }, [setSections, showToast, dismissToast, t])
 
-   return { addSection, toggleSec, updateSecTitle, moveSecUp, moveSecDown, reorderSections, duplicateSec, removeSec }
+   return { addSection, insertSectionAt, toggleSec, updateSecTitle, moveSecUp, moveSecDown, reorderSections, duplicateSec, removeSec }
 }

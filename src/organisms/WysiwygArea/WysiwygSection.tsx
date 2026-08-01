@@ -1,13 +1,20 @@
 // -- Library Imports --
 import { useRef, useState } from 'react'
+import type React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 
 const noopStrategy: SortingStrategy = () => null
-import { GripVertical, SquareDashed, Trash2 } from 'lucide-react'
+import {
+   GripVertical, SquareDashed, Trash2,
+   ArrowUpFromLine, ArrowDownToLine, ChevronUp, ChevronDown,
+   Copy, Pencil,
+} from 'lucide-react'
 import { BlockTypePicker } from '../../molecules/BlockTypePicker'
+import { ContextMenu } from '../../molecules/ContextMenu'
+import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
@@ -20,26 +27,35 @@ import { BottomDropZone } from '../../atoms/BottomDropZone'
 import { DropIndicator } from '../../atoms/DropIndicator'
 import { WysiwygBlock } from './WysiwygBlock'
 
+// -- Lib Imports --
+import { mkSection } from '../../lib/document'
+
 // -- Type Imports --
 import type { Block, Section } from '../../types'
 
 interface WysiwygSectionProps {
    section:         Section
    index:           number
+   /** Whether this is the last section in the document — disables the section menu's Move down. */
+   isLastSection?:  boolean
    activeSectionId: string | null
    readOnly?:       boolean
 }
 
-export function WysiwygSection({ section, index, activeSectionId, readOnly }: WysiwygSectionProps) {
+export function WysiwygSection({ section, index, isLastSection, activeSectionId, readOnly }: WysiwygSectionProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
    const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
    const [dragWidth, setDragWidth] = useState<number | null>(null)
    const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
    const [emptyPickerRect, setEmptyPickerRect] = useState<DOMRect | null>(null)
+   const [sectionMenu, setSectionMenu] = useState<{ x: number; y: number } | null>(null)
    const emptyCardRef = useRef<HTMLDivElement>(null)
    const containerRef = useRef<HTMLDivElement>(null)
-   const { addBlock, insertBlockAt, removeSection, reorderBlocks, updateTitle, containerMutations } = useDocumentMutations()
+   const {
+      addBlock, insertBlockAt, removeSection, reorderBlocks, updateTitle, containerMutations,
+      insertSectionAt, moveSecUp, moveSecDown, duplicateSec,
+   } = useDocumentMutations()
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: section.id, disabled: !!readOnly })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
@@ -74,6 +90,37 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
       updateTitle(section.id, stripped || section.title)
    }
 
+   // ====================================
+   //  Section context menu (right-click on the gutter / title chrome)
+   // ====================================
+   function handleSectionContextMenu(event: React.MouseEvent) {
+      event.preventDefault()
+      event.stopPropagation()
+      setSectionMenu({ x: event.clientX, y: event.clientY })
+   }
+
+   /** Focuses the section title for editing — the "Rename" menu action. Queried by the section's
+    *  own data-section-id rather than a ref, since PlainEditable doesn't forward one. */
+   function focusTitle() {
+      const titleEl = document.querySelector<HTMLElement>(`[data-section-id="${section.id}"] h2`)
+      titleEl?.focus()
+   }
+
+   function buildSectionMenuEntries(): ContextMenuEntry[] {
+      return [
+         { label: t.sectionMenuInsertAbove, icon: <ArrowUpFromLine size={13} />, onSelect: () => insertSectionAt(index, mkSection(t.defaultSectionTitle)) },
+         { label: t.sectionMenuInsertBelow, icon: <ArrowDownToLine size={13} />, onSelect: () => insertSectionAt(index + 1, mkSection(t.defaultSectionTitle)) },
+         { type: 'separator' },
+         { label: t.sectionMenuMoveUp,   icon: <ChevronUp size={13} />,   disabled: index === 0, onSelect: () => moveSecUp(section.id) },
+         { label: t.sectionMenuMoveDown, icon: <ChevronDown size={13} />, disabled: !!isLastSection, onSelect: () => moveSecDown(section.id) },
+         { label: t.sectionMenuDuplicate, icon: <Copy size={13} />, onSelect: () => duplicateSec(section.id) },
+         { type: 'separator' },
+         { label: t.sectionMenuRename, icon: <Pencil size={13} />, onSelect: focusTitle },
+         { type: 'separator' },
+         { label: t.sectionMenuDelete, icon: <Trash2 size={13} />, danger: true, onSelect: () => removeSection(section.id) },
+      ]
+   }
+
    return (
       <div
          ref={readOnly ? undefined : setNodeRef}
@@ -87,11 +134,12 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
          {/* DnD section insertion indicator */}
          {!readOnly && isOver && activeSectionId !== section.id && <DropIndicator />}
 
-         {/* Drag handle, always in DOM to hold the 2rem gutter */}
+         {/* Drag handle, always in DOM to hold the 2rem gutter — section chrome, opens the section menu */}
          <div
             {...(readOnly ? {} : listeners)}
             className="sec-drag-handle"
             title={!readOnly && hovered ? t.dragSection : undefined}
+            onContextMenu={readOnly ? undefined : handleSectionContextMenu}
          >
             {!readOnly && hovered && <GripVertical size={22} />}
          </div>
@@ -106,13 +154,24 @@ export function WysiwygSection({ section, index, activeSectionId, readOnly }: Wy
                </button>
             )}
 
-            <PlainEditable
-               tag="h2"
-               content={`${index + 1}. ${section.title}`}
-               onBlur={handleTitleBlur}
-               singleLine
-               readOnly={readOnly}
-            />
+            {/* Title chrome, also opens the section menu */}
+            <div onContextMenu={readOnly ? undefined : handleSectionContextMenu}>
+               <PlainEditable
+                  tag="h2"
+                  content={`${index + 1}. ${section.title}`}
+                  onBlur={handleTitleBlur}
+                  singleLine
+                  readOnly={readOnly}
+               />
+            </div>
+
+            {!readOnly && sectionMenu && (
+               <ContextMenu
+                  position={sectionMenu}
+                  entries={buildSectionMenuEntries()}
+                  onClose={() => setSectionMenu(null)}
+               />
+            )}
 
             {section.blocks.length === 0 && !readOnly && (
                <>

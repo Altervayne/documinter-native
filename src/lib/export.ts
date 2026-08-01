@@ -35,7 +35,17 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
    if (block.type === 'p')       return withHandle(block, `<p>${richToHtml(block.richText)}</p>`)
    if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
    if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
-   if (block.type === 'callout') return withHandle(block, `<div class="callout ${block.style ?? 'info'}">${richToHtml(block.richText)}</div>`)
+   if (block.type === 'callout') {
+      // A custom hex takes an inline-style path (mirrors the editor's render override); the
+      // preset styles keep the plain class path so byte-for-byte export stays unchanged for
+      // every callout that never touched the custom color.
+      if (block.calloutColor) {
+         const surface   = getColors(options?.theme ?? 'light').cardBg
+         const styleAttr = ` style="border-color:${block.calloutColor};background:color-mix(in srgb, ${block.calloutColor} 12%, ${surface})"`
+         return withHandle(block, `<div class="callout"${styleAttr}>${richToHtml(block.richText)}</div>`)
+      }
+      return withHandle(block, `<div class="callout ${block.style ?? 'info'}">${richToHtml(block.richText)}</div>`)
+   }
    if (block.type === 'code') {
       const highlighted = highlight(block.code ?? '', block.lang ?? 'windev')
       return withHandle(block, `<pre><code>${highlighted}</code></pre>`)

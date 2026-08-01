@@ -142,10 +142,12 @@ export function Panel({
                         onDragCancel={handleDragCancel}
                      >
                         <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
-                           {sections.map(section => (
+                           {sections.map((section, index) => (
                               <SectionItem
                                  key={section.id}
                                  section={section}
+                                 index={index}
+                                 isLastSection={index === sections.length - 1}
                                  onToggle={()     => onToggleSec(section.id)}
                                  onDuplicate={() => onDuplicateSec(section.id)}
                                  onRemove={()    => onRemoveSec(section.id)}

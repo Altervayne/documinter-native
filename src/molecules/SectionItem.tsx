@@ -1,20 +1,27 @@
 // -- React Imports --
 import { useRef, useState } from 'react'
+import type React from 'react'
 
 // -- Type Imports --
 import type { Block, BlockType, Section } from '../types'
+import type { ContextMenuEntry } from './ContextMenu'
 
 // -- Lib / Util Imports --
 import { scrollAndFlash } from '../lib/treeNavigation'
+import { mkSection } from '../lib/document'
 
 // -- Library Imports --
 import { BlockItem } from './BlockItem'
 import { BlockTypePicker } from './BlockTypePicker'
+import { ContextMenu } from './ContextMenu'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { DndContext, closestCenter, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { GripVertical, Copy, Trash2, ChevronRight, ChevronDown, Plus } from 'lucide-react'
+import {
+   GripVertical, Copy, Trash2, ChevronRight, ChevronDown, Plus,
+   ArrowUpFromLine, ArrowDownToLine, ChevronUp, Pencil,
+} from 'lucide-react'
 
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../contexts/DocumentMutationsContext'
@@ -26,6 +33,11 @@ import { useLang } from '../contexts/LangContext'
 
 interface SectionItemProps {
    section:         Section
+   /** Position within the sections array — drives Insert above/below targets and Move up/down
+    *  disabled state (mirrors WysiwygSection's canvas menu). */
+   index:           number
+   /** Whether this is the last section — disables the panel menu's Move down. */
+   isLastSection:   boolean
    onToggle:        () => void
    onDuplicate:     () => void
    onRemove:        () => void
@@ -38,6 +50,8 @@ interface SectionItemProps {
 
 export function SectionItem({
    section,
+   index,
+   isLastSection,
    onToggle,
    onDuplicate,
    onRemove,
@@ -47,6 +61,7 @@ export function SectionItem({
    const ctx     = useDocumentMutations()
    const [pickerOpen, setPickerOpen] = useState(false)
    const [pickerAnchorRect, setPickerAnchorRect] = useState<DOMRect | null>(null)
+   const [sectionMenu, setSectionMenu] = useState<{ x: number; y: number } | null>(null)
    const addBlockButtonRef = useRef<HTMLButtonElement>(null)
 
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id })
@@ -66,6 +81,44 @@ export function SectionItem({
       scrollAndFlash(`[data-section-id="${section.id}"]`, 'start')
    }
 
+   // ====================================
+   //  Panel context menu (right-click on the section's header row)
+   // ====================================
+   function handleSectionContextMenu(event: React.MouseEvent) {
+      event.preventDefault()
+      setSectionMenu({ x: event.clientX, y: event.clientY })
+   }
+
+   /** "Rename" resolves to the canvas section title — the panel row is navigation-only (click
+    *  scrolls to the section), so it has no inline edit affordance of its own. Scrolls the canvas
+    *  title into view (it may be off-screen) and focuses it, same DOM reach-around the canvas
+    *  section menu uses for its own Rename. */
+   function focusCanvasTitle() {
+      const titleEl = document.querySelector<HTMLElement>(`[data-section-id="${section.id}"] h2`)
+      titleEl?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      titleEl?.focus()
+   }
+
+   function buildSectionMenuEntries(): ContextMenuEntry[] {
+      return [
+         { label: t.sectionMenuInsertAbove, icon: <ArrowUpFromLine size={13} />, onSelect: () => ctx.insertSectionAt(index, mkSection(t.defaultSectionTitle)) },
+         { label: t.sectionMenuInsertBelow, icon: <ArrowDownToLine size={13} />, onSelect: () => ctx.insertSectionAt(index + 1, mkSection(t.defaultSectionTitle)) },
+         { type: 'separator' },
+         { label: t.sectionMenuMoveUp,   icon: <ChevronUp size={13} />,   disabled: index === 0, onSelect: () => ctx.moveSecUp(section.id) },
+         { label: t.sectionMenuMoveDown, icon: <ChevronDown size={13} />, disabled: isLastSection, onSelect: () => ctx.moveSecDown(section.id) },
+         { label: t.sectionMenuDuplicate, icon: <Copy size={13} />, onSelect: onDuplicate },
+         { type: 'separator' },
+         {
+            label:    section.collapsed ? t.sectionMenuExpand : t.sectionMenuCollapse,
+            icon:     section.collapsed ? <ChevronDown size={13} /> : <ChevronRight size={13} />,
+            onSelect: onToggle,
+         },
+         { label: t.sectionMenuRename, icon: <Pencil size={13} />, onSelect: focusCanvasTitle },
+         { type: 'separator' },
+         { label: t.sectionMenuDelete, icon: <Trash2 size={13} />, danger: true, onSelect: onRemove },
+      ]
+   }
+
    return (
       <div
          ref={setNodeRef} style={style} {...attributes}
@@ -74,7 +127,10 @@ export function SectionItem({
          {/* =================== */}
          {/*  Section header row */}
          {/* =================== */}
-         <div className="flex items-center gap-1 h-8 mb-1 rounded-md hover:bg-accent/8 transition-colors group/header">
+         <div
+            className="flex items-center gap-1 h-8 mb-1 rounded-md hover:bg-accent/8 transition-colors group/header"
+            onContextMenu={handleSectionContextMenu}
+         >
 
             {/* Drag grip */}
             <span
@@ -137,6 +193,14 @@ export function SectionItem({
                </button>
             </div>
          </div>
+
+         {sectionMenu && (
+            <ContextMenu
+               position={sectionMenu}
+               entries={buildSectionMenuEntries()}
+               onClose={() => setSectionMenu(null)}
+            />
+         )}
 
          {/* ======================== */}
          {/*  Block list / empty stub */}

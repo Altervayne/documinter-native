@@ -56,10 +56,10 @@ const mintdownBlockRules: TokenRule[] = [
 const mintdownInlineRules: TokenRule[] = [
 
    // D, Mintdown callout type tag.
-   // Full words: info, warning, valid, danger.
-   // Shorthands: i, w, v, d.
+   // Full words: info, warning, valid, danger. Shorthands: i, w, v, d.
+   // Also matches a custom-color hex tag: [#rrggbb] / [#rgb].
    // Matches the bracketed tag and the optional trailing space.
-   { type: 'type', pattern: /\[(?:info|warning|valid|danger|i|w|v|d)\] ?/ },
+   { type: 'type', pattern: /\[(?:info|warning|valid|danger|i|w|v|d|#[0-9a-fA-F]{3,8})\] ?/ },
 
    // E, Inline color/highlight opener: {color:#rrggbb}  {highlight:#rrggbb}.
    // Hex values: 3, 6, or 8 hex digits.

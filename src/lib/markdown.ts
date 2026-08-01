@@ -3,6 +3,7 @@ import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
 import { slugify } from './text'
+import { sanitizeCalloutHex } from './calloutColor'
 
 // #############
 // # CONSTANTS #
@@ -91,11 +92,13 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
       }
 
       case 'callout': {
-         const style   = block.style ?? 'info'
+         // A custom hex overrides the preset style token entirely (`> [!#ff8800]`); the
+         // underlying `style` still defaults to 'info' when only a hex is present (see model).
+         const tag     = block.calloutColor ?? (block.style ?? 'info')
          const content = serializeInline(block.richText)
          const trimmed = content.replace(/\n+$/, '')
          const contentLines = trimmed.length > 0 ? trimmed.split('\n') : []
-         const lines = [`> [!${style}]`, ...contentLines.map(line => `> ${line}`)]
+         const lines = [`> [!${tag}]`, ...contentLines.map(line => `> ${line}`)]
          return lines.join('\n')
       }
 
@@ -508,15 +511,26 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 
          case 'blockquote': {
             const stripped   = capturedLines.map(line => line.replace(/^> ?/, ''))
-            const typeMatch  = stripped[0]?.match(/^\[!(info|valid|warning|danger)\]$/i)
+            // Accepts either a preset style token or a `#rgb`/`#rrggbb` hex, alone on its own
+            // line. A malformed hex (wrong digit count) still matches the tag shape and falls
+            // back to the 'info' preset rather than dropping to a plain paragraph.
+            const typeMatch  = stripped[0]?.match(/^\[!(info|valid|warning|danger|#[0-9a-fA-F]{1,8})\]$/i)
             if (typeMatch) {
-               const style   = typeMatch[1].toLowerCase() as CalloutStyle
+               const tag = typeMatch[1]
+               let style: CalloutStyle = 'info'
+               let calloutColor: string | undefined
+               if (tag.startsWith('#')) {
+                  calloutColor = sanitizeCalloutHex(tag)
+               } else {
+                  style = tag.toLowerCase() as CalloutStyle
+               }
                // Join remaining stripped lines; trim leading blank line if any.
                const content = stripped.slice(1).join('\n').replace(/^\n+/, '')
                return {
                   id:       crypto.randomUUID(),
                   type:     'callout',
                   style,
+                  ...(calloutColor ? { calloutColor } : {}),
                   richText: mintdownToInlineContent(content),
                }
             }

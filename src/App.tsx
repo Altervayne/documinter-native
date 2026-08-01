@@ -628,6 +628,13 @@ export default function App() {
       setMode(newMode)
    }
 
+   // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
+   // File -> Export... / Ctrl+E path AND the document background context menu's "Export..." item
+   // open the exact same modal instance.
+   const [exportOpen, setExportOpen] = useState(false)
+   const handleOpenExport  = useCallback(() => setExportOpen(true), [])
+   const handleCloseExport = useCallback(() => setExportOpen(false), [])
+
    // ######################
    // # PANE LAYOUT SYSTEM #
    // ######################
@@ -743,6 +750,9 @@ export default function App() {
             onImportMintdownFile={handleImportMintdown}
             onDocThemeChange={setActiveDocTheme}
             onDocAccentChange={setActiveDocAccent}
+            exportOpen={exportOpen}
+            onOpenExport={handleOpenExport}
+            onCloseExport={handleCloseExport}
          />
 
          {binderOpen ? (
@@ -796,6 +806,12 @@ export default function App() {
                updateTitle:       sectionMutations.updateSecTitle,
                removeSection:     sectionMutations.removeSec,
                reorderSections:   sectionMutations.reorderSections,
+               addSection:        sectionMutations.addSection,
+               insertSectionAt:   sectionMutations.insertSectionAt,
+               duplicateSec:      sectionMutations.duplicateSec,
+               moveSecUp:         sectionMutations.moveSecUp,
+               moveSecDown:       sectionMutations.moveSecDown,
+               toggleSec:         sectionMutations.toggleSec,
             }}>
                <div className="flex flex-1 min-h-0 overflow-hidden">
                   <Panel
@@ -826,6 +842,13 @@ export default function App() {
                               onUpdateMeta={handleMetaChange}
                               onAddSection={sectionMutations.addSection}
                               readOnly={mode === 'preview'}
+                              onDocThemeChange={setActiveDocTheme}
+                              onDocAccentChange={setActiveDocAccent}
+                              onOpenExport={handleOpenExport}
+                              onManualSave={handleManualSave}
+                              onSaveAs={handleSaveAs}
+                              previewMode={mode}
+                              onSetMode={handleSetMode}
                            />
                         ),
                         mintdown: (

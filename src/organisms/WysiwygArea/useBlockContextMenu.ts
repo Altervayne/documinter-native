@@ -62,6 +62,11 @@ export function useBlockContextMenu({
 
    function openContextMenu(event: React.MouseEvent) {
       event.preventDefault()
+      // Block chrome isn't a DOM/React-tree ancestor of the section's gutter or title, so this
+      // wouldn't currently reach the section menu either way — stopped defensively anyway, matching
+      // the same portal-bubbling guard used by BlockEditorWindow, in case the section's attach
+      // point ever widens to the whole .doc-section.
+      event.stopPropagation()
       const target = event.target as Element
 
       // List item detection

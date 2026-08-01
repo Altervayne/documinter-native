@@ -8,6 +8,7 @@ interface PlainEditableProps {
    className?: string
    style?: React.CSSProperties
    onClick?: React.MouseEventHandler<HTMLElement>
+   onContextMenu?: React.MouseEventHandler<HTMLElement>
    onKeyDown?: (event: React.KeyboardEvent<HTMLElement>) => void
    /** Prevents Enter entirely (single-line fields). */
    singleLine?: boolean
@@ -32,6 +33,7 @@ export function PlainEditable({
    className,
    style,
    onClick,
+   onContextMenu,
    onKeyDown,
    singleLine,
    placeholder,
@@ -55,7 +57,7 @@ export function PlainEditable({
    }, [content])
 
    if (readOnly) {
-      return <Tag className={className} style={style}>{content}</Tag>
+      return <Tag className={className} style={style} onContextMenu={onContextMenu}>{content}</Tag>
    }
 
    return (
@@ -67,6 +69,7 @@ export function PlainEditable({
          suppressContentEditableWarning
          spellCheck={spellCheck}
          onClick={onClick}
+         onContextMenu={onContextMenu}
          {...(placeholder ? { 'data-placeholder': placeholder } : {})}
          onFocus={() => {
             editing.current = true

@@ -11,7 +11,7 @@
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext } from 'react'
-import type { Block, BlockType, ContainerMutations, InlineContent, ListItem } from '../types'
+import type { Block, BlockType, ContainerMutations, InlineContent, ListItem, Section } from '../types'
 
 export interface DocumentMutations {
    updateBlock:       (secId: string, blkId: string, patch: Partial<Block>) => void
@@ -45,6 +45,13 @@ export interface DocumentMutations {
    updateTitle:       (secId: string, title: string) => void
    removeSection:     (secId: string) => void
    reorderSections:   (oldIdx: number, newIdx: number) => void
+   addSection:        () => void
+   /** Insert an already-built section at a specific index (section-menu insert above/below). */
+   insertSectionAt:   (index: number, section: Section) => void
+   duplicateSec:      (secId: string) => void
+   moveSecUp:         (secId: string) => void
+   moveSecDown:       (secId: string) => void
+   toggleSec:         (secId: string) => void
 }
 
 export const DocumentMutationsContext = createContext<DocumentMutations>(null!)

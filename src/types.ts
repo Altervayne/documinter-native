@@ -65,6 +65,7 @@ export interface Block {
    type: BlockType
    richText?: InlineContent  // p, h3, h4, callout
    style?: CalloutStyle  // callout
+   calloutColor?: string // callout: optional custom hex override on top of `style`'s preset; absent = use the preset
    code?: string         // code
    lang?: CodeLang       // code, default 'windev'
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)

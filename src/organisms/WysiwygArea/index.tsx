@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
@@ -17,7 +17,9 @@ import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowConte
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Sun, Moon, Download, Save, FileDown } from 'lucide-react'
+import { ColorPicker } from 'react-piqua-color'
+import { createPortal } from 'react-dom'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
@@ -25,9 +27,13 @@ import { ContextMenu } from '../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { WysiwygSection } from './WysiwygSection'
 
+// -- Hook Imports --
+import { useViewportClampedPosition } from '../../hooks/useViewportClampedPosition'
+
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
-import type { DocMeta, Section } from '../../types'
+import { ACCENT_PRESETS, accentPresetName } from '../../lib/constants'
+import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
 
@@ -41,9 +47,26 @@ interface WysiwygAreaProps {
    onUpdateMeta:  (patch: Partial<DocMeta>) => void
    onAddSection?: () => void
    readOnly?: boolean
+   // ==========================================================
+   //  Document-level actions, reused (not reimplemented) by the background context menu — the
+   //  exact same handlers App.tsx already threads into HeaderMenuBar.
+   // ==========================================================
+   onDocThemeChange?:  (theme: 'light' | 'dark') => void
+   onDocAccentChange?: (hex: string) => void
+   /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
+   onOpenExport?: () => void
+   onManualSave?: () => void
+   /** Opens the same File -> Save As... dialog owned by App.tsx (fork-and-switch to a copy). */
+   onSaveAs?: () => void
+   /** Editor/preview toggle, for the background menu's optional "Toggle preview" item. */
+   previewMode?: Mode
+   onSetMode?:   (mode: Mode) => void
 }
 
-export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey, onUpdateMeta, onAddSection, readOnly }: WysiwygAreaProps) {
+export function WysiwygArea({
+   meta, sections, docTheme, docAccent, activeTabKey, onUpdateMeta, onAddSection, readOnly,
+   onDocThemeChange, onDocAccentChange, onOpenExport, onManualSave, onSaveAs, previewMode, onSetMode,
+}: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
 
@@ -60,6 +83,80 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
    // The field whose right-click context menu is open, at the cursor. `rect` is the field's box,
    // reused to anchor the color popover when the menu's Color… item is chosen.
    const [fieldMenu, setFieldMenu] = useState<{ fieldId: string; x: number; y: number; rect: DOMRect } | null>(null)
+   // ==========================================================
+   //  Document background context menu (document-level actions)
+   // ==========================================================
+   // Catch-all: bound high on the outer canvas container (below), so it fires for a right-click
+   // ANYWHERE on the document background — the gutter around the sheet, the sheet's own padding,
+   // gaps between/around/below sections, and empty space inside a section. It relies on
+   // propagation, not a target check: a right-click on a block (useBlockContextMenu's
+   // openContextMenu) or on section chrome (WysiwygSection's handleSectionContextMenu) already
+   // calls stopPropagation, so those never reach this handler — see the field-menu stopPropagation
+   // just below for the third source that needed the same guard added. Bound in BOTH editor and
+   // preview (readOnly) mode — it's the one menu preview keeps reachable (blocks/sections/fields
+   // already self-disable their own context menus under readOnly, see WysiwygSection.tsx /
+   // WysiwygBlock.tsx), so a right-click still reaches theme/accent/export/save/preview-toggle.
+   const [backgroundMenu, setBackgroundMenu] = useState<{ x: number; y: number } | null>(null)
+   // The document accent's custom-color popover, opened as a follow-on state once the background
+   // menu's "Custom accent…" item is picked (the ContextMenu already closed itself by then — same
+   // follow-on pattern CalloutStylePicker's custom-color swatch uses). Anchored at the same click
+   // point the background menu itself opened at.
+   const [accentPopover, setAccentPopover] = useState<{ x: number; y: number } | null>(null)
+
+   function handleBackgroundContextMenu(event: React.MouseEvent) {
+      event.preventDefault()
+      setBackgroundMenu({ x: event.clientX, y: event.clientY })
+   }
+
+   function buildBackgroundMenuEntries(): ContextMenuEntry[] {
+      const entries: ContextMenuEntry[] = []
+
+      if (onAddSection) {
+         // Nonsensical in preview (nothing to insert into an inert, read-only render) — kept in
+         // the menu but disabled, rather than removed, per the task's explicit guidance.
+         entries.push({ label: t.bgMenuAddSection, icon: <Plus size={13} />, onSelect: onAddSection, disabled: !!readOnly })
+      }
+
+      if (onDocThemeChange) {
+         if (entries.length > 0) entries.push({ type: 'separator' })
+         entries.push({
+            label:    docTheme === 'dark' ? t.toLightMode : t.toDarkMode,
+            icon:     docTheme === 'dark' ? <Sun size={13} /> : <Moon size={13} />,
+            onSelect: () => onDocThemeChange(docTheme === 'dark' ? 'light' : 'dark'),
+         })
+      }
+
+      if (onDocAccentChange) {
+         entries.push({ type: 'header', label: t.accent })
+         for (const color of ACCENT_PRESETS) {
+            entries.push({
+               label:    accentPresetName(color, t),
+               icon:     <span className="inline-block w-3 h-3 rounded-full border border-border" style={{ background: color }} />,
+               onSelect: () => onDocAccentChange(color),
+            })
+         }
+         entries.push({
+            label:    t.bgMenuCustomAccent,
+            icon:     <Palette size={13} />,
+            onSelect: () => { if (backgroundMenu) setAccentPopover(backgroundMenu) },
+         })
+      }
+
+      const hasActions = !!onOpenExport || !!onManualSave || !!onSaveAs || !!onSetMode
+      if (hasActions && entries.length > 0) entries.push({ type: 'separator' })
+      if (onOpenExport) entries.push({ label: t.menuExport,  icon: <Download size={13} />, onSelect: onOpenExport })
+      if (onManualSave) entries.push({ label: t.fileSave,    icon: <Save size={13} />,     onSelect: onManualSave })
+      if (onSaveAs)     entries.push({ label: t.fileSaveAs,  icon: <FileDown size={13} />, onSelect: onSaveAs })
+      if (onSetMode) {
+         entries.push({
+            label:    t.previewMode,
+            icon:     previewMode === 'preview' ? <EyeOff size={13} /> : <Eye size={13} />,
+            onSelect: () => onSetMode('preview'),
+         })
+      }
+
+      return entries
+   }
 
    function updateField(id: string, patch: Partial<{ label: string; value: string }>) {
       onUpdateMeta({ fields: fields.map(field => field.id === id ? { ...field, ...patch } : field) })
@@ -184,6 +281,10 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
                   style={{ color: resolveFieldColor(field.color) }}
                   onContextMenu={event => {
                      event.preventDefault()
+                     // Stopped so the field menu takes precedence over the new document-background
+                     // catch-all context menu (bound higher up, on the outer canvas container) —
+                     // otherwise both menus would open at once.
+                     event.stopPropagation()
                      const rect = event.currentTarget.getBoundingClientRect()
                      setFieldMenu({ fieldId: field.id, x: event.clientX, y: event.clientY, rect })
                   }}
@@ -280,7 +381,11 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
        <DocThemeProvider theme={docTheme}>
         <BlockEditorWindowProvider resetKey={activeTabKey}>
          {!readOnly && <FormatToolbar sections={sections} />}
-         <div className="flex-1 h-full w-full overflow-y-auto px-6" style={{ background: 'var(--color-canvas)' }}>
+         <div
+            className="flex-1 h-full w-full overflow-y-auto px-6"
+            style={{ background: 'var(--color-canvas)' }}
+            onContextMenu={handleBackgroundContextMenu}
+         >
             <div
                className={`max-w-215 mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
                style={{
@@ -298,6 +403,11 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
                      onBlur={value => onUpdateMeta({ title: value.trim() })}
                      singleLine
                      readOnly={readOnly}
+                     // Carve-out from the document background catch-all (bound on the outer canvas
+                     // container): stop the right-click here so it never bubbles into the document
+                     // menu, WITHOUT preventDefault — the title keeps the native browser context
+                     // menu (copy/paste/spellcheck) instead.
+                     onContextMenu={event => event.stopPropagation()}
                   />
                   {readOnly ? renderReadonlyZone('below') : renderEditorZone('below')}
                   {!readOnly && colorPopover && popoverField && (
@@ -347,7 +457,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
                   <>
                      {sections.map((sec, index) => (
                         <div key={sec.id}>
-                           <WysiwygSection section={sec} index={index} activeSectionId={null} readOnly />
+                           <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={null} readOnly />
                         </div>
                      ))}
                   </>
@@ -356,7 +466,7 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
                      <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
                         {sections.map((sec, index) => (
                            <div key={sec.id}>
-                              <WysiwygSection section={sec} index={index} activeSectionId={activeSectionId} />
+                              <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={activeSectionId} />
                            </div>
                         ))}
                      </SortableContext>
@@ -376,6 +486,24 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
                      </button>
                   </div>
                )}
+
+               {backgroundMenu && (
+                  <ContextMenu
+                     position={backgroundMenu}
+                     entries={buildBackgroundMenuEntries()}
+                     onClose={() => setBackgroundMenu(null)}
+                  />
+               )}
+
+               {accentPopover && onDocAccentChange && (
+                  <DocumentAccentPopover
+                     anchorPoint={accentPopover}
+                     value={docAccent}
+                     title={t.bgMenuCustomAccentTitle}
+                     onPick={onDocAccentChange}
+                     onClose={() => setAccentPopover(null)}
+                  />
+               )}
             </div>
             </div>
          </div>
@@ -384,5 +512,55 @@ export function WysiwygArea({ meta, sections, docTheme, docAccent, activeTabKey,
        </LinkableTablesProvider>
        </DocumentTablesProvider>
       </DocumentHandlesProvider>
+   )
+}
+
+// #####################################
+// # DOCUMENT ACCENT CUSTOM COLOR POPOVER #
+// #####################################
+
+interface DocumentAccentPopoverProps {
+   /** Viewport point to anchor at — the same click point the background menu itself opened at. */
+   anchorPoint: { x: number; y: number }
+   value:       string
+   title:       string
+   onPick:      (hex: string) => void
+   onClose:     () => void
+}
+
+/**
+ * Floating color popover for the document background menu's "Custom accent…" item. Mirrors
+ * CalloutStylePicker's CalloutColorPopover shell (same react-piqua-color ColorPicker, same
+ * portal + outside-pointerdown/Escape dismissal) but anchors at a viewport point rather than a
+ * trigger element's rect, since the menu item that opened it no longer exists in the DOM by the
+ * time this renders (ContextMenu closes itself on select).
+ */
+function DocumentAccentPopover({ anchorPoint, value, title, onPick, onClose }: DocumentAccentPopoverProps) {
+   const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'point', x: anchorPoint.x, y: anchorPoint.y })
+
+   useEffect(() => {
+      function handlePointerDown(event: PointerEvent) {
+         if (ref.current?.contains(event.target as Node)) return
+         onClose()
+      }
+      document.addEventListener('pointerdown', handlePointerDown)
+      return () => document.removeEventListener('pointerdown', handlePointerDown)
+   }, [onClose, ref])
+
+   return createPortal(
+      <div
+         ref={ref}
+         className="fixed z-[9999] w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
+         style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
+         onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
+      >
+         <div className="px-2 pt-2 pb-1.5">
+            <span className="text-[0.7rem] uppercase tracking-wider text-muted/70 font-semibold select-none">{title}</span>
+         </div>
+         <div className="p-2 border-t border-border">
+            <ColorPicker value={value} onChange={onPick} />
+         </div>
+      </div>,
+      document.body,
    )
 }

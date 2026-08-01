@@ -40,6 +40,53 @@ describe('Markdown round-trip (lossless subset)', () => {
    })
 })
 
+// A minimal Markdown document wrapping a single block body, so targeted parse checks read like
+// the real serializer output (title + one section) without depending on the full fixture.
+function markdownDocument(...bodyLines: string[]): string {
+   return [
+      '# Doc',
+      '---',
+      '',
+      '## Section',
+      ...bodyLines,
+   ].join('\n')
+}
+
+describe('Markdown targeted parse', () => {
+   it('parses a callout [!style] marker into style', () => {
+      const source  = markdownDocument('', '> [!warning]', '> heads up')
+      const callout = markdownToDocument(source).sections[0].blocks[0]
+      expect(callout.type).toBe('callout')
+      expect(callout.style).toBe('warning')
+   })
+
+   it('round-trips a callout custom hex color through parse -> serialize -> parse', () => {
+      const source = markdownDocument('', '> [!#ff8800]', '> heads up')
+      const parsed  = markdownToDocument(source)
+      const callout = parsed.sections[0].blocks[0]
+      expect(callout.type).toBe('callout')
+      expect(callout.style).toBe('info')          // default style, unaffected by the hex
+      expect(callout.calloutColor).toBe('#ff8800')
+
+      const reserialized = documentToMarkdown(parsed.sections, parsed.meta)
+      expect(reserialized).toContain('> [!#ff8800]')
+
+      const reparsed = markdownToDocument(reserialized).sections[0].blocks[0]
+      expect(reparsed.calloutColor).toBe('#ff8800')
+      expect(reparsed.style).toBe('info')
+   })
+
+   it('falls back to the info preset for a malformed callout hex tag (wrong digit count)', () => {
+      const source  = markdownDocument('', '> [!#ff88]', '> heads up')
+      const callout = markdownToDocument(source).sections[0].blocks[0]
+      expect(callout.type).toBe('callout')
+      expect(callout.style).toBe('info')
+      expect(callout.calloutColor).toBeUndefined()
+      // The tag line is still consumed as a callout directive, not left as literal content.
+      expect(callout.richText).toEqual([{ text: 'heads up' }])
+   })
+})
+
 // Containers have no Markdown representation, so they flatten by design (TESTING_STUDY §2.5): the
 // wrapper is dropped, inner blocks are promoted to top level, and the ratio is lost. This is a
 // stable contract, not a bug — Mintdown remains the format that preserves containers.

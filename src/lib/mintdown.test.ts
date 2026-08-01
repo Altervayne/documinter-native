@@ -129,6 +129,32 @@ describe('Mintdown targeted parse', () => {
       expect(callout.style).toBe('warning')
    })
 
+   it('round-trips a callout custom hex color through parse -> serialize -> parse', () => {
+      const source = mintdownDocument('', '> [#ff8800] heads up')
+      const parsed = mintdownToDocument(source)
+      const callout = parsed.sections[0].blocks[0]
+      expect(callout.type).toBe('callout')
+      expect(callout.style).toBe('info')          // default style, unaffected by the hex
+      expect(callout.calloutColor).toBe('#ff8800')
+
+      const reserialized = documentToMintdown(parsed.sections, parsed.meta)
+      expect(reserialized).toContain('> [#ff8800] heads up')
+
+      const reparsed = mintdownToDocument(reserialized).sections[0].blocks[0]
+      expect(reparsed.calloutColor).toBe('#ff8800')
+      expect(reparsed.style).toBe('info')
+   })
+
+   it('falls back to the info preset for a malformed callout hex tag (wrong digit count)', () => {
+      const source  = mintdownDocument('', '> [#ff88] heads up')
+      const callout = mintdownToDocument(source).sections[0].blocks[0]
+      expect(callout.type).toBe('callout')
+      expect(callout.style).toBe('info')
+      expect(callout.calloutColor).toBeUndefined()
+      // The malformed tag is still consumed, not left in the content.
+      expect(callout.richText).toEqual([{ text: 'heads up' }])
+   })
+
    it('parses a ```math fence into a math block, keeping the raw LaTeX', () => {
       const source = mintdownDocument('', '```math', 'E = mc^2', '```')
       const block  = mintdownToDocument(source).sections[0].blocks[0]

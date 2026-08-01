@@ -4,6 +4,7 @@ import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { fenceToGraphSpec } from './graphFence'
 import { slugify } from './text'
+import { sanitizeCalloutHex } from './calloutColor'
 
 // #############
 // # CONSTANTS #
@@ -202,13 +203,20 @@ function parseCalloutLines(strippedLines: string[]): Block {
    }
 
    const first    = strippedLines[0] ?? ''
-   const tagMatch = first.match(/^\[(i|info|w|warning|v|valid|d|danger)\]\s*(.*)/i)
+   // Accepts either a preset style token or a `#rgb`/`#rrggbb` hex; the hex can carry inline
+   // content after it on the same line, same as the style tokens do.
+   const tagMatch = first.match(/^\[(i|info|w|warning|v|valid|d|danger|#[0-9a-fA-F]{1,8})\]\s*(.*)/i)
 
    let style: CalloutStyle = 'info'
+   let calloutColor: string | undefined
    let contentLines: string[]
 
    if (tagMatch) {
-      style = STYLE_MAP[tagMatch[1].toLowerCase()]
+      const tag = tagMatch[1]
+      // A malformed hex (wrong digit count) leaves calloutColor unset — falls back to the
+      // 'info' preset — while the tag is still consumed rather than left as literal content.
+      if (tag.startsWith('#')) calloutColor = sanitizeCalloutHex(tag)
+      else style = STYLE_MAP[tag.toLowerCase()]
       const restOfFirstLine = tagMatch[2]
       contentLines = restOfFirstLine.length > 0
          ? [restOfFirstLine, ...strippedLines.slice(1)]
@@ -221,6 +229,7 @@ function parseCalloutLines(strippedLines: string[]): Block {
       id:       crypto.randomUUID(),
       type:     'callout',
       style,
+      ...(calloutColor ? { calloutColor } : {}),
       richText: mintdownToInlineContent(contentLines.join('\n')),
    }
 }
@@ -455,16 +464,17 @@ function parseBodyBlocks(lines: string[]): Block[] {
 // # PRIVATE HELPERS, SERIALISATION #
 // ###################################
 
-/** Serialises a callout block in Mintdown format (`> [style]` not `> [!style]`). */
+/** Serialises a callout block in Mintdown format (`> [style]` not `> [!style]`). A custom hex
+ *  overrides the preset style token entirely (`> [#ff8800]`). */
 function serializeCallout(block: Block): string {
-   const style   = block.style ?? 'info'
+   const tag     = block.calloutColor ?? (block.style ?? 'info')
    const content = inlineContentToMintdown(block.richText ?? [])
    const trimmed = content.replace(/\n+$/, '')
 
-   if (trimmed.length === 0) return `> [${style}]`
+   if (trimmed.length === 0) return `> [${tag}]`
 
    const contentLines = trimmed.split('\n')
-   const lines = [`> [${style}] ${contentLines[0]}`, ...contentLines.slice(1).map(line => `> ${line}`)]
+   const lines = [`> [${tag}] ${contentLines[0]}`, ...contentLines.slice(1).map(line => `> ${line}`)]
    return lines.join('\n')
 }
 
