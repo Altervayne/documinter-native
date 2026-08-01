@@ -165,15 +165,55 @@
 }
 .math-symbol-palette-filter::placeholder { color: var(--color-muted); }
 .math-symbol-palette-filter:focus { border-color: color-mix(in srgb, var(--color-accent) 60%, transparent); }
-/* Inner scroll (not the rounded outer box) so the scrollbar never squares off the corners. */
-.math-symbol-palette-scroll { min-height: 0; overflow-y: auto; padding: 0 0.5rem 0.5rem; }
-.math-symbol-palette-group { margin-top: 0.35rem; }
-.math-symbol-palette-heading {
-  padding: 0.35rem 0.15rem 0.3rem;
+/* Generator launcher row — pinned under the filter, outside the scroll area. */
+.math-symbol-palette-generators {
+  flex: 0 0 auto; margin: 0 0.5rem 0.35rem; padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.math-symbol-palette-generator-heading {
+  padding: 0.2rem 0.15rem 0.3rem;
   font-family: var(--font-sans); font-size: 0.62rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted);
 }
-.math-symbol-palette-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.25rem; }
+.math-symbol-palette-generator-row { display: flex; flex-direction: column; gap: 0.25rem; }
+.math-symbol-palette-generator-btn {
+  display: flex; align-items: center; gap: 0.45rem;
+  width: 100%; padding: 0.4rem 0.55rem; box-sizing: border-box;
+  border: 1px solid var(--color-border); border-radius: 7px;
+  background: var(--color-el); color: var(--color-text);
+  font-family: var(--font-sans); font-size: 0.76rem; text-align: left; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.math-symbol-palette-generator-btn:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
+.math-symbol-palette-generator-btn svg { flex: 0 0 auto; }
+
+/* Inner scroll (not the rounded outer box) so the scrollbar never squares off the corners. */
+.math-symbol-palette-scroll { min-height: 0; overflow-y: auto; padding: 0 0.5rem 0.5rem; }
+.math-symbol-palette-group { margin-top: 0.2rem; }
+/* Category heading is a full-width accordion toggle: chevron, label, entry count. */
+.math-symbol-palette-heading {
+  display: flex; align-items: center; gap: 0.35rem; width: 100%;
+  padding: 0.4rem 0.25rem; box-sizing: border-box;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.62rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted);
+  border-radius: 6px; transition: background 0.12s, color 0.12s;
+}
+.math-symbol-palette-heading:hover {
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.math-symbol-palette-chevron { flex: 0 0 auto; transition: transform 0.12s; }
+.math-symbol-palette-heading-label { flex: 1 1 auto; text-align: left; }
+.math-symbol-palette-heading-count {
+  flex: 0 0 auto; font-weight: 500; font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+.math-symbol-palette-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.25rem; padding-top: 0.1rem; }
 .math-symbol-palette-btn {
   display: flex; align-items: center; justify-content: center;
   min-width: 0; height: 2.2rem; padding: 0.15rem; box-sizing: border-box;
@@ -191,6 +231,86 @@
   padding: 1rem 0.5rem; text-align: center;
   font-family: var(--font-sans); font-size: 0.76rem; color: var(--color-muted);
 }
+
+/* Structured-construct builder modal (matrix / cases / aligned). The shell chrome reuses
+   ExportModal's Tailwind classes; these rules cover the mode-specific body (bracket selector,
+   dimension steppers, cell/row inputs, preview). Themed through app-level --color-* tokens so
+   light + dark both work, matching the symbol palette. */
+.math-builder-bracket-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.4rem; height: 1.9rem; padding: 0 0.5rem; box-sizing: border-box;
+  border: 1px solid var(--color-border); border-radius: 7px;
+  background: var(--color-el); color: var(--color-text);
+  font-family: var(--font-mono); font-size: 0.82rem; line-height: 1; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.math-builder-bracket-btn:hover { border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
+.math-builder-bracket-btn.is-active {
+  border-color: color-mix(in srgb, var(--color-accent) 65%, transparent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* Dimension stepper (Rows / Columns): label above a [−] value [+] control. */
+.math-builder-stepper { display: flex; flex-direction: column; gap: 0.4rem; }
+.math-builder-stepper-label {
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted);
+}
+.math-builder-stepper-controls { display: inline-flex; align-items: center; gap: 0.35rem; }
+.math-builder-stepper-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.7rem; height: 1.7rem; padding: 0; border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-el); color: var(--color-text);
+  cursor: pointer; transition: border-color 0.12s, background 0.12s;
+}
+.math-builder-stepper-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); }
+.math-builder-stepper-btn:disabled { opacity: 0.4; cursor: default; }
+.math-builder-stepper-value {
+  min-width: 1.6rem; text-align: center;
+  font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+/* Cell / row inputs, monospaced raw-LaTeX fields. */
+.math-builder-input {
+  width: 100%; box-sizing: border-box; padding: 0.4rem 0.55rem;
+  border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--color-bg); color: var(--color-text);
+  font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.4;
+  outline: none; transition: border-color 0.12s, box-shadow 0.12s;
+}
+.math-builder-input:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+.math-builder-grid { display: grid; gap: 0.4rem; }
+.math-builder-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.math-builder-row-head,
+.math-builder-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; align-items: center;
+}
+.math-builder-row-head {
+  font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-muted);
+}
+
+/* System-brace toggle (aligned mode). */
+.math-builder-checkbox {
+  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  font-family: var(--font-sans); font-size: 0.8rem; color: var(--color-text);
+}
+.math-builder-checkbox input { accent-color: var(--color-accent); cursor: pointer; }
+
+/* Live preview area, centered rendered MathML over a muted panel. */
+.math-builder-preview {
+  min-height: 3rem; padding: 0.5rem 0.75rem; box-sizing: border-box;
+  display: flex; justify-content: center; align-items: center;
+  border: 1px solid var(--color-border); border-radius: 8px;
+  background: color-mix(in srgb, var(--color-bg) 60%, transparent);
+  overflow-x: auto;
+}
+.math-builder-preview .doc-math { margin: 0; width: 100%; }
 
 /* Callouts */
 .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: #374151; }

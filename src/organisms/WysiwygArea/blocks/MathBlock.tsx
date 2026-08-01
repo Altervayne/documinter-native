@@ -3,6 +3,8 @@ import { renderLatexToMathML, ensureTemmlStyles, isTemmlReady, onTemmlReady } fr
 import { DEFAULT_MATH_SCALE, MATH_SCALE_STEPS, stepMathScale } from '../../../lib/mathScale'
 import { buildSnippetInsertion } from '../../../lib/mathSymbols'
 import { MathSymbolPalette } from '../../../molecules/MathSymbolPalette'
+import { MathBuilderModal } from '../../../molecules/MathBuilderModal'
+import type { MathBuilderKind, MatrixBracket } from '../../../lib/mathStructures'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
@@ -44,6 +46,12 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    // to it, so the caret lands correctly even though the value changed in the same render).
    const [pendingCaret, setPendingCaret] = useState<number | null>(null)
 
+   // Structured-construct builder (matrix / cases / aligned). `builderKind` holds the open
+   // request; `builderCaret` snapshots the textarea selection at OPEN time — the modal steals
+   // focus, so the insertion point must be captured up-front and can no longer be read live.
+   const [builderKind,  setBuilderKind]  = useState<{ kind: MathBuilderKind; bracket?: MatrixBracket } | null>(null)
+   const [builderCaret, setBuilderCaret] = useState<{ start: number; end: number } | null>(null)
+
    // Temml loads as a raw asset (see lib/math.ts), so on first paint it may not be
    // ready yet. Track readiness and re-render once the one-time load completes; until
    // then the preview/read view show a "rendering…" placeholder instead of calling
@@ -79,16 +87,45 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    // splices it into `draft`, and schedules the caret restore. Marks `editing` so the external
    // sync does not clobber the edit, but does NOT commit `latex` — the commit-on-blur model is
    // preserved, an insert only mutates the live draft.
-   function insertSnippet(insert: string): void {
-      const textarea = textareaRef.current
-      if (!textarea) return
-      const selectionStart = textarea.selectionStart
-      const selectionEnd   = textarea.selectionEnd
-      const selectedText   = draft.slice(selectionStart, selectionEnd)
+   // Core splice, shared by the palette insert (live selection) and the builder insert (a caret
+   // captured at open time). Resolves the snippet against the selected text, splices it in, and
+   // schedules the caret restore. Marks `editing` but does NOT commit — commit stays on blur.
+   function spliceInsertAt(insert: string, selectionStart: number, selectionEnd: number): void {
+      const selectedText = draft.slice(selectionStart, selectionEnd)
       const { text, caretOffset } = buildSnippetInsertion(insert, selectedText)
       editing.current = true
       setDraft(draft.slice(0, selectionStart) + text + draft.slice(selectionEnd))
       setPendingCaret(selectionStart + caretOffset)
+   }
+
+   function insertSnippet(insert: string): void {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      spliceInsertAt(insert, textarea.selectionStart, textarea.selectionEnd)
+   }
+
+   // ==========================
+   //  Structured builder
+   // ==========================
+   // Open request from the palette: snapshot the CURRENT selection before the modal steals
+   // focus, then open the builder and close the palette.
+   function openBuilder(kind: MathBuilderKind, bracket?: MatrixBracket): void {
+      const textarea = textareaRef.current
+      const start = textarea ? textarea.selectionStart : draft.length
+      const end   = textarea ? textarea.selectionEnd   : draft.length
+      setBuilderCaret({ start, end })
+      setBuilderKind({ kind, bracket })
+      setPaletteOpen(false)
+   }
+
+   // Builder Insert: splice the emitted LaTeX at the captured selection (no marker → plain
+   // replace-at-selection, caret after), then close the modal. The pending-caret layout effect
+   // hands focus back to the textarea.
+   function insertFromBuilder(latex: string): void {
+      const caret = builderCaret ?? { start: draft.length, end: draft.length }
+      spliceInsertAt(latex, caret.start, caret.end)
+      setBuilderKind(null)
+      setBuilderCaret(null)
    }
 
    function togglePalette(event: React.MouseEvent<HTMLButtonElement>): void {
@@ -197,7 +234,17 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
             <MathSymbolPalette
                anchorRect={paletteAnchor}
                onInsert={insertSnippet}
+               onOpenBuilder={openBuilder}
+               showGenerators={true}
                onClose={() => setPaletteOpen(false)}
+            />
+         )}
+         {builderKind && (
+            <MathBuilderModal
+               kind={builderKind.kind}
+               bracket={builderKind.bracket}
+               onInsert={insertFromBuilder}
+               onClose={() => { setBuilderKind(null); setBuilderCaret(null) }}
             />
          )}
       </div>

@@ -4,6 +4,24 @@ import {
    MATH_SYMBOL_CATEGORIES,
    buildSnippetInsertion,
 } from './mathSymbols'
+import type { MathSymbolCategoryKey } from './mathSymbols'
+import { translations } from './i18n'
+
+// The palette maps each category key to an i18n label string via this key template.
+// Keeping the map here (rather than importing the component) keeps this a pure-data test.
+const CATEGORY_LABEL_KEYS: Record<MathSymbolCategoryKey, keyof typeof translations.en> = {
+   greek:            'blockMathCategoryGreek',
+   operators:        'blockMathCategoryOperators',
+   relations:        'blockMathCategoryRelations',
+   negatedRelations: 'blockMathCategoryNegatedRelations',
+   arrows:           'blockMathCategoryArrows',
+   bigOperators:     'blockMathCategoryBigOperators',
+   fractionsRoots:   'blockMathCategoryFractions',
+   accents:          'blockMathCategoryAccents',
+   matrices:         'blockMathCategoryMatrices',
+   fonts:            'blockMathCategoryFonts',
+   symbolsMisc:      'blockMathCategorySymbols',
+}
 
 describe('buildSnippetInsertion', () => {
    it('appends a marker-less snippet and lands the caret at its end', () => {
@@ -64,6 +82,22 @@ describe('MATH_SYMBOL_CATEGORIES catalog', () => {
             expect(entry.latex.length).toBeGreaterThan(0)
             expect(entry.insert.length).toBeGreaterThan(0)
          }
+      }
+   })
+
+   it('gives every category a non-empty i18n label in both languages', () => {
+      for (const category of MATH_SYMBOL_CATEGORIES) {
+         const labelKey = CATEGORY_LABEL_KEYS[category.key]
+         expect(labelKey, `no label key mapped for category "${category.key}"`).toBeTruthy()
+         expect(translations.en[labelKey].length).toBeGreaterThan(0)
+         expect(translations.fr[labelKey].length).toBeGreaterThan(0)
+      }
+   })
+
+   it('uses unique entry names within each category (stable React keys)', () => {
+      for (const category of MATH_SYMBOL_CATEGORIES) {
+         const names = category.entries.map(entry => entry.name)
+         expect(new Set(names).size, `duplicate name in "${category.key}"`).toBe(names.length)
       }
    })
 })

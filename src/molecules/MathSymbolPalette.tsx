@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ChevronRight, Grid3x3, Braces, Rows3 } from 'lucide-react'
 import { renderLatexToMathML, isTemmlReady, onTemmlReady } from '../lib/math'
 import { MATH_SYMBOL_CATEGORIES } from '../lib/mathSymbols'
 import type { MathSymbolCategoryKey, MathSymbolEntry } from '../lib/mathSymbols'
+import type { MathBuilderKind } from '../lib/mathStructures'
 import { useLang } from '../contexts/LangContext'
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
 
@@ -22,9 +24,28 @@ interface MathSymbolPaletteProps {
    anchorRect: DOMRect
    /** Splice a snippet's `insert` string into the source at the current caret/selection. */
    onInsert:   (insert: string) => void
+   /**
+    * Open the structured-construct builder for `kind`. Wired to the dedicated generator
+    * launcher row (only shown when `showGenerators` is true), NOT to catalog entries — every
+    * catalog entry now inserts its raw skeleton like any other symbol.
+    */
+   onOpenBuilder: (kind: MathBuilderKind) => void
+   /**
+    * Whether to render the "Generate…" launcher row (matrix / cases / aligned builders). True
+    * in the editor context; false when the palette is opened from INSIDE a builder modal — the
+    * recursion guard, so a builder can never offer to open another builder.
+    */
+   showGenerators: boolean
    /** Close the palette (Escape / outside click). */
    onClose:    () => void
 }
+
+/** The three structured builders the launcher row can open, paired with their icons. */
+const GENERATOR_LAUNCHERS: { kind: MathBuilderKind; Icon: typeof Grid3x3 }[] = [
+   { kind: 'matrix',  Icon: Grid3x3 },
+   { kind: 'cases',   Icon: Braces  },
+   { kind: 'aligned', Icon: Rows3   },
+]
 
 // #############
 // # COMPONENT #
@@ -45,7 +66,7 @@ interface MathSymbolPaletteProps {
  * source textarea (never blurring it, which would fire its commit-on-blur and steal focus),
  * so the panel can inject a snippet and hand the caret straight back to the textarea.
  */
-export function MathSymbolPalette({ anchorRect, onInsert, onClose }: MathSymbolPaletteProps) {
+export function MathSymbolPalette({ anchorRect, onInsert, onOpenBuilder, showGenerators, onClose }: MathSymbolPaletteProps) {
    const { t } = useLang()
 
    // Re-render once Temml finishes its one-time load, so glyphs replace the raw-text fallback.
@@ -54,6 +75,20 @@ export function MathSymbolPalette({ anchorRect, onInsert, onClose }: MathSymbolP
 
    const [filterQuery, setFilterQuery] = useState('')
    const normalizedQuery = filterQuery.trim().toLowerCase()
+   const isFiltering     = normalizedQuery !== ''
+
+   // Accordion state: the set of expanded categories. Default empty so the panel opens compact
+   // (all collapsed). While filtering, every matching category is FORCED open regardless of the
+   // set — search must surface matches instantly — without mutating the set the user built up.
+   const [expandedKeys, setExpandedKeys] = useState<Set<MathSymbolCategoryKey>>(() => new Set())
+   function toggleCategory(key: MathSymbolCategoryKey): void {
+      setExpandedKeys(current => {
+         const next = new Set(current)
+         if (next.has(key)) next.delete(key)
+         else next.add(key)
+         return next
+      })
+   }
 
    // Case-insensitive match across every category, on both the human name and the LaTeX.
    const matches = (entry: MathSymbolEntry): boolean =>
@@ -67,14 +102,23 @@ export function MathSymbolPalette({ anchorRect, onInsert, onClose }: MathSymbolP
       .filter(group => group.entries.length > 0)
 
    const categoryLabels: Record<MathSymbolCategoryKey, string> = {
-      greek:          t.blockMathCategoryGreek,
-      operators:      t.blockMathCategoryOperators,
-      bigOperators:   t.blockMathCategoryBigOperators,
-      fractionsRoots: t.blockMathCategoryFractions,
-      scripts:        t.blockMathCategoryScripts,
-      matrices:       t.blockMathCategoryMatrices,
-      arrows:         t.blockMathCategoryArrows,
-      accentsMisc:    t.blockMathCategoryAccents,
+      greek:            t.blockMathCategoryGreek,
+      operators:        t.blockMathCategoryOperators,
+      relations:        t.blockMathCategoryRelations,
+      negatedRelations: t.blockMathCategoryNegatedRelations,
+      arrows:           t.blockMathCategoryArrows,
+      bigOperators:     t.blockMathCategoryBigOperators,
+      fractionsRoots:   t.blockMathCategoryFractions,
+      accents:          t.blockMathCategoryAccents,
+      matrices:         t.blockMathCategoryMatrices,
+      fonts:            t.blockMathCategoryFonts,
+      symbolsMisc:      t.blockMathCategorySymbols,
+   }
+
+   const generatorLabels: Record<MathBuilderKind, string> = {
+      matrix:  t.blockMathGenerateMatrix,
+      cases:   t.blockMathGenerateCases,
+      aligned: t.blockMathGenerateAligned,
    }
 
    // Measured, two-sided clamp on both axes: flips above/below the trigger, then keeps the
@@ -128,18 +172,71 @@ export function MathSymbolPalette({ anchorRect, onInsert, onClose }: MathSymbolP
             className="math-symbol-palette-filter"
          />
 
+         {/* Generator launcher row — pinned under the filter, OUTSIDE the scroll area so it is
+             always reachable. Hidden inside a builder (showGenerators === false) so a builder can
+             never open another builder. MOUSEDOWN + preventDefault mirrors the glyph buttons:
+             MathBlock snapshots the textarea caret on open, so the source must not blur here. */}
+         {showGenerators && (
+            <div className="math-symbol-palette-generators">
+               <div className="math-symbol-palette-generator-heading">{t.blockMathGenerateHeading}</div>
+               <div className="math-symbol-palette-generator-row">
+                  {GENERATOR_LAUNCHERS.map(({ kind, Icon }) => (
+                     <button
+                        key={kind}
+                        type="button"
+                        className="math-symbol-palette-generator-btn"
+                        title={generatorLabels[kind]}
+                        aria-label={generatorLabels[kind]}
+                        onMouseDown={event => { event.preventDefault(); onOpenBuilder(kind) }}
+                     >
+                        <Icon size={14} />
+                        <span>{generatorLabels[kind]}</span>
+                     </button>
+                  ))}
+               </div>
+            </div>
+         )}
+
          {/* Scroll lives on this INNER element, not the rounded outer box, so the scrollbar
              never squares off the rounded corners it would otherwise sit on. */}
          <div className="math-symbol-palette-scroll">
             {groups.length === 0 && (
                <div className="math-symbol-palette-empty">{t.blockMathSymbolNoMatches}</div>
             )}
-            {groups.map(group => (
+            {groups.map(group => {
+               // A category renders its grid only when open. Filtering forces every match open so
+               // search surfaces everything instantly, without touching the user's expanded set.
+               const isOpen = isFiltering || expandedKeys.has(group.key)
+               return (
                <div key={group.key} className="math-symbol-palette-group">
-                  <div className="math-symbol-palette-heading">{categoryLabels[group.key]}</div>
+                  <button
+                     type="button"
+                     className="math-symbol-palette-heading"
+                     aria-expanded={isOpen}
+                     aria-label={categoryLabels[group.key]}
+                     // MOUSEDOWN + preventDefault keeps focus on the filter input (never blurs it),
+                     // so toggling a section does not disturb the type-to-filter flow.
+                     onMouseDown={event => event.preventDefault()}
+                     onClick={() => toggleCategory(group.key)}
+                  >
+                     <ChevronRight
+                        size={13}
+                        className="math-symbol-palette-chevron"
+                        style={{ transform: isOpen ? 'rotate(90deg)' : 'none' }}
+                     />
+                     <span className="math-symbol-palette-heading-label">{categoryLabels[group.key]}</span>
+                     <span className="math-symbol-palette-heading-count">{group.entries.length}</span>
+                  </button>
+                  {isOpen && (
                   <div className="math-symbol-palette-grid">
                      {group.entries.map(entry => {
                         const rendered = temmlReady ? renderLatexToMathML(entry.latex, false) : null
+                        // Defensive fallback. Only inject MathML when Temml rendered cleanly
+                        // (ok === true). Otherwise show text — never `dangerouslySetInnerHTML`
+                        // of anything but verified-good markup — so a stray unsupported command
+                        // can never paint a broken or blank button. While Temml is still loading
+                        // (rendered === null) the raw LaTeX reads best; once it is ready and a
+                        // render explicitly FAILED, the human name is the clearer fallback.
                         return (
                            <button
                               key={entry.name}
@@ -154,13 +251,19 @@ export function MathSymbolPalette({ anchorRect, onInsert, onClose }: MathSymbolP
                            >
                               {rendered?.ok
                                  ? <span dangerouslySetInnerHTML={{ __html: rendered.mathml }} />
-                                 : <span className="math-symbol-palette-raw">{entry.latex}</span>}
+                                 : (
+                                    <span className="math-symbol-palette-raw">
+                                       {rendered ? entry.name : entry.latex}
+                                    </span>
+                                 )}
                            </button>
                         )
                      })}
                   </div>
+                  )}
                </div>
-            ))}
+               )
+            })}
          </div>
       </div>,
       document.body,
