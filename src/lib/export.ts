@@ -7,11 +7,20 @@ import { renderLatexToMathML, TEMML_STYLES } from './math'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
 import type { GraphTableCatalog } from './graphTableData'
+import {
+   resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, headerJustifyContent,
+   resolveHeaderBesideLayout, reconcileNav,
+   type DocPresentationExtras, type Watermark, type Header,
+} from './presentation'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
    accent: string
    lang?: 'en' | 'fr'
+   /** Document-level presentation extras (watermark, header logo, …). Absent ⇒ byte-identical to
+    *  pre-feature output: every emission below is guarded on the optional field, including the
+    *  added CSS. */
+   presentation?: DocPresentationExtras
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
@@ -214,7 +223,50 @@ function getColors(theme: 'light' | 'dark'): Colors {
    }
 }
 
-function buildStyles(accent: string, colors: Colors): string {
+function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean): string {
+   // Watermark CSS is appended ONLY when a watermark is present, so an absent watermark leaves the
+   // style block byte-identical to pre-feature output. The rules layer a static image behind the
+   // card content: .doc-card becomes the positioning context (overflow clips to its radius), the
+   // .doc-watermark layer sits at z-index 0, and the content (.doc-render / .doc-footer) rides above.
+   const watermarkStyles = hasWatermark ? `
+            /* Background watermark (presentation) */
+            .doc-card { position: relative; overflow: hidden; }
+            .doc-watermark {
+                  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+                  background-repeat: no-repeat;
+            }
+            .doc-card > .doc-render { position: relative; z-index: 1; }
+            .doc-card > .doc-footer { position: relative; z-index: 1; }
+   ` : ''
+   // Header logo CSS, same additive/guarded convention as the watermark above. 'above' is its own
+   // row before <h1> (margin under it separates it from the title); 'beside' wraps the logo + <h1>
+   // in one row, vertically centered, with the title's own margin-bottom suppressed (the row's
+   // spacing to what follows comes from .page-header itself).
+   const headerStyles = hasHeader ? `
+            /* Header logo (presentation) */
+            .doc-render .page-logo-row              { display: flex; align-items: center; gap: 0.75rem; }
+            .doc-render .page-logo-row:not(.page-logo-row-beside) { margin-bottom: 0.75rem; }
+            .doc-render .page-logo-row-beside h1     { margin-bottom: 0; }
+            .doc-render .page-logo                   { display: block; width: auto; max-width: 100%; height: auto; }
+   ` : ''
+   // Nav CSS (external-link marker + divider separator) is appended ONLY for a customized nav, so an
+   // absent nav model leaves the style block byte-identical to pre-feature output — same additive/
+   // guarded convention as the watermark and header above. A section-only nav never emits either
+   // element, so gating on the model's presence (not on which entry kinds it holds) is sufficient.
+   const navStyles = hasCustomNav ? `
+            /* Custom sidebar nav (presentation) */
+            .nav-external::after { content: " \\2197"; opacity: 0.55; font-size: 0.9em; }
+            .nav-divider {
+                  margin: 0.7rem 1.25rem 0.35rem;
+                  padding-top: 0.55rem;
+                  border-top: 1px solid ${colors.border};
+                  font-family: 'JetBrains Mono', monospace;
+                  font-size: 0.6rem; font-weight: 700;
+                  text-transform: uppercase; letter-spacing: 0.08em;
+                  color: ${colors.textMuted};
+            }
+            .nav-divider:empty { padding-top: 0; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+   ` : ''
    return `
             /* Reset */
             *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -423,7 +475,7 @@ function buildStyles(accent: string, colors: Colors): string {
 
             /* Temml MathML rendering-correction rules (self-contained, no fonts) */
             ${TEMML_STYLES}
-   `
+${watermarkStyles}${headerStyles}${navStyles}   `
 }
 
 const STRINGS = {
@@ -468,11 +520,75 @@ function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: stri
    return `<div class="${zoneClass}">${rows.join('')}</div>`
 }
 
+/**
+ * Render a SINGLE (non-tiled) background watermark layer as a self-contained
+ * `<div class="doc-watermark">` whose base64 image is inlined (no external fetch, no runtime). Fit /
+ * position map to CSS background-* via the shared resolveWatermarkLayout, rotation is a centered CSS
+ * transform (the div is full-bleed via .doc-watermark's `inset:0`, so the default center transform
+ * origin already lands on the sheet's center), and opacity is dimmed for the dark theme exactly as
+ * the editor dims it (shared effectiveWatermarkOpacity). Only ever called when the watermark has a
+ * src, so absent ⇒ this emits nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts),
+ * shared verbatim with the editor render — see the branch in generateExportHTML below.
+ */
+function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): string {
+   const layout  = resolveWatermarkLayout(watermark)
+   const opacity = effectiveWatermarkOpacity(watermark.opacity, theme)
+   const style = [
+      `background-image:url("${watermark.src}")`,
+      `background-repeat:${layout.repeat}`,
+      `background-size:${layout.size}`,
+      `background-position:${layout.position}`,
+      `opacity:${opacity}`,
+      `transform:rotate(${watermark.rotation}deg)`,
+   ].join(';')
+   return `<div class="doc-watermark" aria-hidden="true" style="${style}"></div>`
+}
+
+/**
+ * Render the page title, optionally wrapped with a header logo. Absent header (or empty src)
+ * emits exactly `<h1>…</h1>` — byte-identical to pre-feature output. A present header inlines its
+ * base64 image as `.page-logo`: 'above' places it on its own row before the title, 'beside' wraps
+ * logo + title together in one flex row; both honor `align` via `justify-content` (the shared
+ * headerJustifyContent, same helper the editor's inline style uses) and `maxHeight` via an inline
+ * style on the `<img>`.
+ */
+function renderPageTitle(meta: DocMeta, fallbackTitle: string, header: Header | undefined): string {
+   const titleHtml = `<h1>${esc(meta.title) || fallbackTitle}</h1>`
+   if (!header?.src) return titleHtml
+   const logoHtml = `<img class="page-logo" src="${header.src}" alt="" style="max-height:${header.maxHeight}px">`
+   if (header.placement === 'beside') {
+      const besideLayout = resolveHeaderBesideLayout(header)
+      const content = besideLayout.logoFirst ? `${logoHtml}${titleHtml}` : `${titleHtml}${logoHtml}`
+      return `<div class="page-logo-row page-logo-row-beside" style="justify-content:${besideLayout.justifyContent}">${content}</div>`
+   }
+   const justify = headerJustifyContent(header.align)
+   return `<div class="page-logo-row" style="justify-content:${justify}">${logoHtml}</div>\n                        ${titleHtml}`
+}
+
 export function generateExportHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): string {
    const { theme, accent, lang = 'en' } = opts
    const strings = STRINGS[lang]
    const colors  = getColors(theme)
-   const styles  = buildStyles(accent, colors)
+   // Watermark: guarded on the optional field so an absent watermark yields byte-identical output
+   // (no markup AND no extra CSS). The base64 src is inlined, exactly like image blocks — no runtime.
+   const watermark = opts.presentation?.watermark
+   const hasWatermark = !!watermark?.src
+   // Header logo: same guard convention. Guards both the <img>/wrapper markup (renderPageTitle) and
+   // the .page-logo* CSS below.
+   const header = opts.presentation?.header
+   const hasHeader = !!header?.src
+   // Custom nav: present ⇒ the sidebar is built from the reconciled model (below) and the nav CSS +
+   // the external-link scroll-spy guard are emitted; absent ⇒ today's derivation, byte-identical.
+   const hasCustomNav = !!opts.presentation?.nav
+   const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav)
+   // Tiled ⇒ the shared SVG <pattern> builder (identical to the editor's render, see WysiwygArea/
+   // index.tsx); single ⇒ the positioned/fit CSS layer. The pattern id only needs to be unique
+   // within this one exported document, so a short random suffix is enough.
+   const watermarkHTML = hasWatermark
+      ? (watermark!.tile
+         ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-${Math.random().toString(36).slice(2, 10)}`)
+         : renderWatermarkLayer(watermark!, theme))
+      : ''
 
    // Build the document-wide `handle -> table cells` catalog ONCE (from all sections, including
    // container columns), then thread it into every block export so a linked graph resolves to
@@ -480,9 +596,21 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // back to the graph's materialized snapshot.
    const tables = collectTableSources(sections.flatMap(section => section.blocks))
 
-   const navLinks = sections.map((section, sectionIndex) =>
-      `        <a href="#section-${section.id}" class="nav-link">${sectionIndex + 1}. ${esc(section.title)}</a>`
-   ).join('\n')
+   // The sidebar nav is built from the reconciled model (absent nav ⇒ one numbered link per section,
+   // in order, byte-identical to the previous `sections.map(...)`). A section-target link keeps its
+   // `#anchor` href so the scroll-spy below still tracks it; an external link opens in a new tab and
+   // is not observed; a divider renders as a static separator. Numbering (from reconcileNav) prefixes
+   // only section-target links, so dividers / external links never carry a nonsensical number.
+   const navLinks = reconcileNav(opts.presentation?.nav, sections).map(entry => {
+      if (entry.kind === 'divider') {
+         return `        <div class="nav-divider">${esc(entry.label)}</div>`
+      }
+      if (entry.external) {
+         return `        <a href="${esc(entry.href)}" class="nav-link nav-external" target="_blank" rel="noopener">${esc(entry.label)}</a>`
+      }
+      const numberPrefix = entry.number !== undefined ? `${entry.number}. ` : ''
+      return `        <a href="${entry.href}" class="nav-link">${numberPrefix}${esc(entry.label)}</a>`
+   }).join('\n')
 
    const sectionsHTML = sections.map((sec, sectionIndex) => {
       const blocksHTML = sec.blocks.map(block => '            ' + exportBlock(block, { theme, tables })).join('\n')
@@ -492,6 +620,20 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
 ${blocksHTML}
             </div>`
    }).join('\n')
+
+   // The nav-link click handler smooth-scrolls to a section anchor. With a customized nav the sidebar
+   // can hold external links (non-`#` hrefs), so guard on `href.charAt(0) === '#'` and let the browser
+   // navigate offsite links normally; the observer above only ever matched `#`-anchors, so it needs no
+   // change. Absent nav ⇒ the original (unguarded) handler verbatim, so the script stays byte-identical.
+   const navClickBody = hasCustomNav
+      ? `const href = l.getAttribute('href');
+                  if (!href || href.charAt(0) !== '#') return;
+                  e.preventDefault();
+                  const t = document.querySelector(href);
+                  if (t) t.scrollIntoView({ behavior: 'smooth' });`
+      : `e.preventDefault();
+                  const t = document.querySelector(l.getAttribute('href'));
+                  if (t) t.scrollIntoView({ behavior: 'smooth' });`
 
    return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -512,11 +654,11 @@ ${navLinks}
 </aside>
 
 <main class="main">
-      <div class="doc-card">
+      <div class="doc-card">${watermarkHTML}
             <div class="doc-render">
                   <div class="page-header">
                         ${renderMetaZone(meta, 'above', accent)}
-                        <h1>${esc(meta.title) || strings.fallback}</h1>
+                        ${renderPageTitle(meta, strings.fallback, header)}
                         ${renderMetaZone(meta, 'below', accent)}
                   </div>
                   ${sectionsHTML}
@@ -544,9 +686,7 @@ ${navLinks}
       secs.forEach(s => observer.observe(s));
       links.forEach(l => {
             l.addEventListener('click', e => {
-                  e.preventDefault();
-                  const t = document.querySelector(l.getAttribute('href'));
-                  if (t) t.scrollIntoView({ behavior: 'smooth' });
+                  ${navClickBody}
             });
       });
 </script>

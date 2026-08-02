@@ -1,4 +1,5 @@
 import type { GraphSpec } from './lib/graph'
+import type { DocPresentationExtras } from './lib/presentation'
 
 export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
@@ -125,6 +126,9 @@ export interface OpenDocument {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
+   /** Export-only / editor-only presentation extras (watermark, …); absent = today's behavior.
+    *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Mintdown / Markdown. */
+   presentation?: DocPresentationExtras
    documentId:            string | null   // binder record id; null until first save
    saveStatus:            SaveStatus       // per-tab dirty/saving/saved cycle
    pendingNewDocFolderId: string | null    // folder a fresh doc lands in on first save; null = root
@@ -175,6 +179,10 @@ export interface BinderDocumentRecord {
 export interface BinderDocumentContent {
    id:       string
    sections: Section[]
+   /** Image-bearing presentation extras (watermark base64, …) live on the HEAVY content store, not
+    *  the light record listDocuments() reads for every card — a full-bleed base64 must never bloat
+    *  the card-list query. Absent on documents saved before presentation existed. */
+   presentation?: DocPresentationExtras
 }
 
 export type Mode = 'wysiwyg' | 'preview'

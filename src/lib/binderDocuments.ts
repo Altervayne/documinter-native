@@ -14,6 +14,7 @@ import {
 import { buildPreviewSections, extractDocumentText } from './documentPreview'
 import { matchesCriteria, documentComparator, type DocumentListFilter } from './binderSearch'
 import { migrateIds, migrateMeta } from './documentMigration'
+import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { cloneBlock } from './document'
 import type {
    DocMeta, DocState, Section,
@@ -24,10 +25,13 @@ const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to f
                                   // (v3 moved meta to the freeform { title, fields } shape;
                                   //  v2 added contentText, the flattened block text for full-text search)
 
-/** Presentation settings persisted per-document alongside the DocState. */
+/** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
+ *  image-bearing export/editor extras (watermark, …); it stores on the HEAVY content record, not
+ *  the light card record — see saveDocument. */
 export interface DocPresentation {
    docTheme:  'light' | 'dark'
    docAccent: string
+   presentation?: DocPresentationExtras
 }
 
 /** Full editable document returned by loadDocument, DocState plus presentation. */
@@ -36,6 +40,7 @@ export interface LoadedDocument {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
+   presentation?: DocPresentationExtras
 }
 
 /** Next manual sort position for a new document appended to the end of a folder. */
@@ -98,7 +103,13 @@ export async function saveDocument(
       docAccent:     presentation.docAccent,
       schemaVersion: RECORD_SCHEMA_VERSION,
    }
-   const content: BinderDocumentContent = { id, sections: state.sections }
+   // The image-bearing presentation extras live on the HEAVY content record ONLY (never the light
+   // card record above), so a full-bleed watermark base64 can't bloat the listDocuments() query.
+   const content: BinderDocumentContent = {
+      id,
+      sections: state.sections,
+      ...(presentation.presentation ? { presentation: presentation.presentation } : {}),
+   }
 
    documentsStore.put(record)
    contentStore.put(content)
@@ -116,7 +127,15 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
    const content = await requestToPromise<BinderDocumentContent | undefined>(contentRequest)
    if (!record || !content) return null
    const migrated = migrateIds({ meta: record.meta, sections: content.sections })
-   return { meta: migrated.meta, sections: migrated.sections, docTheme: record.docTheme, docAccent: record.docAccent }
+   return {
+      meta: migrated.meta,
+      sections: migrated.sections,
+      docTheme: record.docTheme,
+      docAccent: record.docAccent,
+      // Presentation extras ride on the heavy content record; normalize defensively on read
+      // (clamp opacity, drop an empty-src watermark) — the mirror of migrateMeta for metadata.
+      presentation: normalizePresentation(content.presentation),
+   }
 }
 
 /**
@@ -215,7 +234,11 @@ export async function duplicateDocument(id: string): Promise<string> {
       docAccent:     sourceRecord.docAccent,
       schemaVersion: RECORD_SCHEMA_VERSION,
    }
-   const newContent: BinderDocumentContent = { id: newId, sections: clonedSections }
+   const newContent: BinderDocumentContent = {
+      id: newId,
+      sections: clonedSections,
+      ...(sourceContent.presentation ? { presentation: sourceContent.presentation } : {}),
+   }
 
    documentsStore.put(newRecord)
    contentStore.put(newContent)

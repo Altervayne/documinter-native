@@ -8,6 +8,9 @@ import { createPortal } from 'react-dom'
 // -- Hook Imports --
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
 
+// -- Molecule Imports --
+import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOption } from './AccentSwatchGrid'
+
 // #########
 // # TYPES #
 // #########
@@ -21,13 +24,16 @@ export interface ContextMenuItem {
 }
 
 /**
- * One row of a menu: an actionable item, a horizontal separator, or a non-interactive
- * section header. Items are the entries without a `type` discriminant.
+ * One row of a menu: an actionable item, a horizontal separator, a non-interactive section
+ * header, or the accent picker's swatch grid (a nameless grid of color tiles + an inline-
+ * expanding custom-color picker — see molecules/AccentSwatchGrid). Items are the entries without
+ * a `type` discriminant.
  */
 export type ContextMenuEntry =
    | ContextMenuItem
    | { type: 'separator' }
    | { type: 'header'; label: string }
+   | { type: 'accent-grid'; presets: AccentSwatchOption[]; custom?: AccentCustomSwatchOption }
 
 export interface ContextMenuProps {
    /** Click point in viewport coordinates (clientX / clientY). */
@@ -144,6 +150,9 @@ export function ContextMenu({ position, entries, onClose, width, className }: Co
             if ('type' in entry) {
                if (entry.type === 'separator') {
                   return <div key={`separator-${entryIndex}`} className="my-0.5 h-px mx-2 bg-border" />
+               }
+               if (entry.type === 'accent-grid') {
+                  return <AccentSwatchGrid key={`accent-grid-${entryIndex}`} presets={entry.presets} custom={entry.custom} />
                }
                return (
                   <div

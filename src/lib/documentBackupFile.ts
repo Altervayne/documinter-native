@@ -7,15 +7,19 @@
 
 import { slugify } from './text'
 import { migrateIds } from './documentMigration'
+import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import type { DocPresentation } from './binderDocuments'
 import type { DocMeta, DocState, Section } from '../types'
 
 /** A serialized document backup: the editable DocState plus the per-document presentation
- *  (theme + accent), so a re-import restores exactly how the document looked. Presentation is
- *  optional — older backups predate it and fall back to defaults on import. */
+ *  (theme + accent + export/editor extras), so a re-import restores exactly how the document looked.
+ *  Presentation is optional — older backups predate it and fall back to defaults on import. The
+ *  .documinter.json backup is the full-fidelity format, so it DOES carry `presentation` (unlike the
+ *  content-only .mint / .md serializers). */
 export interface DocumentBackup extends DocState {
    docTheme?:  'light' | 'dark'
    docAccent?: string
+   presentation?: DocPresentationExtras
 }
 
 /**
@@ -33,6 +37,7 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
          presentation: {
             docTheme:  raw.docTheme  ?? 'light',
             docAccent: raw.docAccent ?? '#2dcea8',
+            presentation: normalizePresentation(raw.presentation),
          },
       }
    } catch {
@@ -42,7 +47,12 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
 
 /** Trigger a browser download of the document as a .documinter.json file (theme + accent included). */
 export function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): void {
-   const backup: DocumentBackup = { meta, sections, docTheme: presentation.docTheme, docAccent: presentation.docAccent }
+   const backup: DocumentBackup = {
+      meta, sections,
+      docTheme: presentation.docTheme,
+      docAccent: presentation.docAccent,
+      ...(presentation.presentation ? { presentation: presentation.presentation } : {}),
+   }
    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' })
    const url = URL.createObjectURL(blob)
    const anchor = document.createElement('a')

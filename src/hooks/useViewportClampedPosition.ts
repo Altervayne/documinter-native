@@ -94,13 +94,30 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
    }))
 
    // Measure the rendered popover before paint (synchronous, so no visible flicker as the
-   // 0×0 first pass is corrected). A menu's content is stable while open, so measuring once
-   // on mount captures its real box — the fix for the estimate-driven off-screen bug.
+   // 0×0 first pass is corrected). This captures the real box on mount — the fix for the
+   // estimate-driven off-screen bug.
    useLayoutEffect(() => {
       const element = ref.current
       if (!element) return
       const rect = element.getBoundingClientRect()
       setSize({ width: rect.width, height: rect.height })
+   }, [])
+
+   // A menu's content isn't always stable while open — e.g. the document-background context
+   // menu's accent section expands an inline ColorPicker in place, growing the menu's own box.
+   // Re-measure whenever the rendered size actually changes so the clamp keeps the (now taller)
+   // popover fully on-screen instead of freezing the stale mount-time box.
+   useEffect(() => {
+      const element = ref.current
+      if (!element || typeof ResizeObserver === 'undefined') return
+      const observer = new ResizeObserver(() => {
+         const rect = element.getBoundingClientRect()
+         setSize(current => (current.width === rect.width && current.height === rect.height)
+            ? current
+            : { width: rect.width, height: rect.height })
+      })
+      observer.observe(element)
+      return () => observer.disconnect()
    }, [])
 
    useEffect(() => {

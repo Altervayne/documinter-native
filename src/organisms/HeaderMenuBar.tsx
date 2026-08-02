@@ -15,12 +15,14 @@ import { ExportModal } from './ExportModal'
 // -- Molecule Imports --
 import { FileMenu } from '../molecules/FileMenu'
 import { ViewMenu } from '../molecules/ViewMenu'
-import { AppearanceMenu } from '../molecules/AppearanceMenu'
+import { PreferencesMenu } from '../molecules/PreferencesMenu'
+import { DocumentMenu } from '../molecules/DocumentMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
 import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocPresentation } from '../lib/binderDocuments'
+import type { DocPresentationExtras } from '../lib/presentation'
 
 // -- Icon Imports --
 import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck } from 'lucide-react'
@@ -114,6 +116,8 @@ interface HeaderMenuBarProps {
    onManualSave:     () => void
    onSaveAs:         () => void
    onNew:            () => void
+   /** Add a section to the active document — the Document menu's "Add section" entry. */
+   onAddSection:     () => void
    onToggleBinder:   () => void
    onImportMarkdownFile: (file: File) => Promise<void>
    onImportMintdownFile: (file: File) => Promise<void>
@@ -124,6 +128,14 @@ interface HeaderMenuBarProps {
    exportOpen:       boolean
    onOpenExport:     () => void
    onCloseExport:    () => void
+   /** Presentation extras of the active document, threaded into the Export dialog's ExportOptions so
+    *  a watermark bakes into the exported HTML. */
+   presentation?:    DocPresentationExtras
+   /** Opens the document-level Presentation window (from the Export dialog's HTML branch and the
+    *  Document menu's "Presentation…" entry). */
+   onOpenPresentation?: () => void
+   /** Opens the document-level Navigation window (the Document menu's "Navigation…" entry). */
+   onOpenNav?:          () => void
 }
 
 // #############
@@ -132,9 +144,9 @@ interface HeaderMenuBarProps {
 
 export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onToggleBinder,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
-   exportOpen, onOpenExport, onCloseExport,
+   exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
 }: HeaderMenuBarProps) {
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
@@ -233,18 +245,35 @@ export function HeaderMenuBar({
                t={t}
             />
             {isDocumentMode && <ViewMenu paneLayout={paneLayout} onTogglePanel={onTogglePanel} t={t} />}
-            <AppearanceMenu
+            {/* Preferences = app-wide settings (chrome theme + language). */}
+            <PreferencesMenu
                theme={theme}
                onToggleTheme={onToggleTheme}
                lang={lang}
                onLangChange={setLang}
-               showDocumentSettings={isDocumentMode}
-               docTheme={docTheme}
-               onDocThemeChange={onDocThemeChange}
-               docAccent={docAccent}
-               onDocAccentChange={onDocAccentChange}
                t={t}
             />
+            {/* Document = the per-document customization set, sharing its entry list with the
+                document-background context menu via buildDocumentMenuEntries (parity). Document mode
+                only; reachable in preview too (readOnly just disables "Add section"). */}
+            {isDocumentMode && (
+               <DocumentMenu
+                  t={t}
+                  docTheme={docTheme}
+                  docAccent={docAccent}
+                  previewMode={previewMode}
+                  readOnly={previewMode === 'preview'}
+                  onAddSection={onAddSection}
+                  onDocThemeChange={onDocThemeChange}
+                  onDocAccentChange={onDocAccentChange}
+                  onOpenPresentation={onOpenPresentation}
+                  onOpenNavigation={onOpenNav}
+                  onOpenExport={onOpenExport}
+                  onManualSave={onManualSave}
+                  onSaveAs={onSaveAs}
+                  onTogglePreview={() => onSetMode(previewMode === 'preview' ? 'wysiwyg' : 'preview')}
+               />
+            )}
             <AboutMenu theme={theme} t={t} />
 
             {/* Spacer, pushes actions to the far right */}
@@ -288,8 +317,10 @@ export function HeaderMenuBar({
                sections={sections}
                defaultTheme={docTheme}
                defaultAccent={docAccent}
+               presentation={presentation}
                lang={lang}
                onClose={onCloseExport}
+               onOpenPresentation={onOpenPresentation}
             />
          )}
       </>

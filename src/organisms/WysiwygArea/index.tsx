@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useId } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
@@ -17,22 +17,20 @@ import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowConte
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Sun, Moon, Download, Save, FileDown } from 'lucide-react'
-import { ColorPicker } from 'react-piqua-color'
-import { createPortal } from 'react-dom'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
 import { ContextMenu } from '../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../molecules/ContextMenu'
+import { PresentationWindow } from '../../molecules/PresentationWindow'
+import { NavWindow } from '../../molecules/NavWindow'
 import { WysiwygSection } from './WysiwygSection'
-
-// -- Hook Imports --
-import { useViewportClampedPosition } from '../../hooks/useViewportClampedPosition'
 
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
-import { ACCENT_PRESETS, accentPresetName } from '../../lib/constants'
+import { buildDocumentMenuEntries } from '../../lib/documentMenuEntries'
+import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
 import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
@@ -42,6 +40,8 @@ interface WysiwygAreaProps {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
+   /** Export-only / editor-only presentation extras (watermark, …); undefined = none set. */
+   presentation?: DocPresentationExtras
    /** Active tab key; a change closes any open block-editor window (it belongs to the outgoing tab). */
    activeTabKey?: string
    onUpdateMeta:  (patch: Partial<DocMeta>) => void
@@ -53,22 +53,50 @@ interface WysiwygAreaProps {
    // ==========================================================
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    onDocAccentChange?: (hex: string) => void
+   /** Commit the document's presentation extras (watermark, …); undefined clears them. */
+   onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
    /** Opens the same File -> Save As... dialog owned by App.tsx (fork-and-switch to a copy). */
    onSaveAs?: () => void
+   // ==========================================================
+   //  Presentation window (document-level, non-modal), open-state lifted to App.tsx like the export
+   //  modal. Opened from the background context menu here AND the Export dialog's HTML branch.
+   // ==========================================================
+   presentationOpen?:    boolean
+   onOpenPresentation?:  () => void
+   onClosePresentation?: () => void
+   // ==========================================================
+   //  Navigation window (document-level, non-modal), open-state lifted to App.tsx like the
+   //  presentation window. Opened from the background context menu here AND the Document top-bar menu.
+   // ==========================================================
+   navOpen?:      boolean
+   onOpenNav?:    () => void
+   onCloseNav?:   () => void
    /** Editor/preview toggle, for the background menu's optional "Toggle preview" item. */
    previewMode?: Mode
    onSetMode?:   (mode: Mode) => void
 }
 
 export function WysiwygArea({
-   meta, sections, docTheme, docAccent, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onOpenExport, onManualSave, onSaveAs, previewMode, onSetMode,
+   meta, sections, docTheme, docAccent, presentation, activeTabKey, onUpdateMeta, onAddSection, readOnly,
+   onDocThemeChange, onDocAccentChange, onPresentationChange, onOpenExport, onManualSave, onSaveAs,
+   presentationOpen, onOpenPresentation, onClosePresentation,
+   navOpen, onOpenNav, onCloseNav, previewMode, onSetMode,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections } = useDocumentMutations()
+
+   // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
+   // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
+   // string) — guards against <defs> id clashes if multiple watermarked sheets are ever mounted
+   // at once.
+   const watermarkPatternId = `doc-watermark-pattern-${useId().replace(/:/g, '')}`
+
+   // Header logo (presentation): rendered in .page-header, above or beside the title. undefined ⇒
+   // no logo, today's behavior.
+   const header = presentation?.header
 
    // ==========================================================
    //  Freeform metadata fields, whole-array patches to onUpdateMeta
@@ -97,65 +125,47 @@ export function WysiwygArea({
    // already self-disable their own context menus under readOnly, see WysiwygSection.tsx /
    // WysiwygBlock.tsx), so a right-click still reaches theme/accent/export/save/preview-toggle.
    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number; y: number } | null>(null)
-   // The document accent's custom-color popover, opened as a follow-on state once the background
-   // menu's "Custom accent…" item is picked (the ContextMenu already closed itself by then — same
-   // follow-on pattern CalloutStylePicker's custom-color swatch uses). Anchored at the same click
-   // point the background menu itself opened at.
-   const [accentPopover, setAccentPopover] = useState<{ x: number; y: number } | null>(null)
+   // Whether the background menu's inline "Custom accent…" ColorPicker is expanded, rendered
+   // directly under the accent swatch grid (AccentSwatchGrid) rather than a detached popover —
+   // the same inline-under-the-entry pattern the top-bar Document dropdown uses (DocumentMenu's
+   // own customAccentExpanded). The context menu's own viewport-clamped positioning
+   // (useViewportClampedPosition, re-measured via ResizeObserver) re-clamps as the menu grows.
+   const [customAccentExpanded, setCustomAccentExpanded] = useState(false)
 
    function handleBackgroundContextMenu(event: React.MouseEvent) {
       event.preventDefault()
+      setCustomAccentExpanded(false)
       setBackgroundMenu({ x: event.clientX, y: event.clientY })
    }
 
+   function closeBackgroundMenu() {
+      setBackgroundMenu(null)
+      setCustomAccentExpanded(false)
+   }
+
+   // The document-background context menu shares its entry list with the top-bar "Document" dropdown
+   // (HeaderMenuBar) via the single buildDocumentMenuEntries source of truth, so the two surfaces can
+   // never drift in label or order. Only the surface-specific openers differ: here "Custom accent…"
+   // toggles this surface's own expand state, and the preview toggle routes through onSetMode.
    function buildBackgroundMenuEntries(): ContextMenuEntry[] {
-      const entries: ContextMenuEntry[] = []
-
-      if (onAddSection) {
-         // Nonsensical in preview (nothing to insert into an inert, read-only render) — kept in
-         // the menu but disabled, rather than removed, per the task's explicit guidance.
-         entries.push({ label: t.bgMenuAddSection, icon: <Plus size={13} />, onSelect: onAddSection, disabled: !!readOnly })
-      }
-
-      if (onDocThemeChange) {
-         if (entries.length > 0) entries.push({ type: 'separator' })
-         entries.push({
-            label:    docTheme === 'dark' ? t.toLightMode : t.toDarkMode,
-            icon:     docTheme === 'dark' ? <Sun size={13} /> : <Moon size={13} />,
-            onSelect: () => onDocThemeChange(docTheme === 'dark' ? 'light' : 'dark'),
-         })
-      }
-
-      if (onDocAccentChange) {
-         entries.push({ type: 'header', label: t.accent })
-         for (const color of ACCENT_PRESETS) {
-            entries.push({
-               label:    accentPresetName(color, t),
-               icon:     <span className="inline-block w-3 h-3 rounded-full border border-border" style={{ background: color }} />,
-               onSelect: () => onDocAccentChange(color),
-            })
-         }
-         entries.push({
-            label:    t.bgMenuCustomAccent,
-            icon:     <Palette size={13} />,
-            onSelect: () => { if (backgroundMenu) setAccentPopover(backgroundMenu) },
-         })
-      }
-
-      const hasActions = !!onOpenExport || !!onManualSave || !!onSaveAs || !!onSetMode
-      if (hasActions && entries.length > 0) entries.push({ type: 'separator' })
-      if (onOpenExport) entries.push({ label: t.menuExport,  icon: <Download size={13} />, onSelect: onOpenExport })
-      if (onManualSave) entries.push({ label: t.fileSave,    icon: <Save size={13} />,     onSelect: onManualSave })
-      if (onSaveAs)     entries.push({ label: t.fileSaveAs,  icon: <FileDown size={13} />, onSelect: onSaveAs })
-      if (onSetMode) {
-         entries.push({
-            label:    t.previewMode,
-            icon:     previewMode === 'preview' ? <EyeOff size={13} /> : <Eye size={13} />,
-            onSelect: () => onSetMode('preview'),
-         })
-      }
-
-      return entries
+      return buildDocumentMenuEntries({
+         t,
+         docTheme,
+         docAccent,
+         previewMode,
+         readOnly,
+         onAddSection,
+         onDocThemeChange,
+         onDocAccentChange,
+         customAccentExpanded,
+         onOpenCustomAccent: onDocAccentChange ? () => setCustomAccentExpanded(current => !current) : undefined,
+         onOpenPresentation,
+         onOpenNavigation: onOpenNav,
+         onOpenExport,
+         onManualSave,
+         onSaveAs,
+         onTogglePreview: onSetMode ? () => onSetMode('preview') : undefined,
+      })
    }
 
    function updateField(id: string, patch: Partial<{ label: string; value: string }>) {
@@ -358,6 +368,22 @@ export function WysiwygArea({
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
+   // The title element, factored out so the "beside" logo placement can wrap it inside the same
+   // flex row without duplicating the PlainEditable props.
+   const titleElement = (
+      <PlainEditable
+         tag="h1"
+         content={meta.title || t.placeholderTitle}
+         onBlur={value => onUpdateMeta({ title: value.trim() })}
+         singleLine
+         readOnly={readOnly}
+         // Carve-out from the document background catch-all (bound on the outer canvas container):
+         // stop the right-click here so it never bubbles into the document menu, WITHOUT
+         // preventDefault — the title keeps the native browser context menu (copy/paste/spellcheck).
+         onContextMenu={event => event.stopPropagation()}
+      />
+   )
+
    function handleDragStart(event: DragStartEvent) {
       setActiveSectionId(String(event.active.id))
    }
@@ -387,28 +413,70 @@ export function WysiwygArea({
             onContextMenu={handleBackgroundContextMenu}
          >
             <div
-               className={`max-w-215 mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
+               className={`relative max-w-215 mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
                style={{
                   background: 'var(--doc-canvas-bg)',
                   borderTopColor: docAccent,
                   '--doc-accent': docAccent,
                } as React.CSSProperties}
             >
+            {/* Background watermark (presentation): a static layer behind the content, previewing
+                live as the Presentation window's controls change. Sits on --doc-canvas-bg so a low
+                clamped opacity reads in both doc themes; .doc-render rides above it (z-index in
+                doc.css). Guarded on the optional field, so an absent watermark changes nothing.
+                Tiled ⇒ an inline SVG <pattern> (rotated as a whole, gapped by spacingX/spacingY),
+                rendered from the EXACT SAME string builder export.ts uses (renderWatermarkPatternSvg)
+                via dangerouslySetInnerHTML, so editor and export can never drift apart. Single ⇒ the
+                positioned/fit CSS background image, plus a centered CSS rotation. */}
+            {presentation?.watermark?.src && (() => {
+               const watermark = presentation.watermark
+               if (watermark.tile) {
+                  return (
+                     <div
+                        aria-hidden="true"
+                        dangerouslySetInnerHTML={{ __html: renderWatermarkPatternSvg(watermark, docTheme, watermarkPatternId) }}
+                     />
+                  )
+               }
+               const layout = resolveWatermarkLayout(watermark)
+               return (
+                  <div
+                     className="doc-watermark"
+                     aria-hidden="true"
+                     style={{
+                        backgroundImage:    `url("${watermark.src}")`,
+                        backgroundRepeat:   layout.repeat,
+                        backgroundSize:     layout.size,
+                        backgroundPosition: layout.position,
+                        opacity:            effectiveWatermarkOpacity(watermark.opacity, docTheme),
+                        transform:          `rotate(${watermark.rotation}deg)`,
+                     }}
+                  />
+               )
+            })()}
             <div className="doc-render">
                <div className="page-header">
                   {readOnly ? renderReadonlyZone('above') : renderEditorZone('above')}
-                  <PlainEditable
-                     tag="h1"
-                     content={meta.title || t.placeholderTitle}
-                     onBlur={value => onUpdateMeta({ title: value.trim() })}
-                     singleLine
-                     readOnly={readOnly}
-                     // Carve-out from the document background catch-all (bound on the outer canvas
-                     // container): stop the right-click here so it never bubbles into the document
-                     // menu, WITHOUT preventDefault — the title keeps the native browser context
-                     // menu (copy/paste/spellcheck) instead.
-                     onContextMenu={event => event.stopPropagation()}
-                  />
+                  {/* Header logo (presentation): guarded on the optional field, so an absent header
+                      changes nothing. 'above' = its own row before the title; 'beside' = an inline
+                      flex row wrapping the title itself. Both honor align via justify-content and
+                      maxHeight via an inline style on the <img>. */}
+                  {header?.src && header.placement === 'above' && (
+                     <div className="page-logo-row" style={{ justifyContent: headerJustifyContent(header.align) }}>
+                        <img className="page-logo" src={header.src} alt="" style={{ maxHeight: `${header.maxHeight}px` }} />
+                     </div>
+                  )}
+                  {header?.src && header.placement === 'beside' ? (() => {
+                     const besideLayout = resolveHeaderBesideLayout(header)
+                     const logoElement = (
+                        <img className="page-logo" src={header.src} alt="" style={{ maxHeight: `${header.maxHeight}px` }} />
+                     )
+                     return (
+                        <div className="page-logo-row page-logo-row-beside" style={{ justifyContent: besideLayout.justifyContent }}>
+                           {besideLayout.logoFirst ? (<>{logoElement}{titleElement}</>) : (<>{titleElement}{logoElement}</>)}
+                        </div>
+                     )
+                  })() : titleElement}
                   {readOnly ? renderReadonlyZone('below') : renderEditorZone('below')}
                   {!readOnly && colorPopover && popoverField && (
                      <MetaFieldColorPopover
@@ -491,17 +559,32 @@ export function WysiwygArea({
                   <ContextMenu
                      position={backgroundMenu}
                      entries={buildBackgroundMenuEntries()}
-                     onClose={() => setBackgroundMenu(null)}
+                     onClose={closeBackgroundMenu}
                   />
                )}
 
-               {accentPopover && onDocAccentChange && (
-                  <DocumentAccentPopover
-                     anchorPoint={accentPopover}
-                     value={docAccent}
-                     title={t.bgMenuCustomAccentTitle}
-                     onPick={onDocAccentChange}
-                     onClose={() => setAccentPopover(null)}
+               {/* Document-level Presentation window (non-modal). Portals to <body>; the watermark
+                   previews live behind the sheet above as its controls change. Opens viewport-
+                   centered (degenerate anchor rect). */}
+               {presentationOpen && onPresentationChange && onClosePresentation && (
+                  <PresentationWindow
+                     presentation={presentation}
+                     anchorRect={new DOMRect()}
+                     onChange={onPresentationChange}
+                     onClose={onClosePresentation}
+                  />
+               )}
+
+               {/* Document-level Navigation window (non-modal), split out of the Presentation window.
+                   Edits presentation.nav, which bakes the exported sidebar nav. Opens viewport-
+                   centered (degenerate anchor rect). */}
+               {navOpen && onPresentationChange && onCloseNav && (
+                  <NavWindow
+                     presentation={presentation}
+                     sections={sections}
+                     anchorRect={new DOMRect()}
+                     onChange={onPresentationChange}
+                     onClose={onCloseNav}
                   />
                )}
             </div>
@@ -512,55 +595,5 @@ export function WysiwygArea({
        </LinkableTablesProvider>
        </DocumentTablesProvider>
       </DocumentHandlesProvider>
-   )
-}
-
-// #####################################
-// # DOCUMENT ACCENT CUSTOM COLOR POPOVER #
-// #####################################
-
-interface DocumentAccentPopoverProps {
-   /** Viewport point to anchor at — the same click point the background menu itself opened at. */
-   anchorPoint: { x: number; y: number }
-   value:       string
-   title:       string
-   onPick:      (hex: string) => void
-   onClose:     () => void
-}
-
-/**
- * Floating color popover for the document background menu's "Custom accent…" item. Mirrors
- * CalloutStylePicker's CalloutColorPopover shell (same react-piqua-color ColorPicker, same
- * portal + outside-pointerdown/Escape dismissal) but anchors at a viewport point rather than a
- * trigger element's rect, since the menu item that opened it no longer exists in the DOM by the
- * time this renders (ContextMenu closes itself on select).
- */
-function DocumentAccentPopover({ anchorPoint, value, title, onPick, onClose }: DocumentAccentPopoverProps) {
-   const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'point', x: anchorPoint.x, y: anchorPoint.y })
-
-   useEffect(() => {
-      function handlePointerDown(event: PointerEvent) {
-         if (ref.current?.contains(event.target as Node)) return
-         onClose()
-      }
-      document.addEventListener('pointerdown', handlePointerDown)
-      return () => document.removeEventListener('pointerdown', handlePointerDown)
-   }, [onClose, ref])
-
-   return createPortal(
-      <div
-         ref={ref}
-         className="fixed z-[9999] w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
-         style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
-         onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
-      >
-         <div className="px-2 pt-2 pb-1.5">
-            <span className="text-[0.7rem] uppercase tracking-wider text-muted/70 font-semibold select-none">{title}</span>
-         </div>
-         <div className="p-2 border-t border-border">
-            <ColorPicker value={value} onChange={onPick} />
-         </div>
-      </div>,
-      document.body,
    )
 }

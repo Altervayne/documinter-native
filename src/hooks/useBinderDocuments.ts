@@ -59,7 +59,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
                     onClick: () => {
                        void saveDocument(
                           { meta: snapshot.meta, sections: snapshot.sections },
-                          { docTheme: snapshot.docTheme, docAccent: snapshot.docAccent },
+                          { docTheme: snapshot.docTheme, docAccent: snapshot.docAccent, presentation: snapshot.presentation },
                           id,
                        ).then(onChanged)
                     },

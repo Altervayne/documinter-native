@@ -41,6 +41,7 @@ import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
 import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
+import type { DocPresentationExtras } from './lib/presentation'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { title: '', fields: [] }
@@ -100,6 +101,7 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
       sections:  loaded.sections,
       docTheme:  loaded.docTheme,
       docAccent: loaded.docAccent,
+      presentation: loaded.presentation,
       documentId,
       saveStatus:            'clean',
       pendingNewDocFolderId: null,
@@ -128,7 +130,7 @@ export default function App() {
    // The active document and the content + identity the render + effects below read, derived from the
    // list. documentId / saveStatus are per-tab (phase 2); the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
-   const { meta, sections, docTheme, docAccent, documentId, saveStatus } = activeDocument
+   const { meta, sections, docTheme, docAccent, presentation, documentId, saveStatus } = activeDocument
 
    // Binder records that currently have an open tab (for the open-vs-active card highlight).
    const openDocumentIds = openDocuments
@@ -150,6 +152,13 @@ export default function App() {
    const setActiveDocAccent = useCallback((nextAccent: string) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, docAccent: nextAccent } : document))
+   }, [])
+   // Patch the active tab's presentation extras (watermark, …). Mirrors setActiveDocTheme; a real
+   // document change, so it flows through autosave + persist like any other edit. `undefined` clears
+   // the extras entirely (back to today's behavior).
+   const setActivePresentation = useCallback((next: DocPresentationExtras | undefined) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current ? { ...document, presentation: next } : document))
    }, [])
    // Per-tab save-status setter. Status lives on each OpenDocument (phase 2), so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key — the active tab for live edits, or
@@ -247,6 +256,9 @@ export default function App() {
             sections:  nextSections,
             docTheme:  presentation ? presentation.docTheme  : current?.docTheme  ?? 'light',
             docAccent: presentation ? presentation.docAccent : current?.docAccent ?? DEFAULT_DOC_ACCENT,
+            // A supplied presentation (e.g. a JSON backup) restores its extras; a plain new/import
+            // carries the current tab's forward, matching the theme/accent carry above.
+            presentation: presentation ? presentation.presentation : current?.presentation,
             documentId:            null,   // not yet a binder record; the first edit forks a fresh one
             saveStatus:            'clean',
             pendingNewDocFolderId: pendingFolderId ?? null,
@@ -331,7 +343,7 @@ export default function App() {
          setTabSaveStatus(originatingTabKey, 'saving')
          saveDocument(
             { meta, sections },
-            { docTheme, docAccent },
+            { docTheme, docAccent, presentation },
             originatingTab?.documentId ?? undefined,
             originatingTab?.pendingNewDocFolderId ?? undefined,
          ).then(savedId => {
@@ -348,7 +360,7 @@ export default function App() {
       return () => {
          if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
       }
-   }, [meta, sections, docTheme, docAccent, setTabSaveStatus])
+   }, [meta, sections, docTheme, docAccent, presentation, setTabSaveStatus])
 
    // Fade the "Saved" indicator out after 2.5 s
    useEffect(() => {
@@ -377,7 +389,7 @@ export default function App() {
       try {
          const savedId = await saveDocument(
             { meta: flushTab.meta, sections: flushTab.sections },
-            { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent },
+            { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent, presentation: flushTab.presentation },
             flushTab.documentId ?? undefined,
             flushTab.pendingNewDocFolderId ?? undefined,
          )
@@ -635,6 +647,22 @@ export default function App() {
    const handleOpenExport  = useCallback(() => setExportOpen(true), [])
    const handleCloseExport = useCallback(() => setExportOpen(false), [])
 
+   // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
+   // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
+   // background context menu; it renders inside WysiwygArea (which owns the doc-theme sheet the
+   // watermark previews behind). Its CONTROLS mutate the document's presentation (a real doc change).
+   const [presentationOpen, setPresentationOpen] = useState(false)
+   const handleOpenPresentation  = useCallback(() => { setExportOpen(false); setPresentationOpen(true) }, [])
+   const handleClosePresentation = useCallback(() => setPresentationOpen(false), [])
+
+   // Navigation editor window: split out of the Presentation window into its own document-level,
+   // non-modal draggable window (open-state lifted here like the presentation window's). Opened from
+   // the Document top-bar menu and the document background context menu; it renders inside WysiwygArea
+   // and its controls mutate the document's presentation.nav (a real doc change).
+   const [navOpen, setNavOpen] = useState(false)
+   const handleOpenNav  = useCallback(() => setNavOpen(true), [])
+   const handleCloseNav = useCallback(() => setNavOpen(false), [])
+
    // ######################
    // # PANE LAYOUT SYSTEM #
    // ######################
@@ -745,6 +773,7 @@ export default function App() {
             onManualSave={handleManualSave}
             onSaveAs={handleSaveAs}
             onNew={handleHeaderNew}
+            onAddSection={sectionMutations.addSection}
             onToggleBinder={handleToggleBinder}
             onImportMarkdownFile={handleImportMarkdown}
             onImportMintdownFile={handleImportMintdown}
@@ -753,6 +782,9 @@ export default function App() {
             exportOpen={exportOpen}
             onOpenExport={handleOpenExport}
             onCloseExport={handleCloseExport}
+            presentation={presentation}
+            onOpenPresentation={handleOpenPresentation}
+            onOpenNav={handleOpenNav}
          />
 
          {binderOpen ? (
@@ -838,15 +870,23 @@ export default function App() {
                               sections={sections}
                               docTheme={docTheme}
                               docAccent={docAccent}
+                              presentation={presentation}
                               activeTabKey={activeTabKey}
                               onUpdateMeta={handleMetaChange}
                               onAddSection={sectionMutations.addSection}
                               readOnly={mode === 'preview'}
                               onDocThemeChange={setActiveDocTheme}
                               onDocAccentChange={setActiveDocAccent}
+                              onPresentationChange={setActivePresentation}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}
+                              presentationOpen={presentationOpen}
+                              onOpenPresentation={handleOpenPresentation}
+                              onClosePresentation={handleClosePresentation}
+                              navOpen={navOpen}
+                              onOpenNav={handleOpenNav}
+                              onCloseNav={handleCloseNav}
                               previewMode={mode}
                               onSetMode={handleSetMode}
                            />

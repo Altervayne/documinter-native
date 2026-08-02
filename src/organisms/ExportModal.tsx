@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { X, Download, Copy } from 'lucide-react'
+import { X, Download, Copy, Image } from 'lucide-react'
 import { Button } from '../atoms/Button'
 import { ColorPicker } from 'react-piqua-color'
 import type { DocMeta, Section } from '../types'
+import type { DocPresentationExtras } from '../lib/presentation'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
@@ -23,8 +24,12 @@ interface ExportModalProps {
    sections: Section[]
    defaultTheme:  'light' | 'dark'
    defaultAccent: string
+   /** Active document's presentation extras, baked into the exported HTML (watermark, …). */
+   presentation?: DocPresentationExtras
    lang: Lang
    onClose: () => void
+   /** Opens the document-level Presentation window (watermark / header / nav editing). */
+   onOpenPresentation?: () => void
 }
 
 // #############
@@ -41,14 +46,16 @@ interface ExportModalProps {
  *   - Mintdown — documentToMintdown → download (via exportMintdownFile). Lean, no options.
  *   - Markdown — documentToMarkdown → download (via exportMarkdownFile). Lean, no options.
  */
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang, onClose }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
    const { t } = useLang()
    const { showToast } = useToast()
 
-   const opts: ExportOptions = { theme, accent, lang }
+   // Presentation extras ride into the HTML export via ExportOptions; the .mint / .md paths never
+   // see them (they serialize content only).
+   const opts: ExportOptions = { theme, accent, lang, presentation }
 
    // =========
    //  Actions
@@ -187,6 +194,19 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, lang,
 
                      <ColorPicker value={accent} onChange={setAccent} />
                   </div>
+
+                  {/* Presentation launcher — opens the non-modal Presentation window (watermark now;
+                      header / nav in later passes). The Export dialog stays the discovery hub; the
+                      live editing happens in the window, over the visible document. */}
+                  {onOpenPresentation && (
+                     <button
+                        type="button"
+                        onClick={onOpenPresentation}
+                        className="flex items-center justify-center gap-2 py-1.5 rounded-lg border border-border text-xs font-medium text-muted hover:text-text hover:border-accent/50 transition-colors"
+                     >
+                        <Image size={13} />{t.presentationOpen}
+                     </button>
+                  )}
                </>
             )}
 
