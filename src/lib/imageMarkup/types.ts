@@ -22,6 +22,15 @@
 /** The seven overlay tool kinds (see the study's Q1 tool-set ratification). */
 export type MarkupElementKind = 'rect' | 'ellipse' | 'line' | 'arrow' | 'text' | 'callout' | 'freehand'
 
+/** Contour line style for the stroke-bearing kinds; undefined ⇒ {@link MARKUP_DEFAULT_STROKE_STYLE}. */
+export type MarkupStrokeStyle = 'solid' | 'dashed' | 'dotted'
+
+/** Arrowhead shape: `full` = the filled triangle (default), `chevron` = an open two-stroke V/barb. */
+export type MarkupArrowhead = 'full' | 'chevron'
+
+/** Where an arrow's head sits: `end` (the tip, default) or `middle` (the line's midpoint). */
+export type MarkupArrowheadPosition = 'end' | 'middle'
+
 /**
  * Fields every element shares. `id` is a stable per-element id (crypto.randomUUID), used only by
  * the (future) editor for selection/reorder, it is NEVER serialized to the fence (element array
@@ -37,6 +46,9 @@ interface MarkupBase {
    fill?:        string
    /** Fill alpha 0..1; undefined = {@link MARKUP_DEFAULT_FILL_OPACITY} when `fill` is set, meaningless otherwise. */
    fillOpacity?: number
+   /** Contour line style; undefined = {@link MARKUP_DEFAULT_STROKE_STYLE} (solid). Meaningful only on
+    *  the stroke-bearing kinds (rect / ellipse / line / arrow / callout box / freehand). */
+   strokeStyle?: MarkupStrokeStyle
 }
 
 export interface MarkupRect extends MarkupBase {
@@ -61,6 +73,10 @@ export interface MarkupLine extends MarkupBase {
 export interface MarkupArrow extends MarkupBase {
    kind: 'arrow'
    x1: number; y1: number; x2: number; y2: number
+   /** Arrowhead shape; undefined = {@link MARKUP_DEFAULT_ARROWHEAD} (the filled triangle). */
+   arrowhead?: MarkupArrowhead
+   /** Arrowhead placement; undefined = {@link MARKUP_DEFAULT_ARROWHEAD_POSITION} (the tip end). */
+   arrowheadPosition?: MarkupArrowheadPosition
 }
 
 export interface MarkupText extends MarkupBase {
@@ -138,9 +154,14 @@ export const MARKUP_COORDINATE_PRECISION = 4
 
 export const MARKUP_DEFAULT_STROKE        = '#e5484d' // annotation red
 export const MARKUP_DEFAULT_STROKE_WIDTH  = 4          // viewBox units
+export const MARKUP_DEFAULT_STROKE_STYLE: MarkupStrokeStyle = 'solid' // solid ⇒ no dash-array emitted
 export const MARKUP_DEFAULT_FILL_OPACITY  = 1          // 0..1, only meaningful when `fill` is set
 export const MARKUP_DEFAULT_FONT_SIZE     = 28          // viewBox units
 export const MARKUP_DEFAULT_TEXT_COLOR    = '#1a1a2e'   // neutral ink, independent of doc theme
+
+/** Arrow defaults: the filled-triangle head at the tip (the pre-customization behavior). */
+export const MARKUP_DEFAULT_ARROWHEAD: MarkupArrowhead = 'full'
+export const MARKUP_DEFAULT_ARROWHEAD_POSITION: MarkupArrowheadPosition = 'end'
 
 /** Callout boxes default to a legible neutral card even when the author never set a fill, since
  *  a borderless callout over a busy screenshot is hard to read text on. */
@@ -153,6 +174,11 @@ export const MARKUP_ARROWHEAD_ANGLE_DEGREES  = 24 // half-angle between the two 
 
 /** The callout tail's base width where it meets the box edge (see geometry.ts). */
 export const MARKUP_CALLOUT_TAIL_BASE_WIDTH = 28 // viewBox units
+
+/** The callout box's corner-radius factor (× the box's shorter side). ONE source of truth shared by
+ *  the box `rx` in render.ts and the tail-base flush clamp in geometry.ts, so the tail base always
+ *  attaches on the straight part of the rounded-rect edge rather than floating over a rounded corner. */
+export const MARKUP_CALLOUT_CORNER_RADIUS_FACTOR = 0.08
 
 /** Every element kind the v1 renderer/fence accepts; the fence parser skips any other tag. */
 export const VALID_MARKUP_KINDS: ReadonlySet<MarkupElementKind> = new Set<MarkupElementKind>([

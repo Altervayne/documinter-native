@@ -87,10 +87,39 @@ describe('renderImageMarkupToSvg, each element kind', () => {
       const svg = renderImageMarkupToSvg(specWith([
          { id: '1', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0 },
       ]))
-      expect(svg).toContain('<line x1="0" y1="0" x2="500" y2="0"')
+      // The shaft stops SHORT of the tip (at the arrowhead base) so the line never blunts the point
+      // (Bug 3): tip is at x=500, the shaft ends ~16.4 units earlier at x≈483.56.
+      expect(svg).toContain('<line x1="0" y1="0" x2="483.56" y2="0"')
       expect(svg).toContain('<polygon points="500,0')
       expect(svg).not.toContain('<marker')
       expect(svg).not.toContain('url(#')
+   })
+
+   it('arrow: a chevron head draws an open <polyline> V instead of a filled polygon', () => {
+      const svg = renderImageMarkupToSvg(specWith([
+         { id: '1', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0, arrowhead: 'chevron' },
+      ]))
+      // Chevron is open: the barbs meet AT the tip, so the shaft runs the FULL length to x=500.
+      expect(svg).toContain('<line x1="0" y1="0" x2="500" y2="0"')
+      expect(svg).toContain('<polyline')
+      expect(svg).toContain('fill="none"')
+      expect(svg).not.toContain('<polygon')
+   })
+
+   it('arrow: a mid-line head is placed at the segment midpoint with a full-length shaft', () => {
+      const svg = renderImageMarkupToSvg(specWith([
+         { id: '1', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0, arrowheadPosition: 'middle' },
+      ]))
+      // Head at the midpoint (x=250); the shaft is not retracted (runs to x=500).
+      expect(svg).toContain('<line x1="0" y1="0" x2="500" y2="0"')
+      expect(svg).toContain('<polygon points="250,0')
+   })
+
+   it('arrow: a dashed stroke style emits a scaled stroke-dasharray on the shaft', () => {
+      const svg = renderImageMarkupToSvg(specWith([
+         { id: '1', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0, strokeWidth: 4, strokeStyle: 'dashed' },
+      ]))
+      expect(svg).toContain('stroke-dasharray="12,8"')
    })
 
    it('text: draws a <text> element with the escaped label', () => {

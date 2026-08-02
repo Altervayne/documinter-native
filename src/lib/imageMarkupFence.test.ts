@@ -82,6 +82,37 @@ describe('imageMarkupSpecToFence <-> fenceToImageMarkupSpec, round trip', () => 
       expect(body).not.toContain('0.123456789')
    })
 
+   it('round-trips strokeStyle + arrow head/position, and omits them when default (byte-identical)', () => {
+      const styled: MarkupElement[] = [
+         { id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, strokeStyle: 'dashed' },
+         { id: 'b', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0.5, arrowhead: 'chevron', arrowheadPosition: 'middle', strokeStyle: 'dotted' },
+      ]
+      const { body } = imageMarkupSpecToFence({ src: '', width: 100, height: 100, elements: styled })
+      expect(body).toContain('strokeStyle=dashed')
+      expect(body).toContain('arrowhead=chevron')
+      expect(body).toContain('arrowPos=middle')
+      expect(body).toContain('strokeStyle=dotted')
+      const reparsed = fenceToImageMarkupSpec('imagemarkup w=100 h=100', body)
+      expect(withoutIds(reparsed.elements)).toEqual(withoutIds(styled))
+   })
+
+   it('never emits strokeStyle/arrowhead/arrowPos tokens for default (solid / full / end) elements', () => {
+      const defaults: MarkupElement[] = [
+         { id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, strokeStyle: 'solid' },
+         { id: 'b', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0.5, arrowhead: 'full', arrowheadPosition: 'end' },
+      ]
+      const { body } = imageMarkupSpecToFence({ src: '', width: 100, height: 100, elements: defaults })
+      expect(body).not.toContain('strokeStyle')
+      expect(body).not.toContain('arrowhead')
+      expect(body).not.toContain('arrowPos')
+      // The default-valued fields reparse to absent (undefined), so a solid/full/end element is lean.
+      const reparsed = fenceToImageMarkupSpec('imagemarkup', body)
+      expect('strokeStyle' in reparsed.elements[0]).toBe(false)
+      const arrow = reparsed.elements[1]
+      expect('arrowhead' in arrow).toBe(false)
+      expect('arrowheadPosition' in arrow).toBe(false)
+   })
+
    it('a text/callout label containing spaces and quotes round-trips losslessly', () => {
       const elements: MarkupElement[] = [
          { id: 'a', kind: 'text', x: 0.1, y: 0.1, text: 'Say "hello" to the user' },

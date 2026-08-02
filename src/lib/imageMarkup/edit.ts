@@ -1,8 +1,9 @@
 /**
  * edit.ts, PURE structural + geometric transforms for the image-markup interactive editor.
  *
- * PURE DATA / PURE FUNCTIONS, side-effect free, imports ONLY the markup types + coordinate
- * precision. Each function takes an element (or an element list) and returns a BRAND-NEW value
+ * PURE DATA / PURE FUNCTIONS, side-effect free, imports only the markup types + coordinate
+ * precision + the shared (pure, DOM-free) `estimateTextWidth` for the text hit-box estimate. Each
+ * function takes an element (or an element list) and returns a BRAND-NEW value
  * with one edit applied, NEVER mutating the input. This is the single tested place the editor's
  * pointer-driven create / move / resize / hit-test / style / add / remove operations live (mirrors
  * `lib/graphEdit.ts` for the graph block): the editor component (`blocks/ImageMarkupEditor.tsx`,
@@ -13,17 +14,21 @@
  * base image, rounded to {@link MARKUP_COORDINATE_PRECISION} decimals. Pointer coordinates are
  * mapped into this space via {@link pointerToNormalized} against the on-screen canvas rect.
  *
- * Pass-1 scope: the four GEOMETRIC tools (rect / ellipse / line / arrow). `moveElement` and
- * `hitTest` still tolerate every element kind (a `.mint` reopen can carry text / callout / freehand
- * from a future pass, and they must at least be selectable + draggable); `resizeElement` handles
- * the box shapes (rect / ellipse / callout) and the line/arrow endpoints, and leaves point-anchored
- * kinds (text) and multi-point kinds (freehand) unchanged (their resize is a pass-2 concern).
+ * Pass-1 scope: the four GEOMETRIC tools (rect / ellipse / line / arrow). Pass-2 adds the TEXT,
+ * CALLOUT and FREEHAND (pen) creators, the callout tail-drag handle, freehand capture
+ * simplification ({@link simplifyFreehand}), and the z-order reorder helpers. `moveElement` and
+ * `hitTest` tolerate every element kind; `resizeElement` handles the box shapes (rect / ellipse /
+ * callout), the line/arrow endpoints, and the callout `tail` handle, and leaves point-anchored
+ * (text) and multi-point (freehand) kinds unchanged under the box handles (they are moved by body
+ * drag instead).
  */
 
 import type {
    MarkupElement, MarkupRect, MarkupEllipse, MarkupLine, MarkupArrow, MarkupCallout,
+   MarkupText, MarkupFreehand, MarkupStrokeStyle, MarkupArrowhead, MarkupArrowheadPosition,
 } from './types'
-import { MARKUP_COORDINATE_PRECISION } from './types'
+import { MARKUP_COORDINATE_PRECISION, MARKUP_DEFAULT_FONT_SIZE, MARKUP_VIEWBOX_LONG_EDGE } from './types'
+import { estimateTextWidth } from '../graph/layout'
 
 // #########
 // # TYPES #
@@ -43,16 +48,28 @@ export interface NormalizedBox {
    h: number
 }
 
-/** The four geometric tools this pass can CREATE (the `select` tool creates nothing). */
+/**
+ * The render viewBox dimensions (see `geometry.ts`'s computeViewBox). Needed to convert a text
+ * element's `fontSize` + estimated glyph width (both stored in viewBox units) into a normalized
+ * bounding box, since the normalized 0..1 space is anisotropic for a non-square image.
+ */
+export interface ViewBoxDimensions {
+   vbWidth:  number
+   vbHeight: number
+}
+
+/** The four geometric tools that CREATE from a drag rectangle (the `select` tool creates nothing). */
 export type GeometricTool = 'rect' | 'ellipse' | 'line' | 'arrow'
 
 /**
- * A resize handle identifier. Box shapes (rect / ellipse / callout) expose the eight
- * corner + edge handles; line / arrow expose their two endpoints instead.
+ * A resize handle identifier. Box shapes (rect / ellipse / callout) expose the eight corner + edge
+ * handles; line / arrow expose their two endpoints; a callout ADDITIONALLY exposes a `tail` handle
+ * for re-aiming its leader tip.
  */
 export type ResizeHandle =
    | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
    | 'start' | 'end'
+   | 'tail'
 
 /** A handle's identity + its normalized position, for rendering the selection chrome. */
 export interface ElementHandle {
@@ -60,12 +77,23 @@ export interface ElementHandle {
    point:  NormalizedPoint
 }
 
-/** The subset of style fields the editor's property controls + creation gesture apply. */
+/**
+ * The subset of style fields the editor's property controls + creation gesture apply. Covers every
+ * kind: the geometric stroke/fill fields plus the text/callout `fontSize`/`textColor`. A creator
+ * copies only the fields meaningful to its kind (see the `create*` helpers), so an untouched element
+ * still serializes lean.
+ */
 export interface MarkupDrawStyle {
    stroke?:      string
    strokeWidth?: number
+   strokeStyle?: MarkupStrokeStyle
    fill?:        string
    fillOpacity?: number
+   fontSize?:    number
+   textColor?:   string
+   /** Arrow-only: propagated to a drawn arrow (dropped for every other kind, see {@link pickStyle}). */
+   arrowhead?:         MarkupArrowhead
+   arrowheadPosition?: MarkupArrowheadPosition
 }
 
 /** A minimal DOM rect shape (only the fields the mapping needs), so this stays DOM-free + testable. */
@@ -92,6 +120,20 @@ export const MIN_ELEMENT_SIZE = 0.005
  * line/arrow: total length below it).
  */
 export const DEGENERATE_SIZE = 0.01
+
+/**
+ * Default Ramer-Douglas-Peucker tolerance (normalized units) applied to a freehand capture on
+ * release: points closer than this to the retained polyline are dropped, so a jittery pointer trail
+ * of hundreds of samples collapses to a lean, faithful point list (see the study's Q7 ratification,
+ * "freehand simplified at capture"). Small enough that the smoothed curve is visually unchanged.
+ */
+export const FREEHAND_SIMPLIFY_TOLERANCE = 0.004
+
+/**
+ * The nearby offset (normalized) a freshly-dragged callout's leader tip defaults to, below the box's
+ * lower-left, so the tail already points somewhere sensible before the author re-aims it.
+ */
+const CALLOUT_DEFAULT_TAIL_DROP = 0.08
 
 // ###########
 // # HELPERS #
@@ -134,8 +176,15 @@ export function pointerToNormalized(clientX: number, clientY: number, rect: Canv
 // # BOUNDING BOX     #
 // ####################
 
-/** The normalized axis-aligned bounding box of any element (used by hit-test + move clamping). */
-export function getBoundingBox(element: MarkupElement): NormalizedBox {
+/**
+ * The normalized axis-aligned bounding box of any element (used by hit-test + move clamping + the
+ * selection chrome). For a `text` element the box has no intrinsic size in the model (only an anchor
+ * point), so its extent is ESTIMATED from `fontSize` + glyph count when a `viewBox` is supplied
+ * ({@link textBoundingBox}) — this is what makes a text label reliably selectable / double-clickable
+ * (Bug 1). Without a `viewBox` a text element falls back to its zero-size anchor point (the legacy
+ * behavior, kept for move-clamping and back-compat).
+ */
+export function getBoundingBox(element: MarkupElement, viewBox?: ViewBoxDimensions): NormalizedBox {
    switch (element.kind) {
       case 'rect':
       case 'ellipse':
@@ -145,9 +194,37 @@ export function getBoundingBox(element: MarkupElement): NormalizedBox {
       case 'arrow':
          return boxFromPoints([{ x: element.x1, y: element.y1 }, { x: element.x2, y: element.y2 }])
       case 'text':
-         return { x: element.x, y: element.y, w: 0, h: 0 }
+         return viewBox ? textBoundingBox(element, viewBox) : { x: element.x, y: element.y, w: 0, h: 0 }
       case 'freehand':
          return element.points.length > 0 ? boxFromPoints(element.points) : { x: 0, y: 0, w: 0, h: 0 }
+   }
+}
+
+/**
+ * Estimate a text element's selectable bounding box in normalized 0..1 units. The anchor `(x, y)` is
+ * the LEFT BASELINE, so the box rises `ascent` above the baseline (≈ one font size) and dips a small
+ * `descent` below it, and runs from a little left of the anchor to past the estimated glyph run. A
+ * generous minimum width keeps even an empty / one-glyph label comfortably clickable. All extents are
+ * computed in viewBox units then divided by the (anisotropic) viewBox dimensions to land in
+ * normalized space; a zero/degenerate viewBox falls back to a square long-edge canvas.
+ */
+export function textBoundingBox(element: MarkupText, viewBox: ViewBoxDimensions): NormalizedBox {
+   const fontSize = element.fontSize ?? MARKUP_DEFAULT_FONT_SIZE
+   const vbWidth  = viewBox.vbWidth  > 0 ? viewBox.vbWidth  : MARKUP_VIEWBOX_LONG_EDGE
+   const vbHeight = viewBox.vbHeight > 0 ? viewBox.vbHeight : MARKUP_VIEWBOX_LONG_EDGE
+
+   const estimatedWidth = estimateTextWidth(element.text ?? '', fontSize)
+   const horizontalPad  = fontSize * 0.3
+   const ascent  = fontSize
+   const descent = fontSize * 0.3
+   const widthVb  = Math.max(estimatedWidth, fontSize) + horizontalPad * 2
+   const heightVb = ascent + descent
+
+   return {
+      x: element.x - horizontalPad / vbWidth,
+      y: element.y - ascent / vbHeight,
+      w: widthVb / vbWidth,
+      h: heightVb / vbHeight,
    }
 }
 
@@ -209,11 +286,127 @@ function pickStyle(style: MarkupDrawStyle, tool: GeometricTool): MarkupDrawStyle
    const picked: MarkupDrawStyle = {}
    if (style.stroke !== undefined)      picked.stroke = style.stroke
    if (style.strokeWidth !== undefined) picked.strokeWidth = style.strokeWidth
+   if (style.strokeStyle !== undefined) picked.strokeStyle = style.strokeStyle
    if (tool !== 'line' && tool !== 'arrow') {
       if (style.fill !== undefined)        picked.fill = style.fill
       if (style.fillOpacity !== undefined) picked.fillOpacity = style.fillOpacity
    }
+   // Arrowhead shape/placement are meaningful only on an arrow; drop them for every other tool so a
+   // remembered arrow default never pollutes a rect/ellipse/line.
+   if (tool === 'arrow') {
+      if (style.arrowhead !== undefined)         picked.arrowhead = style.arrowhead
+      if (style.arrowheadPosition !== undefined) picked.arrowheadPosition = style.arrowheadPosition
+   }
    return picked
+}
+
+// ####################################
+// # CREATE TEXT / CALLOUT / FREEHAND #
+// ####################################
+
+/**
+ * Build a new TEXT element anchored at `point` (its left baseline start). Text is CLICK-placed
+ * (no drag rectangle): the editor drops it, then opens the edit-in-place overlay to type the label.
+ * Only the text-relevant style fields (`textColor`, `fontSize`) are copied on; stroke/fill are
+ * meaningless on plain text and dropped.
+ */
+export function createTextElement(
+   point: NormalizedPoint, text: string, style: MarkupDrawStyle, id: string,
+): MarkupText {
+   const element: MarkupText = {
+      id, kind: 'text', x: roundNormalized(point.x), y: roundNormalized(point.y), text,
+   }
+   if (style.textColor !== undefined) element.textColor = style.textColor
+   if (style.fontSize !== undefined)  element.fontSize = style.fontSize
+   return element
+}
+
+/**
+ * Build a new CALLOUT from a drag between two normalized points: the drag rectangle (normalized so a
+ * reversed drag still yields a positive-size box) becomes the label box, and the leader `tip`
+ * defaults to a nearby point below the box's lower-left (clamped into the image), ready for the
+ * author to re-aim via the `tail` handle. Copies the box style (stroke/fill) plus the text style
+ * (textColor/fontSize).
+ */
+export function createCalloutFromDrag(
+   start: NormalizedPoint, end: NormalizedPoint, text: string, style: MarkupDrawStyle, id: string,
+): MarkupCallout {
+   const box = normalizeBox(start.x, start.y, end.x - start.x, end.y - start.y)
+   const tipX = clamp01(box.x + box.w * 0.2)
+   const tipY = clamp01(box.y + box.h + CALLOUT_DEFAULT_TAIL_DROP)
+   const element: MarkupCallout = {
+      id, kind: 'callout',
+      x: roundNormalized(box.x), y: roundNormalized(box.y),
+      w: roundNormalized(box.w), h: roundNormalized(box.h),
+      tipX: roundNormalized(tipX), tipY: roundNormalized(tipY),
+      text,
+   }
+   if (style.stroke !== undefined)      element.stroke = style.stroke
+   if (style.strokeWidth !== undefined) element.strokeWidth = style.strokeWidth
+   if (style.fill !== undefined) {
+      element.fill = style.fill
+      if (style.fillOpacity !== undefined) element.fillOpacity = style.fillOpacity
+   }
+   if (style.textColor !== undefined) element.textColor = style.textColor
+   if (style.fontSize !== undefined)  element.fontSize = style.fontSize
+   return element
+}
+
+/**
+ * Build a new FREEHAND element from an (already-simplified) point list, rounding each point to the
+ * model precision. Only stroke/strokeWidth are copied on (freehand has no fill). The caller passes
+ * the {@link simplifyFreehand} output, not the raw capture.
+ */
+export function createFreehandFromPoints(
+   points: NormalizedPoint[], style: MarkupDrawStyle, id: string,
+): MarkupFreehand {
+   const element: MarkupFreehand = {
+      id, kind: 'freehand',
+      points: points.map(point => ({ x: roundNormalized(point.x), y: roundNormalized(point.y) })),
+   }
+   if (style.stroke !== undefined)      element.stroke = style.stroke
+   if (style.strokeWidth !== undefined) element.strokeWidth = style.strokeWidth
+   return element
+}
+
+/**
+ * Simplify a raw freehand pointer capture with the Ramer-Douglas-Peucker algorithm: recursively keep
+ * the point of greatest perpendicular distance from the chord between the current endpoints while it
+ * exceeds `tolerance`, dropping the rest. Total + pure: 0/1/2-point inputs pass through unchanged
+ * (rounded), the first + last points are always retained, and the returned points preserve order.
+ * `tolerance` is in normalized units (see {@link FREEHAND_SIMPLIFY_TOLERANCE}).
+ */
+export function simplifyFreehand(points: NormalizedPoint[], tolerance = FREEHAND_SIMPLIFY_TOLERANCE): NormalizedPoint[] {
+   if (points.length <= 2) return points.map(roundPoint)
+   return douglasPeucker(points, Math.max(tolerance, 0)).map(roundPoint)
+}
+
+/** Round a point to the model precision. */
+function roundPoint(point: NormalizedPoint): NormalizedPoint {
+   return { x: roundNormalized(point.x), y: roundNormalized(point.y) }
+}
+
+/** The recursive RDP core (distance-to-segment against the chord). Retains first + last always. */
+function douglasPeucker(points: NormalizedPoint[], tolerance: number): NormalizedPoint[] {
+   if (points.length < 3) return points.slice()
+   const first = points[0]
+   const last  = points[points.length - 1]
+   let maxDistance = -1
+   let splitIndex  = 0
+   for (let index = 1; index < points.length - 1; index += 1) {
+      const distance = distanceToSegment(points[index], first, last)
+      if (distance > maxDistance) {
+         maxDistance = distance
+         splitIndex  = index
+      }
+   }
+   if (maxDistance > tolerance) {
+      const left  = douglasPeucker(points.slice(0, splitIndex + 1), tolerance)
+      const right = douglasPeucker(points.slice(splitIndex), tolerance)
+      // Drop the shared split point (last of `left` === first of `right`) to avoid duplicating it.
+      return left.slice(0, -1).concat(right)
+   }
+   return [first, last]
 }
 
 /** True when a freshly-created element is too small to keep (a stray click rather than a drag). */
@@ -238,21 +431,23 @@ export function elementIsDegenerate(element: MarkupElement): boolean {
  * small pad of its anchor. `tolerance` is in normalized units.
  */
 export function hitTest(
-   elements: MarkupElement[], point: NormalizedPoint, tolerance = 0.02,
+   elements: MarkupElement[], point: NormalizedPoint, tolerance = 0.02, viewBox?: ViewBoxDimensions,
 ): MarkupElement | null {
    for (let index = elements.length - 1; index >= 0; index -= 1) {
-      if (elementHit(elements[index], point, tolerance)) return elements[index]
+      if (elementHit(elements[index], point, tolerance, viewBox)) return elements[index]
    }
    return null
 }
 
-function elementHit(element: MarkupElement, point: NormalizedPoint, tolerance: number): boolean {
+function elementHit(element: MarkupElement, point: NormalizedPoint, tolerance: number, viewBox?: ViewBoxDimensions): boolean {
    switch (element.kind) {
       case 'rect':
       case 'ellipse':
       case 'callout':
       case 'text': {
-         const box = getBoundingBox(element)
+         // Text gets its estimated glyph box (Bug 1) when a viewBox is known, so a label is grabbable
+         // well beyond its zero-size anchor; the other box kinds use their intrinsic bounds.
+         const box = getBoundingBox(element, viewBox)
          return point.x >= box.x - tolerance && point.x <= box.x + box.w + tolerance
              && point.y >= box.y - tolerance && point.y <= box.y + box.h + tolerance
       }
@@ -322,12 +517,16 @@ function shiftElement(element: MarkupElement, deltaX: number, deltaY: number): M
 // ##########
 
 /**
- * Move the given `handle` of an element to `point`. Box shapes (rect / ellipse / callout) keep the
- * opposite edge(s) fixed and re-derive x/y/w/h, floored at {@link MIN_ELEMENT_SIZE} so the box never
- * inverts or collapses; line / arrow move the matching endpoint. Point-anchored (text) and
- * multi-point (freehand) kinds have no box handles this pass and are returned unchanged.
+ * Move the given `handle` of an element to `point`. A callout's `tail` handle re-aims its leader tip
+ * (the box is untouched). Box shapes (rect / ellipse / callout) keep the opposite edge(s) fixed and
+ * re-derive x/y/w/h, floored at {@link MIN_ELEMENT_SIZE} so the box never inverts or collapses; line
+ * / arrow move the matching endpoint. Point-anchored (text) and multi-point (freehand) kinds have no
+ * box handles and are returned unchanged.
  */
 export function resizeElement(element: MarkupElement, handle: ResizeHandle, point: NormalizedPoint): MarkupElement {
+   if (element.kind === 'callout' && handle === 'tail') {
+      return { ...element, tipX: roundNormalized(point.x), tipY: roundNormalized(point.y) }
+   }
    if (element.kind === 'line' || element.kind === 'arrow') {
       return resizeLine(element, handle, point)
    }
@@ -383,8 +582,9 @@ function resizeBox<Element extends MarkupRect | MarkupEllipse | MarkupCallout>(
 
 /**
  * The resize handles for an element, with their normalized positions. Box shapes return the eight
- * corner + edge handles; line / arrow return their two endpoints; other kinds return none (no
- * resize affordance this pass, they are still movable by body-drag).
+ * corner + edge handles; a callout ADDITIONALLY returns its `tail` handle (at the leader tip); line
+ * / arrow return their two endpoints; other kinds return none (no resize affordance, they are still
+ * movable by body-drag).
  */
 export function getElementHandles(element: MarkupElement): ElementHandle[] {
    if (element.kind === 'line' || element.kind === 'arrow') {
@@ -397,7 +597,7 @@ export function getElementHandles(element: MarkupElement): ElementHandle[] {
       const { x, y, w, h } = element
       const midX = x + w / 2
       const midY = y + h / 2
-      const positions: Record<Exclude<ResizeHandle, 'start' | 'end'>, NormalizedPoint> = {
+      const positions: Record<'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w', NormalizedPoint> = {
          nw: { x,        y },
          n:  { x: midX,  y },
          ne: { x: x + w, y },
@@ -407,7 +607,13 @@ export function getElementHandles(element: MarkupElement): ElementHandle[] {
          sw: { x,        y: y + h },
          w:  { x,        y: midY },
       }
-      return BOX_HANDLES.map(handle => ({ handle, point: positions[handle as Exclude<ResizeHandle, 'start' | 'end'>] }))
+      const handles: ElementHandle[] = BOX_HANDLES.map(handle => ({
+         handle, point: positions[handle as 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'],
+      }))
+      if (element.kind === 'callout') {
+         handles.push({ handle: 'tail', point: { x: element.tipX, y: element.tipY } })
+      }
+      return handles
    }
    return []
 }
@@ -443,6 +649,18 @@ export function updateElementStyle(element: MarkupElement, patch: MarkupDrawStyl
    return { ...element, ...patch }
 }
 
+/**
+ * Set the label text of a TEXT or CALLOUT element (the two kinds that carry a `text` field),
+ * returning a new element; any other kind is returned unchanged. Used by the edit-in-place overlay's
+ * commit-on-blur.
+ */
+export function updateElementText(element: MarkupElement, text: string): MarkupElement {
+   if (element.kind === 'text' || element.kind === 'callout') {
+      return { ...element, text }
+   }
+   return element
+}
+
 // ##########################
 // # LIST ADD / REMOVE / SET #
 // ##########################
@@ -460,4 +678,49 @@ export function removeElement(elements: MarkupElement[], id: string): MarkupElem
 /** Replace the element sharing `replacement.id` in place, preserving z-order (no-op if absent). */
 export function replaceElement(elements: MarkupElement[], replacement: MarkupElement): MarkupElement[] {
    return elements.map(element => (element.id === replacement.id ? replacement : element))
+}
+
+// ############
+// # Z-ORDER  #
+// ############
+// The `elements` array order IS the z-order (index 0 = bottom, last = top), so a reorder is a pure
+// array move; there is no per-element z field to keep in sync. Each helper returns a BRAND-NEW array
+// (or the input unchanged when the move is a no-op: the id is absent, or it is already at the edge).
+
+/** Move the element one step UP the stack (toward the top / end), swapping with its upper neighbor. */
+export function bringForward(elements: MarkupElement[], id: string): MarkupElement[] {
+   const index = elements.findIndex(element => element.id === id)
+   if (index === -1 || index === elements.length - 1) return elements
+   const next = elements.slice()
+   ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+   return next
+}
+
+/** Move the element one step DOWN the stack (toward the bottom / start), swapping with its lower neighbor. */
+export function sendBackward(elements: MarkupElement[], id: string): MarkupElement[] {
+   const index = elements.findIndex(element => element.id === id)
+   if (index <= 0) return elements
+   const next = elements.slice()
+   ;[next[index], next[index - 1]] = [next[index - 1], next[index]]
+   return next
+}
+
+/** Move the element all the way to the TOP of the stack (last = drawn on top). */
+export function bringToFront(elements: MarkupElement[], id: string): MarkupElement[] {
+   const index = elements.findIndex(element => element.id === id)
+   if (index === -1 || index === elements.length - 1) return elements
+   const next = elements.slice()
+   const [moved] = next.splice(index, 1)
+   next.push(moved)
+   return next
+}
+
+/** Move the element all the way to the BOTTOM of the stack (first = drawn underneath). */
+export function sendToBack(elements: MarkupElement[], id: string): MarkupElement[] {
+   const index = elements.findIndex(element => element.id === id)
+   if (index <= 0) return elements
+   const next = elements.slice()
+   const [moved] = next.splice(index, 1)
+   next.unshift(moved)
+   return next
 }

@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { computeViewBox, arrowheadPolygonPoints, calloutTailPolygonPoints, ellipseFromBoundingBox } from './geometry'
-import { MARKUP_VIEWBOX_LONG_EDGE } from './types'
+import {
+   computeViewBox, arrowheadPolygonPoints, arrowShaftEnd, calloutTailPolygonPoints,
+   ellipseFromBoundingBox, strokeDashArray,
+} from './geometry'
+import { MARKUP_ARROWHEAD_ANGLE_DEGREES, MARKUP_ARROWHEAD_LENGTH, MARKUP_VIEWBOX_LONG_EDGE } from './types'
 
 // #############
 // # VIEW BOX  #
@@ -59,6 +62,59 @@ describe('arrowheadPolygonPoints', () => {
    })
 })
 
+// #####################
+// # ARROW SHAFT END   #
+// #####################
+
+describe('arrowShaftEnd (Bug 3: shaft stops at the arrowhead base)', () => {
+   const axialDepth = MARKUP_ARROWHEAD_LENGTH * Math.cos((MARKUP_ARROWHEAD_ANGLE_DEGREES * Math.PI) / 180)
+
+   it('retracts the shaft end from the tip by the arrowhead axial depth, along the shaft', () => {
+      const end = arrowShaftEnd(0, 0, 100, 0)
+      expect(end.x).toBeCloseTo(100 - axialDepth, 4)
+      expect(end.y).toBeCloseTo(0, 6)
+   })
+
+   it('retracts along an arbitrary direction (stays on the shaft line)', () => {
+      const end = arrowShaftEnd(0, 0, 0, 200) // straight down
+      expect(end.x).toBeCloseTo(0, 6)
+      expect(end.y).toBeCloseTo(200 - axialDepth, 4)
+   })
+
+   it('collapses to the tail rather than reversing past it when the shaft is shorter than the head', () => {
+      const end = arrowShaftEnd(0, 0, 10, 0) // 10 < axialDepth (~16.4)
+      expect(end.x).toBeCloseTo(0, 6)
+      expect(end.y).toBeCloseTo(0, 6)
+   })
+
+   it('returns the tip for a zero-length arrow (no direction)', () => {
+      expect(arrowShaftEnd(7, 7, 7, 7)).toEqual({ x: 7, y: 7 })
+   })
+})
+
+// #####################
+// # STROKE DASHARRAY  #
+// #####################
+
+describe('strokeDashArray (Polish 4: contour line styles)', () => {
+   it('returns undefined for solid / undefined so a default contour emits no dash attribute', () => {
+      expect(strokeDashArray(undefined, 4)).toBeUndefined()
+      expect(strokeDashArray('solid', 4)).toBeUndefined()
+   })
+   it('scales the dashed pattern to the stroke width', () => {
+      expect(strokeDashArray('dashed', 4)).toBe('12,8')
+      expect(strokeDashArray('dashed', 2)).toBe('6,4')
+   })
+   it('scales the dotted pattern to the stroke width', () => {
+      expect(strokeDashArray('dotted', 4)).toBe('4,8')
+      expect(strokeDashArray('dotted', 3)).toBe('3,6')
+   })
+   it('falls back to a width of 1 for a zero / non-finite stroke width', () => {
+      expect(strokeDashArray('dashed', 0)).toBe('3,2')
+      expect(strokeDashArray('dashed', Number.NaN)).toBe('3,2')
+   })
+})
+
 // ####################
 // # CALLOUT TAIL     #
 // ####################
@@ -85,6 +141,36 @@ describe('calloutTailPolygonPoints', () => {
       for (const point of result) {
          expect(Number.isFinite(point.x)).toBe(true)
          expect(Number.isFinite(point.y)).toBe(true)
+      }
+   })
+
+   it('is byte-identical to the square-corner geometry when no corner radius is given (default 0)', () => {
+      const box = { x: 10, y: 10, w: 40, h: 20 }
+      const tip = { x: 60, y: 15 }
+      expect(calloutTailPolygonPoints(box, tip)).toEqual(calloutTailPolygonPoints(box, tip, undefined, 0))
+   })
+
+   it('insets the tail base onto the straight edge span (never over a rounded corner) — Bug 2', () => {
+      // Tip aimed toward the bottom-left corner; with a corner radius the base must stay within
+      // [x + radius, x + w - radius] on the bottom edge, not run out to the rounded corner at x = 0.
+      const box = { x: 0, y: 0, w: 100, h: 100 }
+      const radius = 20
+      const [, baseA, baseB] = calloutTailPolygonPoints(box, { x: 3, y: 160 }, 28, radius)
+      for (const base of [baseA, baseB]) {
+         expect(base.y).toBeCloseTo(box.y + box.h, 6) // still flush on the bottom edge line
+         expect(base.x).toBeGreaterThanOrEqual(box.x + radius - 1e-6)
+         expect(base.x).toBeLessThanOrEqual(box.x + box.w - radius + 1e-6)
+      }
+   })
+
+   it('insets the vertical tail base by the radius on a side edge', () => {
+      const box = { x: 0, y: 0, w: 100, h: 100 }
+      const radius = 25
+      const [, baseA, baseB] = calloutTailPolygonPoints(box, { x: 160, y: 5 }, 28, radius)
+      for (const base of [baseA, baseB]) {
+         expect(base.x).toBeCloseTo(box.x + box.w, 6) // flush on the right edge line
+         expect(base.y).toBeGreaterThanOrEqual(box.y + radius - 1e-6)
+         expect(base.y).toBeLessThanOrEqual(box.y + box.h - radius + 1e-6)
       }
    })
 })

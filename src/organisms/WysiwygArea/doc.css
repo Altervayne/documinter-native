@@ -170,6 +170,20 @@
   background: #161b22; border-color: #21262d; color: #c9d1d9;
 }
 
+/* Edit-in-place text overlay: an HTML textarea positioned over a text / callout element while its
+   label is being typed (commits on blur / Enter). Sits above the interaction + selection chrome. */
+.doc-render .image-markup-text-input {
+  z-index: 3; box-sizing: border-box;
+  min-width: 4rem; min-height: 1.6rem; padding: 0.15rem 0.3rem; margin: 0;
+  font-family: var(--font-sans); font-size: 0.85rem; line-height: 1.3;
+  color: #1a1a2e; background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--doc-accent, var(--color-accent)); border-radius: 4px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2); resize: none; overflow: hidden;
+}
+.doc-render .image-markup-text-input:focus {
+  outline: 2px solid var(--doc-accent, var(--color-accent)); outline-offset: 0;
+}
+
 /* Graph block editor: two tabs (Visual / Data) hosted in the floating Block Editor Window. The
    window portals to <body> under the app's html[data-theme], so the editor CHROME is APP-THEMED,
    scoped under `.graph-editor` (NOT `.doc-render`) and driven by the app --color-* tokens, which
@@ -962,6 +976,44 @@
   font-size: 0.8rem; color: var(--color-text); cursor: pointer;
 }
 .image-markup-toggle input { cursor: pointer; accent-color: var(--color-accent); }
+
+/* Segmented icon-toggle: a row of icon + label buttons standing in for a native `<select>` when
+   the option set is small and reads better as a glyph (line style, arrowhead shape/position).
+   Reusable app-chrome control (atoms/SegmentedIconToggle.tsx); unscoped like the rest of this
+   editor's chrome, so light/dark both fall out of the --color-* tokens for free. */
+.segmented-icon-toggle { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.segmented-icon-toggle-option {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.55rem; border-radius: 6px;
+  background: var(--color-el); border: 1px solid var(--color-border); color: var(--color-muted);
+  font-family: inherit; font-size: 0.74rem; font-weight: 500; line-height: 1; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.segmented-icon-toggle-option:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  color: var(--color-text);
+}
+.segmented-icon-toggle-option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.segmented-icon-toggle-option.is-selected {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  color: var(--color-accent);
+}
+.segmented-icon-toggle-icon { display: inline-flex; }
+.segmented-icon-toggle-label { white-space: nowrap; }
+
+/* Property-panel text-content field for the selected text / callout label. */
+.image-markup-text-field {
+  width: 100%; box-sizing: border-box; padding: 0.35rem 0.45rem;
+  background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 6px;
+  color: var(--color-text); font-family: inherit; font-size: 0.8rem; line-height: 1.35; resize: vertical;
+}
+.image-markup-text-field:focus { outline: none; border-color: var(--color-accent); }
+
+/* Z-order (Arrange): a labelled row of the four reorder buttons, reusing the tool-button primitive. */
+.image-markup-arrange { display: flex; flex-direction: column; gap: 0.3rem; }
+.image-markup-arrange-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 
 /* Math block editor, monospaced LaTeX source over a live preview. */
 .doc-render .math-block   { margin: 1.25rem 0; }

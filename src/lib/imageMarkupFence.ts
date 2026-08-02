@@ -23,7 +23,9 @@
  * the document.
  */
 
-import type { ImageMarkupSpec, MarkupElement, MarkupElementKind } from './imageMarkup'
+import type {
+   ImageMarkupSpec, MarkupElement, MarkupElementKind, MarkupStrokeStyle,
+} from './imageMarkup'
 import { VALID_MARKUP_KINDS, MARKUP_COORDINATE_PRECISION } from './imageMarkup'
 import { serializeInfoValue, unquoteInfoValue, tokenizeInfoString } from './fenceInfoString'
 
@@ -114,11 +116,12 @@ function serializeInfoTokens(spec: ImageMarkupSpec): string[] {
 interface MarkupStyleFields {
    stroke?:      string
    strokeWidth?: number
+   strokeStyle?: MarkupStrokeStyle
    fill?:        string
    fillOpacity?: number
 }
 
-/** Read the shared MarkupBase style fields (stroke/strokeWidth/fill/fillOpacity) off a token map. */
+/** Read the shared MarkupBase style fields (stroke/strokeWidth/strokeStyle/fill/fillOpacity) off a token map. */
 function readBaseStyle(fields: Map<string, string>): MarkupStyleFields {
    const style: MarkupStyleFields = {}
    const stroke = fields.get('stroke')
@@ -128,6 +131,8 @@ function readBaseStyle(fields: Map<string, string>): MarkupStyleFields {
       const parsedStrokeWidth = Number(strokeWidthRaw)
       if (Number.isFinite(parsedStrokeWidth)) style.strokeWidth = parsedStrokeWidth
    }
+   const strokeStyle = fields.get('strokeStyle')
+   if (strokeStyle === 'dashed' || strokeStyle === 'dotted') style.strokeStyle = strokeStyle
    const fill = fields.get('fill')
    if (fill !== undefined && fill !== '') style.fill = fill
    const fillOpacityRaw = fields.get('fillOpacity')
@@ -138,11 +143,13 @@ function readBaseStyle(fields: Map<string, string>): MarkupStyleFields {
    return style
 }
 
-/** Serialize the shared MarkupBase style fields to `key=value` tokens, only when set. */
+/** Serialize the shared MarkupBase style fields to `key=value` tokens, only when set. `strokeStyle`
+ *  is emitted only when non-default (dashed/dotted), so a solid contour stays byte-identical. */
 function serializeBaseStyle(base: MarkupStyleFields): string[] {
    const tokens: string[] = []
    if (base.stroke !== undefined)      tokens.push(`stroke=${serializeInfoValue(base.stroke)}`)
    if (base.strokeWidth !== undefined) tokens.push(`sw=${roundLength(base.strokeWidth)}`)
+   if (base.strokeStyle !== undefined && base.strokeStyle !== 'solid') tokens.push(`strokeStyle=${base.strokeStyle}`)
    if (base.fill !== undefined) {
       tokens.push(`fill=${serializeInfoValue(base.fill)}`)
       if (base.fillOpacity !== undefined) tokens.push(`fillOpacity=${base.fillOpacity}`)
@@ -208,8 +215,16 @@ function elementFromFields(kind: MarkupElementKind, fields: Map<string, string>)
          return { id, kind, ...base, x: number('x'), y: number('y'), w: number('w'), h: number('h') }
       case 'line':
          return { id, kind, ...base, x1: number('x1'), y1: number('y1'), x2: number('x2'), y2: number('y2') }
-      case 'arrow':
-         return { id, kind, ...base, x1: number('x1'), y1: number('y1'), x2: number('x2'), y2: number('y2') }
+      case 'arrow': {
+         const arrowhead = fields.get('arrowhead')
+         const arrowPos = fields.get('arrowPos')
+         return {
+            id, kind, ...base,
+            x1: number('x1'), y1: number('y1'), x2: number('x2'), y2: number('y2'),
+            ...(arrowhead === 'chevron' ? { arrowhead: 'chevron' as const } : {}),
+            ...(arrowPos === 'middle' ? { arrowheadPosition: 'middle' as const } : {}),
+         }
+      }
       case 'text': {
          const size = fields.get('size')
          const color = fields.get('color')
@@ -256,9 +271,18 @@ function elementToLine(markupElement: MarkupElement): string {
          tokens.push(...serializeBaseStyle(markupElement))
          break
       case 'line':
+         pushCoordinate('x1', markupElement.x1); pushCoordinate('y1', markupElement.y1)
+         pushCoordinate('x2', markupElement.x2); pushCoordinate('y2', markupElement.y2)
+         tokens.push(...serializeBaseStyle(markupElement))
+         break
       case 'arrow':
          pushCoordinate('x1', markupElement.x1); pushCoordinate('y1', markupElement.y1)
          pushCoordinate('x2', markupElement.x2); pushCoordinate('y2', markupElement.y2)
+         // Arrowhead shape/placement emitted only when non-default, so a plain arrow stays byte-identical.
+         if (markupElement.arrowhead !== undefined && markupElement.arrowhead !== 'full')
+            tokens.push(`arrowhead=${markupElement.arrowhead}`)
+         if (markupElement.arrowheadPosition !== undefined && markupElement.arrowheadPosition !== 'end')
+            tokens.push(`arrowPos=${markupElement.arrowheadPosition}`)
          tokens.push(...serializeBaseStyle(markupElement))
          break
       case 'text':

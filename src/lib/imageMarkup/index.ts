@@ -99,6 +99,9 @@ export type {
    ImageMarkupSpec,
    MarkupElement,
    MarkupElementKind,
+   MarkupStrokeStyle,
+   MarkupArrowhead,
+   MarkupArrowheadPosition,
    MarkupRect,
    MarkupEllipse,
    MarkupLine,
@@ -118,8 +121,14 @@ export {
    MARKUP_DEFAULT_TEXT_COLOR,
    MARKUP_DEFAULT_CALLOUT_FILL,
    MARKUP_DEFAULT_CALLOUT_FILL_OPACITY,
+   MARKUP_DEFAULT_STROKE_STYLE,
+   MARKUP_DEFAULT_ARROWHEAD,
+   MARKUP_DEFAULT_ARROWHEAD_POSITION,
    VALID_MARKUP_KINDS,
 } from './types'
 
-export { computeViewBox, arrowheadPolygonPoints, calloutTailPolygonPoints, ellipseFromBoundingBox } from './geometry'
+export {
+   computeViewBox, arrowheadPolygonPoints, arrowShaftEnd, calloutTailPolygonPoints,
+   ellipseFromBoundingBox, strokeDashArray,
+} from './geometry'
 export { catmullRomPath } from './smooth'

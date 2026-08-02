@@ -17,7 +17,10 @@
 
 import { selfClosingElement, textElement } from '../svg'
 import { estimateTextWidth } from '../graph/layout'
-import { arrowheadPolygonPoints, calloutTailPolygonPoints, ellipseFromBoundingBox } from './geometry'
+import {
+   arrowheadPolygonPoints, arrowShaftEnd, calloutTailPolygonPoints, ellipseFromBoundingBox,
+   strokeDashArray,
+} from './geometry'
 import { catmullRomPath } from './smooth'
 import type { Point } from './geometry'
 import type {
@@ -25,6 +28,8 @@ import type {
    MarkupLine, MarkupRect, MarkupText,
 } from './types'
 import {
+   MARKUP_CALLOUT_CORNER_RADIUS_FACTOR,
+   MARKUP_DEFAULT_ARROWHEAD, MARKUP_DEFAULT_ARROWHEAD_POSITION,
    MARKUP_DEFAULT_CALLOUT_FILL, MARKUP_DEFAULT_CALLOUT_FILL_OPACITY, MARKUP_DEFAULT_FILL_OPACITY,
    MARKUP_DEFAULT_FONT_SIZE, MARKUP_DEFAULT_STROKE, MARKUP_DEFAULT_STROKE_WIDTH, MARKUP_DEFAULT_TEXT_COLOR,
 } from './types'
@@ -66,6 +71,7 @@ export function renderRect(markupRect: MarkupRect, vbWidth: number, vbHeight: nu
       x, y, width: w, height: h,
       stroke: resolveStroke(markupRect),
       'stroke-width': resolveStrokeWidth(markupRect),
+      'stroke-dasharray': strokeDashArray(markupRect.strokeStyle, resolveStrokeWidth(markupRect)),
       fill: markupRect.fill ?? 'none',
    }
    if (markupRect.fill !== undefined) {
@@ -87,6 +93,7 @@ export function renderEllipse(markupEllipse: MarkupEllipse, vbWidth: number, vbH
       cx, cy, rx, ry,
       stroke: resolveStroke(markupEllipse),
       'stroke-width': resolveStrokeWidth(markupEllipse),
+      'stroke-dasharray': strokeDashArray(markupEllipse.strokeStyle, resolveStrokeWidth(markupEllipse)),
       fill: markupEllipse.fill ?? 'none',
    }
    if (markupEllipse.fill !== undefined) {
@@ -106,6 +113,7 @@ export function renderLine(markupLine: MarkupLine, vbWidth: number, vbHeight: nu
       x1: start.x, y1: start.y, x2: end.x, y2: end.y,
       stroke: resolveStroke(markupLine),
       'stroke-width': resolveStrokeWidth(markupLine),
+      'stroke-dasharray': strokeDashArray(markupLine.strokeStyle, resolveStrokeWidth(markupLine)),
       'stroke-linecap': 'round',
    })
 }
@@ -114,15 +122,42 @@ export function renderArrow(markupArrow: MarkupArrow, vbWidth: number, vbHeight:
    const start = project({ x: markupArrow.x1, y: markupArrow.y1 }, vbWidth, vbHeight)
    const end   = project({ x: markupArrow.x2, y: markupArrow.y2 }, vbWidth, vbHeight)
    const stroke = resolveStroke(markupArrow)
+   const strokeWidth = resolveStrokeWidth(markupArrow)
+   const headType = markupArrow.arrowhead ?? MARKUP_DEFAULT_ARROWHEAD
+   const headPosition = markupArrow.arrowheadPosition ?? MARKUP_DEFAULT_ARROWHEAD_POSITION
+
+   // The head sits at the tip (default) or the line's midpoint. When at the midpoint it is oriented
+   // along the same start→end direction (from `start` toward the head point is collinear with the line).
+   const headPoint: Point = headPosition === 'middle'
+      ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
+      : end
+
+   // The shaft runs the full line, EXCEPT for a `full` head at the `end`: there we stop the shaft at
+   // the arrowhead's base so the line's stroke width can't blunt the sharp tip (Bug 3). A chevron is
+   // open (its barbs meet AT the tip), so its shaft reaches the tip; a mid-line head never retracts.
+   const shaftEnd = (headType === 'full' && headPosition === 'end')
+      ? arrowShaftEnd(start.x, start.y, end.x, end.y)
+      : end
+   const dashArray = strokeDashArray(markupArrow.strokeStyle, strokeWidth)
    const shaft = selfClosingElement('line', {
-      x1: start.x, y1: start.y, x2: end.x, y2: end.y,
-      stroke, 'stroke-width': resolveStrokeWidth(markupArrow), 'stroke-linecap': 'round',
+      x1: start.x, y1: start.y, x2: shaftEnd.x, y2: shaftEnd.y,
+      stroke, 'stroke-width': strokeWidth,
+      'stroke-dasharray': dashArray,
+      'stroke-linecap': 'round',
    })
-   const [tip, wingA, wingB] = arrowheadPolygonPoints(start.x, start.y, end.x, end.y)
-   const head = selfClosingElement('polygon', {
-      points: `${round(tip.x)},${round(tip.y)} ${round(wingA.x)},${round(wingA.y)} ${round(wingB.x)},${round(wingB.y)}`,
-      fill: stroke,
-   })
+
+   const [tip, wingA, wingB] = arrowheadPolygonPoints(start.x, start.y, headPoint.x, headPoint.y)
+   const head = headType === 'chevron'
+      // An open V: a two-leg polyline wingA → tip → wingB, stroked (never dashed) and never filled.
+      ? selfClosingElement('polyline', {
+         points: `${round(wingA.x)},${round(wingA.y)} ${round(tip.x)},${round(tip.y)} ${round(wingB.x)},${round(wingB.y)}`,
+         fill: 'none', stroke, 'stroke-width': strokeWidth,
+         'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      })
+      : selfClosingElement('polygon', {
+         points: `${round(tip.x)},${round(tip.y)} ${round(wingA.x)},${round(wingA.y)} ${round(wingB.x)},${round(wingB.y)}`,
+         fill: stroke,
+      })
    return shaft + head
 }
 
@@ -173,9 +208,13 @@ export function renderCallout(markupCallout: MarkupCallout, vbWidth: number, vbH
       ? (markupCallout.fillOpacity ?? MARKUP_DEFAULT_FILL_OPACITY)
       : MARKUP_DEFAULT_CALLOUT_FILL_OPACITY
 
+   // The box's corner radius, shared with the tail so the tail base attaches on the straight part of
+   // the rounded-rect edge rather than floating over a rounded corner (Bug 2).
+   const cornerRadius = Math.min(box.w, box.h) * MARKUP_CALLOUT_CORNER_RADIUS_FACTOR
+
    // The tail is drawn FIRST (bottom layer) so its base line disappears under the box border,
    // then the box, then the text on top.
-   const [tailTip, tailBaseA, tailBaseB] = calloutTailPolygonPoints(box, tip)
+   const [tailTip, tailBaseA, tailBaseB] = calloutTailPolygonPoints(box, tip, undefined, cornerRadius)
    const tailMarkup = selfClosingElement('polygon', {
       points: `${round(tailTip.x)},${round(tailTip.y)} ${round(tailBaseA.x)},${round(tailBaseA.y)} ${round(tailBaseB.x)},${round(tailBaseB.y)}`,
       fill, stroke, 'stroke-width': strokeWidth,
@@ -184,7 +223,8 @@ export function renderCallout(markupCallout: MarkupCallout, vbWidth: number, vbH
       x: box.x, y: box.y, width: box.w, height: box.h,
       fill, 'fill-opacity': fillOpacity,
       stroke, 'stroke-width': strokeWidth,
-      rx: Math.min(box.w, box.h) * 0.08,
+      'stroke-dasharray': strokeDashArray(markupCallout.strokeStyle, strokeWidth),
+      rx: cornerRadius,
    })
 
    const fontSize = markupCallout.fontSize ?? MARKUP_DEFAULT_FONT_SIZE
@@ -211,6 +251,7 @@ export function renderFreehand(markupFreehand: MarkupFreehand, vbWidth: number, 
       fill: 'none',
       stroke: resolveStroke(markupFreehand),
       'stroke-width': resolveStrokeWidth(markupFreehand),
+      'stroke-dasharray': strokeDashArray(markupFreehand.strokeStyle, resolveStrokeWidth(markupFreehand)),
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
    })
