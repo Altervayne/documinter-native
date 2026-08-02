@@ -1,7 +1,8 @@
 import type { GraphSpec } from './lib/graph'
+import type { ImageMarkupSpec } from './lib/imageMarkup'
 import type { DocPresentationExtras } from './lib/presentation'
 
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'image-markup' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -72,6 +73,7 @@ export interface Block {
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
    mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
    graph?: GraphSpec     // graph: chart type + data + presentation options (rendered to inline SVG)
+   imageMarkup?: ImageMarkupSpec // image-markup: base image + annotation overlay stack (rendered to inline SVG)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
@@ -180,7 +182,7 @@ export interface BinderDocumentContent {
    id:       string
    sections: Section[]
    /** Image-bearing presentation extras (watermark base64, …) live on the HEAVY content store, not
-    *  the light record listDocuments() reads for every card — a full-bleed base64 must never bloat
+    *  the light record listDocuments() reads for every card, a full-bleed base64 must never bloat
     *  the card-list query. Absent on documents saved before presentation existed. */
    presentation?: DocPresentationExtras
 }
@@ -221,7 +223,7 @@ export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void
    insertBlockAt:  (secId: string, blkId: string, side: Side, index: number, type: BlockType) => void
-   /** Inserts an already-built block right after `innerBlkId` (no `mkBlock` default — the caller
+   /** Inserts an already-built block right after `innerBlkId` (no `mkBlock` default, the caller
     *  supplies the full block, e.g. the graph<->table one-shot extract actions). */
    insertBlockAfter: (secId: string, blkId: string, side: Side, innerBlkId: string, newBlock: Block) => void
    duplicateBlock: (secId: string, blkId: string, side: Side, innerBlkId: string) => void

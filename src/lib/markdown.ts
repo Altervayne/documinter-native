@@ -2,6 +2,7 @@ import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, S
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
+import { imageMarkupSpecToFence, fenceToImageMarkupSpec } from './imageMarkupFence'
 import { slugify } from './text'
 import { sanitizeCalloutHex } from './calloutColor'
 
@@ -127,13 +128,26 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
 
       case 'graph': {
          // A ```graph fence: chart type + options on the info string, data as a Markdown pipe
-         // table body. `type=` is load-bearing and rides BOTH flavours (no mintdown branch) —
+         // table body. `type=` is load-bearing and rides BOTH flavours (no mintdown branch),
          // a graph fence is Documint-specific in either format. The rendered SVG is never
          // serialized; it is re-derived from this spec on load.
          const spec = block.graph
          if (!spec) return '```graph type=bar\n|  |\n| --- |\n```'
          const { info, body } = graphSpecToFence(spec)
          return `\`\`\`graph ${info}\n${body}\n\`\`\``
+      }
+
+      case 'image-markup': {
+         // A ```imagemarkup fence: base dims + alt/caption on the info string, one overlay
+         // element per body line. RATIFIED DIVERGENCE from the `image` block's own convention
+         // (which also drops base64): here it is EXPLICIT policy (see imageMarkupFence.ts), the
+         // base64 `src` is NEVER emitted in either flavour, so a `.mint`/`.md` reopen restores
+         // every annotation but with an empty `src`. The rendered SVG is never serialized; it is
+         // re-derived from this spec on load.
+         const spec = block.imageMarkup
+         if (!spec) return '```imagemarkup\n```'
+         const { info, body } = imageMarkupSpecToFence(spec)
+         return body ? `\`\`\`${info}\n${body}\n\`\`\`` : `\`\`\`${info}\n\`\`\``
       }
 
       case 'list': {
@@ -258,6 +272,12 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       // Pass the FULL info string (not the pre-split tokens) so the graph parser can tokenize
       // quoted options itself. Malformed fences degrade gracefully inside fenceToGraphSpec.
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
+   }
+   if (langTag.toLowerCase() === 'imagemarkup') {
+      // Pass the FULL info string so the parser can tokenize quoted alt/caption values itself.
+      // `src` always comes back empty (no base64 in this format, see imageMarkupFence.ts);
+      // malformed fences degrade gracefully (unknown element kinds skipped), never throw.
+      return { id: crypto.randomUUID(), type: 'image-markup', imageMarkup: fenceToImageMarkupSpec(fenceInfo, body) }
    }
    return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(langTag), code: body }
 }

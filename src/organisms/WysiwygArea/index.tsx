@@ -48,7 +48,7 @@ interface WysiwygAreaProps {
    onAddSection?: () => void
    readOnly?: boolean
    // ==========================================================
-   //  Document-level actions, reused (not reimplemented) by the background context menu — the
+   //  Document-level actions, reused (not reimplemented) by the background context menu, the
    //  exact same handlers App.tsx already threads into HeaderMenuBar.
    // ==========================================================
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
@@ -90,7 +90,7 @@ export function WysiwygArea({
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
    // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
-   // string) — guards against <defs> id clashes if multiple watermarked sheets are ever mounted
+   // string), guards against <defs> id clashes if multiple watermarked sheets are ever mounted
    // at once.
    const watermarkPatternId = `doc-watermark-pattern-${useId().replace(/:/g, '')}`
 
@@ -115,20 +115,20 @@ export function WysiwygArea({
    //  Document background context menu (document-level actions)
    // ==========================================================
    // Catch-all: bound high on the outer canvas container (below), so it fires for a right-click
-   // ANYWHERE on the document background — the gutter around the sheet, the sheet's own padding,
+   // ANYWHERE on the document background, the gutter around the sheet, the sheet's own padding,
    // gaps between/around/below sections, and empty space inside a section. It relies on
    // propagation, not a target check: a right-click on a block (useBlockContextMenu's
    // openContextMenu) or on section chrome (WysiwygSection's handleSectionContextMenu) already
-   // calls stopPropagation, so those never reach this handler — see the field-menu stopPropagation
+   // calls stopPropagation, so those never reach this handler, see the field-menu stopPropagation
    // just below for the third source that needed the same guard added. Bound in BOTH editor and
-   // preview (readOnly) mode — it's the one menu preview keeps reachable (blocks/sections/fields
+   // preview (readOnly) mode, it's the one menu preview keeps reachable (blocks/sections/fields
    // already self-disable their own context menus under readOnly, see WysiwygSection.tsx /
    // WysiwygBlock.tsx), so a right-click still reaches theme/accent/export/save/preview-toggle.
    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number; y: number } | null>(null)
-   // Whether Custom is the background menu's selected accent choice — a genuine selection, on par
+   // Whether Custom is the background menu's selected accent choice, a genuine selection, on par
    // with clicking a preset swatch, NOT a disclosure toggle. Selecting it applies the current
    // docAccent (smooth hand-off) and reveals the inline ColorPicker directly under the accent
-   // swatch grid (AccentSwatchGrid) rather than a detached popover — the same inline-under-the-entry
+   // swatch grid (AccentSwatchGrid) rather than a detached popover, the same inline-under-the-entry
    // pattern the top-bar Document dropdown uses (DocumentMenu's own customAccentSelected). The
    // context menu's own viewport-clamped positioning (useViewportClampedPosition, re-measured via
    // ResizeObserver) re-clamps as the menu grows.
@@ -298,7 +298,7 @@ export function WysiwygArea({
                   onContextMenu={event => {
                      event.preventDefault()
                      // Stopped so the field menu takes precedence over the new document-background
-                     // catch-all context menu (bound higher up, on the outer canvas container) —
+                     // catch-all context menu (bound higher up, on the outer canvas container),
                      // otherwise both menus would open at once.
                      event.stopPropagation()
                      const rect = event.currentTarget.getBoundingClientRect()
@@ -385,7 +385,7 @@ export function WysiwygArea({
          readOnly={readOnly}
          // Carve-out from the document background catch-all (bound on the outer canvas container):
          // stop the right-click here so it never bubbles into the document menu, WITHOUT
-         // preventDefault — the title keeps the native browser context menu (copy/paste/spellcheck).
+         // preventDefault, the title keeps the native browser context menu (copy/paste/spellcheck).
          onContextMenu={event => event.stopPropagation()}
       />
    )

@@ -73,7 +73,7 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
 
    // Clamped position of the link-creator panel, relative to the toolbar's own box
    // (the panel is `position: absolute` against the toolbar, its nearest positioned
-   // ancestor) — recomputed whenever the panel mounts, see the layout effect below.
+   // ancestor), recomputed whenever the panel mounts, see the layout effect below.
    const [linkPanelPos, setLinkPanelPos] = useState<Pos>({ top: 0, left: 0 })
 
    const {
@@ -179,11 +179,11 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    }, [linkModeRef, fontColorOpenRef, highlightColorOpenRef, closeLinkMode, closeFontColorPicker, closeHighlightColorPicker])
 
    // ##############################################################
-   // # LINK PANEL POSITION — VIEWPORT CLAMP (measured, two-sided) #
+   // # LINK PANEL POSITION, VIEWPORT CLAMP (measured, two-sided) #
    // ##############################################################
 
    // Recomputed each time the link panel mounts (it unmounts/remounts with linkMode,
-   // so its content — and therefore its size — is fresh every time this runs). Measures
+   // so its content, and therefore its size, is fresh every time this runs). Measures
    // the panel's real rendered box, then clamps the desired centered-below-toolbar
    // position two-sided so the panel can never render partly off-screen.
    useLayoutEffect(() => {

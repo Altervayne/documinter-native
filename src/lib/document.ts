@@ -68,6 +68,7 @@ export function mkBlock(type: BlockType, t: T): Block {
             options: { legend: true },
          },
       }
+      case 'image-markup': return { id, type, imageMarkup: { src: '', width: 0, height: 0, elements: [] } }
       case 'list':      return {
          id, type,
          items: [
@@ -140,7 +141,7 @@ export function generateHandle(block: Block): string {
  * handle list, e.g. from `useDocumentHandles()`). Starts from {@link generateHandle}; on a collision,
  * appends `-2`, `-3`, … until a free slug is found. Used when auto-assigning a durable handle to a
  * handle-less table on the graph<->table live link (see
- * docs/reference/graph_table_linking_study.md, stage 2b) — the anchor editor's own confirm flow does
+ * docs/reference/graph_table_linking_study.md, stage 2b), the anchor editor's own confirm flow does
  * NOT dedupe (it only warns), but an auto-assignment happening behind the scenes must never silently
  * collide with an existing anchor.
  */
@@ -172,7 +173,11 @@ export function blkPreview(block: Block): string {
       if (title) return title.substring(0, 32)
       const chartType   = graph?.type ?? 'bar'
       const seriesCount = graph?.data?.series?.length ?? 0
-      return `Graph — ${chartType} (${seriesCount} series)`
+      return `Graph, ${chartType} (${seriesCount} series)`
+   }
+   if (block.type === 'image-markup') {
+      const elementCount = block.imageMarkup?.elements?.length ?? 0
+      return `[Image markup] ${elementCount} annotation${elementCount === 1 ? '' : 's'}`
    }
    if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)

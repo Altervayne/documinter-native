@@ -10,11 +10,12 @@ import {
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
    compileExpression,
+   supportsLogScale,
 } from '../../../lib/graph'
 import type { GraphSource, GraphSpec, GraphType, Overlay, OverlayKind } from '../../../lib/graph'
 import {
    setType, setOption, addOverlay, removeOverlay, updateOverlay,
-   setSource, updateSourceMapping, unlinkSource,
+   setSource, updateSourceMapping, unlinkSource, logScaleWouldFallBackToLinear,
 } from '../../../lib/graphEdit'
 import { tableFromGraphData, graphDataFromTable, resolveGraphSpec, graphDataEquals } from '../../../lib/graphTableData'
 import type { LinkableTable } from '../../../lib/graphTableData'
@@ -38,7 +39,7 @@ interface GraphBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
    /** Inserts an already-built block right after this graph block (the "Extract data to a table"
-    *  one-shot extract — see docs/reference/graph_table_linking_study.md, stage 1). */
+    *  one-shot extract, see docs/reference/graph_table_linking_study.md, stage 1). */
    onInsertBlockAfter: (newBlock: Block) => void
    readOnly?: boolean
 }
@@ -56,10 +57,10 @@ const FALLBACK_SPEC: GraphSpec = {
 /** The radial types have no axes; hide the x/y caption fields (and show the donut hole for donut). */
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 
-/** The bar family — the only types that show the bar-width control. */
+/** The bar family, the only types that show the bar-width control. */
 const BAR_TYPES = new Set<GraphType>(['bar', 'bar-grouped', 'bar-stacked'])
 
-/** Line & area — the types that show the line-thickness control and the point-markers toggle.
+/** Line & area, the types that show the line-thickness control and the point-markers toggle.
  *  `function` curves are drawn with the SAME line renderer, so they earn the line-thickness
  *  control too; the point-markers toggle needs its own per-type default (see `defaultShowPoints`
  *  below) rather than reusing GRAPH_DEFAULT_SHOW_POINTS, since the renderer defaults points OFF
@@ -78,7 +79,7 @@ const SNAPSHOT_WRITEBACK_DELAY_MS = 400
 /**
  * The series list the Analysis section's overlay target-series `<select>` reads from, for the
  * CURRENT chart type. Every cartesian data type but `scatter` targets `data.series` (the ordinary
- * numeric grid); `scatter` has no `data.series` at all — its points live in `scatterPlot.series` —
+ * numeric grid); `scatter` has no `data.series` at all, its points live in `scatterPlot.series`,
  * so mean/trend need this small name+index projection instead. `GraphSeries` and `ScatterSeries`
  * otherwise differ in shape (`values` vs `points`), which the select doesn't care about.
  */
@@ -92,12 +93,12 @@ function overlayTargetSeriesList(spec: GraphSpec): { name: string; index: number
 /**
  * Graph (chart) block. Mirrors the math block's render path: the stored `graph` spec is turned
  * into a self-contained SVG string by the pure `renderGraphToSvg`, then injected via
- * `dangerouslySetInnerHTML` inside a `.doc-graph` wrapper — no runtime, no external font. The
+ * `dangerouslySetInnerHTML` inside a `.doc-graph` wrapper, no runtime, no external font. The
  * SVG bakes literal theme hex, so the theme is picked from the document theme (light/dark).
  *
  * WINDOWED EDITOR (block-editor-window adopter #1): inline, the block shows only its rendered
- * chart plus a hover-reveal Edit pill; the full editor — chart-type selector, editable data grid,
- * option controls — moves into a floating BlockEditorWindow opened via the
+ * chart plus a hover-reveal Edit pill; the full editor, chart-type selector, editable data grid,
+ * option controls, moves into a floating BlockEditorWindow opened via the
  * BlockEditorWindowContext. The draft/commit-on-blur model is unchanged (a local working spec
  * keeps typing smooth, committed via `patch({ graph })`); it simply lives in the window now. The
  * window is rendered inline by this component only while this block is the open one, so deleting
@@ -112,14 +113,14 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    // The document-wide `handle -> table cells` catalog a LINKED graph resolves its data from. A
    // table edit changes this map's identity, which re-renders this block and re-resolves the link.
    const documentTables = useDocumentTables()
-   // The "Link to a table…" picker's full listing (every table, handled or not) — stage 2b, the
+   // The "Link to a table…" picker's full listing (every table, handled or not), stage 2b, the
    // editor UX built here. Unused in readOnly, but hooks must still run unconditionally.
    const linkableTables = useLinkableTables()
    // Every handle in the document, for generating a collision-free handle when auto-assigning one to
    // a handle-less table on link (see handleLinkTable below).
    const allHandles = useDocumentHandles()
    // Cross-block mutations: linking a graph to a handle-less table patches THAT table's block, which
-   // is outside this block's own scoped `patch` — needs the raw mutation context.
+   // is outside this block's own scoped `patch`, needs the raw mutation context.
    const documentMutations = useDocumentMutations()
 
    // Local working spec so the preview + grid update live on every keystroke without spamming a
@@ -153,11 +154,11 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    // A linked graph keeps a MATERIALIZED SNAPSHOT of the resolved table data in `block.graph.data`
    // so it still serializes (the fence body) and still renders when the link dangles. This effect
    // keeps that snapshot current when the source table changes. Three guards make it loop-safe:
-   //   1. IDENTITY GUARD — it patches only when the freshly resolved data STRUCTURALLY differs from
-   //      the stored snapshot (`graphDataEquals`), so the patch it emits — which changes `sections`
-   //      and thus re-runs this effect — immediately compares equal and stops. No ping-pong.
-   //   2. NOT-DURING-RENDER — it runs in an effect, never in the render that READS the snapshot.
-   //   3. DEBOUNCED — a rapid run of source-table keystrokes coalesces into one patch; the cleanup
+   //   1. IDENTITY GUARD, it patches only when the freshly resolved data STRUCTURALLY differs from
+   //      the stored snapshot (`graphDataEquals`), so the patch it emits, which changes `sections`
+   //      and thus re-runs this effect, immediately compares equal and stops. No ping-pong.
+   //   2. NOT-DURING-RENDER, it runs in an effect, never in the render that READS the snapshot.
+   //   3. DEBOUNCED, a rapid run of source-table keystrokes coalesces into one patch; the cleanup
    //      cancels a pending write whenever `block.graph`/`documentTables` changes, so the timer only
    //      ever fires with the latest committed spec (stale option edits can't overwrite fresher ones).
    // Skipped entirely in readOnly (no mutations) and for unlinked graphs (no `source`).
@@ -185,7 +186,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    //  Edit levers
    // ============
    // A live draft edit (text/number typing): update the working spec, mark editing, but do NOT
-   // commit — the commit stays on blur, exactly like the math block.
+   // commit, the commit stays on blur, exactly like the math block.
    function draft(next: GraphSpec): void {
       editing.current = true
       setWorking(next)
@@ -207,9 +208,9 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    }
 
    // One-shot extract: build a table block from this chart's current tabular data and drop it in
-   // right after the graph. Pure data mapping (tableFromGraphData); no link is retained — this is
+   // right after the graph. Pure data mapping (tableFromGraphData); no link is retained, this is
    // stage 1 of graph<->table linking, the live link is a separate, unbuilt stage 2. Only offered
-   // for the tabular chart types (see the `dataTab` gate below — `function`/`scatter`/`histogram`
+   // for the tabular chart types (see the `dataTab` gate below, `function`/`scatter`/`histogram`
    // carry no `GraphData`).
    function handleExtractTable(): void {
       const { richHeaders, richRows } = tableFromGraphData(working.data)
@@ -218,14 +219,16 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    }
 
    // Switching an overlay's kind REPLACES the whole overlay (not a shallow merge) so no stray field
-   // from the previous kind lingers — e.g. a `series` left over after switching to a reference line,
+   // from the previous kind lingers, e.g. a `series` left over after switching to a reference line,
    // or an `expression` left over after switching AWAY from an equation curve.
    function setOverlayKind(overlayIndex: number, kind: OverlayKind): void {
       const current = working.options.overlays ?? []
       const previous = current[overlayIndex]
       if (!previous) return
       const replacement: Overlay = kind === 'reference'
-         ? { kind: 'reference', value: previous.value ?? 0, ...(previous.label ? { label: previous.label } : {}) }
+         ? { kind: 'reference', value: previous.value ?? 0,
+             ...(previous.orientation ? { orientation: previous.orientation } : {}),
+             ...(previous.label ? { label: previous.label } : {}) }
          : kind === 'equation'
          ? { kind: 'equation', expression: previous.kind === 'equation' ? (previous.expression ?? '') : '' }
          : { kind, series: previous.series ?? 0, ...(kind === 'trend' && previous.showEquation ? { showEquation: true } : {}) }
@@ -261,7 +264,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    const defaultShowPoints = isFunction ? false : GRAPH_DEFAULT_SHOW_POINTS
    const options    = working.options
    // The inline output renders from the live working spec, so the chart updates behind the window
-   // as the window's controls are used — no separate in-window preview needed. A linked graph
+   // as the window's controls are used, no separate in-window preview needed. A linked graph
    // resolves its data from the document's tables first (dangling → the materialized snapshot);
    // the pure renderer only ever sees concrete data, never `source`.
    const { renderSpec: previewRenderSpec, dangling: sourceDangling } = resolveGraphSpec(working, documentTables)
@@ -272,7 +275,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    // ==================================================================
    // Link (or re-link) this graph to a table picked from GraphLinkPanel's picker. A handle-less
    // table is auto-assigned a fresh, document-unique handle FIRST (a mutation on that OTHER block,
-   // routed through the raw mutation context — outside this graph's own scoped `patch` — addressed
+   // routed through the raw mutation context, outside this graph's own scoped `patch`, addressed
    // via the picked entry's `container`, if any). `data` is deliberately left untouched: the
    // existing debounced snapshot write-back effect above refreshes it from the newly linked table on
    // the next resolve, exactly like any other source change.
@@ -297,17 +300,17 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    }
 
    // Unlink: materialize the CURRENTLY resolved data (the live remap, or the last snapshot if
-   // dangling — exactly what the read-only preview is already showing) onto `data`, drop `source`.
+   // dangling, exactly what the read-only preview is already showing) onto `data`, drop `source`.
    function handleUnlink(): void {
       commit(unlinkSource(working, previewRenderSpec.data))
    }
 
    // ============
-   //  Windowed editor body — the full controls + data grid + live preview.
+   //  Windowed editor body, the full controls + data grid + live preview.
    // ============
    // The editor is APP CHROME, not document content: it mounts directly in the window body (which
    // portals to <body> under the app's html[data-theme]), so the `.graph-editor`-scoped rules pick
-   // up the app --color-* tokens and flip light/dark automatically — no `.doc-render`/`.doc-dark`
+   // up the app --color-* tokens and flip light/dark automatically, no `.doc-render`/`.doc-dark`
    // wrapper. The document theme is still used, but only for what shows document content: the
    // rendered chart SVG and the data color swatches (both via `graphTheme` below).
    // Roving-tab keyboard nav: Left/Right (and Home/End) move between the two tabs.
@@ -375,7 +378,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
             )}
 
             <div className="graph-toggle-row">
-               {/* A histogram is always ONE dataset — a legend would have nothing to distinguish
+               {/* A histogram is always ONE dataset, a legend would have nothing to distinguish
                    it from, so the toggle is hidden rather than left dead (see cartesian.ts's
                    renderHistogram, which never reserves/draws a legend for this type). */}
                {!isHistogram && (
@@ -504,14 +507,17 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
       </div>
    )
 
-   // =============== Analysis: statistical overlays — rendered in the DATA tab ===============
-   // Overlays are computed from a target series, meaningless for radial (no series) AND for
-   // `function`/`histogram` (no series payload at all — their data lives in `functionPlot`/
-   // `histogramData`, not a series list). `scatter` DOES get analysis — a trendline/mean is exactly
-   // the point of a scatter plot — targeting `scatterPlot.series` via `overlayTargetSeriesList`
-   // instead of `data.series` (see that helper above). histogram analysis (e.g. a mean/std-dev
-   // overlay) is a v1.1 concern, not built here.
-   const analysisSection = !isRadial && !isFunction && !isHistogram && (
+   // =============== Analysis: statistical overlays, rendered in the DATA tab ===============
+   // Meaningless for radial (no series) and `histogram` (a single distribution, no series). Every
+   // other type gets it, but the offered overlay KINDS differ by type (see the kind <select> below):
+   //   - bar family / line / area: mean / trend / reference / equation (the full categorical set).
+   //   - scatter: mean / trend / reference, targeting `scatterPlot.series` via
+   //     `overlayTargetSeriesList` (not `data.series`), a trendline/mean being the point of a scatter.
+   //   - function: REFERENCE lines ONLY (both orientations), a sampled f(x) curve has no discrete
+   //     series to average/fit, and an equation overlay would just duplicate the plot; a reference
+   //     line (horizontal y = c, or vertical x = c) is the one meaningful annotation.
+   // histogram analysis (e.g. a mean/std-dev overlay) is a v1.1 concern, not built here.
+   const analysisSection = !isRadial && !isHistogram && (
       <div className="graph-options graph-analysis">
          <span className="graph-section-label">{t.graphAnalysisSection}</span>
 
@@ -523,12 +529,15 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                   value={overlay.kind}
                   onChange={event => setOverlayKind(overlayIndex, event.target.value as OverlayKind)}
                >
-                  <option value="mean">{t.graphOverlayMean}</option>
-                  <option value="trend">{t.graphOverlayTrend}</option>
+                  {/* Mean / trend need a discrete data series to compute over, a function chart's
+                      sampled f(x) curve has none, so those are hidden there (reference-only). */}
+                  {!isFunction && <option value="mean">{t.graphOverlayMean}</option>}
+                  {!isFunction && <option value="trend">{t.graphOverlayTrend}</option>}
                   <option value="reference">{t.graphOverlayReference}</option>
                   {/* Equation curve is chart-level over the CATEGORICAL index axis; scatter has no
-                      such axis, so it isn't offered there (a natural follow-up, not built in v1). */}
-                  {!isScatter && <option value="equation">{t.graphOverlayEquation}</option>}
+                      such axis and a function chart would just duplicate its own plot, so it isn't
+                      offered for either (a natural follow-up for scatter, not built in v1). */}
+                  {!isScatter && !isFunction && <option value="equation">{t.graphOverlayEquation}</option>}
                </select>
 
                {/* Computed kinds (mean/trend): a target-series select including "All series". */}
@@ -588,6 +597,22 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                {/* Reference: a constant value + an optional free-text label (draft/commit-on-blur). */}
                {overlay.kind === 'reference' && (
                   <>
+                     {/* Orientation (function/scatter only, continuous x): horizontal y = value, or
+                         vertical x = value. Categorical charts have no vertical analog, so the choice
+                         is hidden there and the reference stays horizontal. */}
+                     {(isFunction || isScatter) && (
+                        <select
+                           className="graph-overlay-select"
+                           aria-label={t.graphOverlayOrientation}
+                           value={overlay.orientation === 'vertical' ? 'vertical' : 'horizontal'}
+                           onChange={event => commit(updateOverlay(working, overlayIndex, {
+                              orientation: event.target.value === 'vertical' ? 'vertical' : undefined,
+                           }))}
+                        >
+                           <option value="horizontal">{t.graphOverlayOrientationHorizontal}</option>
+                           <option value="vertical">{t.graphOverlayOrientationVertical}</option>
+                        </select>
+                     )}
                      <input
                         className="graph-text-input graph-overlay-value"
                         type="number"
@@ -628,16 +653,92 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
          <button
             type="button"
             className="graph-grid-btn graph-overlay-add"
-            onClick={() => commit(addOverlay(working, { kind: 'mean', series: 0 }))}
+            onClick={() => commit(addOverlay(working,
+               isFunction ? { kind: 'reference', value: 0 } : { kind: 'mean', series: 0 }))}
          >{t.graphAddOverlay}</button>
       </div>
    )
 
    // =============== Data tab: the editable table (or, for `function`/`scatter`/`histogram`, their
    // own dedicated editors) + the analysis section below it (hidden for radial, `function`, AND
-   // `histogram` — scatter DOES get it, see analysisSection above) ===============
+   // `histogram`, scatter DOES get it, see analysisSection above) ===============
    const dataTab = (
       <div className="graph-data-tab">
+         {/* ============ Value (y) axis scale: linear/log, + custom axis origin ============ */}
+         {/* Grouped together at the top of the Data tab (moved from the Visual tab) since both are
+             axis-configuration concerns that frame how the data below is plotted, not display/type
+             options. Hidden entirely for the radial types and bar-stacked (no value axis at all, or
+             no log analog for zero-baseline stacking), see supportsLogScale/LOG_SCALE_UNSUPPORTED_TYPES,
+             the SAME rule the renderer enforces defensively for a hand-edited fence; `function` and
+             `scatter` both support log scale, so this group always renders for them too. */}
+         {supportsLogScale(working.type) && (
+            <div className="graph-editor-group graph-axis-controls">
+               <div className="graph-toggle-row">
+                  <label className="graph-toggle">
+                     <input
+                        type="checkbox"
+                        checked={options.yScale === 'log'}
+                        onChange={event => commit(setOption(working, 'yScale', event.target.checked ? 'log' : undefined))}
+                     />
+                     <span>{t.graphOptionLogScale}</span>
+                  </label>
+               </div>
+               {options.yScale === 'log' && logScaleWouldFallBackToLinear(working) && (
+                  <div className="graph-log-scale-notice" role="status">{t.graphLogScaleFallbackNotice}</div>
+               )}
+
+               {/* Custom axis origin ("textbook" axes), function/scatter only. Both axes numeric
+                   here, so the axes can cross at a chosen (x, y) instead of the plot edges. Enabling
+                   seeds the origin at (0, 0); disabling drops it (standard edge axes). A custom
+                   origin is a linear concept, the renderer ignores it under a log scale. */}
+               {(isFunction || isScatter) && (
+                  <div className="graph-field graph-axis-origin">
+                     <label className="graph-toggle">
+                        <input
+                           type="checkbox"
+                           checked={options.axisOrigin !== undefined}
+                           onChange={event => commit(setOption(working, 'axisOrigin',
+                              event.target.checked ? { x: 0, y: 0 } : undefined))}
+                        />
+                        <span>{t.graphOptionAxisOrigin}</span>
+                     </label>
+                     {options.axisOrigin !== undefined && (
+                        <div className="graph-axis-origin-inputs">
+                           <label className="graph-field">
+                              <span className="graph-field-label">{t.graphAxisOriginX}</span>
+                              <input
+                                 className="graph-text-input"
+                                 type="number"
+                                 value={options.axisOrigin.x}
+                                 onFocus={editStart}
+                                 onChange={event => draft(setOption(working, 'axisOrigin', {
+                                    x: Number(event.target.value),
+                                    y: options.axisOrigin?.y ?? 0,
+                                 }))}
+                                 onBlur={commitField}
+                              />
+                           </label>
+                           <label className="graph-field">
+                              <span className="graph-field-label">{t.graphAxisOriginY}</span>
+                              <input
+                                 className="graph-text-input"
+                                 type="number"
+                                 value={options.axisOrigin.y}
+                                 onFocus={editStart}
+                                 onChange={event => draft(setOption(working, 'axisOrigin', {
+                                    x: options.axisOrigin?.x ?? 0,
+                                    y: Number(event.target.value),
+                                 }))}
+                                 onBlur={commitField}
+                              />
+                           </label>
+                        </div>
+                     )}
+                  </div>
+               )}
+            </div>
+         )}
+
          {isFunction ? (
             <EquationEditor
                spec={working}
@@ -672,7 +773,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
             <>
                {/* Table link (stage 2b): a compact picker above the grid while unlinked, or the
                    whole linked-state management UI (banner + read-only preview + mapping + unlink)
-                   REPLACING the grid entirely once `working.source` is set. Tabular types only —
+                   REPLACING the grid entirely once `working.source` is set. Tabular types only,
                    function/scatter/histogram never reach this branch. */}
                <GraphLinkPanel
                   spec={working}

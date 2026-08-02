@@ -110,7 +110,7 @@ describe('computeHistogramBins, edge + count correctness', () => {
       expect(result.counts[4]).toBeGreaterThanOrEqual(1) // the max-value sample landed in the last bin
    })
 
-   it('is deterministic — identical input yields identical output', () => {
+   it('is deterministic, identical input yields identical output', () => {
       const samples = [3, 1, 4, 1, 5, 9, 2, 6]
       expect(computeHistogramBins(samples, 4)).toEqual(computeHistogramBins(samples, 4))
    })

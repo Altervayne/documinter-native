@@ -3,7 +3,7 @@
  *
  * PURE FUNCTION. `renderRadial(spec, theme)` returns the INNER SVG markup (a `<g>` group) for
  * a pie or donut chart; index.ts wraps it in the responsive `<svg>` envelope. No axes, no
- * scales — just arc geometry. Slices are colored by SLICE (category) index from the palette,
+ * scales, just arc geometry. Slices are colored by SLICE (category) index from the palette,
  * since a radial chart plots a single series and each slice is one category. A donut is a pie
  * with an inner radius (`options.donutHole`, default 0.55).
  *
@@ -93,7 +93,7 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
       const endAngle = cursorAngle + fraction * 360
       cursorAngle = endAngle
       // Each slice resolves its color from the per-category override (categoryColors[index]) when
-      // set, else the palette slot by slice index — mirroring how a series resolves its own color.
+      // set, else the palette slot by slice index, mirroring how a series resolves its own color.
       const color = resolveSeriesColor(index, data.categoryColors?.[index], theme)
       const pathData = innerRadius > 0
          ? donutSegmentPath(centerX, centerY, radius, innerRadius, startAngle, endAngle)
@@ -132,7 +132,7 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
 
 /**
  * Convert a polar coordinate (radius + angle) to cartesian, with 0deg at the TOP (12 o'clock)
- * and angle increasing clockwise — the natural reading direction for a pie.
+ * and angle increasing clockwise, the natural reading direction for a pie.
  */
 export function polarToCartesian(
    centerX: number,

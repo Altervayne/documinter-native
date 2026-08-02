@@ -4,7 +4,7 @@
  * A single reusable control for the Presentation window's sliders (watermark opacity / rotation /
  * tile size / spacing, header max-height): one label, a full-width `<input type="range">`, and a
  * coupled `<input type="number">` so the user can drag OR type an exact value. Both controls share
- * one stored (raw) value + one clamp — dragging the slider updates the number, and a typed value is
+ * one stored (raw) value + one clamp, dragging the slider updates the number, and a typed value is
  * clamped into [min, max] and snapped to the nearest step before it commits.
  *
  * `displayScale` / `unit` let the number field show a friendlier unit than the raw stored domain
@@ -31,7 +31,7 @@ function roundToPrecision(value: number, precision: number): number {
 
 interface SliderWithNumberInputProps {
    label:    string
-   value:    number   // the raw, stored value — the same domain the slider's min/max/step describe
+   value:    number   // the raw, stored value, the same domain the slider's min/max/step describe
    min:      number
    max:      number
    step:     number

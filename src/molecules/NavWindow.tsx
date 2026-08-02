@@ -40,11 +40,11 @@ import {
 interface NavWindowProps {
    /** The active document's presentation extras (undefined = none set yet). */
    presentation?: DocPresentationExtras
-   /** The live section list — the nav editor reconciles + mirrors it (renames, new/deleted sections). */
+   /** The live section list, the nav editor reconciles + mirrors it (renames, new/deleted sections). */
    sections: Section[]
    /** The anchor rect the window opens offset from (a degenerate rect = viewport-centered). */
    anchorRect: DOMRect
-   /** Commit a new extras object (or undefined to clear all extras) — a real document change. */
+   /** Commit a new extras object (or undefined to clear all extras), a real document change. */
    onChange: (next: DocPresentationExtras | undefined) => void
    /** Close the window. */
    onClose: () => void
@@ -60,7 +60,7 @@ interface NavWindowProps {
  * PresentationWindow so navigation gets its own launcher (Document → Navigation…) and its own window;
  * the window itself is APP CHROME (app --color-* tokens, html[data-theme]).
  *
- * The editor bakes the EXPORTED sidebar nav only — it has no effect on the live editor sheet (the nav
+ * The editor bakes the EXPORTED sidebar nav only, it has no effect on the live editor sheet (the nav
  * is an export-only surface).
  */
 export function NavWindow({ presentation, sections, anchorRect, onChange, onClose }: NavWindowProps) {
@@ -94,7 +94,7 @@ export function NavWindow({ presentation, sections, anchorRect, onChange, onClos
 // ###############
 
 /** A single-axis lock: every nav-entry drag glides vertically only (x pinned), without depending on
- *  `@dnd-kit/modifiers` (not installed) — mirrors the graph editors' sortable lock. */
+ *  `@dnd-kit/modifiers` (not installed), mirrors the graph editors' sortable lock. */
 const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 /** The drag-handle wiring a sortable nav row hands to its grip (mirrors ScatterEditor/GraphDataGrid). */
@@ -143,7 +143,7 @@ interface NavSectionProps {
 /**
  * The sidebar-nav editor: a reorderable list over the reconciled nav entries (one per section by
  * default, plus any custom links / dividers). It edits the model that bakes the EXPORTED sidebar nav
- * (this list has no effect on the live editor sheet — the nav is an export-only surface). Every commit
+ * (this list has no effect on the live editor sheet, the nav is an export-only surface). Every commit
  * writes the full reconciled entry array, so the first touch seeds `nav` from today's derivation and
  * then customizes it; "Reset" clears the model back to that zero-config default.
  */
@@ -151,12 +151,12 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-   // The working, reconciled entry list — the exact list the export consumes (before resolution).
+   // The working, reconciled entry list, the exact list the export consumes (before resolution).
    const entries = reconcileNavEntries(nav, sections)
    const titleBySectionId = new Map(sections.map(section => [section.id, section.title]))
    const isCustomized = nav !== undefined
 
-   // Every block carrying a deep-link handle — the "Element link" target universe, matching the
+   // Every block carrying a deep-link handle, the "Element link" target universe, matching the
    // inline "jump to block" picker (FormatToolbar). No anchors ⇒ the element-link adder is disabled.
    const anchoredBlocks = getAnchoredBlocks(sections)
 
@@ -164,7 +164,7 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    function anchorOptionLabel(block: Block): string {
       const handle = block.handle ?? ''
       const preview = blkPreview(block).trim()
-      return preview ? `${preview} — #${handle}` : `#${handle}`
+      return preview ? `${preview}, #${handle}` : `#${handle}`
    }
 
    function commit(nextEntries: NavEntry[]): void {

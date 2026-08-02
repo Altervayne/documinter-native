@@ -91,6 +91,6 @@ Source code is under the [Apache License 2.0](LICENSE). Copyright © 2026 Floria
 
 ### Trademark & brand
 
-The **"Documinter" name**, together with the **Documinter logo and visual identity** (including `public/favicon.svg`, `src/assets/logo-color.svg`, `src/assets/logo.svg`, and `src/atoms/Logo.tsx`), is a trademark of Florian Douay and remains his exclusive copyright — © 2026 Florian Douay, all rights reserved.
+The **"Documinter" name**, together with the **Documinter logo and visual identity** (including `public/favicon.svg`, `src/assets/logo-color.svg`, `src/assets/logo.svg`, and `src/atoms/Logo.tsx`), is a trademark of Florian Douay and remains his exclusive copyright, © 2026 Florian Douay, all rights reserved.
 
 These are **not** covered by the Apache 2.0 license. The Apache License grants no trademark rights (see section 6 of the license) and covers the source code only. You may build on the code, but if you fork or redistribute it, please use your own name and logo rather than the Documinter identity, and don't imply endorsement by or affiliation with the original project. See the [`NOTICE`](NOTICE) file.

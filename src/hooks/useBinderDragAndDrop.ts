@@ -75,7 +75,7 @@ export function useBinderDragAndDrop({
    }, [])
 
    const handleFileDragLeave = useCallback((event: React.DragEvent) => {
-      // Native dragleave also fires when crossing between child elements — only clear when the
+      // Native dragleave also fires when crossing between child elements, only clear when the
       // cursor has actually left the drop container.
       if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
       setIsFileDragOver(false)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { linearScale, niceTicks, bandScale } from './scale'
+import { linearScale, niceTicks, logScale, niceLogTicks, bandScale } from './scale'
 
 // ################
 // # LINEAR SCALE #
@@ -110,6 +110,125 @@ describe('niceTicks', () => {
    it('swaps a reversed domain', () => {
       const scale = niceTicks(100, 0)
       expect(scale.niceMin).toBeLessThan(scale.niceMax)
+   })
+})
+
+// #############
+// # LOG SCALE #
+// #############
+
+describe('logScale', () => {
+   it('maps a decade domain onto the range endpoints, and the midpoint decade to the range midpoint', () => {
+      const scale = logScale([1, 100], [0, 200])
+      expect(scale(1)).toBeCloseTo(0, 6)
+      expect(scale(100)).toBeCloseTo(200, 6)
+      expect(scale(10)).toBeCloseTo(100, 6) // 10 sits exactly halfway between decades 1 and 100
+   })
+
+   it('supports an inverted range (SVG y grows downward)', () => {
+      const scale = logScale([1, 1000], [300, 0])
+      expect(scale(1)).toBeCloseTo(300, 6)
+      expect(scale(1000)).toBeCloseTo(0, 6)
+   })
+
+   it('maps everything to the range midpoint for a degenerate (equal) domain', () => {
+      const scale = logScale([10, 10], [0, 100])
+      expect(scale(10)).toBe(50)
+      expect(scale(999)).toBe(50)
+   })
+
+   it('never emits NaN/Infinity for a non-positive or non-finite domain bound', () => {
+      const scale = logScale([-5, 100], [0, 200])
+      expect(Number.isFinite(scale(50))).toBe(true)
+      const scaleTwo = logScale([Number.NaN, Number.POSITIVE_INFINITY], [0, 200])
+      expect(Number.isFinite(scaleTwo(50))).toBe(true)
+   })
+
+   it('never emits NaN/Infinity for a non-positive VALUE at call time (defensive clamp)', () => {
+      const scale = logScale([1, 100], [0, 200])
+      expect(Number.isFinite(scale(0))).toBe(true)
+      expect(Number.isFinite(scale(-5))).toBe(true)
+      expect(Number.isFinite(scale(Number.NaN))).toBe(true)
+   })
+
+   it('is monotonic across a wide positive domain', () => {
+      const scale = logScale([1, 1_000_000], [0, 600])
+      expect(scale(10)).toBeGreaterThan(scale(1))
+      expect(scale(100)).toBeGreaterThan(scale(10))
+      expect(scale(1000)).toBeGreaterThan(scale(100))
+   })
+})
+
+// #################
+// # NICE LOG TICKS #
+// #################
+
+describe('niceLogTicks', () => {
+   it('rounds a domain out to bracketing decades', () => {
+      const scale = niceLogTicks(5, 500)
+      expect(scale.niceMin).toBe(1)
+      expect(scale.niceMax).toBe(1000)
+      expect(scale.niceMin).toBeLessThanOrEqual(5)
+      expect(scale.niceMax).toBeGreaterThanOrEqual(500)
+   })
+
+   it('produces decade-only major ticks, ascending, bracketing niceMin/niceMax', () => {
+      const scale = niceLogTicks(1, 10000)
+      expect(scale.ticks).toEqual([1, 10, 100, 1000, 10000])
+      for (let index = 1; index < scale.ticks.length; index++) {
+         expect(scale.ticks[index]).toBeGreaterThan(scale.ticks[index - 1])
+      }
+      expect(scale.ticks[0]).toBe(scale.niceMin)
+      expect(scale.ticks[scale.ticks.length - 1]).toBe(scale.niceMax)
+   })
+
+   it('emits 2x/5x minor ticks per decade for a legible span', () => {
+      const scale = niceLogTicks(1, 100)
+      expect(scale.minorTicks).toContain(2)
+      expect(scale.minorTicks).toContain(5)
+      expect(scale.minorTicks).toContain(20)
+      expect(scale.minorTicks).toContain(50)
+   })
+
+   it('widens a single power-of-10 domain (min === max === a decade) rather than collapsing', () => {
+      const scale = niceLogTicks(100, 100)
+      expect(scale.niceMin).toBeLessThan(scale.niceMax)
+      expect(scale.niceMax).toBe(100)
+   })
+
+   it('drops minor ticks once the span is too wide to read them usefully', () => {
+      const scale = niceLogTicks(1, 10 ** 9)
+      expect(scale.minorTicks.length).toBe(0)
+   })
+
+   it('thins major ticks (but always keeps niceMin and niceMax) for a very wide span', () => {
+      const scale = niceLogTicks(1, 10 ** 15)
+      expect(scale.ticks[0]).toBe(scale.niceMin)
+      expect(scale.ticks[scale.ticks.length - 1]).toBe(scale.niceMax)
+      // 15 decades thinned down, not one tick per decade (16 ticks) unlabeled-dense.
+      expect(scale.ticks.length).toBeLessThan(16)
+   })
+
+   it('recovers to a sane default instead of throwing for a non-positive or non-finite domain', () => {
+      const zero = niceLogTicks(0, 100)
+      expect(Number.isFinite(zero.niceMin)).toBe(true)
+      expect(zero.niceMin).toBeGreaterThan(0)
+      const negative = niceLogTicks(-5, -1)
+      expect(negative.niceMin).toBeGreaterThan(0)
+      const nonFinite = niceLogTicks(Number.NaN, Number.POSITIVE_INFINITY)
+      expect(Number.isFinite(nonFinite.niceMin)).toBe(true)
+      expect(Number.isFinite(nonFinite.niceMax)).toBe(true)
+   })
+
+   it('swaps a reversed domain', () => {
+      const scale = niceLogTicks(1000, 1)
+      expect(scale.niceMin).toBeLessThan(scale.niceMax)
+   })
+
+   it('handles a domain fully inside one decade', () => {
+      const scale = niceLogTicks(20, 80)
+      expect(scale.niceMin).toBe(10)
+      expect(scale.niceMax).toBe(100)
    })
 })
 

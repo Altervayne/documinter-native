@@ -96,7 +96,7 @@ const FALLBACK_FUNCTION_PLOT: FunctionPlot = {
 }
 
 /** Which domain / y-range field is being typed into, holding its raw text so an unparseable
- *  intermediate ("-", "1.") stays on screen without corrupting the stored value — mirrors
+ *  intermediate ("-", "1.") stays on screen without corrupting the stored value, mirrors
  *  GraphDataGrid's `EditingCell`. `yMin`/`yMax` additionally treat a blank field as valid
  *  (autoscale), unlike the required `xMin`/`xMax`/`samples`. */
 interface EditingDomainField {
@@ -129,7 +129,7 @@ interface SortableEquationRowProps {
 /**
  * One equation row made vertically sortable. The row is the sortable NODE; the grab affordance (the
  * grip at the row's leading edge) is wired via the render-prop `handle` so typing in the name /
- * expression fields never starts a drag — only the grip carries the listeners (mirrors
+ * expression fields never starts a drag, only the grip carries the listeners (mirrors
  * GraphDataGrid's SortableCategoryRow).
  */
 function SortableEquationRow({ equationIndex, onContextMenu, children }: SortableEquationRowProps) {
@@ -159,13 +159,13 @@ function SortableEquationRow({ equationIndex, onContextMenu, children }: Sortabl
 /**
  * The Data-tab editor for a `function` chart: a shared domain (x-range + sample count, plus an
  * optional pinned y-range) followed by one row per equation (color swatch + name + expression +
- * remove), replacing `GraphDataGrid` for this type — an equation list has no categories and no
+ * remove), replacing `GraphDataGrid` for this type, an equation list has no categories and no
  * per-cell numeric grid, so it earns its own dedicated surface (mirrors the study's Q6 sketch).
  *
  * Draft/commit model exactly like `GraphDataGrid`: text/number typing drafts on every keystroke
  * (instant preview) and commits on blur; add/remove/color commit immediately. An expression that
  * fails `compileExpression` gets a live invalid-ring + tooltip (the same affordance the numeric
- * grid uses for a bad number) but is never blocked or reverted — the renderer already treats an
+ * grid uses for a bad number) but is never blocked or reverted, the renderer already treats an
  * uncompileable expression as "draw nothing for this curve," so the editor just surfaces that
  * state rather than fighting it.
  */
@@ -412,7 +412,7 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
                {domainField('xMax', t.graphDomainXMax, domain.xMax)}
                {domainField('samples', t.graphDomainSamples, domain.samples)}
             </div>
-            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain —
+            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain,
                 their own labeled sub-group makes that mapping legible; blank = autoscale. */}
             <span className="graph-section-label">{t.graphYRangeSection}</span>
             <div className="graph-domain-row">

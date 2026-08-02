@@ -13,7 +13,7 @@ import type { DocMeta, DocState, Section } from '../types'
 
 /** A serialized document backup: the editable DocState plus the per-document presentation
  *  (theme + accent + export/editor extras), so a re-import restores exactly how the document looked.
- *  Presentation is optional — older backups predate it and fall back to defaults on import. The
+ *  Presentation is optional, older backups predate it and fall back to defaults on import. The
  *  .documinter.json backup is the full-fidelity format, so it DOES carry `presentation` (unlike the
  *  content-only .mint / .md serializers). */
 export interface DocumentBackup extends DocState {

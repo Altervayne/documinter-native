@@ -58,7 +58,7 @@ export const translations = {
       bgMenuCustomAccent:      'Custom accent…',
       bgMenuCustomAccentTitle: 'Custom accent',
       // Accent preset names, shown as the background menu's accent row labels (the swatch
-      // itself conveys the exact color) — one key per ACCENT_PRESETS hex, see
+      // itself conveys the exact color), one key per ACCENT_PRESETS hex, see
       // lib/constants.ts's ACCENT_PRESET_NAME_KEYS for the hex -> key mapping.
       accentNameOrange: 'Orange',
       accentNameBlue:   'Blue',
@@ -93,6 +93,7 @@ export const translations = {
       blockCode:      'Code block',
       blockMath:      'Math',
       blockGraph:     'Chart',
+      blockImageMarkup: 'Image markup',
       blockList:      'List',
       blockChecklist: 'Checklist',
       blockTable:     'Table',
@@ -109,6 +110,7 @@ export const translations = {
       blockCodeDesc:      'Syntax-highlighted snippet',
       blockMathDesc:      'LaTeX equation rendered to MathML',
       blockGraphDesc:     'Bar, line, area or pie chart from a data table',
+      blockImageMarkupDesc: 'Annotate an image with shapes, arrows and text',
       blockListDesc:      'Bullet points with optional sub-items',
       blockChecklistDesc: 'Tickable items, interactive in the export',
       blockTableDesc:     'Rows and columns with headers',
@@ -202,6 +204,11 @@ export const translations = {
       graphOptionPoints:    'Point markers',
       graphOptionFillOpacity: 'Fill opacity',
       graphOptionPeakLine:  'Connect bar tops',
+      graphOptionLogScale:  'Logarithmic scale',
+      graphLogScaleFallbackNotice: 'Log scale needs strictly positive values, showing linear instead.',
+      graphOptionAxisOrigin: 'Custom axis origin',
+      graphAxisOriginX:     'Origin X',
+      graphAxisOriginY:     'Origin Y',
       graphWindowTitle:     'Edit chart',
       graphEditChart:       'Edit chart',
       graphTabVisual:       'Visual',
@@ -216,14 +223,17 @@ export const translations = {
       graphOverlayShowEquation: 'Show equation',
       graphOverlayValue:    'Reference value',
       graphOverlayLabel:    'Label',
+      graphOverlayOrientation:           'Direction',
+      graphOverlayOrientationHorizontal: 'Horizontal',
+      graphOverlayOrientationVertical:   'Vertical',
       graphOverlayEquationExpression:  'Equation expression',
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Add overlay',
       graphRemoveOverlay:   'Remove overlay',
       // Graph <-> table one-shot extract (stage 1 of graph/table linking)
       graphExtractTable:    'Extract data to a table',
-      // Graph <-> table live link (stage 2) — dangling-source notice (falls back to last data)
-      graphSourceMissing:   'Linked table not found — showing last saved data',
+      // Graph <-> table live link (stage 2), dangling-source notice (falls back to last data)
+      graphSourceMissing:   'Linked table not found, showing last saved data',
       // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
       graphLinkSection:       'Table link',
       graphLinkPickTable:     'Link to a table…',
@@ -236,7 +246,7 @@ export const translations = {
       graphMappingOrientColumns: 'Columns are series',
       graphMappingOrientRows:    'Rows are series',
       graphMappingColumn:        'Column',
-      // Graph block editor — function (equation) chart type
+      // Graph block editor, function (equation) chart type
       graphTypeFunction:    'Function',
       graphDomainSection:   'Domain',
       graphYRangeSection:   'Y-axis range (optional)',
@@ -255,7 +265,7 @@ export const translations = {
       graphInsertEquationBefore: 'Insert equation before',
       graphInsertEquationAfter:  'Insert equation after',
       graphInvalidExpression: 'Invalid expression',
-      // Graph block editor — scatter chart type
+      // Graph block editor, scatter chart type
       graphTypeScatter:     'Scatter',
       graphScatterX:        'X',
       graphScatterY:        'Y',
@@ -264,7 +274,7 @@ export const translations = {
       graphReorderPoint:    'Reorder point',
       graphInsertPointBefore:   'Insert point before',
       graphInsertPointAfter:    'Insert point after',
-      // Graph block editor — histogram chart type
+      // Graph block editor, histogram chart type
       graphTypeHistogram:   'Histogram',
       graphHistogramSamples: 'Samples',
       graphHistogramSamplesPlaceholder: 'Paste numbers separated by commas, spaces, or new lines',
@@ -480,7 +490,7 @@ export const translations = {
       importMintdown:      'Import Mintdown',
       exportMintdown:      'Export Mintdown',
       exportHtml:          'Export HTML',
-      // File submenu (reworked) — "Documint" is the user-facing name for the .json format
+      // File submenu (reworked), "Documint" is the user-facing name for the .json format
       fileNewDocument:     'New Documint...',
       menuOpen:            'Open...',
       fileSave:            'Save',
@@ -641,7 +651,7 @@ export const translations = {
       bgMenuCustomAccent:      'Accent personnalisé…',
       bgMenuCustomAccentTitle: 'Accent personnalisé',
       // Accent preset names, shown as the background menu's accent row labels (the swatch
-      // itself conveys the exact color) — one key per ACCENT_PRESETS hex, see
+      // itself conveys the exact color), one key per ACCENT_PRESETS hex, see
       // lib/constants.ts's ACCENT_PRESET_NAME_KEYS for the hex -> key mapping.
       accentNameOrange: 'Orange',
       accentNameBlue:   'Bleu',
@@ -676,6 +686,7 @@ export const translations = {
       blockCode:      'Bloc de code',
       blockMath:      'Formule',
       blockGraph:     'Graphique',
+      blockImageMarkup: 'Annotation d\'image',
       blockList:      'Liste',
       blockChecklist: 'Liste de tâches',
       blockTable:     'Tableau',
@@ -692,6 +703,7 @@ export const translations = {
       blockCodeDesc:      'Extrait avec coloration syntaxique',
       blockMathDesc:      'Équation LaTeX rendue en MathML',
       blockGraphDesc:     'Graphique en barres, courbe, aire ou secteurs depuis un tableau',
+      blockImageMarkupDesc: 'Annoter une image avec des formes, flèches et textes',
       blockListDesc:      'Points avec sous-éléments optionnels',
       blockChecklistDesc: 'Éléments cochables, interactifs dans l\'export',
       blockTableDesc:     'Lignes et colonnes avec en-têtes',
@@ -785,6 +797,11 @@ export const translations = {
       graphOptionPoints:    'Points de données',
       graphOptionFillOpacity: 'Opacité du remplissage',
       graphOptionPeakLine:  'Relier les sommets des barres',
+      graphOptionLogScale:  'Échelle logarithmique',
+      graphLogScaleFallbackNotice: "L'échelle logarithmique nécessite des valeurs strictement positives, affichage linéaire à la place.",
+      graphOptionAxisOrigin: 'Origine personnalisée des axes',
+      graphAxisOriginX:     'Origine X',
+      graphAxisOriginY:     'Origine Y',
       graphWindowTitle:     'Modifier le graphique',
       graphEditChart:       'Modifier le graphique',
       graphTabVisual:       'Visuel',
@@ -799,14 +816,17 @@ export const translations = {
       graphOverlayShowEquation: 'Afficher l\'équation',
       graphOverlayValue:    'Valeur de référence',
       graphOverlayLabel:    'Libellé',
+      graphOverlayOrientation:           'Direction',
+      graphOverlayOrientationHorizontal: 'Horizontale',
+      graphOverlayOrientationVertical:   'Verticale',
       graphOverlayEquationExpression:  'Expression de l\'équation',
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Ajouter une superposition',
       graphRemoveOverlay:   'Supprimer la superposition',
       // Graph <-> table one-shot extract (stage 1 of graph/table linking)
       graphExtractTable:    'Extraire les données vers un tableau',
-      // Graph <-> table live link (stage 2) — dangling-source notice (falls back to last data)
-      graphSourceMissing:   'Tableau lié introuvable — affichage des dernières données',
+      // Graph <-> table live link (stage 2), dangling-source notice (falls back to last data)
+      graphSourceMissing:   'Tableau lié introuvable, affichage des dernières données',
       // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
       graphLinkSection:       'Liaison au tableau',
       graphLinkPickTable:     'Lier à un tableau…',
@@ -819,7 +839,7 @@ export const translations = {
       graphMappingOrientColumns: 'Les colonnes sont les séries',
       graphMappingOrientRows:    'Les lignes sont les séries',
       graphMappingColumn:        'Colonne',
-      // Graph block editor — function (equation) chart type
+      // Graph block editor, function (equation) chart type
       graphTypeFunction:    'Fonction',
       graphDomainSection:   'Domaine',
       graphYRangeSection:   'Plage de l\'axe Y (optionnelle)',
@@ -838,7 +858,7 @@ export const translations = {
       graphInsertEquationBefore: 'Insérer une équation avant',
       graphInsertEquationAfter:  'Insérer une équation après',
       graphInvalidExpression: 'Expression invalide',
-      // Graph block editor — scatter chart type
+      // Graph block editor, scatter chart type
       graphTypeScatter:     'Nuage de points',
       graphScatterX:        'X',
       graphScatterY:        'Y',
@@ -847,7 +867,7 @@ export const translations = {
       graphReorderPoint:    'Réorganiser le point',
       graphInsertPointBefore:   'Insérer un point avant',
       graphInsertPointAfter:    'Insérer un point après',
-      // Graph block editor — histogram chart type
+      // Graph block editor, histogram chart type
       graphTypeHistogram:   'Histogramme',
       graphHistogramSamples: 'Échantillons',
       graphHistogramSamplesPlaceholder: 'Collez des nombres séparés par des virgules, espaces ou retours à la ligne',
@@ -1063,7 +1083,7 @@ export const translations = {
       importMintdown:      'Importer Mintdown',
       exportMintdown:      'Exporter Mintdown',
       exportHtml:          'Exporter HTML',
-      // Sous-menu Fichier (refait) — « Documint » est le nom visible du format .json
+      // Sous-menu Fichier (refait), « Documint » est le nom visible du format .json
       fileNewDocument:     'Nouveau Documint...',
       menuOpen:            'Ouvrir...',
       fileSave:            'Enregistrer',

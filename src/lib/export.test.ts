@@ -2,13 +2,56 @@ import { describe, it, expect } from 'vitest'
 import { generateExportHTML } from './export'
 import type { DocMeta, Block, Section } from '../types'
 import type { GraphSpec } from './graph'
+import type { ImageMarkupSpec } from './imageMarkup'
 import type { Watermark, Header } from './presentation'
+
+// Image-markup export is the full-fidelity path (unlike its `.mint`/`.md` fence, which never
+// carries the base64 pixels, see imageMarkupFence.ts): generateExportHTML must inline the base
+// image verbatim inside the self-contained SVG, same as the graph block bakes a static chart.
+describe('generateExportHTML, image-markup block', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+
+   it('inlines the base64 image inside a self-contained <svg> under .doc-image-markup', () => {
+      const imageMarkup: ImageMarkupSpec = {
+         src: 'data:image/webp;base64,ZZZZ1234', width: 800, height: 600,
+         elements: [{ id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, stroke: '#e5484d' }],
+         alt: 'Annotated screenshot',
+      }
+      const block: Block = { id: 'markup', type: 'image-markup', imageMarkup }
+      const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
+
+      expect(html).toContain('<div class="doc-image-markup"><svg')
+      expect(html).toContain('<image href="data:image/webp;base64,ZZZZ1234"')
+      expect(html).toContain('<title>Annotated screenshot</title>')
+      expect(html).toContain('stroke="#e5484d"')
+      expect(html).toContain('.doc-image-markup')
+   })
+
+   it('is a no-op for a block with no imageMarkup spec', () => {
+      // Note: `.doc-image-markup` CSS is always present in the stylesheet (unconditional, same as
+      // `.doc-graph`/`.doc-math`), the no-op is about the BLOCK markup, not the shared CSS rule.
+      const block: Block = { id: 'markup', type: 'image-markup' }
+      const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
+      expect(html).not.toContain('<div class="doc-image-markup">')
+   })
+
+   it('renders a neutral placeholder ground (never blank/throws) when src is empty', () => {
+      const imageMarkup: ImageMarkupSpec = { src: '', width: 400, height: 300, elements: [] }
+      const block: Block = { id: 'markup', type: 'image-markup', imageMarkup }
+      const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
+      expect(html).toContain('<div class="doc-image-markup"><svg')
+      expect(html).not.toContain('<image')
+   })
+})
 
 // The HTML export renders the freeform metadata fields around the title. These checks pin the
 // per-field presentation rules that are not exercised by the serializer round-trips: color
 // resolution and the showLabel value-only mode.
 
-describe('generateExportHTML — metadata field presentation', () => {
+describe('generateExportHTML, metadata field presentation', () => {
    it('renders a hidden-label field as value-only (no label, no colon)', () => {
       const meta: DocMeta = {
          title: 'Doc',
@@ -39,7 +82,7 @@ describe('generateExportHTML — metadata field presentation', () => {
 // A LINKED graph bakes a STATIC svg at export: generateExportHTML builds the `handle -> table`
 // catalog once from all sections and resolves each linked graph against it (falling back to the
 // graph's materialized snapshot when the source is missing). The exported HTML carries no live link.
-describe('generateExportHTML — linked graph resolution', () => {
+describe('generateExportHTML, linked graph resolution', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
 
    /** A linked bar graph whose stored snapshot is deliberately stale (value 0) vs. the live table. */
@@ -88,7 +131,7 @@ describe('generateExportHTML — linked graph resolution', () => {
          blocks: [linkedGraphBlock('does-not-exist')],
       }]
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
-      // Still bakes a chart (never blank / throws) — from the snapshot, so its label shows.
+      // Still bakes a chart (never blank / throws), from the snapshot, so its label shows.
       expect(html).toContain('<div class="doc-graph"><svg')
       expect(html).toContain('>Stale<')
    })
@@ -97,7 +140,7 @@ describe('generateExportHTML — linked graph resolution', () => {
 // The background watermark is an additive, guarded emission: an absent watermark must leave the
 // export byte-identical to pre-feature output (no markup AND no extra CSS), while a present one bakes
 // a self-contained inline layer with the base64 image.
-describe('generateExportHTML — background watermark', () => {
+describe('generateExportHTML, background watermark', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
    const sections: Section[] = [{ id: 's', title: 'Intro', collapsed: false, blocks: [] }]
    const watermark: Watermark = {
@@ -160,7 +203,7 @@ describe('generateExportHTML — background watermark', () => {
          theme: 'light', accent: '#f97316',
          presentation: { watermark: { ...watermark, rotation: 25, offsetX: 0, offsetY: 0 } },
       })
-      // Scoped to the watermark div's own style attribute — the document also embeds Temml's CSS,
+      // Scoped to the watermark div's own style attribute, the document also embeds Temml's CSS,
       // which legitimately uses `translate(...)` elsewhere, so a page-wide "not contain" would false-fail.
       const watermarkDivStart = html.indexOf('class="doc-watermark"')
       const watermarkDivChunk = html.slice(watermarkDivStart, watermarkDivStart + 400)
@@ -181,7 +224,7 @@ describe('generateExportHTML — background watermark', () => {
          theme: 'light', accent: '#f97316',
          presentation: { watermark: { ...watermark, tile: true } },
       })
-      // No more CSS background-repeat/size markup for the tiled case — it is an SVG pattern now.
+      // No more CSS background-repeat/size markup for the tiled case, it is an SVG pattern now.
       expect(html).not.toContain('background-repeat:repeat')
       expect(html).toContain('<svg class="doc-watermark"')
       expect(html).toContain('<pattern id=')
@@ -221,7 +264,7 @@ describe('generateExportHTML — background watermark', () => {
 // The header logo is the same additive, guarded emission as the watermark: absent ⇒ byte-identical
 // (exactly the pre-feature `<h1>…</h1>`, no extra CSS); present ⇒ a self-contained `<img>` inlined
 // in .page-header, placed/aligned/capped per the model.
-describe('generateExportHTML — header logo', () => {
+describe('generateExportHTML, header logo', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
    const sections: Section[] = [{ id: 's', title: 'Intro', collapsed: false, blocks: [] }]
    const header: Header = {
@@ -345,7 +388,7 @@ describe('generateExportHTML — header logo', () => {
 // renamed / hidden section links, external links (target=_blank rel=noopener), and dividers, and swaps
 // in the `#`-guarded click handler so external links navigate normally.
 
-describe('generateExportHTML — sidebar nav', () => {
+describe('generateExportHTML, sidebar nav', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
    const sections: Section[] = [
       { id: 'a', title: 'Intro',   collapsed: false, blocks: [] },
@@ -433,7 +476,7 @@ describe('generateExportHTML — sidebar nav', () => {
    })
 
    it('appends a section absent from a stored nav (new section auto-appears)', () => {
-      // The stored nav only knows about 'a'; 'b' is a section added later — it must appear at the tail.
+      // The stored nav only knows about 'a'; 'b' is a section added later, it must appear at the tail.
       const html = generateExportHTML(meta, sections, {
          theme: 'light', accent: '#f97316',
          presentation: { nav: { entries: [{ kind: 'auto', sectionId: 'a' }] } },

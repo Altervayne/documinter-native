@@ -6,10 +6,10 @@
  * Exports: DocumentTablesProvider, useDocumentTables, LinkableTablesProvider, useLinkableTables
  *
  * This is the cross-block read seam for the graph<->table LIVE LINK (stage 2 of
- * docs/reference/graph_table_linking_study.md) — the exact analogue of DocumentHandlesContext, one
+ * docs/reference/graph_table_linking_study.md), the exact analogue of DocumentHandlesContext, one
  * axis over: where that context lists every anchor handle, `DocumentTablesContext` maps every
  * HANDLED table block's handle to its cells (the resolver's lookup), and `LinkableTablesContext`
- * (stage 2b, the editor UX) lists EVERY table — handled or not — with enough identity to route a
+ * (stage 2b, the editor UX) lists EVERY table, handled or not, with enough identity to route a
  * mutation back at a pick (see `LinkableTable` in `lib/graphTableData.ts`). Both are built once with
  * a `useMemo` over the active document's `sections` (in WysiwygArea/index.tsx, right beside
  * DocumentHandlesProvider) via the pure `collectTableSources` / `collectLinkableTables`.

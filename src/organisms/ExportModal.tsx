@@ -39,12 +39,12 @@ interface ExportModalProps {
 /**
  * Format-aware Export dialog. A format selector (HTML / Mintdown / Markdown) drives which options
  * and actions are shown. All three reuse the EXISTING serializers:
- *   - HTML     — the presentation options (theme + accent) + generate → downloadHTML / copy. Math
+ *   - HTML    , the presentation options (theme + accent) + generate → downloadHTML / copy. Math
  *                is rendered by Temml, which loads asynchronously, so this path (and ONLY this path)
  *                awaits ensureTemmlReady() before generating. Mintdown/Markdown serialize the LaTeX
  *                source verbatim and need no await.
- *   - Mintdown — documentToMintdown → download (via exportMintdownFile). Lean, no options.
- *   - Markdown — documentToMarkdown → download (via exportMarkdownFile). Lean, no options.
+ *   - Mintdown, documentToMintdown → download (via exportMintdownFile). Lean, no options.
+ *   - Markdown, documentToMarkdown → download (via exportMarkdownFile). Lean, no options.
  */
 export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
@@ -195,7 +195,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      <ColorPicker value={accent} onChange={setAccent} />
                   </div>
 
-                  {/* Presentation launcher — opens the non-modal Presentation window (watermark now;
+                  {/* Presentation launcher, opens the non-modal Presentation window (watermark now;
                       header / nav in later passes). The Export dialog stays the discovery hub; the
                       live editing happens in the window, over the visible document. */}
                   {onOpenPresentation && (

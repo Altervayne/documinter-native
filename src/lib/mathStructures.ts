@@ -1,7 +1,7 @@
 /**
  * mathStructures.ts, pure LaTeX emitters for the math block's structured-construct builders.
  *
- * PURE DATA / PURE FUNCTIONS — side-effect free, imports NOTHING (no Temml, no React).
+ * PURE DATA / PURE FUNCTIONS, side-effect free, imports NOTHING (no Temml, no React).
  * Each function turns a structured description (a grid, a list of rows) into readable,
  * multi-line LaTeX source. That source lands verbatim in the math block's LaTeX textarea,
  * so human-legibility of the output is a feature: a user can keep hand-editing it afterwards.

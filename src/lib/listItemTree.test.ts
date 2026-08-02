@@ -87,7 +87,7 @@ describe('unindentListItem', () => {
          ] },
       ]
       const result = unindentListItem(tree, 'C')
-      // C moves out of B to sit after B inside A's children — it does NOT jump to the root.
+      // C moves out of B to sit after B inside A's children, it does NOT jump to the root.
       expect(result.map(item => item.id)).toEqual(['A'])
       expect(result[0].children.map(item => item.id)).toEqual(['B', 'C'])
       const movedSibling = result[0].children.find(item => item.id === 'B')!

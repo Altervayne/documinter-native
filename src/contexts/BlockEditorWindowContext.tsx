@@ -1,10 +1,10 @@
 /**
- * BlockEditorWindowContext — coordinates the single floating block-editor window.
+ * BlockEditorWindowContext, coordinates the single floating block-editor window.
  *
  * Exports: BlockEditorWindowProvider, useBlockEditorWindow
  *
  * Holds ONLY ephemeral UI state: the id of the block whose editor window is currently open.
- * This is deliberately NOT part of `OpenDocument` / `sections` — opening an editor must never
+ * This is deliberately NOT part of `OpenDocument` / `sections`, opening an editor must never
  * dirty the document or trigger autosave. Mounted at the WysiwygArea root (beside DocThemeProvider)
  * so every block reads `openBlockId === block.id` without prop-threading. Single-window rule:
  * opening one block's editor replaces any other. The window closes on tab switch (the provider
@@ -29,7 +29,7 @@ interface BlockEditorWindowContextValue {
    /** Convenience predicate a block uses to decide its inline-vs-window presentation. */
    isEditing:   (blockId: string) => boolean
    /**
-    * Clear the open id only if it is this block's — the unmount safety a block calls on teardown
+    * Clear the open id only if it is this block's, the unmount safety a block calls on teardown
     * so a deleted / undone-away block never leaves a dangling open id in the context.
     */
    clearIfEditing: (blockId: string) => void
@@ -56,7 +56,7 @@ const BlockEditorWindowContext = createContext<BlockEditorWindowContextValue>({
 interface BlockEditorWindowProviderProps {
    /**
     * A value that changes on tab switch (the active tab key). When it changes the open window is
-    * closed — the open block belongs to the outgoing tab and may not exist in the incoming one.
+    * closed, the open block belongs to the outgoing tab and may not exist in the incoming one.
     */
    resetKey: string | undefined
    children: ReactNode
@@ -65,7 +65,7 @@ interface BlockEditorWindowProviderProps {
 export function BlockEditorWindowProvider({ resetKey, children }: BlockEditorWindowProviderProps) {
    const [openBlockId, setOpenBlockId] = useState<string | null>(null)
 
-   // Close the window whenever the active tab changes — the documented "adjust state during render
+   // Close the window whenever the active tab changes, the documented "adjust state during render
    // when a prop changes" pattern (a previous-value state paired with a render-time set), which
    // resets in the same commit with no extra effect / cascading render.
    const [previousResetKey, setPreviousResetKey] = useState(resetKey)
@@ -79,7 +79,7 @@ export function BlockEditorWindowProvider({ resetKey, children }: BlockEditorWin
       openEditor:     blockId => setOpenBlockId(blockId),
       closeEditor:    () => setOpenBlockId(null),
       isEditing:      blockId => openBlockId === blockId,
-      // Functional update so the compare reads the live value, never a stale closure — safe to
+      // Functional update so the compare reads the live value, never a stale closure, safe to
       // call from an unmount cleanup that captured an older render's context.
       clearIfEditing: blockId => setOpenBlockId(current => (current === blockId ? null : current)),
    }

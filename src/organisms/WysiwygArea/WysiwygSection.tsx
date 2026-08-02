@@ -36,7 +36,7 @@ import type { Block, Section } from '../../types'
 interface WysiwygSectionProps {
    section:         Section
    index:           number
-   /** Whether this is the last section in the document — disables the section menu's Move down. */
+   /** Whether this is the last section in the document, disables the section menu's Move down. */
    isLastSection?:  boolean
    activeSectionId: string | null
    readOnly?:       boolean
@@ -99,7 +99,7 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
       setSectionMenu({ x: event.clientX, y: event.clientY })
    }
 
-   /** Focuses the section title for editing — the "Rename" menu action. Queried by the section's
+   /** Focuses the section title for editing, the "Rename" menu action. Queried by the section's
     *  own data-section-id rather than a ref, since PlainEditable doesn't forward one. */
    function focusTitle() {
       const titleEl = document.querySelector<HTMLElement>(`[data-section-id="${section.id}"] h2`)
@@ -134,7 +134,7 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
          {/* DnD section insertion indicator */}
          {!readOnly && isOver && activeSectionId !== section.id && <DropIndicator />}
 
-         {/* Drag handle, always in DOM to hold the 2rem gutter — section chrome, opens the section menu */}
+         {/* Drag handle, always in DOM to hold the 2rem gutter, section chrome, opens the section menu */}
          <div
             {...(readOnly ? {} : listeners)}
             className="sec-drag-handle"

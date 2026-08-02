@@ -17,11 +17,11 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   optimizeDeps: {
-    // Vite's dependency pre-bundler mangles Temml's LaTeX tokenizer — it truncates
+    // Vite's dependency pre-bundler mangles Temml's LaTeX tokenizer, it truncates
     // every control word to its first letter (\pi -> \p, \frac -> \f), so equations
     // fail to render. Excluding Temml serves its raw ESM build, which tokenizes
     // correctly. Keep this (and the `?url` load in src/lib/math.ts) until the upstream
-    // Rolldown bug is fixed — docs/reference/rolldown-temml-bundler-bug.md (filable issue)
+    // Rolldown bug is fixed, docs/reference/rolldown-temml-bundler-bug.md (filable issue)
     // + docs/reports/2026-07-31-temml-optimizedeps-fix.md.
     exclude: ['temml'],
   },
@@ -51,7 +51,7 @@ export default defineConfig({
 
       workbox: {
         // `mjs` is required so Temml's raw ESM asset (temml-[hash].mjs, loaded at
-        // runtime via `?url` — see src/lib/math.ts) is precached; without it the
+        // runtime via `?url`, see src/lib/math.ts) is precached; without it the
         // dynamic import fails offline and math stops rendering.
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,woff2}'],
         runtimeCaching: [

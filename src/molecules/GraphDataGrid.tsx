@@ -96,7 +96,7 @@ interface GraphDataGridProps {
 }
 
 /** The transient raw text of the one numeric cell being typed into (survives un-parseable
- *  mid-typing states like "1." or "-" without losing the keystroke — see handleCellChange).
+ *  mid-typing states like "1." or "-" without losing the keystroke, see handleCellChange).
  *  `categoryIndex`/`seriesIndex` are MODEL coordinates (setCell's row/series), independent of which
  *  axis renders as table rows. `invalid` flags non-numeric text so the cell shows a warning ring. */
 interface EditingCell {
@@ -107,7 +107,7 @@ interface EditingCell {
 }
 
 /** Which swatch popover is open: a per-series color (multi-series column header) or a per-category
- *  color (single-series table — a radial slice or a simple-bar bar). */
+ *  color (single-series table, a radial slice or a simple-bar bar). */
 type ColorTarget =
    | { kind: 'series'; index: number; rect: DOMRect }
    | { kind: 'slice';  index: number; rect: DOMRect }
@@ -173,7 +173,7 @@ interface SortableCategoryRowProps {
 /**
  * A `<tr>` category row made vertically sortable. The row is the sortable NODE; the actual grab
  * affordance (the grip in the leading cell) is wired via the render-prop `handle` so that typing in
- * a cell input never starts a drag — only the grip carries the listeners.
+ * a cell input never starts a drag, only the grip carries the listeners.
  */
 function SortableCategoryRow({ categoryIndex, children }: SortableCategoryRowProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
@@ -231,7 +231,7 @@ function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: Sortable
 
 /**
  * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series
- * or MANY (not radial-vs-cartesian — a simple `bar` is single-series and shares the radial shape).
+ * or MANY (not radial-vs-cartesian, a simple `bar` is single-series and shares the radial shape).
  * BOTH shapes are now categories = ROWS (scroll vertically, uncapped), which unifies their layout
  * and keeps the horizontally-bounded axis (≤ MAX_SERIES) as the columns:
  *
@@ -240,7 +240,7 @@ function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: Sortable
  *     series' color swatch + name + remove + drag handle, plus a trailing "+" to add a series up to
  *     MAX_SERIES). A "+ Category" footer row adds a category. Body cells are numeric, category x
  *     series.
- *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows — each is
+ *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows, each is
  *     the category's own color swatch (per-category color) + label + its single value + remove, with
  *     a "+" footer that adds a category. No series axis. Radial reads "slice" and defaults each
  *     swatch to a palette slot per index; simple bar reads "bar"/"category" and defaults each swatch
@@ -256,7 +256,7 @@ function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: Sortable
 export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: GraphDataGridProps) {
    const { labels, series, categoryColors } = spec.data
    // Radial keeps its "slice" identity; a simple `bar` is ALSO single-series (it renders series[0]
-   // only), so it shares the category-row table shape — the difference is only wording + the
+   // only), so it shares the category-row table shape, the difference is only wording + the
    // per-category color default (radial = a palette slot per index; bar = the one uniform base).
    const isRadial = RADIAL_TYPES.has(spec.type)
    const isSingleSeries = isRadial || spec.type === 'bar'
@@ -320,7 +320,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    //  Cell rendering
    // ================
    // Show the transient raw text while a cell is being typed into; otherwise the stored number
-   // (an empty string for a null gap — the muted "–" placeholder then reads the cell as a gap).
+   // (an empty string for a null gap, the muted "–" placeholder then reads the cell as a gap).
    function cellText(categoryIndex: number, seriesIndex: number, value: number | null | undefined): string {
       if (editingCell && editingCell.categoryIndex === categoryIndex && editingCell.seriesIndex === seriesIndex) {
          return editingCell.text
@@ -364,7 +364,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ================
    // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell. With
    // categories = rows and series = columns, pasted ROWS map to CATEGORIES (downward, uncapped) and
-   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES) — matching the new orientation.
+   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES), matching the new orientation.
    // Non-numeric cells land as null. Applied over the pure transforms, committed once.
    function handleMultiSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
@@ -644,7 +644,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    )
 
    // #################
-   // # SINGLE-SERIES #  (rows = categories: swatch + label + value + remove — radial slices AND
+   // # SINGLE-SERIES #  (rows = categories: swatch + label + value + remove, radial slices AND
    // #################   simple bars; wording + swatch-color default branch on the chart type)
    const singleSeriesTable = (
       <table className="graph-grid-table">

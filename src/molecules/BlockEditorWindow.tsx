@@ -92,7 +92,7 @@ function computeInitialPosition(
  * A floating, draggable, NON-MODAL window hosting a block's full editing UI. Portaled to the body
  * (escaping the block's DnD transform / overflow context), position: fixed, with a drag title bar
  * and a bottom-right resize grip (both via useDraggableWindow). Unlike every other overlay in the
- * app it has NO backdrop and does NOT close on outside-click or scroll — the document stays live
+ * app it has NO backdrop and does NOT close on outside-click or scroll, the document stays live
  * behind it; only the close button and Escape dismiss it. Below a narrow breakpoint it degrades to
  * a near-full-screen sheet with drag/resize disabled.
  *
@@ -110,7 +110,7 @@ export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true,
       return () => window.removeEventListener('resize', handleResize)
    }, [])
 
-   // Initial placement computed once from the anchor rect (lazy initializer — no recompute on
+   // Initial placement computed once from the anchor rect (lazy initializer, no recompute on
    // every render; a re-open remounts this component and recomputes fresh).
    const [initialPosition] = useState<WindowPosition>(() =>
       computeInitialPosition(anchorRect, DEFAULT_SIZE, { width: window.innerWidth, height: window.innerHeight }),
@@ -128,7 +128,7 @@ export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true,
    const windowRef = useRef<HTMLDivElement>(null)
 
    // Focus moves into the window on open; the previously-focused element is restored on close.
-   // Non-modal, so no focus trap — the user may Tab back out to the document. Skipped entirely
+   // Non-modal, so no focus trap, the user may Tab back out to the document. Skipped entirely
    // when focusOnOpen is false (a tool window that must leave the underlying textarea focused).
    useEffect(() => {
       if (!focusOnOpen) return
@@ -171,14 +171,14 @@ export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true,
          aria-label={title}
          className={isSheet ? 'block-editor-window block-editor-window-sheet' : 'block-editor-window'}
          style={windowStyle}
-         // The window portals to <body>, but React bubbles SYNTHETIC events up the React tree — so a
+         // The window portals to <body>, but React bubbles SYNTHETIC events up the React tree, so a
          // right-click inside the window would otherwise reach the host block's onContextMenu and open
          // the document's block/section menu ON TOP of any editor menu. Stop it at the window root: the
          // editor's own row context menus have already fired (they're inner targets); this only blocks
          // the drill-through to the document. Not preventDefault'd, so native input menus still work.
          onContextMenu={event => event.stopPropagation()}
       >
-         {/* Title bar — the drag handle (inert in sheet mode). */}
+         {/* Title bar, the drag handle (inert in sheet mode). */}
          <div className="block-editor-window-titlebar" {...(isSheet ? {} : drag.titleBarProps)}>
             {icon && <span className="block-editor-window-icon">{icon}</span>}
             <span className="block-editor-window-title">{title}</span>
@@ -193,7 +193,7 @@ export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true,
             </button>
          </div>
 
-         {/* Body — the block's expanded editor; scrolls within the window. */}
+         {/* Body, the block's expanded editor; scrolls within the window. */}
          <div className="block-editor-window-body">
             {children}
          </div>

@@ -2,11 +2,11 @@
  * imageDownscale.ts, Shared image import → downscaled base64 utility.
  *
  * A reusable pick-to-base64 helper for the presentation features (watermark now; header/logo next)
- * and — eventually — the image block. Unlike compressImage (image.ts), which is tuned for inline
+ * and, eventually, the image block. Unlike compressImage (image.ts), which is tuned for inline
  * content (1200x900, JPEG), this one:
  *   - caps the LONGEST EDGE (so a wide banner logo isn't over-shrunk on its short axis),
  *   - PRESERVES TRANSPARENCY (logos need alpha), re-encoding to PNG or WebP and keeping the smaller,
- *   - never hard-blocks a large image — it just downscales.
+ *   - never hard-blocks a large image, it just downscales.
  *
  * The pure size math (fitWithinLongestEdge) is factored out and unit-tested; the canvas encode is
  * browser-only (jsdom has no real canvas) and therefore not covered by unit tests.
@@ -18,7 +18,7 @@ export const DEFAULT_MAX_EDGE = 2048
 /**
  * Scale a width/height down so its longest edge is at most maxEdge, preserving aspect ratio.
  * Never scales UP (an image already within the cap is returned rounded, unchanged in size). Pure,
- * no DOM — this is the piece the unit tests exercise.
+ * no DOM, this is the piece the unit tests exercise.
  */
 export function fitWithinLongestEdge(
    width:  number,
@@ -57,8 +57,8 @@ export interface DownscaledImage {
 
 /**
  * Downscale an image File to a base64 data URL whose longest edge is at most maxEdge, alongside the
- * dimensions it was encoded at (callers that need the natural aspect ratio — e.g. the watermark tile
- * pattern — derive it from width / height rather than re-loading the file).
+ * dimensions it was encoded at (callers that need the natural aspect ratio, e.g. the watermark tile
+ * pattern, derive it from width / height rather than re-loading the file).
  *
  * Transparency is preserved: a transparent source is re-encoded as WebP and PNG (both keep alpha)
  * and the smaller is kept; an opaque source is re-encoded as WebP and JPEG and the smaller is kept.

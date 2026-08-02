@@ -261,7 +261,7 @@ describe('graphTableData, collectLinkableTables', () => {
 describe('graphTableData, resolveGraphSpec (live link resolution)', () => {
    const linkedSpec: GraphSpec = {
       type: 'bar',
-      // The materialized snapshot (stale on purpose — the live table below has fresher numbers).
+      // The materialized snapshot (stale on purpose, the live table below has fresher numbers).
       data: { labels: ['A'], series: [{ name: 'V', values: [0] }] },
       options: { title: 'Linked' },
       source: { handle: 'src' },

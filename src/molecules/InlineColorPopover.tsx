@@ -58,14 +58,14 @@ const TRIGGER_GAP = 6
 export function InlineColorPopover({ activeColor, anchorRef, palette, recent, paletteLabel, recentLabel, removeLabel, onApply, onClose }: InlineColorPopoverProps) {
    const popoverRef = useRef<HTMLDivElement>(null)
 
-   // Position relative to the trigger's own box (this popover's containing block —
+   // Position relative to the trigger's own box (this popover's containing block,
    // it's `position: absolute` inside the trigger's `position: relative` wrapper).
    const [position, setPosition] = useState<Pos>({ top: 0, left: 0 })
 
    // Measures the popover's real rendered size on mount (this component mounts fresh
    // each time it opens, so "once on mount" naturally recomputes for new content), then
    // clamps the desired centered-below-trigger position two-sided so it can never
-   // render partly off-screen — compounds correctly even when the trigger itself
+   // render partly off-screen, compounds correctly even when the trigger itself
    // (FormatToolbar) is already clamped near an edge. Both refs are read here, inside
    // the effect, never during render.
    useLayoutEffect(() => {
@@ -98,7 +98,7 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, pa
          }}
          onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
       >
-         {/* Palette row, recents row, and custom picker — all rendered by the package.
+         {/* Palette row, recents row, and custom picker, all rendered by the package.
              The palette/recents sit on top (swatchesPosition="top"); the swatch matching
              `value` is auto-highlighted. A swatch/recent pick is discrete and closes; an
              input/slider/eyedropper adjustment applies live and stays open. */}

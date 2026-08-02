@@ -1,7 +1,7 @@
 /**
  * DocThemeContext, Provides the active document theme ('light' | 'dark') to blocks that must
  * bake theme-specific colors into their own markup (the graph block, whose SVG carries literal
- * hex rather than CSS variables — the same reason the HTML export bakes a single theme).
+ * hex rather than CSS variables, the same reason the HTML export bakes a single theme).
  *
  * Exports: DocThemeProvider, useDocTheme
  *

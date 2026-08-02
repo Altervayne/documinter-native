@@ -33,7 +33,7 @@ export const GRAPH_SERIES_LIGHT = [
 ] as const
 
 /**
- * The same 8 hues re-stepped for the DARK chart surface (#1a1a19) — a selected dark column,
+ * The same 8 hues re-stepped for the DARK chart surface (#1a1a19), a selected dark column,
  * not an automatic lightening of the light set. Validated as its own set (worst adjacent
  * colorblind dE 8.4, worst adjacent normal-vision dE 19.3).
  */
@@ -99,7 +99,7 @@ export const DARK_GRAPH_THEME: GraphTheme = {
  *
  * Precedence: a non-empty per-series `override` wins (this is the author's "match my
  * document colors" hook); otherwise the palette slot at `seriesIndex`. The slot index wraps
- * modulo the palette length (the 8-color cap) so an out-of-range index never throws — but
+ * modulo the palette length (the 8-color cap) so an out-of-range index never throws, but
  * note the renderer caps drawn series at {@link MAX_SERIES}, so wrapping is a defensive
  * fallback, not an expected code path.
  */
@@ -124,7 +124,7 @@ export function resolveSeriesColor(
 
 /**
  * The sRGB relative luminance (0..1) of a `#rrggbb` / `#rgb` hex color. Used to pick a
- * readable label color for text set INSIDE a colored fill (pie/donut slice labels — the one
+ * readable label color for text set INSIDE a colored fill (pie/donut slice labels, the one
  * place text sits on a series color). Returns 0 for an unparseable input (treated as dark).
  */
 export function relativeLuminance(hexColor: string): number {

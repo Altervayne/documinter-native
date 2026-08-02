@@ -92,7 +92,7 @@ function createBlankDocument(sectionTitle: string, pendingFolderId: string | nul
    }
 }
 
-// Build an open tab from a stored document (fresh tabKey, clean — it's in sync with storage).
+// Build an open tab from a stored document (fresh tabKey, clean, it's in sync with storage).
 // Shared by reload restore and open-from-binder.
 function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): OpenDocument {
    return {
@@ -138,7 +138,7 @@ export default function App() {
       .filter((id): id is string => id !== null)
 
    // The setter lever (TABS_STUDY §3.2): hand the mutation hooks a Section[] setter that updates only
-   // the active tab. The hooks are unchanged — they still receive a Dispatch<SetStateAction<Section[]>>.
+   // the active tab. The hooks are unchanged, they still receive a Dispatch<SetStateAction<Section[]>>.
    const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current
@@ -161,7 +161,7 @@ export default function App() {
          document.tabKey === activeTabKeyRef.current ? { ...document, presentation: next } : document))
    }, [])
    // Per-tab save-status setter. Status lives on each OpenDocument (phase 2), so the autosave cycle,
-   // persistNow, and the fade timer target a specific tab by key — the active tab for live edits, or
+   // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
    // the captured originating tab for an async save's resolution (TABS_STUDY §4.2).
    const setTabSaveStatus = useCallback((tabKey: string, status: SaveStatus) => {
       setOpenDocuments(documents => documents.map(document =>
@@ -267,7 +267,7 @@ export default function App() {
       setActiveTabKey(newTabKey)
    }, [])
 
-   // One-time async hydration: restore every open tab from last session (eager — each document is
+   // One-time async hydration: restore every open tab from last session (eager, each document is
    // loaded in full), or migrate a legacy localStorage autosave. The blank default shows until this
    // resolves; if nothing survives it stays (the always-have-a-document invariant).
    useEffect(() => {
@@ -326,7 +326,7 @@ export default function App() {
    useEffect(() => {
       if (skipNextAutosaveRef.current) {
          skipNextAutosaveRef.current = false
-         // A skipped cycle is a programmatic load/replace/hydration — the active tab is already in
+         // A skipped cycle is a programmatic load/replace/hydration, the active tab is already in
          // sync with storage, so force it clean. Without this, a transient 'dirty' set for the
          // pre-hydration blank (e.g. by StrictMode's double-invoked mount cycle) is never cleared,
          // sticking the pill at "Unsaved changes" after a reload with no save actually pending.
@@ -377,7 +377,7 @@ export default function App() {
 
    // Cancel any pending autosave and write the active document immediately. Awaitable so callers
    // (manual save, opening the binder, Save As) can flush before continuing. Returns the binder id
-   // the active tab was saved under (newly assigned if it had none), or null on failure — callers
+   // the active tab was saved under (newly assigned if it had none), or null on failure, callers
    // that need the id can use it directly rather than re-reading openDocumentsRef, whose promotion
    // hasn't synced back to the ref yet at the await boundary.
    const persistNow = useCallback(async (): Promise<string | null> => {
@@ -438,7 +438,7 @@ export default function App() {
    }, [t, activateTab])
 
    // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
-   // neighbor (right, else left). If it was the last tab, respawn a blank — openDocuments is never
+   // neighbor (right, else left). If it was the last tab, respawn a blank, openDocuments is never
    // empty (the always-have-a-document invariant now lives on the tab list).
    const performCloseTab = useCallback((tabKey: string) => {
       const documentsBefore = openDocumentsRef.current
@@ -470,7 +470,7 @@ export default function App() {
       }
    }, [t])
 
-   // Reorder the tab strip. Only the array order changes — the active tab's content + identity are
+   // Reorder the tab strip. Only the array order changes, the active tab's content + identity are
    // untouched (activeTabKey is unchanged), so this triggers no autosave and no activation.
    const reorderTabs = useCallback((fromIndex: number, toIndex: number) => {
       setOpenDocuments(documents => arrayMove(documents, fromIndex, toIndex))
@@ -555,7 +555,7 @@ export default function App() {
 
    // Duplicate a tab's document via the binder and open the copy as a new tab. The copy is made from
    // the binder record, so the source must be persisted first: the active tab may hold unsaved edits
-   // or (if pristine) have no record yet — persist it and use persistNow's returned id (its promotion
+   // or (if pristine) have no record yet, persist it and use persistNow's returned id (its promotion
    // hasn't synced to openDocumentsRef at this await boundary). A non-active pristine tab has nothing
    // stored to copy, so it no-ops.
    const handleDuplicateTab = useCallback(async (sourceTabKey: string) => {
@@ -591,7 +591,7 @@ export default function App() {
    // Fork & switch: persist the active document so the ORIGINAL is a frozen binder record, duplicate
    // it (the copy keeps the document's own title verbatim), file the copy into the chosen folder,
    // then re-point the active tab to the copy. Further edits save to the copy; the original is left
-   // untouched. The title is never changed here — it's part of the document, renamed in the tab.
+   // untouched. The title is never changed here, it's part of the document, renamed in the tab.
    const handleConfirmSaveAs = useCallback(async (destinationFolderId: string) => {
       const dialog = saveAsDialog
       setSaveAsDialog(null)
@@ -737,7 +737,7 @@ export default function App() {
    }, [binderOpen, handleNewDocumentFromBinder, addNewTab])
 
    // Close the binder back to the editor. The always-have-a-document invariant now lives on the tab
-   // list (openDocuments is never empty), so there is always a tab to return to — just close.
+   // list (openDocuments is never empty), so there is always a tab to return to, just close.
    const handleCloseBinder = useCallback(() => {
       setBinderOpen(false)
    }, [])

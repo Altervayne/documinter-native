@@ -31,6 +31,9 @@ import {
    FUNCTION_MAX_SAMPLES,
    HISTOGRAM_MIN_BINS,
    HISTOGRAM_MAX_BINS,
+   supportsLogScale,
+   computeHistogramBins,
+   computeFunctionYDomain,
 } from './graph'
 
 // ###########
@@ -57,7 +60,7 @@ function cloneData(spec: GraphSpec): GraphData {
  * Reassemble a fresh spec from freshly-cloned data, carrying type + options + (when present)
  * functionPlot through unchanged. Spreading `spec` first (rather than listing `type`/`data`/
  * `options` by hand) is what keeps a spec's `functionPlot` payload alive across every data-editing
- * transform below — dropping it here would silently wipe an author's equations the next time they,
+ * transform below,ropping it here would silently wipe an author's equations the next time they,
  * say, add a category on an unrelated bar chart's spec object reached via a shared helper.
  */
 function withData(spec: GraphSpec, data: GraphData): GraphSpec {
@@ -67,7 +70,7 @@ function withData(spec: GraphSpec, data: GraphData): GraphSpec {
 /**
  * Move the item at `fromIndex` to `toIndex` IN PLACE (the array is already a fresh clone by the
  * time this is called). Splice-out then splice-in, so every item between the two positions shifts
- * by one — the standard drag-reorder semantics dnd-kit's sortable produces.
+ * by one,the standard drag-reorder semantics dnd-kit's sortable produces.
  */
 function moveArrayItem<Item>(array: Item[], fromIndex: number, toIndex: number): void {
    const [moved] = array.splice(fromIndex, 1)
@@ -180,7 +183,7 @@ export function setLabel(spec: GraphSpec, rowIndex: number, text: string): Graph
 }
 
 /**
- * Set (or clear) the per-category (per-slice) color override at `categoryIndex` — the radial
+ * Set (or clear) the per-category (per-slice) color override at `categoryIndex`,the radial
  * counterpart to {@link setSeriesColor}. Passing `undefined` clears the slot back to the palette
  * color; if that leaves every slot cleared, the whole `categoryColors` array is dropped so the
  * spec stays lean. The array is padded with `undefined` up to the label count so it stays aligned
@@ -301,7 +304,7 @@ export function setCell(spec: GraphSpec, rowIndex: number, seriesIndex: number, 
  * Switch the chart type, carrying data + options + any existing functionPlot/scatterPlot/
  * histogramData through unchanged. Switching TO `function` for the first time (no functionPlot
  * yet) seeds one from the FUNCTION_DEFAULT_* constants + a single blank equation, so the Data
- * tab's EquationEditor always has something real to render the moment the type card is clicked —
+ * tab's EquationEditor always has something real to render the moment the type card is clicked,
  * never an undefined payload. Switching TO `scatter` for the first time (no scatterPlot yet)
  * similarly seeds one series with a single point at the origin, so the Data tab's ScatterEditor
  * always has something real to render. Switching TO `histogram` for the first time (no
@@ -320,7 +323,7 @@ export function setType(spec: GraphSpec, type: GraphType): GraphSpec {
       next.histogramData = ensureHistogramData(spec)
    }
    // A type change RESETS the explicit y-axis range (yMin/yMax). These are only ever set through the
-   // function editor (a function-specific concern — pinning a range so the asymptote heuristic bites),
+   // function editor (a function-specific concern, pinning a range so the asymptote heuristic bites),
    // and a range that's reasonable for f(x) is usually insane for a bar/line chart, which would leave
    // the new chart unviewable. Dropping them lets the new type auto-scale to a sensible range.
    if (type !== spec.type && (next.options.yMin !== undefined || next.options.yMax !== undefined)) {
@@ -329,14 +332,32 @@ export function setType(spec: GraphSpec, type: GraphType): GraphSpec {
       delete options.yMax
       next.options = options
    }
+   // Switching to a type that can't render a log value axis (pie/donut/bar-stacked, see
+   // supportsLogScale) drops a stale `yScale: 'log'` rather than leaving it silently unused: the
+   // renderer would ignore it anyway, but clearing it keeps the stored spec honest about what is
+   // actually in effect, and means switching back later starts from a clean 'linear' default.
+   if (type !== spec.type && next.options.yScale === 'log' && !supportsLogScale(type)) {
+      const options: GraphOptions = { ...next.options }
+      delete options.yScale
+      next.options = options
+   }
+   // A custom axis origin (textbook axes) is a continuous-x/y concept, only `function`/`scatter`
+   // render it. Switching to any other type drops a stale `axisOrigin` rather than leaving it
+   // silently unused (the renderer would ignore it anyway), keeping the stored spec honest and
+   // matching the yScale-drop just above.
+   if (type !== spec.type && next.options.axisOrigin !== undefined && type !== 'function' && type !== 'scatter') {
+      const options: GraphOptions = { ...next.options }
+      delete options.axisOrigin
+      next.options = options
+   }
    return next
 }
 
 /**
  * Set one presentation option. Passing `undefined` DELETES the key (keeps a freshly-toggled-off
- * option out of the serialized spec, so the stored graph stays lean — the same "absent means
+ * option out of the serialized spec, so the stored graph stays lean, the same "absent means
  * default" discipline the renderer's options already follow). Carries `functionPlot` through
- * unchanged (via the `{ ...spec }` spread) — an option toggle on a `function` chart must never
+ * unchanged (via the `{ ...spec }` spread), an option toggle on a `function` chart must never
  * wipe its equations.
  */
 export function setOption<Key extends keyof GraphOptions>(
@@ -351,6 +372,52 @@ export function setOption<Key extends keyof GraphOptions>(
       options[key] = value
    }
    return { ...spec, options }
+}
+
+/**
+ * Whether a chart requesting `options.yScale === 'log'` would actually render on a log axis, or
+ * silently fall back to linear because its own data touches zero or goes negative, log is
+ * undefined at <= 0 (see `graph/cartesian.ts`'s per-type axis-mode resolution, which this MIRRORS
+ * for an editor-only in-editor fallback notice; it is not itself consulted by the renderer). Used
+ * by GraphBlock.tsx to show a small "showing linear instead" hint rather than leaving an author
+ * wondering why a toggled-on log axis looks unchanged (previously this was the ONLY log-enabled
+ * type with no fallback notice at all, which read as "log scale doesn't do anything" for a
+ * function whose sampled curve dips to/through zero, see docs/reports/
+ * 2026-08-02-graph-log-scale-function-fix.md).
+ *
+ * Returns `false` (nothing to warn about) whenever log isn't even requested, or the type doesn't
+ * support it at all (see {@link supportsLogScale}, the toggle is hidden in that case anyway).
+ *
+ * `function` charts reuse {@link computeFunctionYDomain}, the EXACT same expression-sampling +
+ * domain pipeline `renderFunctionPlot` resolves its own axis-mode decision from, rather than
+ * re-implementing (and risking drifting from) that logic here.
+ */
+export function logScaleWouldFallBackToLinear(spec: GraphSpec): boolean {
+   if (spec.options.yScale !== 'log' || !supportsLogScale(spec.type)) return false
+
+   if (spec.type === 'function') {
+      const [domainMin, domainMax] = computeFunctionYDomain(spec)
+      return !(Number.isFinite(domainMin) && Number.isFinite(domainMax) && domainMin > 0)
+   }
+
+   if (spec.type === 'scatter') {
+      const finiteYValues = (spec.scatterPlot?.series ?? [])
+         .flatMap(series => series.points.map(point => point.y))
+         .filter(value => Number.isFinite(value))
+      if (finiteYValues.length === 0) return false
+      return Math.min(...finiteYValues) <= 0
+   }
+
+   if (spec.type === 'histogram') {
+      const { counts } = computeHistogramBins(spec.histogramData?.samples ?? [], spec.histogramData?.bins)
+      return !counts.some(count => count > 0)
+   }
+
+   const finiteValues = spec.data.series
+      .flatMap(series => series.values)
+      .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value))
+   if (finiteValues.length === 0) return false
+   return Math.min(...finiteValues) <= 0
 }
 
 // ####################
@@ -396,7 +463,7 @@ export function updateOverlay(spec: GraphSpec, overlayIndex: number, partial: Pa
 // ############################
 //
 // The `function` chart type's payload (`GraphSpec.functionPlot`) is a completely different shape
-// from `data`/`series` — a shared domain plus a list of named equations — so it gets its own small
+// from `data`/`series`, a shared domain plus a list of named equations, so it gets its own small
 // family of transforms here rather than being shoehorned through the category/series helpers
 // above. Every helper below shares the same two invariants as the rest of this file:
 //   - NON-EMPTY: the last remaining equation is never removed (keep >= 1).
@@ -468,7 +535,7 @@ export function removeEquation(spec: GraphSpec, equationIndex: number): GraphSpe
 /**
  * Set the `name` or `expression` text of the equation at `equationIndex`. Out-of-range returns the
  * spec with `functionPlot` merely seeded (no equation changed). An unparseable `expression` is
- * still written here — {@link addEquation}'s "never breaks the chart" contract means an
+ * still written here, {@link addEquation}'s "never breaks the chart" contract means an
  * uncompileable expression simply draws nothing until it parses; validating and blocking the
  * keystroke is the editor's job (a live invalid-ring affordance), not this pure transform's.
  */
@@ -486,7 +553,7 @@ export function setEquationField(
 }
 
 /**
- * Set (or clear) the per-equation color override at `equationIndex` — the function-chart
+ * Set (or clear) the per-equation color override at `equationIndex`, the function-chart
  * counterpart to {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely,
  * resetting the curve back to its palette slot. Out-of-range returns the spec with `functionPlot`
  * merely seeded.
@@ -556,12 +623,12 @@ export function moveEquation(spec: GraphSpec, fromIndex: number, toIndex: number
 // ##########################
 //
 // The `scatter` chart type's payload (`GraphSpec.scatterPlot`) is a list of named (x, y) point
-// series — no shared domain, no categories (unlike EQUATIONS above, which share one domain across
+// series, no shared domain, no categories (unlike EQUATIONS above, which share one domain across
 // every equation). Mirrors that section's shape: every helper SEEDS a `scatterPlot` from a sensible
 // default whenever one is absent, and preserves two invariants:
 //   - NON-EMPTY SERIES LIST: the last remaining series is never removed (keep >= 1).
 //   - NON-EMPTY POINT LIST: the last remaining point in a series is never removed (keep >= 1).
-// v1 is points-only (no per-series trendline — a deferred fast-follow, not built here).
+// v1 is points-only (no per-series trendline, a deferred fast-follow, not built here).
 
 /** The sane out-of-the-box scatterPlot: one blank-named series with a single point at the origin,
  *  so a freshly switched-to scatter chart is never rendered totally empty. */
@@ -616,7 +683,7 @@ export function setScatterSeriesName(spec: GraphSpec, seriesIndex: number, name:
 }
 
 /**
- * Set (or clear) the per-series color override at `seriesIndex` — the scatter-chart counterpart
+ * Set (or clear) the per-series color override at `seriesIndex`, the scatter-chart counterpart
  * to {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely, resetting the
  * series back to its palette slot. Out-of-range returns the spec with `scatterPlot` merely seeded.
  */
@@ -634,7 +701,7 @@ export function setScatterSeriesColor(spec: GraphSpec, seriesIndex: number, colo
 /**
  * Append a new point to the series at `seriesIndex`. The default is a BLANK point (non-finite x/y):
  * the editor renders it as an empty "–" gap to type over, and both the renderer and the fence
- * serializer skip a non-finite point — so an unfilled seed never draws a stray mark at the origin
+ * serializer skip a non-finite point, so an unfilled seed never draws a stray mark at the origin
  * nor persists as a real datum. Out-of-range returns the spec with `scatterPlot` merely seeded.
  */
 export function addScatterPoint(
@@ -669,7 +736,7 @@ export function removeScatterPoint(spec: GraphSpec, seriesIndex: number, pointIn
 
 /**
  * Set the `x` or `y` field of the point at (`seriesIndex`, `pointIndex`). Out-of-range indices
- * return the spec with `scatterPlot` merely seeded. A non-finite `value` is still written here —
+ * return the spec with `scatterPlot` merely seeded. A non-finite `value` is still written here,
  * mirroring {@link setEquationField}'s "never breaks the chart" contract: the renderer already
  * skips a non-finite point when computing the domain and drawing marks, so validating/blocking the
  * keystroke is an editor concern (a live invalid-ring affordance), not this pure transform's.
@@ -783,13 +850,13 @@ export function moveScatterPoint(spec: GraphSpec, seriesIndex: number, fromIndex
 // # HISTOGRAM DATA (histogram type) #
 // ##################################
 //
-// The `histogram` chart type's payload (`GraphSpec.histogramData`) is a single flat sample list —
+// The `histogram` chart type's payload (`GraphSpec.histogramData`) is a single flat sample list,
 // no series axis, no shared domain, no categories (a histogram has exactly ONE dataset). Mirrors
 // the EQUATIONS/SCATTER sections' seeding shape: every helper SEEDS a `histogramData` from a
 // sensible default whenever one is absent, so an author can never be looking at an editor with
 // nothing to edit. `bins` is the only field with a range invariant (clamped to
 // [HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS]); `samples`/`name`/`color` have no structural invariant
-// of their own (an empty sample list is valid — the renderer just draws a graceful empty plot).
+// of their own (an empty sample list is valid, the renderer just draws a graceful empty plot).
 
 /** The sane out-of-the-box histogramData: a small, real (non-empty) sample list so a freshly
  *  switched-to histogram chart is never rendered totally empty. Bin count is left unset (auto). */
@@ -816,7 +883,7 @@ function clampBinCount(bins: number): number {
 
 /**
  * Replace the whole raw sample list. Seeds `histogramData` from the default first when the spec
- * has never carried one. Non-finite entries are left as-is here — {@link computeHistogramBins}
+ * has never carried one. Non-finite entries are left as-is here, {@link computeHistogramBins}
  * (the renderer's binning function) already filters them out, so validating/blocking a stray token
  * is the editor's parsing concern (see molecules/HistogramEditor.tsx's tolerant text parse), not
  * this pure transform's.
@@ -828,7 +895,7 @@ export function setHistogramSamples(spec: GraphSpec, samples: number[]): GraphSp
 
 /**
  * Set (or clear) the manual bin-count override. Passing `undefined` DELETES the `bins` key
- * entirely, resetting the chart back to the automatic Sturges'-rule bin count — the editor's
+ * entirely, resetting the chart back to the automatic Sturges'-rule bin count, the editor's
  * "Auto" empty state. A defined value is rounded + clamped to
  * [HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS] so a hand-typed or pathological value can never reach
  * the stored spec (mirrors {@link setDomain}'s clamp of the function type's sample count).
@@ -846,7 +913,7 @@ export function setHistogramName(spec: GraphSpec, name: string): GraphSpec {
 }
 
 /**
- * Set (or clear) the dataset color override — the histogram-chart counterpart to
+ * Set (or clear) the dataset color override, the histogram-chart counterpart to
  * {@link setSeriesColor}. Passing `undefined` drops the `color` key entirely, resetting the bars
  * back to their palette slot. Seeds `histogramData` from the default first when absent.
  */
@@ -862,9 +929,9 @@ export function setHistogramColor(spec: GraphSpec, color: string | undefined): G
 //
 // The graph<->table LIVE LINK's editing surface: link/re-link to a table, adjust the label-column /
 // orientation mapping, and unlink. Unlike every family above, these three helpers do NOT touch
-// `data`/`options`/`functionPlot` shape invariants — they only ever read/write `spec.source`.
+// `data`/`options`/`functionPlot` shape invariants, they only ever read/write `spec.source`.
 // `data` itself is left for the caller: on link/re-link it stays as-is (GraphBlock's existing
-// debounced snapshot write-back — see docs/reports/2026-08-01-graph-table-link-arch.md — refreshes
+// debounced snapshot write-back, see docs/reports/2026-08-01-graph-table-link-arch.md, refreshes
 // it from the newly linked table on the next resolve); on unlink the caller supplies the just-
 // resolved snapshot to materialize (this module has no document/table access to resolve one itself).
 
@@ -879,7 +946,7 @@ export function setSource(spec: GraphSpec, handle: string): GraphSpec {
 
 /**
  * Shallow-merge a mapping change (`labelColumn` and/or `orient`) onto the existing `source`. No-op
- * (returns the spec unchanged) if the spec isn't currently linked — defensive, since the editor's
+ * (returns the spec unchanged) if the spec isn't currently linked, defensive, since the editor's
  * mapping panel only ever renders while linked.
  */
 export function updateSourceMapping(spec: GraphSpec, partial: Partial<Omit<GraphSource, 'handle'>>): GraphSpec {
@@ -888,9 +955,9 @@ export function updateSourceMapping(spec: GraphSpec, partial: Partial<Omit<Graph
 }
 
 /**
- * Unlink: materialize `snapshot` (the caller's just-resolved table data — see `resolveGraphSpec` in
+ * Unlink: materialize `snapshot` (the caller's just-resolved table data, see `resolveGraphSpec` in
  * `graphTableData.ts`) onto `data` and drop `source` entirely, so the graph reverts to a normal
- * self-contained, editable chart — the safe escape hatch, and the inverse of {@link setSource}.
+ * self-contained, editable chart, the safe escape hatch, and the inverse of {@link setSource}.
  */
 export function unlinkSource(spec: GraphSpec, snapshot: GraphData): GraphSpec {
    const { source: _dropped, ...rest } = spec

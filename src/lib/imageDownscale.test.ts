@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { fitWithinLongestEdge, DEFAULT_MAX_EDGE } from './imageDownscale'
 
 // The canvas encode is browser-only (jsdom has no real 2D context), so only the pure size math is
-// unit-tested here — that is the whole reason it is factored out of downscaleImageToDataUrl.
+// unit-tested here, that is the whole reason it is factored out of downscaleImageToDataUrl.
 
 describe('fitWithinLongestEdge', () => {
    it('leaves an image already within the cap unchanged (never scales up)', () => {

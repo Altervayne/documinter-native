@@ -10,7 +10,7 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
 // stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
 // below, sized to the dropdown's own `w-64` Tailwind class.
 const DROPDOWN_WIDTH = 256
@@ -43,11 +43,11 @@ interface DocumentMenuProps {
 
 /**
  * The top-bar "Document" dropdown: the per-document customization set. It renders the SAME ordered
- * entry list as the document-background context menu — both derive from buildDocumentMenuEntries, the
- * single source of truth — so the two surfaces can never drift in label or order. The accent section
+ * entry list as the document-background context menu, both derive from buildDocumentMenuEntries, the
+ * single source of truth, so the two surfaces can never drift in label or order. The accent section
  * (a nameless swatch grid + a "Custom accent…" tile) is rendered by the shared AccentSwatchGrid
  * component; this surface only owns its own `customAccentSelected` flag, exactly like the
- * background context menu does — the Custom tile is a selectable choice, not a disclosure toggle,
+ * background context menu does, the Custom tile is a selectable choice, not a disclosure toggle,
  * so both surfaces reveal the same inline ColorPicker directly under the grid only while Custom is
  * the active choice.
  *
@@ -112,7 +112,7 @@ export function DocumentMenu({
    })
 
    // The accent-grid entry renders its own swatches/picker (see below) and never runs through
-   // this — every remaining item closes the dropdown on select, same as before. Custom's selected
+   // this, every remaining item closes the dropdown on select, same as before. Custom's selected
    // state is NOT reset here: it is a persistent choice now (see the class doc comment above), only
    // cleared by picking a preset (onDeselectCustomAccent, wired into the accent grid) or by the
    // dropdown's outside-click close. An unrelated item like Save or Export must leave it untouched.

@@ -17,7 +17,7 @@ import type { T } from '../lib/i18n'
 const COPYRIGHT = '© 2026 Florian Douay'
 const LICENSE_URL = 'https://www.apache.org/licenses/LICENSE-2.0'
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
 // stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
 // below, sized to the dropdown's own `w-56` Tailwind class.
 const DROPDOWN_WIDTH = 224

@@ -7,7 +7,7 @@
  * `renderLatexToMathML`: a pure, synchronous function producing a self-contained markup string
  * with zero runtime and zero external fonts, safe to inline verbatim into the HTML export.
  *
- * It NEVER throws on bad or empty data — an empty/degenerate spec renders a graceful empty-state
+ * It NEVER throws on bad or empty data, an empty/degenerate spec renders a graceful empty-state
  * placeholder SVG (the same "invalid never breaks the document" contract the math block honors).
  *
  * This barrel also re-exports the layer's types, themes, and the palette so consumers import
@@ -32,7 +32,7 @@ const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
  * Render a graph spec to a complete, self-contained SVG string for the given resolved theme.
  * Pure, synchronous, deterministic, and total (never throws): unrenderable data yields a
  * placeholder rather than an exception. Colors are baked as literal theme hex, so the output
- * needs no runtime, no external font, and no CSS variables — inline it straight into an export.
+ * needs no runtime, no external font, and no CSS variables, inline it straight into an export.
  */
 export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
    if (!hasRenderableData(spec)) {
@@ -61,16 +61,16 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
 
 /**
  * Whether a spec has anything to draw. A `function` chart uses a completely different payload
- * (`functionPlot`, not `data`) — it is renderable as soon as it names at least one equation with a
+ * (`functionPlot`, not `data`), it is renderable as soon as it names at least one equation with a
  * non-blank expression string (whether that expression actually COMPILES is a renderer-level
  * concern, handled gracefully per-equation, not a reason to fall back to the empty-state chart).
- * A `scatter` chart likewise uses its own payload (`scatterPlot`) — it is renderable as soon as
+ * A `scatter` chart likewise uses its own payload (`scatterPlot`), it is renderable as soon as
  * at least one series carries at least one point (whether that point's coordinates are finite is
  * a renderer-level concern, handled per-point, not a reason to fall back to the empty-state chart).
- * A `histogram` chart uses its own payload (`histogramData`) — it is renderable as soon as the
+ * A `histogram` chart uses its own payload (`histogramData`), it is renderable as soon as the
  * sample list is non-empty (whether any of those samples are FINITE is a renderer-level concern:
- * `computeHistogramBins` filters them and the renderer draws a graceful empty plot — axes with no
- * bars — rather than falling back to this top-level empty-state chart).
+ * `computeHistogramBins` filters them and the renderer draws a graceful empty plot, axes with no
+ * bars, rather than falling back to this top-level empty-state chart).
  * Every other type: at least one label, at least one series, and at least one finite numeric cell
  * across those series. Anything less renders the empty-state.
  */
@@ -98,7 +98,7 @@ function hasRenderableData(spec: GraphSpec): boolean {
    return false
 }
 
-/** A minimal placeholder SVG for empty/degenerate data — never breaks the surrounding document. */
+/** A minimal placeholder SVG for empty/degenerate data, never breaks the surrounding document. */
 function renderEmptyState(spec: GraphSpec, theme: GraphTheme): string {
    const title = spec.options.title ?? 'Empty graph'
    const note = textElement({
@@ -233,6 +233,8 @@ export {
    FUNCTION_MAX_SAMPLES,
    HISTOGRAM_MIN_BINS,
    HISTOGRAM_MAX_BINS,
+   LOG_SCALE_UNSUPPORTED_TYPES,
+   supportsLogScale,
 } from './types'
 
 export {
@@ -244,6 +246,12 @@ export {
 export type {
    CompiledExpression,
 } from './expr'
+
+// `computeFunctionYDomain` is the shared, single source of truth for a `function` chart's raw
+// sampled y-domain, used by both `renderFunctionPlot` (internally) and `graphEdit.ts`'s
+// `logScaleWouldFallBackToLinear` (the in-editor log-scale fallback notice), so the two can never
+// silently drift out of sync.
+export { computeFunctionYDomain } from './cartesian'
 
 export {
    computeHistogramBins,
@@ -267,10 +275,13 @@ export {
 export {
    linearScale,
    niceTicks,
+   logScale,
+   niceLogTicks,
    bandScale,
 } from './scale'
 
 export type {
    NiceScale,
+   NiceLogScale,
    BandScale,
 } from './scale'

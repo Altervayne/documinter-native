@@ -5,6 +5,7 @@ import { blockAnchor } from './document'
 import { highlight } from './highlight'
 import { renderLatexToMathML, TEMML_STYLES } from './math'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
+import { renderImageMarkupToSvg } from './imageMarkup'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
 import type { GraphTableCatalog } from './graphTableData'
 import {
@@ -82,11 +83,20 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       if (!block.graph) return ''
       const graphTheme = options?.theme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
       // A linked graph resolves to concrete data from the document's table catalog and bakes a
-      // static SVG — export stays zero-runtime. A dangling source (handle missing at export) falls
+      // static SVG, export stays zero-runtime. A dangling source (handle missing at export) falls
       // back to the materialized snapshot in `block.graph.data`; `resolveGraphSpec` handles both.
       const { renderSpec } = resolveGraphSpec(block.graph, options?.tables ?? EMPTY_TABLE_CATALOG)
       const svg = renderGraphToSvg(renderSpec, graphTheme)
       return withHandle(block, `<div class="doc-graph">${svg}</div>`)
+   }
+   if (block.type === 'image-markup') {
+      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Unlike graph, no
+      // theme argument, annotation colors are the author's explicit per-element choices (see
+      // lib/imageMarkup/index.ts). The base64 `src` is carried IN FULL here: export is the
+      // full-fidelity path (the `.mint`/`.md` fence drops it, see lib/imageMarkupFence.ts).
+      if (!block.imageMarkup) return ''
+      const svg = renderImageMarkupToSvg(block.imageMarkup)
+      return withHandle(block, `<div class="doc-image-markup">${svg}</div>`)
    }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {
@@ -251,7 +261,7 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-render .page-logo                   { display: block; width: auto; max-width: 100%; height: auto; }
    ` : ''
    // Nav CSS (external-link marker + divider separator) is appended ONLY for a customized nav, so an
-   // absent nav model leaves the style block byte-identical to pre-feature output — same additive/
+   // absent nav model leaves the style block byte-identical to pre-feature output, same additive/
    // guarded convention as the watermark and header above. A section-only nav never emits either
    // element, so gating on the model's presence (not on which entry kinds it holds) is sufficient.
    const navStyles = hasCustomNav ? `
@@ -395,6 +405,11 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-render .doc-graph      { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
             .doc-render .doc-graph svg  { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 
+            /* Image-markup block, self-contained inline SVG (annotation colors are the author's
+               explicit choice, not theme-baked, no light/dark variant needed here). */
+            .doc-render .doc-image-markup     { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
+            .doc-render .doc-image-markup svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
             /* Callouts */
             .doc-render .callout         { padding: 0.75rem 1rem; border-radius: 6px; border-left: 3px solid; font-size: 0.88rem; margin: 1.25rem 0; color: ${colors.textP}; }
             .doc-render .callout.info    { background: ${colors.calloutInfoBg}; border-color: ${colors.calloutInfoBorder}; }
@@ -530,7 +545,7 @@ function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: stri
  * center), and opacity is dimmed for the dark theme exactly as the editor dims it (shared
  * effectiveWatermarkOpacity). Only ever called when the watermark has a src, so absent ⇒ this emits
  * nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts), shared verbatim with the
- * editor render — see the branch in generateExportHTML below.
+ * editor render, see the branch in generateExportHTML below.
  */
 function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): string {
    const layout  = resolveWatermarkLayout(watermark)
@@ -548,7 +563,7 @@ function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): st
 
 /**
  * Render the page title, optionally wrapped with a header logo. Absent header (or empty src)
- * emits exactly `<h1>…</h1>` — byte-identical to pre-feature output. A present header inlines its
+ * emits exactly `<h1>…</h1>`, byte-identical to pre-feature output. A present header inlines its
  * base64 image as `.page-logo`: 'above' places it on its own row before the title, 'beside' wraps
  * logo + title together in one flex row; both honor `align` via `justify-content` (the shared
  * headerJustifyContent, same helper the editor's inline style uses) and `maxHeight` via an inline
@@ -572,7 +587,7 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    const strings = STRINGS[lang]
    const colors  = getColors(theme)
    // Watermark: guarded on the optional field so an absent watermark yields byte-identical output
-   // (no markup AND no extra CSS). The base64 src is inlined, exactly like image blocks — no runtime.
+   // (no markup AND no extra CSS). The base64 src is inlined, exactly like image blocks, no runtime.
    const watermark = opts.presentation?.watermark
    const hasWatermark = !!watermark?.src
    // Header logo: same guard convention. Guards both the <img>/wrapper markup (renderPageTitle) and
@@ -594,7 +609,7 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
 
    // Build the document-wide `handle -> table cells` catalog ONCE (from all sections, including
    // container columns), then thread it into every block export so a linked graph resolves to
-   // concrete data and bakes a static SVG — the exported HTML carries no live link, dangling falls
+   // concrete data and bakes a static SVG, the exported HTML carries no live link, dangling falls
    // back to the graph's materialized snapshot.
    const tables = collectTableSources(sections.flatMap(section => section.blocks))
 

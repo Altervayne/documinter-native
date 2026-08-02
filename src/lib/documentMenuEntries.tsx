@@ -22,30 +22,30 @@ import { ACCENT_PRESETS, accentPresetName } from './constants'
 export interface DocumentMenuOptions {
    t:            T
    docTheme:     'light' | 'dark'
-   /** The current document accent hex — drives which swatch (if any) renders as active. */
+   /** The current document accent hex, drives which swatch (if any) renders as active. */
    docAccent:    string
    /** The editor/preview sub-mode, for the preview-toggle entry's icon + (unchanged) label. */
    previewMode?: Mode
    /** Read-only (preview) render: the "Add section" entry stays in the list but disabled. */
    readOnly?:    boolean
    onAddSection?:      () => void
-   /** Flip the DOCUMENT theme (dark ⇄ light) — distinct from the app/chrome theme. */
+   /** Flip the DOCUMENT theme (dark ⇄ light), distinct from the app/chrome theme. */
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    /** Pick one of the accent presets, or apply a live change from the custom ColorPicker. */
    onDocAccentChange?: (hex: string) => void
    /** Whether the user has explicitly chosen the Custom tile (or adjusted its picker) since the
-    *  menu last opened — the "custom is the selected choice" intent. Kept separate from whether
+    *  menu last opened, the "custom is the selected choice" intent. Kept separate from whether
     *  `docAccent` happens to coincide with a preset hex; each surface owns its own bool. Combined
     *  below with the "docAccent matches no preset" fallback so a freshly reopened menu with a
     *  truly off-palette color still reads Custom as active even though this flag resets to false
     *  on each open. */
    customAccentSelected?: boolean
    /** Select the Custom tile: mark it the active choice and (re)apply the current `docAccent`
-    *  through `onDocAccentChange` — a no-op on the value itself (the picker is already seeded from
+    *  through `onDocAccentChange`, a no-op on the value itself (the picker is already seeded from
     *  `docAccent`), but it hands off cleanly: flipping from a preset into Custom keeps that color
     *  rather than resetting it. */
    onSelectCustomAccent?: () => void
-   /** Clear the "Custom is selected" intent — called when a preset swatch is clicked, so the ring
+   /** Clear the "Custom is selected" intent, called when a preset swatch is clicked, so the ring
     *  moves cleanly off Custom even if the picker's last color happened to equal that preset's hex. */
    onDeselectCustomAccent?: () => void
    /** Open the document-level Presentation window. */
@@ -66,8 +66,8 @@ export interface DocumentMenuOptions {
 
 /**
  * The one ordered list of per-document actions, consumed by BOTH the top-bar "Document" dropdown
- * (HeaderMenuBar) AND the document-background context menu (WysiwygArea). Keeping it here — a single
- * pure function — is what enforces the two surfaces can never drift in label or order: they render
+ * (HeaderMenuBar) AND the document-background context menu (WysiwygArea). Keeping it here, a single
+ * pure function, is what enforces the two surfaces can never drift in label or order: they render
  * the identical `ContextMenuEntry[]`, each through its own thin renderer.
  *
  * Order: Add section · Doc theme · Accent (header + swatch grid) · Presentation… · Navigation…
@@ -84,7 +84,7 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
    const entries: ContextMenuEntry[] = []
 
    if (onAddSection) {
-      // Nonsensical in preview (nothing to insert into an inert, read-only render) — kept in the
+      // Nonsensical in preview (nothing to insert into an inert, read-only render), kept in the
       // menu but disabled, rather than removed.
       entries.push({ label: t.bgMenuAddSection, icon: <Plus size={13} />, onSelect: onAddSection, disabled: !!readOnly })
    }
@@ -101,7 +101,7 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
    if (onDocAccentChange) {
       entries.push({ type: 'header', label: t.accent })
 
-      // Nameless swatch grid — each preset's localized name rides along as a tooltip/aria-label
+      // Nameless swatch grid, each preset's localized name rides along as a tooltip/aria-label
       // only (AccentSwatchGrid never renders it as text); "active" drives the tile's ring.
       const isPresetHex   = (hex: string) => hex.toLowerCase() === docAccent.toLowerCase()
       const customSelected = !!customAccentSelected
@@ -110,7 +110,7 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
          hex,
          name:   accentPresetName(hex, t),
          // Never active while Custom is the selected choice, even if this preset's hex happens to
-         // coincide with the current (custom) docAccent — Custom alone owns the ring in that case.
+         // coincide with the current (custom) docAccent, Custom alone owns the ring in that case.
          active: isPresetHex(hex) && !customSelected,
          onSelect: () => {
             onDocAccentChange(hex)
@@ -119,7 +119,7 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
       }))
 
       // Custom is the active choice either because it was explicitly selected (or its picker
-      // adjusted) — customSelected — or, as a fallback for a freshly (re)opened menu, because the
+      // adjusted), customSelected, or, as a fallback for a freshly (re)opened menu, because the
       // document accent doesn't match any preset at all.
       const custom: AccentCustomSwatchOption | undefined = onSelectCustomAccent
          ? {

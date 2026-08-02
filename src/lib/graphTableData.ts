@@ -1,6 +1,6 @@
 /**
  * graphTableData.ts, the pure table<->graph data-mapping transform (STAGE 1 of the graph<->table
- * linking feature — the one-shot EXTRACT, per docs/reference/graph_table_linking_study.md).
+ * linking feature, the one-shot EXTRACT, per docs/reference/graph_table_linking_study.md).
  *
  * Two directions, both pure and total (never throw, never require well-formed input):
  *   graphDataFromTable , table block cells (InlineContent[][])  -> GraphData
@@ -9,12 +9,12 @@
  * The mapping REUSES graphFence.ts's own numeric-parse semantics (`parseNumericCell`) so a table
  * extracted to a chart, and a chart's ` ```graph ` fence body parsed from a hand-typed pipe table,
  * agree byte-for-byte on what counts as a number. This module owns no serialization and no block
- * model — it only turns cell content into GraphData and back; the caller (a block action) is
+ * model, it only turns cell content into GraphData and back; the caller (a block action) is
  * responsible for wrapping the result into a `graph` or `table` Block and inserting it.
  *
  * ALSO home to the STAGE 2 live-link resolver (`collectTableSources`/`resolveGraphSpec`/
  * `graphDataEquals`) and, here, the STAGE 2b EDITOR's linkable-tables catalog
- * (`collectLinkableTables`/`LinkableTable`) — the "Link to a table…" picker's data source.
+ * (`collectLinkableTables`/`LinkableTable`), the "Link to a table…" picker's data source.
  */
 
 import type { Block, InlineContent, Section, Side } from '../types'
@@ -41,7 +41,7 @@ function textToInlineContent(text: string): InlineContent {
 // ################
 
 /**
- * The mapping options honored when resolving a table into GraphData — the same options a live link
+ * The mapping options honored when resolving a table into GraphData, the same options a live link
  * carries on {@link GraphSource}. Both optional; omitting the whole argument (or passing all
  * defaults) yields the STAGE-1 mapping unchanged (label column 0, series = columns).
  */
@@ -109,7 +109,7 @@ export function graphDataFromTable(
       resolvedLabelColumn = 0
    }
 
-   // Every column that is NOT the label column, in order — these carry the plotted numbers.
+   // Every column that is NOT the label column, in order, these carry the plotted numbers.
    const valueColumns: number[] = []
    for (let column = 0; column < columnCount; column++) {
       if (column !== resolvedLabelColumn) valueColumns.push(column)
@@ -138,7 +138,7 @@ export function graphDataFromTable(
 
 /**
  * Graph -> table. Reverses `graphDataFromTable`: the header row is a blank label-column header
- * (matching the fence's own convention — the model carries no name for the label column) followed
+ * (matching the fence's own convention, the model carries no name for the label column) followed
  * by each series' name; each body row is the category label followed by that row's value per
  * series, rendered as text (a `null`/missing value becomes a blank cell, round-tripping through
  * `parseNumericCell` back to `null`). Total: an empty GraphData yields a single blank-header
@@ -167,7 +167,7 @@ export function tableFromGraphData(data: GraphData): { richHeaders: InlineConten
 
 /**
  * One referenced table's raw cells, keyed by handle in a {@link GraphTableCatalog}. This is the
- * minimal shape the resolver needs — the same fields a `table` Block carries, projected off it.
+ * minimal shape the resolver needs, the same fields a `table` Block carries, projected off it.
  */
 export interface LinkedTableSource {
    richHeaders: InlineContent[]
@@ -202,7 +202,7 @@ export function collectTableSources(blocks: Block[]): GraphTableCatalog {
 }
 
 // #############################
-// # LINKABLE TABLES (STAGE 2b EDITOR) — the "Link to a table…" picker's catalog #
+// # LINKABLE TABLES (STAGE 2b EDITOR), the "Link to a table…" picker's catalog #
 // #############################
 
 /**
@@ -210,7 +210,7 @@ export function collectTableSources(blocks: Block[]): GraphTableCatalog {
  * `container`) routes through `DocumentMutations.updateBlock(sectionId, blockId, patch)`; a table
  * nested in a container column routes through
  * `DocumentMutations.containerMutations.updateBlock(sectionId, container.blockId, container.side,
- * blockId, patch)` instead — the container mutation hook's own 5-argument shape. Carrying this here
+ * blockId, patch)` instead, the container mutation hook's own 5-argument shape. Carrying this here
  * means the editor UI never has to re-walk the block tree to figure out how to address a pick.
  */
 export interface LinkableTableAddress {
@@ -223,14 +223,14 @@ export interface LinkableTableAddress {
 /**
  * One document table as the "Link to a table…" picker sees it: identity + addressing (so a pick
  * can be turned into a mutation) plus enough of its shape to render a compact preview row. Unlike
- * {@link GraphTableCatalog} (which only ever catalogs HANDLED tables — the resolver's lookup key),
- * this lists EVERY table, handled or not — a handle-less table is exactly the case the picker must
+ * {@link GraphTableCatalog} (which only ever catalogs HANDLED tables, the resolver's lookup key),
+ * this lists EVERY table, handled or not, a handle-less table is exactly the case the picker must
  * still offer (picking it auto-assigns one, see `generateUniqueHandle` in `lib/document.ts`).
  */
 export interface LinkableTable extends LinkableTableAddress {
    /** Undefined when the table carries no handle yet. */
    handle?: string
-   /** Plain-text header row (rich text flattened), for the picker's preview — NOT necessarily
+   /** Plain-text header row (rich text flattened), for the picker's preview, NOT necessarily
     *  meaningful as labels (a table may have blank headers); the picker falls back to a positional
     *  caption when every header cell is blank. */
    headerPreview: string[]
@@ -240,7 +240,7 @@ export interface LinkableTable extends LinkableTableAddress {
 
 /**
  * Walk a document's sections (recursing into container `left`/`right` columns, exactly like
- * {@link collectTableSources}) and list EVERY `table` block — handled or not — as a
+ * {@link collectTableSources}) and list EVERY `table` block, handled or not, as a
  * {@link LinkableTable}. Pure; used by the graph editor's Data tab to populate the "Link to a
  * table…" picker AND the linked-state "change source" control. Order follows document order
  * (section, then block, then container column), so the picker reads top-to-bottom like the doc.
@@ -273,10 +273,10 @@ export function collectLinkableTables(sections: Section[]): LinkableTable[] {
 
 /** The outcome of resolving a (possibly linked) graph spec into a concrete render spec. */
 export interface ResolvedGraphSpec {
-   /** A concrete GraphSpec safe to hand to the PURE `renderGraphToSvg` — `source` is always
+   /** A concrete GraphSpec safe to hand to the PURE `renderGraphToSvg`, `source` is always
     *  stripped, and for a live-resolved link `data` is the freshly mapped table data. */
    renderSpec: GraphSpec
-   /** True only when the spec was linked but its source handle was NOT found in the catalog — the
+   /** True only when the spec was linked but its source handle was NOT found in the catalog, the
     *  render falls back to the materialized snapshot in `spec.data` (never blank, never a throw). */
    dangling: boolean
 }
@@ -290,8 +290,8 @@ export interface ResolvedGraphSpec {
  *   - `source` + NOT found   -> DANGLING: `source` stripped, `data` left as the last-known snapshot,
  *                               `dangling: true` (the caller may surface a "source missing" hint).
  *
- * Total: never throws. The returned `renderSpec` never carries `source`, so the pure renderer — and
- * the export bake — only ever see concrete data.
+ * Total: never throws. The returned `renderSpec` never carries `source`, so the pure renderer, and
+ * the export bake, only ever see concrete data.
  */
 export function resolveGraphSpec(spec: GraphSpec, tables: GraphTableCatalog): ResolvedGraphSpec {
    const source = spec.source
@@ -316,8 +316,8 @@ export function resolveGraphSpec(spec: GraphSpec, tables: GraphTableCatalog): Re
 /**
  * Structural equality over the mapped fields of two GraphData (labels + each series' name & values).
  * Deliberately ignores presentation-only fields (`categoryColors`, per-series `color`) so the
- * snapshot write-back in GraphBlock fires only on an actual DATA change, and — by not comparing
- * colors — never clobbers author-set colors when the underlying numbers are unchanged. `undefined`
+ * snapshot write-back in GraphBlock fires only on an actual DATA change, and, by not comparing
+ * colors, never clobbers author-set colors when the underlying numbers are unchanged. `undefined`
  * on the right (no prior snapshot) always counts as different.
  */
 export function graphDataEquals(next: GraphData, previous: GraphData | undefined): boolean {

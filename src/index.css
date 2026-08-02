@@ -9,7 +9,7 @@
    properties. Map each to Documint's own app token so the picker inherits the
    app's palette. Because the `--color-*` tokens flip under
    html[data-theme="light"], this mapping gives the picker automatic light/dark
-   parity for free — one override, both themes.
+   parity for free, one override, both themes.
 
    The package defines its token fallbacks on `:where(.pqc-root)` (zero
    specificity), so this plain `.pqc-root` rule always wins on specificity,

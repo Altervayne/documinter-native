@@ -155,8 +155,8 @@ interface DocumentTitleBarProps {
 export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onReorderTabs, onDuplicateTab, onMetaChange }: DocumentTitleBarProps) {
    const { t } = useLang()
    // Which tab's title is being edited (null = none). Tracking the tabKey rather than a boolean means
-   // a tab switch (or closing the edited tab) implicitly ends editing — the input only renders while
-   // editingTabKey matches the active tab — so no reset-on-switch effect is needed.
+   // a tab switch (or closing the edited tab) implicitly ends editing, the input only renders while
+   // editingTabKey matches the active tab, so no reset-on-switch effect is needed.
    const [editingTabKey, setEditingTabKey] = useState<string | null>(null)
    const [titleDraft,    setTitleDraft]    = useState('')
    // The tab being dragged + its captured width, so the overlay clone matches the original.

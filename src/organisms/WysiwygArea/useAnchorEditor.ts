@@ -21,7 +21,7 @@ interface UseAnchorEditorOptions {
 const VIEWPORT_MARGIN = 8
 // Conservative estimate of the anchor-editor pill's rendered box (padding + "#" prefix + the
 // w-35 input + optional duplicate-warning icon + optional remove button). Only used as a ceiling
-// on the CSS `right` offset / floor on `top` — the common case still positions exactly against
+// on the CSS `right` offset / floor on `top`, the common case still positions exactly against
 // the block's rect, unaffected by this estimate; it only kicks in when the block sits near an edge.
 const ANCHOR_EDITOR_ESTIMATED_WIDTH  = 220
 const ANCHOR_EDITOR_ESTIMATED_HEIGHT = 40
@@ -41,7 +41,7 @@ interface UseAnchorEditorResult {
  * Anchor-editor state for a WysiwygBlock: open/draft state, the slug normalisation on confirm,
  * and the fixed position derived from the block's bounding rect (so the editor escapes the
  * scroll container's overflow clipping). The markup itself lives in blocks/AnchorEditor.tsx,
- * which the block renders with these values — this hook owns only the state + slugify.
+ * which the block renders with these values, this hook owns only the state + slugify.
  */
 export function useAnchorEditor({ block, blockDivRef, patch }: UseAnchorEditorOptions): UseAnchorEditorResult {
    const [anchorEditing, setAnchorEditing] = useState(false)
@@ -65,7 +65,7 @@ export function useAnchorEditor({ block, blockDivRef, patch }: UseAnchorEditorOp
       if (anchorEditing) {
          const rect = blockDivRef.current?.getBoundingClientRect()
          if (rect) {
-            // `right` grows leftward from the block's left edge — clamp its ceiling so the pill's
+            // `right` grows leftward from the block's left edge, clamp its ceiling so the pill's
             // far (left) edge can't be pushed past the viewport when the block sits near the left.
             const desiredRight = window.innerWidth - rect.left + 10
             const maxRight     = window.innerWidth - ANCHOR_EDITOR_ESTIMATED_WIDTH - VIEWPORT_MARGIN

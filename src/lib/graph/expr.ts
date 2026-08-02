@@ -29,7 +29,7 @@
  *     constant, a function call, or a parenthesized group) is immediately followed by a token that
  *     can START a new primary (a number, `x`, a known constant/function name, or `(`) with no
  *     explicit operator between them, a synthetic multiplication is spliced in. This is
- *     unambiguous here because `x` is the only bare identifier in the grammar — there is never a
+ *     unambiguous here because `x` is the only bare identifier in the grammar, there is never a
  *     "is this one identifier or two juxtaposed ones" question. Explicitly NOT supported: a
  *     function name used without parentheses (`sinx` is a parse error, not `sin(x)`).
  *
@@ -70,7 +70,7 @@ function isDigitCharacter(character: string): boolean {
 
 /**
  * Turn a source string into a flat token list. Returns `null` on any lexical error (an unknown
- * character, a malformed numeric literal) — never throws.
+ * character, a malformed numeric literal), never throws.
  */
 function tokenize(source: string): Token[] | null {
    const tokens: Token[] = []
@@ -99,7 +99,7 @@ function tokenize(source: string): Token[] | null {
             position++
             if (source[position] === '+' || source[position] === '-') position++
             if (!isDigitCharacter(source[position] ?? '')) {
-               // Not actually an exponent suffix (e.g. a bare trailing "e") — back out so the
+               // Not actually an exponent suffix (e.g. a bare trailing "e"), back out so the
                // letter is re-lexed as the start of an identifier instead.
                position = exponentStart
             } else {
@@ -192,7 +192,7 @@ function isKnownFunctionName(name: string): boolean {
  *                                                                          parens)
  *
  * Returns `null` on any syntax error (unexpected token, unbalanced parens, trailing input, an
- * unknown identifier) — never throws.
+ * unknown identifier), never throws.
  */
 class Parser {
    private readonly tokens: Token[]
@@ -287,7 +287,7 @@ class Parser {
       return base
    }
 
-   // ====== tier 5: primaries — numbers, x, constants, function calls, parenthesized groups ======
+   // ====== tier 5: primaries, numbers, x, constants, function calls, parenthesized groups ======
    private parsePrimary(): ExpressionNode | null {
       const token = this.advance()
       if (!token) return null
@@ -307,7 +307,7 @@ class Parser {
       if (token.kind === 'ident') {
          const name = token.name
 
-         // A function call always requires an explicit '(' — "sinx" is a parse error, never an
+         // A function call always requires an explicit '(', "sinx" is a parse error, never an
          // implicit "sin(x)" (per the ratified grammar's explicit exclusion).
          if (isKnownFunctionName(name)) {
             const openParen = this.peek()
@@ -328,7 +328,7 @@ class Parser {
             return { kind: 'variable' }
          }
 
-         // Any other bare identifier is unknown — a parse error, never a silent guess.
+         // Any other bare identifier is unknown, a parse error, never a silent guess.
          return null
       }
 
@@ -372,7 +372,7 @@ export interface CompiledExpression {
 /**
  * Tokenize + parse `source` into a {@link CompiledExpression}. Returns `null` on any lexical or
  * syntax error (unknown character, unbalanced parens, trailing input, an unknown identifier, a
- * malformed function call, ...) — never throws.
+ * malformed function call, ...), never throws.
  */
 export function compileExpression(source: string): CompiledExpression | null {
    const tokens = tokenize(source)
@@ -393,7 +393,7 @@ export function compileExpression(source: string): CompiledExpression | null {
 
 /**
  * The closed allowlist of callable functions. This is the ONLY way the evaluator ever reaches a
- * `Math.*` call — the parser has already validated every call's name against
+ * `Math.*` call, the parser has already validated every call's name against
  * {@link SINGLE_ARGUMENT_FUNCTION_NAMES} / {@link VARIADIC_FUNCTION_NAMES}, so an AST `call` node
  * always has a matching entry here. No dynamic property access, no `eval`, no `Function`.
  */
@@ -447,7 +447,7 @@ function violatesDomain(name: string, args: number[]): boolean {
 /**
  * Evaluate a compiled expression at a given `x`. Returns `null` on a domain error (division by
  * zero, `sqrt` of a negative number, `ln`/`log`/`log2` of a non-positive number, `asin`/`acos`
- * outside `[-1, 1]`, or any result that is not finite) — the same "gap" signal the graph renderer
+ * outside `[-1, 1]`, or any result that is not finite), the same "gap" signal the graph renderer
  * already understands for a missing data point. Never throws.
  */
 export function evaluate(compiled: CompiledExpression, x: number): number | null {
@@ -530,7 +530,7 @@ function evaluateNode(node: ExpressionNode, x: number): number | null {
  * Convenience one-shot helper: compile + evaluate in a single call. Prefer {@link
  * compileExpression} + {@link evaluate} when evaluating the same source at many `x` values (e.g.
  * sampling a curve) so the source is parsed only once. Returns `null` on either a compile error
- * or a domain error — the two failure modes are indistinguishable from this entry point by
+ * or a domain error, the two failure modes are indistinguishable from this entry point by
  * design, since both mean "no value to plot here."
  */
 export function evaluateExpression(source: string, x: number): number | null {

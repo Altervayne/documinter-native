@@ -44,7 +44,7 @@ const FALLBACK_HISTOGRAM_DATA: HistogramData = { samples: [] }
 
 /** Which free-form field is mid-edit, holding its raw text so an in-progress/unparseable
  *  intermediate (a trailing "1, 2, ", or a lone "-" in the bin-count field) stays on screen
- *  without corrupting the stored value — mirrors ScatterEditor's/EquationEditor's editing state. */
+ *  without corrupting the stored value, mirrors ScatterEditor's/EquationEditor's editing state. */
 type EditingField = 'samples' | 'bins' | null
 
 // #############
@@ -52,9 +52,9 @@ type EditingField = 'samples' | 'bins' | null
 // #############
 
 /**
- * The Data-tab editor for a `histogram` chart: a raw-samples textarea (paste-friendly — numbers
+ * The Data-tab editor for a `histogram` chart: a raw-samples textarea (paste-friendly, numbers
  * separated by commas, whitespace, or new lines), a bin-count control (blank = auto/Sturges, with
- * a live "effective bin count" readout), and a name + color swatch — replacing `GraphDataGrid` for
+ * a live "effective bin count" readout), and a name + color swatch, replacing `GraphDataGrid` for
  * this type, since a histogram has no categories and no series axis (exactly one dataset).
  *
  * Draft/commit model exactly like `ScatterEditor`/`EquationEditor`: text typing drafts on every
@@ -71,7 +71,7 @@ export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit
    // The dataset swatch's color popover anchor rect, or null when the popover is closed.
    const [colorPopoverRect, setColorPopoverRect] = useState<DOMRect | null>(null)
 
-   // The effective bin count the chart will actually draw (auto or manual), for the live readout —
+   // The effective bin count the chart will actually draw (auto or manual), for the live readout,
    // reuses the SAME binning function the renderer calls, so this can never drift from reality.
    const effectiveBinCount = computeHistogramBins(samples, bins).counts.length
 
@@ -120,7 +120,7 @@ export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit
       setBinsText(rawText)
       const trimmed = rawText.trim()
       if (trimmed === '') {
-         // A blank field means "auto (Sturges)" — a valid, meaningful state, not an invalid one.
+         // A blank field means "auto (Sturges)", a valid, meaningful state, not an invalid one.
          onDraft(setHistogramBins(spec, undefined))
          return
       }

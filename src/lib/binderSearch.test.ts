@@ -23,7 +23,7 @@ function makeRecord(overrides: Partial<BinderDocumentRecord> = {}): BinderDocume
    }
 }
 
-describe('matchesCriteria — free-text over title, fields, sections, content', () => {
+describe('matchesCriteria, free-text over title, fields, sections, content', () => {
    it('matches across title, freeform field labels + values, section titles, and content', () => {
       const record = makeRecord({
          meta: {
@@ -45,7 +45,7 @@ describe('matchesCriteria — free-text over title, fields, sections, content', 
    })
 })
 
-describe('matchesCriteria — hasNeverOpened', () => {
+describe('matchesCriteria, hasNeverOpened', () => {
    it('keeps a record that was never opened', () => {
       expect(matchesCriteria(makeRecord({ lastOpenedAt: undefined }), { hasNeverOpened: true })).toBe(true)
    })
@@ -56,7 +56,7 @@ describe('matchesCriteria — hasNeverOpened', () => {
    })
 })
 
-describe('matchesCriteria — date ranges', () => {
+describe('matchesCriteria, date ranges', () => {
    it('applies after (from) and before (to) bounds on the day portion', () => {
       const record = makeRecord({ updatedAt: '2026-06-15T12:00:00.000Z' })
       expect(matchesCriteria(record, { dates: { updatedAt: { from: '2026-06-01' } } })).toBe(true)

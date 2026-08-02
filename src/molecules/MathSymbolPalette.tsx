@@ -24,27 +24,27 @@ interface MathSymbolPaletteContentProps {
    onInsert: (insert: string) => void
    /**
     * Open the structured-construct builder for `kind`. Wired to the dedicated generator
-    * launcher row (only shown when `showGenerators` is true), NOT to catalog entries — every
+    * launcher row (only shown when `showGenerators` is true), NOT to catalog entries, every
     * catalog entry now inserts its raw skeleton like any other symbol.
     */
    onOpenBuilder: (kind: MathBuilderKind) => void
    /**
     * Whether to render the "Generate…" launcher row (matrix / cases / aligned builders). True
-    * in the editor context; false when the palette is opened from INSIDE a builder modal — the
+    * in the editor context; false when the palette is opened from INSIDE a builder modal, the
     * recursion guard, so a builder can never offer to open another builder.
     */
    showGenerators: boolean
    /**
     * Focus the filter input on mount. True for the anchored popover (the palette is the active
     * surface, so type-to-filter should be ready). False for the draggable window, which is a
-    * persistent TOOL beside the math source — it must NOT steal focus so the user keeps typing
+    * persistent TOOL beside the math source, it must NOT steal focus so the user keeps typing
     * LaTeX in the textarea while clicking symbols.
     */
    autoFocusFilter: boolean
 }
 
 // The anchored popover ALWAYS autofocuses its filter (it's the active surface), so it hardcodes
-// `autoFocusFilter={true}` internally and does not expose it — Omit keeps callers from having to
+// `autoFocusFilter={true}` internally and does not expose it, Omit keeps callers from having to
 // pass a prop the shell discards.
 interface MathSymbolPaletteProps extends Omit<MathSymbolPaletteContentProps, 'autoFocusFilter'> {
    /** The trigger button's viewport rect; the panel clamps itself around it. */
@@ -66,14 +66,14 @@ const GENERATOR_LAUNCHERS: { kind: MathBuilderKind; Icon: typeof Grid3x3 }[] = [
 
 /**
  * The presentation-agnostic BODY of the symbol palette: the type-to-filter input, the pinned
- * generator launcher row, and the scrollable categorized grids of glyph buttons — plus all the
+ * generator launcher row, and the scrollable categorized grids of glyph buttons, plus all the
  * insertion wiring. It owns NO shell behavior (no portal, no viewport clamp, no Escape, no
  * outside-click). Whatever hosts it supplies the frame:
  *  - the anchored popover `MathSymbolPalette` (below) wraps it in a portaled, clamped box;
  *  - the math block wraps it in a draggable `BlockEditorWindow`, which owns drag / Escape / close.
  *
- * Each button shows the ACTUAL glyph — the entry's `latex` is rendered to inline MathML by Temml,
- * not printed as raw source — so the palette is scannable by sight; the human `name` drives the
+ * Each button shows the ACTUAL glyph, the entry's `latex` is rendered to inline MathML by Temml,
+ * not printed as raw source, so the palette is scannable by sight; the human `name` drives the
  * tooltip, the aria-label, and the filter. Glyph rendering is gated on Temml readiness (falling
  * back to the raw `latex` text until then), mirroring MathBlock.
  *
@@ -94,7 +94,7 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
 
    // Accordion state: the set of expanded categories. Default empty so the panel opens compact
    // (all collapsed). While filtering, every matching category is FORCED open regardless of the
-   // set — search must surface matches instantly — without mutating the set the user built up.
+   // set, search must surface matches instantly, without mutating the set the user built up.
    const [expandedKeys, setExpandedKeys] = useState<Set<MathSymbolCategoryKey>>(() => new Set())
    function toggleCategory(key: MathSymbolCategoryKey): void {
       setExpandedKeys(current => {
@@ -154,7 +154,7 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
             className="math-symbol-palette-filter"
          />
 
-         {/* Generator launcher row — pinned under the filter, OUTSIDE the scroll area so it is
+         {/* Generator launcher row, pinned under the filter, OUTSIDE the scroll area so it is
              always reachable. Hidden inside a builder (showGenerators === false) so a builder can
              never open another builder. MOUSEDOWN + preventDefault mirrors the glyph buttons:
              MathBlock snapshots the textarea caret on open, so the source must not blur here. */}
@@ -214,8 +214,8 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
                      {group.entries.map(entry => {
                         const rendered = temmlReady ? renderLatexToMathML(entry.latex, false) : null
                         // Defensive fallback. Only inject MathML when Temml rendered cleanly
-                        // (ok === true). Otherwise show text — never `dangerouslySetInnerHTML`
-                        // of anything but verified-good markup — so a stray unsupported command
+                        // (ok === true). Otherwise show text, never `dangerouslySetInnerHTML`
+                        // of anything but verified-good markup, so a stray unsupported command
                         // can never paint a broken or blank button. While Temml is still loading
                         // (rendered === null) the raw LaTeX reads best; once it is ready and a
                         // render explicitly FAILED, the human name is the clearer fallback.
@@ -281,7 +281,7 @@ export function MathSymbolPalette({ anchorRect, onInsert, onOpenBuilder, showGen
    }, [onClose])
 
    // Outside click closes. A glyph button's mousedown is preventDefault'd (so it never blurs
-   // the textarea), but it still bubbles as a pointerdown — the contains() check keeps clicks
+   // the textarea), but it still bubbles as a pointerdown, the contains() check keeps clicks
    // inside the panel from closing it.
    useEffect(() => {
       function onPointerDown(event: PointerEvent) {

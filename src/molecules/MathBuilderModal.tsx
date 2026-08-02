@@ -42,8 +42,8 @@ interface MathBuilderModalProps {
 
 /**
  * A snapshot of the cell that was focused when the in-modal ƒ(x) palette opened. The palette
- * steals focus (its filter autofocuses), so the target cell — its value, its live selection, its
- * DOM node, and the setter that writes it back — must be captured UP FRONT, then a symbol insert
+ * steals focus (its filter autofocuses), so the target cell, its value, its live selection, its
+ * DOM node, and the setter that writes it back, must be captured UP FRONT, then a symbol insert
  * splices into `value` at `[selectionStart, selectionEnd)` and hands the result to `setValue`.
  */
 interface ActiveCellSnapshot {
@@ -65,7 +65,7 @@ function clampDimension(value: number): number {
 
 /**
  * Resize a 2D grid to `rowCount` x `columnCount`, preserving every existing cell value that
- * still fits and filling new positions with an empty string. Pure — returns a fresh grid.
+ * still fits and filling new positions with an empty string. Pure, returns a fresh grid.
  */
 function resizeGrid(grid: string[][], rowCount: number, columnCount: number): string[][] {
    const result: string[][] = []
@@ -185,7 +185,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
       : kind === 'cases' ? buildCasesLatex(caseRows)
       : buildAlignedLatex(alignedRows, { systemBrace })
 
-   // Live preview render (readiness-gated; never throws — mirrors MathBlock).
+   // Live preview render (readiness-gated; never throws, mirrors MathBlock).
    const rendered = temmlReady ? renderLatexToMathML(latex, true) : null
 
    const title =
@@ -236,7 +236,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
 
    // After a symbol is spliced into a cell, refocus that cell input and restore the caret. Keyed
    // to the pending target so it runs after React commits the cell's new value (same shape as
-   // MathBlock's pending-caret effect) — the caret lands correctly despite the value changing.
+   // MathBlock's pending-caret effect), the caret lands correctly despite the value changing.
    const [pendingCaret, setPendingCaret] = useState<{ element: HTMLInputElement; offset: number } | null>(null)
    useLayoutEffect(() => {
       if (pendingCaret === null) return
@@ -272,7 +272,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
               selectionEnd:   active.element.selectionEnd   ?? active.element.value.length,
            }
          : firstCellSnapshot()
-      if (!snapshot) return   // no cells to target — no-op gracefully, never throw
+      if (!snapshot) return   // no cells to target, no-op gracefully, never throw
       snapshotRef.current = snapshot
       setPaletteAnchor(event.currentTarget.getBoundingClientRect())
       setPaletteOpen(true)
@@ -521,7 +521,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
             </div>
 
             {/* In-modal symbol palette. It portals to document.body (z-index 9999) so it renders
-                ABOVE this modal (z-50). showGenerators is false — the recursion guard: a builder
+                ABOVE this modal (z-50). showGenerators is false, the recursion guard: a builder
                 must never offer to open another builder. onOpenBuilder is unreachable here. */}
             {paletteOpen && paletteAnchor && (
                <MathSymbolPalette

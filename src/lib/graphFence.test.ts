@@ -198,6 +198,35 @@ describe('Graph fence, spec round-trip', () => {
       expect(spec.options.lineWidth).toBeUndefined()
    })
 
+   it('round-trips a log value axis via the yScale=log token', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 10] }] },
+         options: { yScale: 'log' },
+      }
+      const { info } = graphSpecToFence(spec)
+      expect(info).toContain('yScale=log')
+      expect(roundTripSpec(spec)).toEqual(spec)
+   })
+
+   it('omits the yScale= token for the default (absent or explicit "linear"), keeping the fence lean', () => {
+      const unset: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: {},
+      }
+      const { info } = graphSpecToFence(unset)
+      expect(info).not.toContain('yScale=')
+
+      const explicitLinear: GraphSpec = { ...unset, options: { yScale: 'linear' } }
+      expect(graphSpecToFence(explicitLinear).info).not.toContain('yScale=')
+   })
+
+   it('ignores an unknown yScale= value rather than throwing, leaving the field unset', () => {
+      const spec = fenceToGraphSpec('graph type=line yScale=garbage', '| | S |\n| --- | --- |\n| A | 1 |')
+      expect(spec.options.yScale).toBeUndefined()
+   })
+
    it('round-trips barPeakLine via the peakline= token', () => {
       const spec: GraphSpec = {
          type: 'bar-grouped',
@@ -336,6 +365,81 @@ describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
    })
 })
 
+describe('Graph fence, vertical reference overlay (vref: token)', () => {
+   it('round-trips a vertical reference through a vref: token', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { overlays: [{ kind: 'reference', value: 3, orientation: 'vertical', label: 'Cutoff' }] },
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }] }] },
+      }
+      const { info } = graphSpecToFence(spec)
+      // No spaces in the label ⇒ unquoted, exactly like the `ref:` token; a spaced label would be
+      // double-quoted by serializeInfoValue (covered by the horizontal-reference suite).
+      expect(info).toContain('overlay=vref:3:Cutoff')
+      expect(roundTripSpec(spec).options.overlays).toEqual([
+         { kind: 'reference', value: 3, orientation: 'vertical', label: 'Cutoff' },
+      ])
+   })
+
+   it('serializes a bare vertical reference (no label) without quotes', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { overlays: [{ kind: 'reference', value: 7, orientation: 'vertical' }] },
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }] }] },
+      }
+      expect(graphSpecToFence(spec).info).toContain('overlay=vref:7')
+   })
+
+   it('parses an old ref: token as a HORIZONTAL reference (back-compat, no orientation field)', () => {
+      const spec = fenceToGraphSpec('graph type=line overlay=ref:100', '')
+      // A pre-orientation reference carries NO orientation key (defaults to horizontal at render time).
+      expect(spec.options.overlays).toEqual([{ kind: 'reference', value: 100 }])
+   })
+
+   it('a horizontal reference still emits the plain ref: token (byte-identical to before)', () => {
+      const spec: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A'], series: [{ name: 'S', values: [1] }] },
+         options: { overlays: [{ kind: 'reference', value: 5 }] },
+      }
+      const info = graphSpecToFence(spec).info
+      expect(info).toContain('overlay=ref:5')
+      expect(info).not.toContain('vref')
+   })
+})
+
+describe('Graph fence, custom axis origin (origin= token)', () => {
+   it('round-trips a custom axis origin on a scatter chart', () => {
+      const spec: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { axisOrigin: { x: 2, y: -3 } },
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }] }] },
+      }
+      expect(graphSpecToFence(spec).info).toContain('origin=2,-3')
+      expect(roundTripSpec(spec).options.axisOrigin).toEqual({ x: 2, y: -3 })
+   })
+
+   it('emits no origin= token when the axis origin is absent', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: {},
+         functionPlot: { domain: { xMin: -10, xMax: 10, samples: 200 }, equations: [{ name: 'f', expression: 'x' }] },
+      }
+      expect(graphSpecToFence(spec).info).not.toContain('origin=')
+      expect('axisOrigin' in roundTripSpec(spec).options).toBe(false)
+   })
+
+   it('drops a malformed origin= token (wrong arity / non-numeric) rather than throwing', () => {
+      expect(fenceToGraphSpec('graph type=scatter origin=1', '').options.axisOrigin).toBeUndefined()
+      expect(fenceToGraphSpec('graph type=scatter origin=a,b', '').options.axisOrigin).toBeUndefined()
+      expect(fenceToGraphSpec('graph type=scatter origin=1,2,3', '').options.axisOrigin).toBeUndefined()
+   })
+})
+
 describe('Graph fence, function type (equation plots)', () => {
    it('round-trips a multi-equation function spec (domain, names, expressions, colors)', () => {
       const spec: GraphSpec = {
@@ -368,7 +472,7 @@ describe('Graph fence, function type (equation plots)', () => {
       }
       const { info, body } = graphSpecToFence(spec)
       expect(info).toContain('type=function')
-      // -10/10/200 ARE the sane defaults per docs/reference/graph_equation_study.md Q5 — a fence
+      // -10/10/200 ARE the sane defaults per docs/reference/graph_equation_study.md Q5, a fence
       // at the default domain stays lean and omits the tokens entirely.
       expect(info).not.toContain('xmin=')
       expect(info).not.toContain('xmax=')
@@ -589,7 +693,7 @@ describe('Graph fence, scatter type (x/y point pairs)', () => {
    })
 
    // Overlays live on `options.overlays`, which is shared, type-agnostic serialization (the SAME
-   // repeated `overlay=` token grammar every other graph type uses) — the `series` index just
+   // repeated `overlay=` token grammar every other graph type uses), the `series` index just
    // resolves against `scatterPlot.series` at render time, so no scatter-specific fence work was
    // needed for this. Verified end to end here regardless.
    it('round-trips mean / trend / reference overlays on a scatter spec', () => {

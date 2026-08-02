@@ -2,7 +2,7 @@
  * graphEdit.test.ts, unit coverage for the pure graph-editor structural transforms.
  *
  * Focus: the two invariants (rectangular arrays, keep-at-least-one) and the "fresh spec, input
- * untouched" contract. Mirrors mathStructures.test.ts in spirit — a pure-lib safety net that the
+ * untouched" contract. Mirrors mathStructures.test.ts in spirit, a pure-lib safety net that the
  * data-grid UI leans on.
  */
 
@@ -52,6 +52,7 @@ import {
    setSource,
    updateSourceMapping,
    unlinkSource,
+   logScaleWouldFallBackToLinear,
 } from './graphEdit'
 import { FUNCTION_DEFAULT_X_MIN, FUNCTION_DEFAULT_X_MAX, FUNCTION_DEFAULT_SAMPLES, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES } from './graph'
 
@@ -495,6 +496,142 @@ describe('setType', () => {
       const next = setType(pinned, pinned.type)
       expect(next.options.yMax).toBe(50)
    })
+
+   it('drops a stale yScale: "log" when switching to a type that cannot render it', () => {
+      const logged = setOption(makeSpec(), 'yScale', 'log') // makeSpec() is type 'bar', log-eligible
+      for (const incompatibleType of ['bar-stacked', 'pie', 'donut'] as const) {
+         const next = setType(logged, incompatibleType)
+         expect(next.options.yScale).toBeUndefined()
+      }
+   })
+
+   it('keeps yScale: "log" when switching between two types that both support it', () => {
+      const logged = setOption(makeSpec(), 'yScale', 'log')
+      const next = setType(logged, 'line')
+      expect(next.options.yScale).toBe('log')
+   })
+
+   it('leaves yScale untouched when the type does not actually change', () => {
+      const logged = setOption(makeSpec(), 'yScale', 'log')
+      const next = setType(logged, logged.type)
+      expect(next.options.yScale).toBe('log')
+   })
+
+   it('drops a stale axisOrigin when switching to a type that cannot render textbook axes', () => {
+      const withOrigin = setOption(setType(makeSpec(), 'scatter'), 'axisOrigin', { x: 1, y: 2 })
+      for (const incompatibleType of ['bar', 'line', 'pie', 'histogram'] as const) {
+         expect(setType(withOrigin, incompatibleType).options.axisOrigin).toBeUndefined()
+      }
+   })
+
+   it('keeps axisOrigin when switching between the two continuous-x types (function <-> scatter)', () => {
+      const withOrigin = setOption(setType(makeSpec(), 'scatter'), 'axisOrigin', { x: 0, y: 0 })
+      expect(setType(withOrigin, 'function').options.axisOrigin).toEqual({ x: 0, y: 0 })
+   })
+})
+
+describe('logScaleWouldFallBackToLinear', () => {
+   it('is false when yScale is not "log"', () => {
+      expect(logScaleWouldFallBackToLinear(makeSpec())).toBe(false)
+      expect(logScaleWouldFallBackToLinear(setOption(makeSpec(), 'yScale', 'linear'))).toBe(false)
+   })
+
+   it('is false for a type that cannot support log at all, even if yScale is stray-set to "log"', () => {
+      const stacked: GraphSpec = { ...setOption(makeSpec(), 'yScale', 'log'), type: 'bar-stacked' }
+      expect(logScaleWouldFallBackToLinear(stacked)).toBe(false)
+   })
+
+   it('is false for a positive-only bar/line spec requesting log', () => {
+      const spec = setOption(makeSpec(), 'yScale', 'log') // values [1,2,3] / [4,5,6], all positive
+      expect(logScaleWouldFallBackToLinear(spec)).toBe(false)
+   })
+
+   it('is true for a bar/line spec whose data touches zero or negative', () => {
+      const withZero: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [0, 5] }] },
+         options: { yScale: 'log' },
+      }
+      const withNegative: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [-1, 5] }] },
+         options: { yScale: 'log' },
+      }
+      expect(logScaleWouldFallBackToLinear(withZero)).toBe(true)
+      expect(logScaleWouldFallBackToLinear(withNegative)).toBe(true)
+   })
+
+   // Reuses computeFunctionYDomain, the SAME expression-sampling pipeline renderFunctionPlot's own
+   // axis-mode decision runs, so this reflects exactly what the renderer will actually do, no
+   // separately-maintained approximation (this was a documented gap: see docs/reports/
+   // 2026-08-02-graph-log-scale-function-fix.md, a function was previously the only log-enabled
+   // type with no fallback notice, which read as "log scale does nothing" when a sampled curve
+   // dipped to/through zero).
+   it('is false for a function chart whose sampled curve stays strictly positive', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         // exp(x) over [-10, 10] never touches zero.
+         functionPlot: { domain: { xMin: -10, xMax: 10, samples: 50 }, equations: [{ name: 'f', expression: 'exp(x)' }] },
+      }
+      expect(logScaleWouldFallBackToLinear(spec)).toBe(false)
+   })
+
+   it('is true for a function chart whose sampled curve crosses zero', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         // f(x) = x over [-10, 10] samples straight through zero.
+         functionPlot: { domain: { xMin: -10, xMax: 10, samples: 50 }, equations: [{ name: 'f', expression: 'x' }] },
+      }
+      expect(logScaleWouldFallBackToLinear(spec)).toBe(true)
+   })
+
+   it('is false for a function chart whose domain keeps it strictly positive (x^2 + 1)', () => {
+      const spec: GraphSpec = {
+         type: 'function',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         functionPlot: { domain: { xMin: -3, xMax: 3, samples: 50 }, equations: [{ name: 'f', expression: 'x^2 + 1' }] },
+      }
+      expect(logScaleWouldFallBackToLinear(spec)).toBe(false)
+   })
+
+   it('reflects a scatter series whose points touch y <= 0', () => {
+      const positive: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }, { x: 2, y: 4 }] }] },
+      }
+      const touchesZero: GraphSpec = {
+         type: 'scatter',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 0 }, { x: 2, y: 4 }] }] },
+      }
+      expect(logScaleWouldFallBackToLinear(positive)).toBe(false)
+      expect(logScaleWouldFallBackToLinear(touchesZero)).toBe(true)
+   })
+
+   it('reflects whether a histogram has at least one positive bin count', () => {
+      const withData: GraphSpec = {
+         type: 'histogram',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         histogramData: { samples: [1, 2, 3, 4, 5] },
+      }
+      const empty: GraphSpec = {
+         type: 'histogram',
+         data: { labels: [], series: [] },
+         options: { yScale: 'log' },
+         histogramData: { samples: [] },
+      }
+      expect(logScaleWouldFallBackToLinear(withData)).toBe(false)
+      expect(logScaleWouldFallBackToLinear(empty)).toBe(true)
+   })
 })
 
 describe('setOption', () => {
@@ -589,7 +726,7 @@ describe('updateOverlay', () => {
 // ##################################################
 // # functionPlot passthrough (the withData/setType/setOption fix)
 // ##################################################
-// Every generic data/option transform must carry an existing `functionPlot` through unchanged —
+// Every generic data/option transform must carry an existing `functionPlot` through unchanged,
 // before this fix, `withData`/`setType`/`setOption` rebuilt the spec from named fields and
 // silently dropped it, which would have wiped an author's equations on the very next option
 // toggle (title, legend, ...) on a `function` chart.
@@ -815,7 +952,7 @@ describe('moveEquation', () => {
 // ##################################################
 // Every generic data/option transform already carries `scatterPlot` through unchanged because
 // `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }` (the same spread that
-// fixed the equivalent functionPlot-dropping bug), so no separate fix was needed for scatter — this
+// fixed the equivalent functionPlot-dropping bug), so no separate fix was needed for scatter, this
 // just locks that behavior in with its own tests.
 
 describe('scatterPlot passthrough', () => {
@@ -846,8 +983,8 @@ describe('scatterPlot passthrough', () => {
 // # histogramData passthrough (the withData/setType/setOption spread)
 // ####################################################
 // Every generic data/option transform already carries `histogramData` through unchanged because
-// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }` — the same spread that
-// fixed the equivalent functionPlot/scatterPlot-dropping bugs — so no separate fix was needed for
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, the same spread that
+// fixed the equivalent functionPlot/scatterPlot-dropping bugs, so no separate fix was needed for
 // histogram either; this just locks that behavior in with its own tests.
 
 describe('histogramData passthrough', () => {

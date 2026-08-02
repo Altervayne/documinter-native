@@ -10,8 +10,8 @@ const t = translations.en
 // ==========================================================
 //  A label + order projection: the exact contract both surfaces (the top-bar Document dropdown and
 //  the document-background context menu) must render identically. Items collapse to their label,
-//  separators / headers to a stable tag, and the accent section (a nameless swatch grid — no
-//  per-color labels to compare) to a summary of its preset hexes + whether a custom tile is wired —
+//  separators / headers to a stable tag, and the accent section (a nameless swatch grid, no
+//  per-color labels to compare) to a summary of its preset hexes + whether a custom tile is wired,
 //  icons, onSelect identity, and swatch "active" state are deliberately ignored, so two surfaces
 //  wiring DIFFERENT opener closures still project equal iff the shared builder kept order in lockstep.
 // ==========================================================
@@ -88,7 +88,7 @@ describe('buildDocumentMenuEntries', () => {
 
    it('is the single source of truth: two surfaces wiring different openers project identically', () => {
       // The top-bar Document dropdown and the background context menu differ ONLY in their
-      // surface-specific opener closures (custom-accent expand toggle, preview toggle) — never in
+      // surface-specific opener closures (custom-accent expand toggle, preview toggle), never in
       // label or order. Simulating each with distinct closures must still yield an identical
       // projection.
       const contextMenuSurface = buildDocumentMenuEntries({

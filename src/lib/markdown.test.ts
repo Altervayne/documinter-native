@@ -27,8 +27,8 @@ describe('Markdown freeform metadata', () => {
 })
 
 // Markdown round-trips the lossless subset (everything except containers). Image src/alt and
-// caption/align/height all survive — verified against the serializer's comment-based attribute
-// emission — so the fixture keeps the image; only containers are excluded.
+// caption/align/height all survive, verified against the serializer's comment-based attribute
+// emission, so the fixture keeps the image; only containers are excluded.
 
 describe('Markdown round-trip (lossless subset)', () => {
    it('is identical after serialize → parse → serialize for the container-free fixture', () => {
@@ -89,7 +89,7 @@ describe('Markdown targeted parse', () => {
 
 // Containers have no Markdown representation, so they flatten by design (TESTING_STUDY §2.5): the
 // wrapper is dropped, inner blocks are promoted to top level, and the ratio is lost. This is a
-// stable contract, not a bug — Mintdown remains the format that preserves containers.
+// stable contract, not a bug, Mintdown remains the format that preserves containers.
 describe('Markdown container flattening (by design)', () => {
    it('promotes a container\'s inner blocks to top level and drops the wrapper + ratio', () => {
       const fixture  = buildFixtureDocument()   // includes the two containers

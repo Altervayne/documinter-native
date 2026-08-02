@@ -1,6 +1,6 @@
 /**
  * stats.ts, the pure statistics behind the graph block's computed overlays (mean / median /
- * linear trendline). NO SVG, NO theme, NO React — just numbers in, numbers out, exactly the
+ * linear trendline). NO SVG, NO theme, NO React, just numbers in, numbers out, exactly the
  * house pattern of scale.ts: a small, deterministic, thoroughly unit-tested math module that
  * carries the whole numeric correctness of the overlay feature.
  *
@@ -36,7 +36,7 @@ export function mean(values: readonly (number | null)[]): number | null {
 /**
  * The median of the finite values (a sorted copy; the two middle values are averaged for an even
  * count). Skips null / undefined / non-finite cells. Returns null when no finite value survives.
- * Reserved for a fast-follow overlay kind — computed and tested now so the render path is ready.
+ * Reserved for a fast-follow overlay kind, computed and tested now so the render path is ready.
  */
 export function median(values: readonly (number | null)[]): number | null {
    const finite: number[] = []

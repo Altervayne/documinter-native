@@ -116,7 +116,7 @@ interface HeaderMenuBarProps {
    onManualSave:     () => void
    onSaveAs:         () => void
    onNew:            () => void
-   /** Add a section to the active document — the Document menu's "Add section" entry. */
+   /** Add a section to the active document, the Document menu's "Add section" entry. */
    onAddSection:     () => void
    onToggleBinder:   () => void
    onImportMarkdownFile: (file: File) => Promise<void>
@@ -154,7 +154,7 @@ export function HeaderMenuBar({
    const isDocumentMode = mode === 'document'
    const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
 
-   // Ctrl+E (Cmd+E) opens the Export dialog. Document mode only — export acts on the open
+   // Ctrl+E (Cmd+E) opens the Export dialog. Document mode only, export acts on the open
    // document, which the binder view doesn't present.
    useEffect(() => {
       if (!isDocumentMode) return

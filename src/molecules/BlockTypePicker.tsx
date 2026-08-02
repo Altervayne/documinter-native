@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, ImagePlus, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { BlockType } from '../types'
 import { useLang } from '../contexts/LangContext'
 import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
@@ -47,6 +47,7 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       { type: 'image',     Icon: Image,     label: t.blockImage,      description: t.blockImageDesc,      category: 'mediaData' },
       { type: 'table',     Icon: Table,     label: t.blockTable,      description: t.blockTableDesc,      category: 'mediaData' },
       { type: 'graph',     Icon: BarChart3, label: t.blockGraph,      description: t.blockGraphDesc,      category: 'mediaData' },
+      { type: 'image-markup', Icon: ImagePlus, label: t.blockImageMarkup, description: t.blockImageMarkupDesc, category: 'mediaData' },
       { type: 'container', Icon: Columns2,           label: t.blockContainer, description: t.blockContainerDesc, category: 'layout' },
       { type: 'hr',        Icon: SeparatorHorizontal, label: t.blockHr,        description: t.blockHrDesc,        category: 'layout' },
    ]
@@ -89,7 +90,7 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
    }, [filterQuery])
 
    // Measured, two-sided clamp on both axes (flips above/below the anchor, then keeps the picker
-   // fully on-screen even when neither side has enough room) — replaces the old height-estimate
+   // fully on-screen even when neither side has enough room), replaces the old height-estimate
    // heuristic that only handled the above/below choice and never clamped the vertical axis.
    const { ref: listRef, top, left } = useViewportClampedPosition<HTMLDivElement>({
       type: 'rect', rect: anchorRect, preferAbove,

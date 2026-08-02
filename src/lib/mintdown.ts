@@ -3,6 +3,7 @@ import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { fenceToGraphSpec } from './graphFence'
+import { fenceToImageMarkupSpec } from './imageMarkupFence'
 import { slugify } from './text'
 import { sanitizeCalloutHex } from './calloutColor'
 
@@ -52,6 +53,11 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       // Pass the FULL info string so the graph parser can tokenize quoted options itself;
       // malformed fences degrade gracefully (default type + empty data), never throw.
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
+   }
+   if (langTag.toLowerCase() === 'imagemarkup') {
+      // `src` always comes back empty (no base64 in Mintdown either, see imageMarkupFence.ts);
+      // malformed fences degrade gracefully, never throw.
+      return { id: crypto.randomUUID(), type: 'image-markup', imageMarkup: fenceToImageMarkupSpec(fenceInfo, body) }
    }
    const lang: CodeLang = FENCE_TO_CODE_LANG[langTag.toLowerCase()] ?? 'plain'
    return { id: crypto.randomUUID(), type: 'code', lang, code: body }
@@ -213,8 +219,8 @@ function parseCalloutLines(strippedLines: string[]): Block {
 
    if (tagMatch) {
       const tag = tagMatch[1]
-      // A malformed hex (wrong digit count) leaves calloutColor unset — falls back to the
-      // 'info' preset — while the tag is still consumed rather than left as literal content.
+      // A malformed hex (wrong digit count) leaves calloutColor unset, falls back to the
+      // 'info' preset, while the tag is still consumed rather than left as literal content.
       if (tag.startsWith('#')) calloutColor = sanitizeCalloutHex(tag)
       else style = STYLE_MAP[tag.toLowerCase()]
       const restOfFirstLine = tagMatch[2]

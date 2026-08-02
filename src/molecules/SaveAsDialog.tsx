@@ -28,7 +28,7 @@ const ROOT_FOLDER_ID = '0'
 
 /**
  * Save As dialog: a folder navigator that picks where the copy is saved. Drill into the folder tree
- * (the folder shown in the breadcrumb is the destination); the copy keeps the document's own title —
+ * (the folder shown in the breadcrumb is the destination); the copy keeps the document's own title,
  * the title is part of the document and is renamed in the tab, never here. Reuses BinderBreadcrumb;
  * mirrors ConfirmDialog's portal/backdrop shell.
  */

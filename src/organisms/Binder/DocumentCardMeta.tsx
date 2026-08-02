@@ -8,7 +8,7 @@ interface DocumentCardMetaProps {
 
 /**
  * Right-side metadata panel of a document card. Fed entirely from the light record and laid out
- * in stacked groups — title, a compact summary of the first freeform metadata fields, sections
+ * in stacked groups, title, a compact summary of the first freeform metadata fields, sections
  * (count + first three titles, with an ellipsis when there are more), and timestamps. Every value
  * is truncated so nothing overflows the narrow card width.
  */
@@ -32,7 +32,7 @@ export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
             {meta.title || t.untitledDoc}
          </div>
 
-         {/* Freeform metadata — first one or two fields */}
+         {/* Freeform metadata, first one or two fields */}
          {previewFields.length > 0 && (
             <div className="flex flex-col gap-0.5 text-[0.7rem] font-mono text-muted">
                {previewFields.map(field => {
@@ -48,7 +48,7 @@ export function DocumentCardMeta({ record }: DocumentCardMetaProps) {
             </div>
          )}
 
-         {/* Sections — count + first three titles, ellipsis if there are more */}
+         {/* Sections, count + first three titles, ellipsis if there are more */}
          <div className="flex flex-col gap-0.5 min-w-0">
             <div className="text-xs font-medium text-muted/90 truncate min-w-0">
                {sectionCount} {sectionLabel}

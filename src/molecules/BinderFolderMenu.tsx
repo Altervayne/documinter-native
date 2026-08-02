@@ -14,7 +14,7 @@ interface BinderFolderMenuProps {
 
 /**
  * Folder context menu, shared by the ⋯ button and right-click. Thin adapter over the shared
- * <ContextMenu> — it owns the portal, the viewport clamp, keyboard nav, and dismissal.
+ * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
  */
 export function BinderFolderMenu({ x, y, onClose, onRename, onNewSubfolder, onDelete }: BinderFolderMenuProps) {
    const { t } = useLang()

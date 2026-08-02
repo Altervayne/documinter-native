@@ -8,7 +8,7 @@
  * `parsePipeTableRow` the table block parses with).
  *
  * The `type=` token is load-bearing and is emitted in BOTH `.mint` and `.md` (a graph fence is
- * Documint-specific in either format, so there is no GitHub-compat reason to strip it) — this is
+ * Documint-specific in either format, so there is no GitHub-compat reason to strip it), this is
  * the deliberate divergence from the math block, whose `scale=` is dropped in portable Markdown.
  *
  * Both directions are total: `graphSpecToFence` never throws on a partial spec, and
@@ -30,6 +30,7 @@ import {
    FUNCTION_DEFAULT_SAMPLES,
 } from './graph'
 import { parsePipeTableRow } from './markdown'
+import { serializeInfoValue, unquoteInfoValue, tokenizeInfoString } from './fenceInfoString'
 
 // #############
 // # CONSTANTS #
@@ -45,78 +46,8 @@ const DEFAULT_GRAPH_TYPE: GraphType = 'bar'
 // ###################################
 // # PRIVATE HELPERS, INFO STRING #
 // ###################################
-
-/** Whether a scalar must be double-quoted on the info string (spaces, quotes, or empty). */
-function infoValueNeedsQuote(value: string): boolean {
-   return value === '' || /[\s"]/.test(value)
-}
-
-/** Serialize one info-string value, double-quoting + escaping only when necessary. */
-function serializeInfoValue(value: string): string {
-   if (!infoValueNeedsQuote(value)) return value
-   return '"' + value.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
-}
-
-/** Unescape a value that arrived double-quoted (drops the quotes, resolves `\"` and `\\`). */
-function unquoteInfoValue(raw: string): string {
-   if (raw.length < 2 || raw[0] !== '"' || raw[raw.length - 1] !== '"') return raw
-   const inner = raw.slice(1, -1)
-   let result = ''
-   let index  = 0
-   while (index < inner.length) {
-      if (inner[index] === '\\' && index + 1 < inner.length) {
-         result += inner[index + 1]
-         index += 2
-      } else {
-         result += inner[index]
-         index++
-      }
-   }
-   return result
-}
-
-/**
- * Split a fence info string into whitespace-separated tokens, keeping a double-quoted region
- * (including any escaped quotes inside it) as part of a single token. So
- * `graph type=bar title="Quarterly revenue"` tokenizes to
- * `['graph', 'type=bar', 'title="Quarterly revenue"']`, not on the space inside the title.
- */
-function tokenizeInfoString(info: string): string[] {
-   const source = info.trim()
-   const tokens: string[] = []
-   let index = 0
-
-   while (index < source.length) {
-      // Skip run of whitespace between tokens.
-      while (index < source.length && /\s/.test(source[index])) index++
-      if (index >= source.length) break
-
-      let token = ''
-      while (index < source.length && !/\s/.test(source[index])) {
-         if (source[index] === '"') {
-            // Consume the whole quoted region, quotes and escapes included, so an inner
-            // space does not end the token.
-            token += source[index]
-            index++
-            while (index < source.length && source[index] !== '"') {
-               if (source[index] === '\\' && index + 1 < source.length) {
-                  token += source[index] + source[index + 1]
-                  index += 2
-               } else {
-                  token += source[index]
-                  index++
-               }
-            }
-            if (index < source.length) { token += source[index]; index++ } // closing quote
-         } else {
-            token += source[index]
-            index++
-         }
-      }
-      tokens.push(token)
-   }
-   return tokens
-}
+// Tokenizing/quoting itself now lives in the shared `fenceInfoString.ts` (promoted so the
+// image-markup fence reuses the same grammar); this file keeps only the graph-specific parsing.
 
 /** Parsed pieces of a graph fence info string. */
 interface ParsedInfo {
@@ -138,14 +69,14 @@ interface ParsedInfo {
 }
 
 // ============ overlay token grammar (compact, colon-separated, quote-safe) ============
-// One `overlay=` token per Overlay (a REPEATED key — the only one in the fence). Grammar:
+// One `overlay=` token per Overlay (a REPEATED key, the only one in the fence). Grammar:
 //   mean:<series>            median:<series>            trend:<series>[:eq]
-//   ref:<value>[:<label>]
+//   ref:<value>[:<label>]     vref:<value>[:<label>]     (ref = horizontal, vref = vertical)
 //   eq:<expression>
 // where <series> is a slot index or the literal `all`. A reference label may contain spaces (and
 // colons), so the whole token is double-quoted by serializeInfoValue when it needs it. An
 // equation's <expression> is taken VERBATIM as everything after the first colon (never split
-// further) — the expr.ts grammar (docs/reference/graph_equation_study.md) has NO `:` operator or
+// further), the expr.ts grammar (docs/reference/graph_equation_study.md) has NO `:` operator or
 // token anywhere (numbers, `x`, `pi`/`e`, `+ - * / ^`, parens, commas, function names), so the
 // `eq:` prefix split is unambiguous by construction; an expression containing whitespace or a
 // literal `"` is still double-quoted by serializeInfoValue like every other token, no new
@@ -155,7 +86,11 @@ interface ParsedInfo {
 function serializeOverlay(overlay: Overlay): string | null {
    if (overlay.kind === 'reference') {
       if (overlay.value === undefined || !Number.isFinite(overlay.value)) return null
-      const base = `ref:${overlay.value}`
+      // A VERTICAL reference (x = value) rides its own `vref:` prefix; the default/absent-orientation
+      // HORIZONTAL reference keeps the original `ref:` prefix, so an old `ref:` fence still parses
+      // back to a horizontal reference unchanged (back-compat).
+      const prefix = overlay.orientation === 'vertical' ? 'vref' : 'ref'
+      const base = `${prefix}:${overlay.value}`
       return overlay.label && overlay.label !== '' ? `${base}:${overlay.label}` : base
    }
    if (overlay.kind === 'equation') {
@@ -173,11 +108,14 @@ function serializeOverlay(overlay: Overlay): string | null {
 function parseOverlay(raw: string): Overlay | null {
    const segments = raw.split(':')
    const kindToken = segments[0]
-   if (kindToken === 'ref') {
+   if (kindToken === 'ref' || kindToken === 'vref') {
       const value = Number(segments[1])
       if (!Number.isFinite(value)) return null
       const label = segments.slice(2).join(':')
       const overlay: Overlay = { kind: 'reference', value }
+      // `vref:` is the VERTICAL variant (x = value); `ref:` stays horizontal (default), so a
+      // pre-existing `ref:` token round-trips to a horizontal reference exactly as before.
+      if (kindToken === 'vref') overlay.orientation = 'vertical'
       if (label !== '') overlay.label = label
       return overlay
    }
@@ -264,6 +202,26 @@ function parseInfoString(fenceInfo: string): ParsedInfo {
          case 'ymax': {
             const parsed = Number(value)
             if (Number.isFinite(parsed)) options.yMax = parsed
+            break
+         }
+         case 'yScale':
+            // 'linear' is the default and never rides the fence (see serializeInfoTokens), so only
+            // an explicit 'log' is meaningful here; anything else (including a stray 'linear', or
+            // garbage from a hand-edited fence) is silently ignored, leaving the field unset.
+            if (value === 'log') options.yScale = 'log'
+            break
+         case 'origin': {
+            // `origin=x,y`, the custom axis origin (function/scatter). Both fields must parse to a
+            // finite number; a malformed value (wrong arity, non-numeric) is silently dropped,
+            // leaving the field unset (standard edge axes), matching the tolerant-parse contract.
+            const segments = value.split(',')
+            if (segments.length === 2) {
+               const originX = Number(segments[0])
+               const originY = Number(segments[1])
+               if (Number.isFinite(originX) && Number.isFinite(originY)) {
+                  options.axisOrigin = { x: originX, y: originY }
+               }
+            }
             break
          }
          case 'xmin': {
@@ -359,7 +317,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    // Live table link (tabular types only): `source=<handle>` rides the info string like every other
    // token, right after `type=` so a linked fence reads "type=… source=…" up front. The mapping
    // tokens `labelCol=`/`orient=` are emitted ONLY when non-default (label column 0 / `columns`),
-   // keeping a plainly-linked fence lean — same default-diff rule barWidth=/lineWidth=/etc. follow.
+   // keeping a plainly-linked fence lean, same default-diff rule barWidth=/lineWidth=/etc. follow.
    // The pipe-table body stays the materialized snapshot (serializeTableBody reads spec.data), so a
    // `.md`/foreign viewer, or a dangling link, still shows the last-known data.
    if (spec.source && spec.source.handle) {
@@ -374,7 +332,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       tokens.push(`title=${serializeInfoValue(options.title)}`)
 
    // Domain tokens (function type only), emitted only when they differ from the sane defaults so
-   // an untouched function chart's fence stays lean — same pattern barWidth=/lineWidth=/etc. follow.
+   // an untouched function chart's fence stays lean, same pattern barWidth=/lineWidth=/etc. follow.
    if (spec.type === 'function') {
       const domain = spec.functionPlot?.domain
       const xMin = domain?.xMin ?? FUNCTION_DEFAULT_X_MIN
@@ -385,7 +343,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       if (samples !== FUNCTION_DEFAULT_SAMPLES) tokens.push(`samples=${samples}`)
    }
 
-   // `bins=`/`name=` tokens (histogram type only), emitted only when actually set — `bins` absent
+   // `bins=`/`name=` tokens (histogram type only), emitted only when actually set, `bins` absent
    // means "auto (Sturges)" (never emit a computed bin count, only a manual override), and `name`
    // absent means "no dataset name" (there being no meaningful default to compare against, unlike
    // barWidth=/lineWidth=/etc., these are simple presence checks, not default-diff checks).
@@ -410,6 +368,17 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       tokens.push(`ymin=${options.yMin}`)
    if (options.yMax !== undefined)
       tokens.push(`ymax=${options.yMax}`)
+   // 'linear' is the implicit default (absent = linear, byte-identical output), so the token is
+   // emitted only for the non-default 'log', same "at-default value renders identically without a
+   // token" rule barWidth=/lineWidth=/etc. already follow.
+   if (options.yScale === 'log')
+      tokens.push('yScale=log')
+   // Custom axis origin (function/scatter textbook axes): `origin=x,y`, emitted only when set (an
+   // absent origin renders the standard edge axes, byte-identical). No spaces, so it needs no
+   // quoting; a malformed hand-edited value is dropped on parse (see the `origin` case above).
+   if (options.axisOrigin !== undefined
+      && Number.isFinite(options.axisOrigin.x) && Number.isFinite(options.axisOrigin.y))
+      tokens.push(`origin=${options.axisOrigin.x},${options.axisOrigin.y}`)
 
    // Per-type presentation options ride the info string ONLY when set AND different from the
    // render default (an at-default value renders identically without a token, keeping the fence
@@ -422,7 +391,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
       tokens.push(`points=${options.showPoints ? 'on' : 'off'}`)
    if (options.areaFillOpacity !== undefined && options.areaFillOpacity !== GRAPH_DEFAULT_AREA_FILL_OPACITY)
       tokens.push(`areaOpacity=${options.areaFillOpacity}`)
-   // barPeakLine is a plain boolean display toggle (no GRAPH_DEFAULT_* — off is the render default),
+   // barPeakLine is a plain boolean display toggle (no GRAPH_DEFAULT_*, off is the render default),
    // mirroring showValues: emitted only when true, so an untouched graph stays byte-lean.
    if (options.barPeakLine === true)
       tokens.push('peakline=on')
@@ -438,7 +407,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
 
    // Per-series color overrides ride ONE `colors=` token in series order, empty slot = no
    // override. Emitted only when at least one series actually carries a color. `scatter` reads its
-   // series list from `scatterPlot` (not `data.series`, which stays empty for this type) — the
+   // series list from `scatterPlot` (not `data.series`, which stays empty for this type), the
    // SAME token grammar every other type uses, just a different source array. `histogram` has only
    // ONE dataset (no series axis at all), so it rides the same single-slot `colors="…"` token via a
    // synthetic one-item list built from `histogramData.color`.
@@ -500,7 +469,7 @@ export function parseNumericCell(raw: string | undefined): number | null {
 /**
  * Parse the pipe-table body into GraphData. The first column holds the category labels; each
  * remaining column is one named series (header cell = series name, body cells = numeric values).
- * A separator row (if present) after the header is skipped. Never throws — an unusable body
+ * A separator row (if present) after the header is skipped. Never throws, an unusable body
  * yields empty data.
  */
 function parseTableBody(body: string): { labels: string[]; series: GraphSeries[] } {
@@ -537,8 +506,8 @@ function parseTableBody(body: string): { labels: string[]; series: GraphSeries[]
 }
 
 /**
- * Parse the `function` type's pipe-table body — `| Name | Expression | Color |`, one row per
- * equation — into an {@link EquationSeries} list. Never throws: an unusable body yields an empty
+ * Parse the `function` type's pipe-table body, `| Name | Expression | Color |`, one row per
+ * equation, into an {@link EquationSeries} list. Never throws: an unusable body yields an empty
  * list, and a row with a blank Expression cell (the load-bearing field) is skipped rather than
  * kept as a dead equation, so a hand-edited fence can never produce an equation with nothing to
  * plot.
@@ -583,14 +552,14 @@ function serializeEquationTableBody(equations: EquationSeries[]): string {
 }
 
 /**
- * Parse the `scatter` type's LONG-FORMAT pipe-table body — `| Series | X | Y |`, one row per POINT
- * (not per series) — into a {@link ScatterSeries} list. Rows are grouped back into series by their
+ * Parse the `scatter` type's LONG-FORMAT pipe-table body, `| Series | X | Y |`, one row per POINT
+ * (not per series), into a {@link ScatterSeries} list. Rows are grouped back into series by their
  * `Series` cell text, preserving FIRST-SEEN series order (so an author's series ordering survives
  * even though the long format interleaves points from different series across rows). Never throws:
  * an unusable body yields an empty list, and a row whose X or Y cell is not a finite number is
  * skipped rather than kept as a broken point, so a hand-edited fence can never produce a point with
  * nothing to plot. NOTE: a series with zero points has no row to reconstruct it from and so cannot
- * round-trip through this format — an accepted, documented degradation (the editor's keep->=1-point
+ * round-trip through this format, an accepted, documented degradation (the editor's keep->=1-point
  * invariant means this only affects a hand-crafted fence, never an author using the UI).
  */
 function parseScatterTableBody(body: string): ScatterSeries[] {
@@ -626,7 +595,7 @@ function parseScatterTableBody(body: string): ScatterSeries[] {
 /**
  * Serialize a {@link ScatterSeries} list to the `scatter` type's LONG-FORMAT pipe-table body: one
  * row per POINT (`SeriesName | x | y`), series emitted in order with every one of their points in
- * order. A series with zero points contributes no rows (see the parse-side note above — an
+ * order. A series with zero points contributes no rows (see the parse-side note above, an
  * accepted, editor-unreachable degradation, not a round-trip bug for anything the UI can produce).
  */
 function serializeScatterTableBody(series: ScatterSeries[]): string {
@@ -636,7 +605,7 @@ function serializeScatterTableBody(series: ScatterSeries[]): string {
    for (const oneSeries of series) {
       const seriesName = escapePipeCell(oneSeries.name ?? '')
       for (const point of oneSeries.points) {
-         // Skip a non-finite (blank-seeded, never filled) point — the parser skips it too, so it is
+         // Skip a non-finite (blank-seeded, never filled) point, the parser skips it too, so it is
          // never a real datum; emitting it would write a literal "NaN" cell into the fence.
          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
          bodyRows.push(`| ${seriesName} | ${point.x} | ${point.y} |`)
@@ -647,11 +616,11 @@ function serializeScatterTableBody(series: ScatterSeries[]): string {
 
 /**
  * Parse a free-form blob of text into a finite `number[]`, tolerating commas, whitespace (including
- * newlines), semicolons, and any other separator/garbage between numbers — the histogram type's
+ * newlines), semicolons, and any other separator/garbage between numbers, the histogram type's
  * "paste a pile of numbers" input, both for the fence body AND the editor's raw-samples textarea
  * (this is the SAME parser both call, so what you paste into the editor is byte-identical to what a
  * hand-edited fence body parses to). Tokens that do not parse to a finite number (an empty run
- * between separators, a stray word, `NaN`/`Infinity` spelled out, …) are silently skipped — never
+ * between separators, a stray word, `NaN`/`Infinity` spelled out, …) are silently skipped, never
  * thrown, matching the "garbage ignored, never breaks the chart" contract every other graph parser
  * here honors.
  */
@@ -667,7 +636,7 @@ export function parseHistogramSamplesText(text: string): number[] {
 
 /**
  * Serialize a histogram's raw sample list to the fence body: a COMPACT comma-separated number
- * list (not a per-sample pipe table — for potentially hundreds of samples, a flat list is far more
+ * list (not a per-sample pipe table, for potentially hundreds of samples, a flat list is far more
  * compact and just as readable in a hand-edited `.mint`/`.md` file).
  */
 function serializeHistogramBody(samples: number[]): string {
@@ -706,7 +675,7 @@ function serializeTableBody(spec: GraphSpec): string {
 /**
  * Serialize a GraphSpec to its fence pieces: the full info string (including the leading `graph`
  * tag) and the pipe-table body. The caller wraps them in the ``` … ``` fence. Same output in
- * both `.mint` and `.md` — the `type=` token is load-bearing and rides both.
+ * both `.mint` and `.md`, the `type=` token is load-bearing and rides both.
  */
 export function graphSpecToFence(spec: GraphSpec): { info: string; body: string } {
    return {
@@ -789,7 +758,7 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
       series: coloredSeries,
    }
    // Apply the per-category (per-slice) color overrides in label order, but ONLY when at least one
-   // slot carries a color — an all-empty token leaves the field absent so a never-colored spec
+   // slot carries a color, an all-empty token leaves the field absent so a never-colored spec
    // round-trips to an identical object (no stray `categoryColors` key).
    if (sliceColorOverrides.some(color => color !== undefined)) {
       data.categoryColors = labels.map((_label, index) => sliceColorOverrides[index])
@@ -797,7 +766,7 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
 
    const spec: GraphSpec = { type, data, options }
 
-   // A live table link attaches ONLY on the tabular path (function/scatter/histogram return above —
+   // A live table link attaches ONLY on the tabular path (function/scatter/histogram return above,
    // they carry no category×series grid to map a table onto, so a stray `source=` on one of those is
    // harmlessly ignored). Mapping fields ride along only when non-default, mirroring serialization.
    if (source.handle !== undefined) {

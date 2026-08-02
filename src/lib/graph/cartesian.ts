@@ -12,7 +12,7 @@
  * ~10% opacity, recessive hairline gridlines, and a legend whenever there is >1 series.
  */
 
-import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain, ScatterSeries } from './types'
+import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain, ScatterSeries, EquationSeries } from './types'
 import {
    GRAPH_DEFAULT_BAR_WIDTH,
    GRAPH_DEFAULT_LINE_WIDTH,
@@ -23,10 +23,11 @@ import {
    FUNCTION_DEFAULT_SAMPLES,
    FUNCTION_MIN_SAMPLES,
    FUNCTION_MAX_SAMPLES,
+   LOG_SCALE_UNSUPPORTED_TYPES,
 } from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
 import { mean as meanOf, median as medianOf, linearRegression, linearRegressionXY } from './stats'
-import { linearScale, niceTicks, bandScale } from './scale'
+import { linearScale, niceTicks, logScale, niceLogTicks, bandScale } from './scale'
 import { compileExpression, evaluate } from './expr'
 import type { CompiledExpression } from './expr'
 import { computeHistogramBins } from './histogram'
@@ -86,10 +87,32 @@ const LEGEND_SWATCH_SIZE = 12
 const LEGEND_SWATCH_TEXT_GAP = 6
 const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
 
+// ====== custom-origin ("textbook" / four-quadrant) axes, function/scatter only ======
+// The half-length of a tick mark drawn straddling a crossing axis line (so a tick reads the same on
+// either side of the axis, classic math-plot style). ~4px matches the recessive gridline weight.
+const TEXTBOOK_TICK_MARK_HALF_LENGTH = 4
+// Gap in px between a tick mark's end and its number label on the crossing axes.
+const TEXTBOOK_TICK_LABEL_GAP = 4
+// A tick label whose pixel position sits within this many px of the OTHER crossing axis is the
+// origin's own label, dropped so the two zero labels never collide at the crossing (the standard
+// "no redundant origin number" convention). When the origin sits off-domain (its axis clamped to a
+// plot edge), no tick lands this close, so nothing is dropped, exactly the graceful behavior wanted.
+const AXIS_CROSSING_LABEL_SKIP_PX = 1
+
+// ====== value (y) axis mode, linear vs. log (2026-08-02) ======
+// One shared type alias for the value axis's resolved mode, threaded through every drawing helper
+// below that needs to know "is a value <= 0 actually plottable here" (log is undefined at <= 0).
+// See the VALUE DOMAIN section further down for the full per-type eligibility policy.
+type AxisMode = 'linear' | 'log'
+
+/** Opacity of a log-scale MINOR (1-2-5) gridline, fainter than a major gridline/tick, purely a
+ *  density cue, so it never competes with the labeled major lines. */
+const MINOR_GRIDLINE_OPACITY = 0.5
+
 // ====== function-plot discontinuity heuristic ======
 // Two adjacent finite samples with OPPOSITE sign, where at least one's magnitude is this many
 // times the resolved y-domain's half-range, are treated as straddling an asymptote (tan(x), 1/x)
-// rather than a genuine crossing — a pragmatic sign-change + magnitude heuristic (not symbolic
+// rather than a genuine crossing, a pragmatic sign-change + magnitude heuristic (not symbolic
 // limit analysis), per docs/reference/graph_equation_study.md Q4.
 const ASYMPTOTE_MAGNITUDE_MULTIPLIER = 4
 
@@ -99,7 +122,7 @@ const ASYMPTOTE_MAGNITUDE_MULTIPLIER = 4
 // order of magnitude for the standalone `function` chart type, applied here to a usually-narrower
 // index range instead of a numeric xMin/xMax span).
 const EQUATION_OVERLAY_SAMPLE_COUNT = 120
-// A fixed, distinct palette slot for the equation curve — NEVER a data series' own hue (an
+// A fixed, distinct palette slot for the equation curve, NEVER a data series' own hue (an
 // arbitrary f(x) is not "series 6"; this just reuses the validated 8-hue palette's violet slot as
 // a stable, always-the-same color via the existing resolveSeriesColor wrap-around).
 const EQUATION_OVERLAY_PALETTE_SLOT = 6
@@ -121,13 +144,54 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    // A plain `bar` renders the first series only; grouped/stacked read every capped series.
    const drawnSeries: GraphSeries[] = type === 'bar' ? cappedSeries.slice(0, 1) : cappedSeries
 
-   // ====== value domain + nice ticks ======
+   // ====== value domain + axis mode (linear vs. log) + nice ticks ======
    // Reference overlays AUTO-EXTEND the domain (before nice-ticks) so a target line outside the data
-   // range is always visible — the data rescales to fit it. Mean/trend are data-derived (already
+   // range is always visible, the data rescales to fit it. Mean/trend are data-derived (already
    // inside the domain), so they need no extension.
-   const [domainMin, domainMax] = computeValueDomain(type, labels, drawnSeries, options)
-   const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
-   const tickLabels = niceScale.ticks.map(formatNumber)
+   //
+   // LOG SCALE POLICY (see docs/reports/2026-08-02-graph-log-scale.md): `bar-stacked` never gets a
+   // log axis (zero-baseline stacking has no analog where zero doesn't exist), the UNFOLDED domain
+   // probe below is skipped entirely for it, so it takes the exact ORIGINAL single-call path,
+   // byte-identical to before this feature. Every other type here is log-ELIGIBLE, but only when the
+   // data's own raw domain (BEFORE the usual zero-baseline fold, BEFORE yMin/yMax overrides) is
+   // strictly positive; log is undefined at <= 0, so a domain that touches zero or goes negative
+   // silently, safely falls back to the ordinary zero-folded linear domain, never a clamp-to-floor,
+   // never NaN geometry. When `options.yScale` is absent or `'linear'`, this resolves to the exact
+   // same single `computeValueDomain(…, true)` call this renderer has always made.
+   let axisMode: AxisMode = 'linear'
+   let domainMin: number
+   let domainMax: number
+   if (options.yScale === 'log' && !LOG_SCALE_UNSUPPORTED_TYPES.has(type)) {
+      const [unfoldedMin, unfoldedMax] = computeValueDomain(type, labels, drawnSeries, options, false)
+      if (isPositiveFiniteDomain(unfoldedMin, unfoldedMax)) {
+         axisMode = 'log'
+         domainMin = unfoldedMin
+         domainMax = unfoldedMax
+      } else {
+         ;[domainMin, domainMax] = computeValueDomain(type, labels, drawnSeries, options, true)
+      }
+   } else {
+      ;[domainMin, domainMax] = computeValueDomain(type, labels, drawnSeries, options, true)
+   }
+
+   let niceMin: number
+   let niceMax: number
+   let ticks: number[]
+   let minorTicks: number[]
+   if (axisMode === 'log') {
+      const niceLog = niceLogTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLog.niceMin
+      niceMax = niceLog.niceMax
+      ticks = niceLog.ticks
+      minorTicks = niceLog.minorTicks
+   } else {
+      const niceLinear = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLinear.niceMin
+      niceMax = niceLinear.niceMax
+      ticks = niceLinear.ticks
+      minorTicks = []
+   }
+   const tickLabels = ticks.map(formatNumber)
 
    // ====== legend reservation ======
    const legendWanted = options.legend !== false && drawnSeries.length > 1
@@ -147,9 +211,14 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    const { plot } = layout
 
    // ====== scales ======
-   const yScale = linearScale([niceScale.niceMin, niceScale.niceMax], [plot.y + plot.height, plot.y])
+   const yScale = axisMode === 'log'
+      ? logScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
+      : linearScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
    const xBand = bandScale(labels.length, [plot.x, plot.x + plot.width])
-   const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
+   // The x-axis baseline: the zero-crossing for a linear axis (bars grow from 0), or the axis FLOOR
+   // (niceMin, the smallest decade) for a log axis, since zero does not exist on a log scale. Bars
+   // drawn against this baseline therefore grow from the axis floor in log mode, not an implied zero.
+   const baselineValue = axisMode === 'log' ? niceMin : Math.min(niceMax, Math.max(niceMin, 0))
    const baselineY = yScale(baselineValue)
 
    // ====== resolve per-type options (unset => GRAPH_DEFAULT_*, then clamped) ======
@@ -163,34 +232,34 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== assemble ======
    const pieces: string[] = []
-   pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
+   pieces.push(renderGridlines(ticks, yScale, tickLabels, plot, theme, minorTicks))
    pieces.push(renderAxes(plot, baselineY, theme))
    pieces.push(renderCategoryLabels(labels, xBand, plot, theme))
 
    if (type === 'bar') {
-      pieces.push(renderSingleBars(labels, drawnSeries[0], data.categoryColors, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
+      pieces.push(renderSingleBars(labels, drawnSeries[0], data.categoryColors, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction, axisMode))
    } else if (type === 'bar-grouped') {
-      pieces.push(renderGroupedBars(labels, drawnSeries, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction))
+      pieces.push(renderGroupedBars(labels, drawnSeries, xBand, yScale, baselineY, theme, options.showValues ?? false, barWidthFraction, axisMode))
    } else if (type === 'bar-stacked') {
       pieces.push(renderStackedBars(labels, drawnSeries, xBand, yScale, theme, barWidthFraction))
    } else if (type === 'area') {
-      pieces.push(renderAreaSeries(labels, drawnSeries, xBand, yScale, baselineY, theme, lineStrokeWidth, showPoints, areaFillOpacity))
+      pieces.push(renderAreaSeries(labels, drawnSeries, xBand, yScale, baselineY, theme, lineStrokeWidth, showPoints, areaFillOpacity, axisMode))
    } else {
       // 'line'
-      pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme, lineStrokeWidth, showPoints))
+      pieces.push(renderLineSeries(labels, drawnSeries, xBand, yScale, theme, lineStrokeWidth, showPoints, axisMode))
    }
 
    // The bar-top peak line is a DISPLAY option (traces the raw bars already drawn), so it is drawn
-   // right after the bar marks — on top of them — and before the statistic overlays below. Bar
+   // right after the bar marks, on top of them, and before the statistic overlays below. Bar
    // family only; a `line`/`area`/radial spec silently ignores the option.
    if ((type === 'bar' || type === 'bar-grouped' || type === 'bar-stacked') && options.barPeakLine === true) {
-      pieces.push(renderBarPeakLines(type, labels, drawnSeries, xBand, yScale, theme))
+      pieces.push(renderBarPeakLines(type, labels, drawnSeries, xBand, yScale, theme, axisMode))
    }
 
    // Overlays draw AFTER the data marks (z-order: on top of the data), reusing the same scales.
    if (options.overlays && options.overlays.length > 0) {
       pieces.push(renderOverlays(
-         options.overlays, labels, drawnSeries, xBand, yScale, plot, niceScale.niceMin, niceScale.niceMax, theme))
+         options.overlays, labels, drawnSeries, xBand, yScale, plot, niceMin, niceMax, theme))
    }
 
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
@@ -209,45 +278,58 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
  * to its inner SVG markup. Reuses the EXISTING, unmodified `renderLineSeries`/`buildPointRuns`
  * (via the {@link buildContinuousXAdapter} adapter from continuousAxis.ts) instead of a categorical
  * `BandScale`; the categorical `bar`/`bar-grouped`/`bar-stacked`/`line`/`area` paths above are
- * completely untouched by this function. Never throws on bad/empty input — an uncompileable
+ * completely untouched by this function. Never throws on bad/empty input, an uncompileable
  * equation, an empty equation list, or a degenerate domain all degrade to a graceful chart with an
  * empty (or partially empty) curve set, never an exception.
  */
 export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
    const options = spec.options ?? {}
-   // v1 caps the number of drawn equations at the palette size, same cap every other series-based
-   // chart type already uses.
-   const equations = (spec.functionPlot?.equations ?? []).slice(0, MAX_SERIES)
-   const { xMin, xMax, samples } = resolveFunctionDomain(spec.functionPlot?.domain)
-   const sampleXPositions = sampleXValuesAcrossDomain(xMin, xMax, samples)
+   const { equations, xMin, xMax, sampleXPositions, rawValueLists } = sampleFunctionEquations(spec)
    // Used only as buildPointRuns'/renderMarkers' per-point tooltip label (point markers default OFF
-   // for function charts, see below) — formatted x-values read sensibly if points are ever enabled.
+   // for function charts, see below), formatted x-values read sensibly if points are ever enabled.
    const sampleLabels = sampleXPositions.map(formatNumber)
-
-   // ====== compile + sample each equation ======
-   // An uncompileable expression contributes an all-null value list (draws nothing, never dropped
-   // from the list) so its legend entry / palette slot still lines up with the other equations —
-   // matching the "invalid never breaks the chart" contract every other graph/math parser honors.
-   const rawValueLists: (number | null)[][] = equations.map(equation => {
-      const compiled = compileExpression(equation.expression)
-      if (compiled === null) return sampleXPositions.map(() => null)
-      return sampleXPositions.map(x => evaluate(compiled, x))
-   })
 
    // ====== y-domain: autoscale to the finite sampled range, NO forced zero baseline ======
    // (an arbitrary f(x), e.g. "100 + 0.001*x", should not be crushed against a forced-zero domain
-   // the way bar/line-over-real-data charts are — see docs/reference/graph_equation_study.md Q4/6).
+   // the way bar/line-over-real-data charts are, see docs/reference/graph_equation_study.md Q4/6).
    const [domainMin, domainMax] = computeFunctionValueDomain(rawValueLists, options)
-   const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
-   const tickLabels = niceScale.ticks.map(formatNumber)
+
+   // ====== axis mode (linear vs. log) ======
+   // `function` never zero-folds its domain (see above), so `domainMin`/`domainMax` are already the
+   // exact "unfolded" bounds a log-eligibility check needs, no second domain pass required, unlike
+   // the bar/line/area path in renderCartesian. Same policy: log is undefined at <= 0, so an
+   // out-of-range domain (e.g. an equation that dips to/through zero) silently falls back to linear.
+   const axisMode: AxisMode = options.yScale === 'log' && isPositiveFiniteDomain(domainMin, domainMax)
+      ? 'log' : 'linear'
+
+   let niceMin: number
+   let niceMax: number
+   let ticks: number[]
+   let minorTicks: number[]
+   if (axisMode === 'log') {
+      const niceLog = niceLogTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLog.niceMin
+      niceMax = niceLog.niceMax
+      ticks = niceLog.ticks
+      minorTicks = niceLog.minorTicks
+   } else {
+      const niceLinear = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLinear.niceMin
+      niceMax = niceLinear.niceMax
+      ticks = niceLinear.ticks
+      minorTicks = []
+   }
+   const tickLabels = ticks.map(formatNumber)
 
    // ====== discontinuity handling ======
    // True domain errors (sqrt(-1), 1/0, ...) are already `null` from evaluate() and fall straight
    // into the existing null-gap-breaks-the-polyline mechanism below with zero new code. The
    // asymptote heuristic additionally breaks a run between two finite-but-huge, opposite-signed
-   // adjacent samples (tan(x), 1/x near zero) that would otherwise draw a near-vertical spike.
+   // adjacent samples (tan(x), 1/x near zero) that would otherwise draw a near-vertical spike. A
+   // log-eligible domain (niceMin > 0 by construction) can never contain an opposite-signed pair, so
+   // this heuristic is naturally a no-op in that case, no special-casing needed here.
    const gappedValueLists = rawValueLists.map(
-      values => applyAsymptoteGaps(values, niceScale.niceMin, niceScale.niceMax))
+      values => applyAsymptoteGaps(values, niceMin, niceMax))
 
    const drawnSeries: GraphSeries[] = equations.map((equation, equationIndex) => ({
       name: equation.name,
@@ -274,26 +356,48 @@ export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== scales ======
    // linearScale is the SAME generic affine map the y-axis already uses; reused as-is for x, per
-   // the study's Q2 finding (no new scale primitive needed for a continuous x-axis).
-   const yScale = linearScale([niceScale.niceMin, niceScale.niceMax], [plot.y + plot.height, plot.y])
-   const xScale = linearScale([xMin, xMax], [plot.x, plot.x + plot.width])
+   // the study's Q2 finding (no new scale primitive needed for a continuous x-axis). The x-axis
+   // ALWAYS stays linear here, only the value (y) axis switches to log, per the feature's scope.
+   const yScale = axisMode === 'log'
+      ? logScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
+      : linearScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
+   // A VERTICAL `reference` overlay auto-extends the drawn X-AXIS domain, NOT the sampling domain
+   // (the curve is still sampled over [xMin, xMax]); the axis just widens so a target line beyond the
+   // sampled range stays on-canvas, with the curve occupying its own sub-range of the wider axis. A
+   // no-op (thus byte-identical) for a function carrying no vertical reference.
+   const [axisXMin, axisXMax] = foldReferenceOverlaysIntoDomain(xMin, xMax, options.overlays, 'vertical')
+   const xScale = linearScale([axisXMin, axisXMax], [plot.x, plot.x + plot.width])
    const xAdapter = buildContinuousXAdapter(sampleXPositions, xScale)
-   const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
+   const baselineValue = axisMode === 'log' ? niceMin : Math.min(niceMax, Math.max(niceMin, 0))
    const baselineY = yScale(baselineValue)
 
    const lineStrokeWidth = clamp(
       options.lineWidth ?? GRAPH_DEFAULT_LINE_WIDTH, MIN_LINE_WIDTH, MAX_LINE_WIDTH)
    // Point markers default OFF for function charts (a sampled curve of dozens/hundreds of points is
-   // visual noise, unlike a small genuine categorical series) — a LOCAL default distinct from
+   // visual noise, unlike a small genuine categorical series), a LOCAL default distinct from
    // GRAPH_DEFAULT_SHOW_POINTS (true), which stays correct for real bar/line/area data.
    const showPoints = options.showPoints ?? false
 
    // ====== assemble ======
+   // A custom {@link GraphOptions.axisOrigin} draws crossing "textbook" axes instead of edge axes,
+   // but only on a LINEAR value axis (ignored under a log scale, see the feature's log policy).
+   const axisOrigin = options.axisOrigin
    const pieces: string[] = []
-   pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
-   pieces.push(renderAxes(plot, baselineY, theme))
-   pieces.push(renderNumericXAxisLabels(xMin, xMax, xScale, plot, theme))
-   pieces.push(renderLineSeries(sampleLabels, drawnSeries, xAdapter, yScale, theme, lineStrokeWidth, showPoints))
+   if (axisOrigin !== undefined && axisMode !== 'log') {
+      pieces.push(renderTextbookAxes(axisOrigin, ticks, axisXMin, axisXMax, xScale, yScale, plot, theme))
+   } else {
+      pieces.push(renderGridlines(ticks, yScale, tickLabels, plot, theme, minorTicks))
+      pieces.push(renderAxes(plot, baselineY, theme))
+      pieces.push(renderNumericXAxisLabels(axisXMin, axisXMax, xScale, plot, theme))
+   }
+   pieces.push(renderLineSeries(sampleLabels, drawnSeries, xAdapter, yScale, theme, lineStrokeWidth, showPoints, axisMode))
+   // Reference overlays (both orientations) draw over the curve. Other overlay kinds do not apply to
+   // a function chart (no discrete series to average/fit; an f(x) overlay would duplicate the plot),
+   // so renderFunctionReferenceOverlays skips them. Absent/empty ⇒ nothing drawn, byte-identical.
+   if (options.overlays && options.overlays.length > 0) {
+      pieces.push(renderFunctionReferenceOverlays(
+         options.overlays, plot, xScale, yScale, axisXMin, axisXMax, niceMin, niceMax, theme))
+   }
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
    if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
    if (legendWanted) pieces.push(renderLegend(drawnSeries, legendLayout, layout, theme))
@@ -339,8 +443,48 @@ function sampleXValuesAcrossDomain(xMin: number, xMax: number, samples: number):
 }
 
 /**
+ * Resolve a `function` chart's numeric domain and sample every one of its equations across it,
+ * the SHARED, single source of truth `renderFunctionPlot` builds its curves from AND
+ * {@link computeFunctionYDomain} builds its log-scale eligibility check from, so the two can never
+ * silently drift out of sync (an uncompileable expression contributes an all-null value list, same
+ * "invalid never breaks the chart" contract every other graph/math parser here honors).
+ */
+function sampleFunctionEquations(spec: GraphSpec): {
+   equations: EquationSeries[]
+   xMin: number
+   xMax: number
+   sampleXPositions: number[]
+   rawValueLists: (number | null)[][]
+} {
+   // v1 caps the number of drawn equations at the palette size, same cap every other series-based
+   // chart type already uses.
+   const equations = (spec.functionPlot?.equations ?? []).slice(0, MAX_SERIES)
+   const { xMin, xMax, samples } = resolveFunctionDomain(spec.functionPlot?.domain)
+   const sampleXPositions = sampleXValuesAcrossDomain(xMin, xMax, samples)
+   const rawValueLists: (number | null)[][] = equations.map(equation => {
+      const compiled = compileExpression(equation.expression)
+      if (compiled === null) return sampleXPositions.map(() => null)
+      return sampleXPositions.map(x => evaluate(compiled, x))
+   })
+   return { equations, xMin, xMax, sampleXPositions, rawValueLists }
+}
+
+/**
+ * Compute a `function` chart's raw (pre-nice-tick) sampled y-domain, EXACTLY the domain
+ * `renderFunctionPlot` resolves for its own axis-mode (linear vs. log) decision (same
+ * `sampleFunctionEquations` + `computeFunctionValueDomain` pipeline, honoring any `yMin`/`yMax`
+ * override). Exported so `graphEdit.ts`'s `logScaleWouldFallBackToLinear` can test log-scale
+ * eligibility for a `function` chart's in-editor fallback notice WITHOUT re-implementing (and
+ * risking drifting from) the expression-sampling logic, this is the one place that logic lives.
+ */
+export function computeFunctionYDomain(spec: GraphSpec): [number, number] {
+   const { rawValueLists } = sampleFunctionEquations(spec)
+   return computeFunctionValueDomain(rawValueLists, spec.options ?? {})
+}
+
+/**
  * The raw (pre-nice-tick) y-domain for a function chart: the min/max across every FINITE sampled
- * value of every equation, with NO folded-in zero baseline (decision 6 — bars/lines-over-real-data
+ * value of every equation, with NO folded-in zero baseline (decision 6, bars/lines-over-real-data
  * fold in zero via {@link computeValueDomain}; an arbitrary f(x) should not be). Falls back to
  * [0, 1] when nothing finite was sampled (every equation invalid/empty). `yMin`/`yMax` overrides
  * still win, identical to every other cartesian type.
@@ -362,8 +506,13 @@ function computeFunctionValueDomain(
       dataMin = 0
       dataMax = 1
    }
-   const min = options.yMin !== undefined ? options.yMin : dataMin
-   const max = options.yMax !== undefined ? options.yMax : dataMax
+   // Fold every HORIZONTAL reference-overlay value into the raw domain so a y = target line beyond
+   // the sampled range stays on-canvas, mirroring the categorical/scatter y-fold, and a no-op (thus
+   // byte-identical) for a function chart carrying no horizontal reference. Done before the yMin/yMax
+   // overrides, which still win when the author has pinned an explicit floor/ceiling.
+   const [foldedMin, foldedMax] = foldReferenceOverlaysIntoDomain(dataMin, dataMax, options.overlays)
+   const min = options.yMin !== undefined ? options.yMin : foldedMin
+   const max = options.yMax !== undefined ? options.yMax : foldedMax
    return [min, max]
 }
 
@@ -372,7 +521,7 @@ function computeFunctionValueDomain(
  * opposite sign AND at least one magnitude >= {@link ASYMPTOTE_MAGNITUDE_MULTIPLIER} x the
  * resolved y-domain's half-range, by nulling the second of the pair. This is deliberately a
  * pragmatic threshold, not an exact discontinuity detector (a pathological function could still
- * fool it) — see docs/reference/graph_equation_study.md Q4 for the documented rationale. A `null`
+ * fool it), see docs/reference/graph_equation_study.md Q4 for the documented rationale. A `null`
  * sample from a true domain error (sqrt(-1), 1/0, ...) already breaks the run via the existing
  * {@link buildPointRuns} gap logic and needs no help from this function.
  */
@@ -406,13 +555,13 @@ function applyAsymptoteGaps(
  * Render a `scatter`-type graph spec (real (x, y) point pairs, no sampled curve, no shared domain)
  * to its inner SVG markup. Unlike `function`, a scatter chart needs BOTH axes autoscaled from the
  * data (there is no user-chosen domain), so the x-range gets the SAME nice-tick treatment the
- * y-range already gets elsewhere in this file — niceTicks once per axis, using `niceMin`/`niceMax`
+ * y-range already gets elsewhere in this file, niceTicks once per axis, using `niceMin`/`niceMax`
  * as the actual scale range (not just the tick-label positions), which also gives points sitting
  * at the extreme edges of the data some visual breathing room instead of drawing flush against the
- * plot boundary. Points are drawn directly at `xScale(point.x)`/`yScale(point.y)` — no
+ * plot boundary. Points are drawn directly at `xScale(point.x)`/`yScale(point.y)`, no
  * `buildPointRuns`/`{center(index)}` adapter needed, since scatter points have no shared sample/
  * category index to align across series (v1 is points-only; a per-series trendline is a deferred
- * fast-follow). Never throws on bad/empty input — an empty series list, a series with no points,
+ * fast-follow). Never throws on bad/empty input, an empty series list, a series with no points,
  * or non-finite point coordinates all degrade to a graceful chart with nothing drawn for the
  * affected point(s), never an exception.
  */
@@ -424,7 +573,12 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== domain: autoscale x AND y across every finite point, no forced zero baseline ======
    const rawDomain = computeScatterPointDomain(series)
-   const xNice = niceTicks(rawDomain.xMin, rawDomain.xMax, TARGET_TICK_COUNT)
+   // A VERTICAL `reference` overlay auto-extends the X-domain (mirrors the horizontal reference's
+   // y-fold below) so a target line beyond the plotted points always stays on-canvas. A no-op when
+   // there are no vertical references, so a scatter without one nice-ticks its x exactly as before.
+   const [foldedXMin, foldedXMax] = foldReferenceOverlaysIntoDomain(
+      rawDomain.xMin, rawDomain.xMax, options.overlays, 'vertical')
+   const xNice = niceTicks(foldedXMin, foldedXMax, TARGET_TICK_COUNT)
    // A `reference` overlay auto-extends the Y-domain (mirrors computeValueDomain's fold for the
    // categorical cartesian types) so a target line beyond the plotted points always stays on-canvas.
    // Done before the yMin/yMax overrides, which still win when the author has pinned an explicit
@@ -433,8 +587,32 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
       rawDomain.yMin, rawDomain.yMax, options.overlays)
    const resolvedYMin = options.yMin !== undefined ? options.yMin : foldedYMin
    const resolvedYMax = options.yMax !== undefined ? options.yMax : foldedYMax
-   const yNice = niceTicks(resolvedYMin, resolvedYMax, TARGET_TICK_COUNT)
-   const tickLabels = yNice.ticks.map(formatNumber)
+
+   // ====== axis mode (linear vs. log), Y ONLY; the x-axis stays linear/continuous either way ======
+   // Scatter never zero-folds its y-domain (see above), so `resolvedYMin`/`resolvedYMax` are already
+   // the exact "unfolded" bounds a log-eligibility check needs. Same policy as every other type: log
+   // is undefined at <= 0, so a domain touching zero or negative silently falls back to linear.
+   const axisMode: AxisMode = options.yScale === 'log' && isPositiveFiniteDomain(resolvedYMin, resolvedYMax)
+      ? 'log' : 'linear'
+
+   let yNiceMin: number
+   let yNiceMax: number
+   let yTicks: number[]
+   let yMinorTicks: number[]
+   if (axisMode === 'log') {
+      const niceLog = niceLogTicks(resolvedYMin, resolvedYMax, TARGET_TICK_COUNT)
+      yNiceMin = niceLog.niceMin
+      yNiceMax = niceLog.niceMax
+      yTicks = niceLog.ticks
+      yMinorTicks = niceLog.minorTicks
+   } else {
+      const niceLinear = niceTicks(resolvedYMin, resolvedYMax, TARGET_TICK_COUNT)
+      yNiceMin = niceLinear.niceMin
+      yNiceMax = niceLinear.niceMax
+      yTicks = niceLinear.ticks
+      yMinorTicks = []
+   }
+   const tickLabels = yTicks.map(formatNumber)
 
    // ====== legend reservation ======
    // renderLegend/layoutLegend want GraphSeries-shaped input (name + color); scatter series carry
@@ -461,24 +639,36 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== scales ======
    // linearScale/niceTicks are the SAME generic primitives the y-axis already uses; reused as-is
-   // for x, per the study's Q2 finding (no new scale primitive needed for a continuous x-axis).
-   const yScale = linearScale([yNice.niceMin, yNice.niceMax], [plot.y + plot.height, plot.y])
+   // for x, per the study's Q2 finding (no new scale primitive needed for a continuous x-axis). The
+   // x-axis is NEVER log here, only the value (y) axis switches, per the feature's scope.
+   const yScale = axisMode === 'log'
+      ? logScale([yNiceMin, yNiceMax], [plot.y + plot.height, plot.y])
+      : linearScale([yNiceMin, yNiceMax], [plot.y + plot.height, plot.y])
    const xScale = linearScale([xNice.niceMin, xNice.niceMax], [plot.x, plot.x + plot.width])
-   const baselineValue = Math.min(yNice.niceMax, Math.max(yNice.niceMin, 0))
+   const baselineValue = axisMode === 'log' ? yNiceMin : Math.min(yNiceMax, Math.max(yNiceMin, 0))
    const baselineY = yScale(baselineValue)
 
    // ====== assemble ======
+   // A custom {@link GraphOptions.axisOrigin} draws crossing "textbook" axes instead of the edge
+   // axes, but only on a LINEAR value axis (a custom origin is a linear concept; under a log scale
+   // it is ignored and the standard log axis is drawn, per the feature's log policy).
+   const axisOrigin = options.axisOrigin
    const pieces: string[] = []
-   pieces.push(renderGridlines(yNice.ticks, yScale, tickLabels, plot, theme))
-   pieces.push(renderAxes(plot, baselineY, theme))
-   pieces.push(renderNumericXAxisLabels(xNice.niceMin, xNice.niceMax, xScale, plot, theme))
-   pieces.push(renderScatterPoints(series, xScale, yScale, theme))
+   if (axisOrigin !== undefined && axisMode !== 'log') {
+      pieces.push(renderTextbookAxes(
+         axisOrigin, yTicks, xNice.niceMin, xNice.niceMax, xScale, yScale, plot, theme))
+   } else {
+      pieces.push(renderGridlines(yTicks, yScale, tickLabels, plot, theme, yMinorTicks))
+      pieces.push(renderAxes(plot, baselineY, theme))
+      pieces.push(renderNumericXAxisLabels(xNice.niceMin, xNice.niceMax, xScale, plot, theme))
+   }
+   pieces.push(renderScatterPoints(series, xScale, yScale, theme, axisMode))
 
    // Overlays draw AFTER the data marks (z-order: on top of the data), reusing the same scales.
    if (options.overlays && options.overlays.length > 0) {
       pieces.push(renderScatterOverlays(
          options.overlays, series, xScale, yScale, plot,
-         xNice.niceMin, xNice.niceMax, yNice.niceMin, yNice.niceMax, theme))
+         xNice.niceMin, xNice.niceMax, yNiceMin, yNiceMax, theme))
    }
 
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
@@ -489,7 +679,7 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
 }
 
 /**
- * The raw (pre-nice-tick) x AND y domain across every FINITE point of every series — the min/max
+ * The raw (pre-nice-tick) x AND y domain across every FINITE point of every series, the min/max
  * of `point.x` and `point.y` independently, with NO folded-in zero baseline (matching the
  * `function` type's autoscale policy: an arbitrary scatter of real-world (x, y) data should not be
  * crushed against a forced-zero domain on either axis). Falls back to `[0, 1]` on each axis when
@@ -520,8 +710,8 @@ function computeScatterPointDomain(series: ScatterSeries[]): {
 }
 
 /**
- * Draw every series' points as small filled circles (the same >=8px-diameter marker spec — radius
- * {@link MARKER_RADIUS}, {@link SURFACE_GAP}-wide surface ring — every other mark-with-a-point-
+ * Draw every series' points as small filled circles (the same >=8px-diameter marker spec, radius
+ * {@link MARKER_RADIUS}, {@link SURFACE_GAP}-wide surface ring, every other mark-with-a-point-
  * marker already uses in this file), directly at `xScale(point.x)`/`yScale(point.y)`. A non-finite
  * point is skipped defensively (the domain computation above already excludes it, so this is a
  * belt-and-suspenders guard, not the expected path).
@@ -531,13 +721,18 @@ function renderScatterPoints(
    xScale: (value: number) => number,
    yScale: (value: number) => number,
    theme: GraphTheme,
+   axisMode: AxisMode,
 ): string {
    const parts: string[] = []
    for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
       const oneSeries = series[seriesIndex]
       const color = resolveSeriesColor(seriesIndex, oneSeries.color, theme)
       for (const point of oneSeries.points) {
-         if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+         // On a log y-axis, a point at y <= 0 has no representable position (log is undefined there)
+         //, skip it, same "never NaN geometry" defense every other log-aware drawing loop uses. In
+         // practice unreachable when the axis actually IS log (eligibility already required every
+         // finite y across every series to be positive), a pure belt-and-suspenders guard.
+         if (!Number.isFinite(point.x) || !isPlottableValue(point.y, axisMode)) continue
          parts.push(element('circle', {
             cx: xScale(point.x),
             cy: yScale(point.y),
@@ -553,7 +748,7 @@ function renderScatterPoints(
 
 // ============ scatter statistical overlays ============
 // Reuses the SAME overlay machinery a categorical cartesian chart draws with (dashed styling, the
-// haloed ink label, the analytic plot-rect clip, `resolveSeriesColor`) — only mean/trend need a
+// haloed ink label, the analytic plot-rect clip, `resolveSeriesColor`), only mean/trend need a
 // scatter-specific computation, since a scatter series has no category-aligned `values` array to
 // feed `mean`/`median`/`linearRegression` with; it carries raw `(x, y)` points instead.
 
@@ -566,7 +761,7 @@ function renderScatterPoints(
  * `niceMin`/`niceMax`, none of which differ for scatter). `series: 'all'` fans out to one mark per
  * drawn series; an index not among the drawn series is skipped. `equation` is chart-level but tied
  * to the categorical index axis scatter doesn't have, so it draws nothing here (a natural
- * fast-follow, not built in v1 — see docs). Never throws — a series with too few points for a
+ * fast-follow, not built in v1, see docs). Never throws, a series with too few points for a
  * requested statistic simply draws nothing.
  */
 function renderScatterOverlays(
@@ -586,10 +781,13 @@ function renderScatterOverlays(
 
    for (const overlay of overlays) {
       if (overlay.kind === 'reference') {
-         parts.push(renderReferenceOverlay(overlay, plot, yScale, yNiceMin, yNiceMax, theme))
+         // Continuous-x scatter supports BOTH a horizontal (y = value) and a vertical (x = value)
+         // reference; the oriented dispatcher picks the right one (default/absent ⇒ horizontal).
+         parts.push(renderReferenceOverlayOriented(
+            overlay, plot, xScale, yScale, xNiceMin, xNiceMax, yNiceMin, yNiceMax, theme))
          continue
       }
-      if (overlay.kind === 'equation') continue // chart-level, categorical-axis only — no scatter analog yet
+      if (overlay.kind === 'equation') continue // chart-level, categorical-axis only, no scatter analog yet
 
       // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
       const targetIndices = overlay.series === 'all'
@@ -642,8 +840,8 @@ function renderScatterStatLineOverlay(
  * A per-series linear trendline for scatter: {@link linearRegressionXY} fits the target series' raw
  * `(x, y)` points directly (unlike the categorical {@link linearRegression}, which fits a value
  * series against its own index). The fitted line is drawn across the chart's FULL x-domain
- * (`xNiceMin`..`xNiceMax`) — mirroring how the cartesian trend spans the whole category axis rather
- * than stopping at one series' own data range — then analytically clipped to the plot's vertical
+ * (`xNiceMin`..`xNiceMax`), mirroring how the cartesian trend spans the whole category axis rather
+ * than stopping at one series' own data range, then analytically clipped to the plot's vertical
  * band with the SAME `clipSegmentToBand` helper (no SVG clipPath). A series with fewer than 2
  * finite points, or every point sharing the same x (an undefined/vertical slope), draws nothing
  * (`linearRegressionXY` returns null for both).
@@ -667,7 +865,7 @@ function renderScatterTrendOverlay(
    const startY = yScale(fit.slope * xNiceMin + fit.intercept)
    const endY = yScale(fit.slope * xNiceMax + fit.intercept)
 
-   // Analytic clamp to the plot rect (NO SVG clipPath — a fixed id would collide across the many
+   // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
    // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
    const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
    if (clipped === null) return '' // the whole segment sits off the plot vertically
@@ -702,15 +900,15 @@ function renderScatterTrendOverlay(
 /**
  * Render a `histogram`-type graph spec (a binned frequency distribution over raw numeric samples)
  * to its inner SVG markup. Bars are drawn CONTIGUOUS (zero inter-bar gap, the defining look of a
- * histogram — unlike every other bar family in this file, which always leaves a
+ * histogram, unlike every other bar family in this file, which always leaves a
  * {@link SURFACE_GAP} between neighbours) over a continuous numeric x-axis of bin edges, reusing
  * the SAME continuous-x foundation (`renderNumericXAxisLabels`) `function`/`scatter` introduced.
  * Unlike those two, y = frequency COUNT always draws from a ZERO baseline (a count is never
- * negative, so — unlike `function`'s/`scatter`'s no-forced-zero autoscale — a zero baseline is
+ * negative, so, unlike `function`'s/`scatter`'s no-forced-zero autoscale, a zero baseline is
  * always meaningful here, exactly like the ordinary bar/line-over-real-data types). A single
  * dataset has no meaningful legend (there is nothing to distinguish it FROM), so none is drawn;
  * the optional dataset name surfaces only in the chart's accessible `<desc>` (see index.ts's
- * `describeChart`), never as a drawn legend box. Never throws on bad/empty input — fewer than one
+ * `describeChart`), never as a drawn legend box. Never throws on bad/empty input, fewer than one
  * finite sample degrades to a graceful empty plot (axes with no bars), never an exception.
  */
 export function renderHistogram(spec: GraphSpec, theme: GraphTheme): string {
@@ -721,13 +919,54 @@ export function renderHistogram(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== y-domain: frequency counts from a ZERO baseline (a count is never negative) ======
    let maxCount = 0
-   for (const count of counts) if (count > maxCount) maxCount = count
-   const domainMin = options.yMin !== undefined ? options.yMin : 0
-   const domainMax = options.yMax !== undefined ? options.yMax : maxCount
-   const niceScale = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
-   const tickLabels = niceScale.ticks.map(formatNumber)
+   let minPositiveCount = Infinity
+   for (const count of counts) {
+      if (count > maxCount) maxCount = count
+      if (count > 0 && count < minPositiveCount) minPositiveCount = count
+   }
 
-   // ====== x-domain: the bin edges themselves (an empty result — no finite sample survived —
+   // ====== axis mode (linear vs. log) ======
+   // A histogram's ordinary domain always folds in the zero baseline (a count is never negative,
+   // see below), but zero itself is not representable on a log axis. So the log-eligibility candidate
+   // anchors the floor at the smallest POSITIVE bin count instead of zero (an empty/zero-count bin
+   // has no position on a log axis at all, renderHistogramBars simply skips drawing it in that
+   // case). No positive bin at all (an all-empty histogram, or every bin genuinely at zero) has
+   // `minPositiveCount` stay `Infinity`, which safely fails the eligibility check below.
+   const logDomainMinCandidate = options.yMin !== undefined && options.yMin > 0 ? options.yMin : minPositiveCount
+   const logDomainMaxCandidate = options.yMax !== undefined ? options.yMax : maxCount
+   const axisMode: AxisMode = options.yScale === 'log' && isPositiveFiniteDomain(logDomainMinCandidate, logDomainMaxCandidate)
+      ? 'log' : 'linear'
+
+   let domainMin: number
+   let domainMax: number
+   if (axisMode === 'log') {
+      domainMin = logDomainMinCandidate
+      domainMax = logDomainMaxCandidate
+   } else {
+      domainMin = options.yMin !== undefined ? options.yMin : 0
+      domainMax = options.yMax !== undefined ? options.yMax : maxCount
+   }
+
+   let niceMin: number
+   let niceMax: number
+   let ticks: number[]
+   let minorTicks: number[]
+   if (axisMode === 'log') {
+      const niceLog = niceLogTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLog.niceMin
+      niceMax = niceLog.niceMax
+      ticks = niceLog.ticks
+      minorTicks = niceLog.minorTicks
+   } else {
+      const niceLinear = niceTicks(domainMin, domainMax, TARGET_TICK_COUNT)
+      niceMin = niceLinear.niceMin
+      niceMax = niceLinear.niceMax
+      ticks = niceLinear.ticks
+      minorTicks = []
+   }
+   const tickLabels = ticks.map(formatNumber)
+
+   // ====== x-domain: the bin edges themselves (an empty result, no finite sample survived,
    // falls back to [0, 1] so the scale never divides by zero) ======
    const xMin = edges.length > 0 ? edges[0] : 0
    const xMax = edges.length > 0 ? edges[edges.length - 1] : 1
@@ -743,20 +982,22 @@ export function renderHistogram(spec: GraphSpec, theme: GraphTheme): string {
    const { plot } = layout
 
    // ====== scales ======
-   const yScale = linearScale([niceScale.niceMin, niceScale.niceMax], [plot.y + plot.height, plot.y])
+   const yScale = axisMode === 'log'
+      ? logScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
+      : linearScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
    const xScale = linearScale([xMin, xMax], [plot.x, plot.x + plot.width])
-   const baselineValue = Math.min(niceScale.niceMax, Math.max(niceScale.niceMin, 0))
+   const baselineValue = axisMode === 'log' ? niceMin : Math.min(niceMax, Math.max(niceMin, 0))
    const baselineY = yScale(baselineValue)
 
    const color = resolveSeriesColor(0, histogramData?.color, theme)
 
    // ====== assemble ======
    const pieces: string[] = []
-   pieces.push(renderGridlines(niceScale.ticks, yScale, tickLabels, plot, theme))
+   pieces.push(renderGridlines(ticks, yScale, tickLabels, plot, theme, minorTicks))
    pieces.push(renderAxes(plot, baselineY, theme))
    pieces.push(renderNumericXAxisLabels(xMin, xMax, xScale, plot, theme))
    pieces.push(renderHistogramBars(
-      edges, counts, xScale, yScale, baselineY, color, options.showValues ?? false, theme))
+      edges, counts, xScale, yScale, baselineY, color, options.showValues ?? false, theme, axisMode))
    pieces.push(renderAxisCaptions(options.xLabel, options.yLabel, layout, theme))
    if (options.title) pieces.push(renderVisibleTitle(options.title, theme))
 
@@ -764,7 +1005,7 @@ export function renderHistogram(spec: GraphSpec, theme: GraphTheme): string {
 }
 
 /**
- * Draw one CONTIGUOUS rect per bin — zero inter-bar gap, so adjacent bars' edges exactly touch
+ * Draw one CONTIGUOUS rect per bin, zero inter-bar gap, so adjacent bars' edges exactly touch
  * (the defining visual difference from every other bar family here). A thin surface-colored
  * stroke outlines each bar so neighbouring bins still read as distinct bars despite touching
  * edges, without opening an actual gap in the underlying data.
@@ -778,10 +1019,16 @@ function renderHistogramBars(
    color: string,
    showValues: boolean,
    theme: GraphTheme,
+   axisMode: AxisMode,
 ): string {
    const parts: string[] = []
    for (let binIndex = 0; binIndex < counts.length; binIndex++) {
       const count = counts[binIndex]
+      // A zero/empty bin has no representable position on a log axis (log is undefined at <= 0),
+      // skip drawing it entirely rather than computing a NaN/collapsed rect. Bar family's own
+      // isPlottableValue isn't reused here since a histogram count is always a plain number, never
+      // null/undefined; the log-only half of that same check is inlined directly.
+      if (axisMode === 'log' && count <= 0) continue
       const leftX = xScale(edges[binIndex])
       const rightX = xScale(edges[binIndex + 1])
       const valueY = yScale(count)
@@ -816,7 +1063,7 @@ interface OverlayPlot { x: number; y: number; width: number; height: number }
  * Draw every statistical overlay over the plot. Reuses the computed `yScale` / `xBand` / `plot`.
  * Per-series kinds (mean / median / trend) expand `series: 'all'` to one mark per drawn series
  * (each echoing that series' hue); a specific index that is not among the drawn series is skipped.
- * Reference is a single per-chart horizontal in neutral ink. Never throws on degenerate data — a
+ * Reference is a single per-chart horizontal in neutral ink. Never throws on degenerate data, a
  * series with too few points, or a value off the domain, simply draws nothing.
  */
 function renderOverlays(
@@ -835,6 +1082,10 @@ function renderOverlays(
 
    for (const overlay of overlays) {
       if (overlay.kind === 'reference') {
+         // A VERTICAL reference (x = value) has no meaning on a categorical band x-axis, the
+         // continuous-x types (function/scatter) draw those; here it is silently skipped. A
+         // horizontal (default, orientation-less) reference draws exactly as before.
+         if ((overlay.orientation ?? 'horizontal') === 'vertical') continue
          parts.push(renderReferenceOverlay(overlay, plot, yScale, niceMin, niceMax, theme))
          continue
       }
@@ -882,15 +1133,90 @@ function renderReferenceOverlay(
 }
 
 /**
+ * A per-chart VERTICAL reference line: a neutral-ink dashed line at the constant x = `overlay.value`,
+ * spanning the plot height, the x-axis mirror of {@link renderReferenceOverlay}, for the continuous-x
+ * types (`function`/`scatter`) only. Off-domain (an x outside the nice x-range) is skipped, the same
+ * defensive clip the horizontal reference uses; the x-domain was auto-extended to include this value
+ * (see {@link foldReferenceOverlaysIntoDomain} with orientation `'vertical'`), so that is normally a
+ * no-op guard.
+ */
+function renderVerticalReferenceOverlay(
+   overlay: Overlay,
+   plot: OverlayPlot,
+   xScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   theme: GraphTheme,
+): string {
+   const value = overlay.value
+   if (value === undefined || !Number.isFinite(value)) return ''
+   if (value < niceMin || value > niceMax) return ''
+   const lineX = xScale(value)
+   const label = overlay.label && overlay.label !== '' ? overlay.label : formatNumber(value)
+   return verticalOverlay(lineX, label, plot, theme.ink.text, OVERLAY_DASH_LINE, theme)
+}
+
+/**
+ * Draw one reference overlay dispatched on its {@link Overlay.orientation}: a `'vertical'` reference
+ * as an x = value line ({@link renderVerticalReferenceOverlay}, for the continuous-x types), any other
+ * (including the default, orientation-less) as the ordinary y = value horizontal line
+ * ({@link renderReferenceOverlay}). Shared by the scatter AND function overlay passes so both handle
+ * the two orientations identically.
+ */
+function renderReferenceOverlayOriented(
+   overlay: Overlay,
+   plot: OverlayPlot,
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   xNiceMin: number,
+   xNiceMax: number,
+   yNiceMin: number,
+   yNiceMax: number,
+   theme: GraphTheme,
+): string {
+   if ((overlay.orientation ?? 'horizontal') === 'vertical') {
+      return renderVerticalReferenceOverlay(overlay, plot, xScale, xNiceMin, xNiceMax, theme)
+   }
+   return renderReferenceOverlay(overlay, plot, yScale, yNiceMin, yNiceMax, theme)
+}
+
+/**
+ * Draw the reference overlays over a `function` chart. A function chart has no discrete data series
+ * to average or fit a trendline through, and an `equation` overlay would just duplicate the plotted
+ * curve, so ONLY the `reference` kind is meaningful here; every other kind is skipped. Both
+ * orientations are supported (horizontal y = value and vertical x = value) via the shared oriented
+ * dispatcher, using the function chart's own resolved x-axis and y value domains.
+ */
+function renderFunctionReferenceOverlays(
+   overlays: Overlay[],
+   plot: OverlayPlot,
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   xNiceMin: number,
+   xNiceMax: number,
+   yNiceMin: number,
+   yNiceMax: number,
+   theme: GraphTheme,
+): string {
+   const parts: string[] = []
+   for (const overlay of overlays) {
+      if (overlay.kind !== 'reference') continue
+      parts.push(renderReferenceOverlayOriented(
+         overlay, plot, xScale, yScale, xNiceMin, xNiceMax, yNiceMin, yNiceMax, theme))
+   }
+   return element('g', {}, parts.join(''))
+}
+
+/**
  * A chart-level `f(x)` curve, sampled across the host chart's category-index domain
  * `[0, labelCount - 1]` (the SAME x-range the drawn data marks already sit on), reusing the
  * existing `xBand.center(index)` positioning by INTERPOLATING between two adjacent band centers
  * for a fractional sample index (see {@link interpolateBandCenter}). Never auto-extends the
- * y-domain (an arbitrary expression must not squash the real data) — instead, every sampled
+ * y-domain (an arbitrary expression must not squash the real data), instead, every sampled
  * segment is analytically clipped to the plot's vertical band with the SAME `clipSegmentToBand`
  * line-parameter math the trend overlay already uses (NO SVG `clipPath`, per the existing
  * multi-chart-per-export constraint). An uncompileable/blank expression, or a chart with fewer
- * than 2 categories (no index range to sample across), draws nothing — never throws.
+ * than 2 categories (no index range to sample across), draws nothing, never throws.
  */
 function renderEquationOverlay(
    overlay: Overlay,
@@ -948,7 +1274,7 @@ function renderEquationOverlay(
  * Sample a compiled expression across the fractional index domain `[0, lastIndex]` at
  * {@link EQUATION_OVERLAY_SAMPLE_COUNT} evenly spaced points, reusing the `function` chart's own
  * asymptote heuristic ({@link applyAsymptoteGaps}) for domain-error / near-asymptote gaps, then
- * walks the sampled pixel segments through {@link clipSegmentToBand} ONE SEGMENT AT A TIME — the
+ * walks the sampled pixel segments through {@link clipSegmentToBand} ONE SEGMENT AT A TIME, the
  * exact technique {@link renderTrendOverlay} already uses for its single sloped segment, just
  * applied per-segment here since an arbitrary f(x) is not a single straight line. A segment fully
  * outside the plot's vertical band breaks the run (mirrors a null-gap break); a partially-outside
@@ -1016,7 +1342,7 @@ function computeEquationOverlayRuns(
 
 /**
  * Interpolate a FRACTIONAL category index to a pixel x by linearly blending the two adjacent
- * integer band centers (`center(floor(index))` -> `center(ceil(index))`) — the categorical
+ * integer band centers (`center(floor(index))` -> `center(ceil(index))`), the categorical
  * x-axis has no continuous scale of its own (unlike the `function` chart type's numeric domain),
  * so this is how an equation overlay's densely-sampled curve rides the SAME band positions the
  * host chart's bars/lines already sit on.
@@ -1047,7 +1373,7 @@ function renderStatLineOverlay(
    theme: GraphTheme,
 ): string {
    // `overlay.kind` is narrowed to 'mean' | 'median' by the caller's dispatch, but that narrowing
-   // does not carry across the function boundary — re-derive a literal-typed `kind` here so it can
+   // does not carry across the function boundary, re-derive a literal-typed `kind` here so it can
    // be passed to defaultStatLabel's narrower parameter type without a widening error.
    const kind: 'mean' | 'median' = overlay.kind === 'median' ? 'median' : 'mean'
    const stat = kind === 'median' ? medianOf(oneSeries.values) : meanOf(oneSeries.values)
@@ -1079,7 +1405,7 @@ function renderTrendOverlay(
    const startY = yScale(fit.intercept)
    const endY = yScale(fit.intercept + fit.slope * lastIndex)
 
-   // Analytic clamp to the plot rect (NO SVG clipPath — a fixed id would collide across the many
+   // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
    // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
    const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
    if (clipped === null) return '' // the whole segment sits off the plot vertically
@@ -1135,8 +1461,39 @@ function horizontalOverlay(
    return element('g', {}, line + labelText)
 }
 
+/** Draw a full-height vertical dashed overlay at `lineX` with a top-anchored haloed label (the
+ *  x-axis mirror of {@link horizontalOverlay}, used by the vertical reference line). */
+function verticalOverlay(
+   lineX: number,
+   label: string,
+   plot: OverlayPlot,
+   color: string,
+   dash: string,
+   theme: GraphTheme,
+): string {
+   const line = selfClosingElement('line', {
+      x1: lineX,
+      y1: plot.y,
+      x2: lineX,
+      y2: plot.y + plot.height,
+      stroke: color,
+      'stroke-width': OVERLAY_STROKE_WIDTH,
+      'stroke-dasharray': dash,
+      'stroke-linecap': 'round',
+   })
+   // Anchor the label at the TOP of the line, nudged right/down so it clears the plot's top edge and
+   // does not collide with the x-axis number labels running along the bottom.
+   const labelText = overlayLabel(
+      lineX + OVERLAY_LABEL_GAP,
+      plot.y + TICK_FONT_SIZE,
+      'start',
+      label,
+      theme)
+   return element('g', {}, line + labelText)
+}
+
 /**
- * A small overlay label in PRIMARY ink (never a series hue — a light categorical color is illegible
+ * A small overlay label in PRIMARY ink (never a series hue, a light categorical color is illegible
  * as text), wearing a surface-color halo via `paint-order:stroke` so it stays readable where it
  * crosses gridlines and data marks (the same "surface doing the separating" principle as a marker ring).
  */
@@ -1190,7 +1547,7 @@ function defaultTrendLabel(
 /**
  * Clip the segment (x1,y1)-(x2,y2) to the horizontal band [bandTop, bandBottom] (the plot's vertical
  * extent; x already sits within the plot). Returns the trimmed endpoints, or null when the whole
- * segment lies above or below the band. Pure line-parameter math — no SVG clipPath needed.
+ * segment lies above or below the band. Pure line-parameter math, no SVG clipPath needed.
  */
 function clipSegmentToBand(
    x1: number,
@@ -1233,18 +1590,29 @@ function roundToDigits(value: number, digits: number): number {
 // #####################
 
 /**
- * Compute the raw value domain for a chart type before nice-ticking. The domain always starts
- * from a zero baseline (bars grow from 0), extended to any negative data. Stacked charts sum
- * per category (positive and negative stacks kept separate). `options.yMin`/`yMax` override.
+ * Compute the raw value domain for a chart type before nice-ticking. `options.yMin`/`yMax` still
+ * override at the end regardless of `foldZeroBaseline`.
+ *
+ * `foldZeroBaseline` controls whether the domain starts pre-seeded at 0 (the ORIGINAL, pre-log-
+ * scale-feature behavior: bars grow from 0, extended to any negative data, pass `true` to get
+ * the exact byte-identical linear domain this renderer has always computed) or purely from the
+ * actual finite data extremes with NO zero pre-seed (pass `false`, this is the "unfolded" probe
+ * renderCartesian uses to test whether a chart's own data is strictly positive, i.e. log-eligible,
+ * BEFORE deciding whether to actually render on a log axis; see the LOG SCALE POLICY comment in
+ * `renderCartesian`). Stacked charts sum per category (positive and negative stacks kept
+ * separate), `bar-stacked` is excluded from the log feature entirely (see
+ * `LOG_SCALE_UNSUPPORTED_TYPES`), so it is only ever called here with `foldZeroBaseline: true`,
+ * keeping its per-category running-sum logic exactly as it always was.
  */
 function computeValueDomain(
    type: GraphSpec['type'],
    labels: string[],
    series: GraphSeries[],
    options: GraphSpec['options'],
+   foldZeroBaseline: boolean,
 ): [number, number] {
-   let dataMin = 0
-   let dataMax = 0
+   let dataMin = foldZeroBaseline ? 0 : Infinity
+   let dataMax = foldZeroBaseline ? 0 : -Infinity
 
    if (type === 'bar-stacked') {
       for (let categoryIndex = 0; categoryIndex < labels.length; categoryIndex++) {
@@ -1269,6 +1637,14 @@ function computeValueDomain(
       }
    }
 
+   // An unfolded pass that found no finite value at all (should not normally happen, a chart with
+   // truly nothing to plot never reaches this renderer, see index.ts's hasRenderableData) still needs
+   // a finite fallback rather than leaving ±Infinity to leak into the overlay-fold/override math below.
+   if (!Number.isFinite(dataMin) || !Number.isFinite(dataMax)) {
+      dataMin = 0
+      dataMax = 0
+   }
+
    // Fold every reference-overlay value into the raw domain so a target line beyond the data always
    // stays on-canvas (the data rescales to fit it). Done before the yMin/yMax overrides below, which
    // still win when the author has pinned an explicit floor/ceiling.
@@ -1279,22 +1655,57 @@ function computeValueDomain(
    return [min, max]
 }
 
+// ================================================================
+// # LOG-SCALE ELIGIBILITY + PER-DATUM PLOTTABILITY (shared helper)
+// ================================================================
+
+/** Whether a resolved (min, max) domain is strictly positive and finite, the sole condition every
+ *  per-type render function here uses to decide "is a log value axis actually usable for this
+ *  chart's data" (log is undefined at <= 0). Shared so every chart type's eligibility test reads
+ *  identically rather than re-deriving the same two comparisons four different ways. */
+function isPositiveFiniteDomain(min: number, max: number): boolean {
+   return Number.isFinite(min) && Number.isFinite(max) && min > 0
+}
+
 /**
- * Fold every finite `reference` overlay value into a raw `[dataMin, dataMax]` domain, so a target
- * line drawn outside the data range still ends up on-canvas once nice-ticking runs. Shared between
- * the categorical cartesian domain ({@link computeValueDomain}) and the scatter chart's continuous
- * y-domain ({@link renderScatterPlot}) — the fold logic itself has no dependency on category vs.
- * continuous data, only on the raw min/max and the overlay list.
+ * Whether a single datum can be plotted on `axisMode`'s axis: finite, and, on a log axis,
+ * strictly positive. A value that fails this check is treated exactly like a missing/malformed
+ * cell: a line/area run breaks there, a bar/point is simply not drawn for it. This is a defensive
+ * BACKSTOP, not the expected path: {@link isPositiveFiniteDomain} is checked against the WHOLE
+ * chart's domain before 'log' is ever chosen, so an individual non-positive datum can only slip
+ * through via something outside that domain check (e.g. a stray overlay/reference value), never
+ * the chart's own plotted series/points.
+ */
+function isPlottableValue(value: number | null | undefined, axisMode: AxisMode): value is number {
+   if (value === null || value === undefined || !Number.isFinite(value)) return false
+   if (axisMode === 'log' && value <= 0) return false
+   return true
+}
+
+/**
+ * Fold every finite `reference` overlay value of the requested `orientation` into a raw
+ * `[dataMin, dataMax]` axis domain, so a target line drawn outside the data range still ends up
+ * on-canvas once nice-ticking runs. Shared by the categorical cartesian y-domain
+ * ({@link computeValueDomain}), the scatter chart's continuous y- AND x-domains, and the function
+ * chart's y- AND x-domains, the fold logic depends only on the raw min/max and the overlay list,
+ * not on category vs. continuous data.
+ *
+ * `orientation` selects WHICH references extend THIS axis: a `'horizontal'` reference (y = value,
+ * the default when a reference carries no orientation, so pre-orientation specs stay byte-identical)
+ * extends the Y-domain; a `'vertical'` reference (x = value) extends the X-domain. A reference of the
+ * other orientation is ignored here, so a vertical target never stretches the y-axis and vice versa.
  */
 function foldReferenceOverlaysIntoDomain(
    dataMin: number,
    dataMax: number,
    overlays: Overlay[] | undefined,
+   orientation: 'horizontal' | 'vertical' = 'horizontal',
 ): [number, number] {
    let min = dataMin
    let max = dataMax
    for (const overlay of overlays ?? []) {
       if (overlay.kind !== 'reference') continue
+      if ((overlay.orientation ?? 'horizontal') !== orientation) continue
       const value = overlay.value
       if (value === undefined || !Number.isFinite(value)) continue
       if (value > max) max = value
@@ -1307,13 +1718,18 @@ function foldReferenceOverlaysIntoDomain(
 // # AXES & GRIDLINES  #
 // #####################
 
-/** Horizontal hairline gridlines at each nice tick, with the tick value labelled at the left. */
+/**
+ * Horizontal hairline gridlines at each nice tick, with the tick value labelled at the left, plus
+ * optional unlabeled MINOR gridlines (log scale's intra-decade 2x/5x ticks, empty for a linear
+ * axis, so this is a no-op loop and the output stays byte-identical to before this parameter existed).
+ */
 function renderGridlines(
    ticks: number[],
    yScale: (value: number) => number,
    tickLabels: string[],
    plot: { x: number; y: number; width: number; height: number },
    theme: GraphTheme,
+   minorTicks: number[] = [],
 ): string {
    const parts: string[] = []
    for (let tickIndex = 0; tickIndex < ticks.length; tickIndex++) {
@@ -1335,6 +1751,18 @@ function renderGridlines(
          'font-variant-numeric': 'tabular-nums',
          fill: theme.ink.textMuted,
       }, tickLabels[tickIndex]))
+   }
+   for (const minorTick of minorTicks) {
+      const tickY = yScale(minorTick)
+      parts.push(selfClosingElement('line', {
+         x1: plot.x,
+         y1: tickY,
+         x2: plot.x + plot.width,
+         y2: tickY,
+         stroke: theme.ink.grid,
+         'stroke-width': 1,
+         'stroke-opacity': MINOR_GRIDLINE_OPACITY,
+      }))
    }
    return element('g', {}, parts.join(''))
 }
@@ -1362,6 +1790,123 @@ function renderAxes(
       'stroke-width': 1,
    })
    return element('g', {}, yAxis + xAxis)
+}
+
+/**
+ * Draw "textbook" (custom-origin, four-quadrant) axes for a CONTINUOUS-X/CONTINUOUS-Y chart
+ * (`function`/`scatter`): the y-axis is the vertical line at `xScale(origin.x)` and the x-axis the
+ * horizontal line at `yScale(origin.y)`, crossing at the origin, with tick marks + number labels
+ * riding the crossing lines instead of the plot edges. This one helper REPLACES the standard
+ * `renderGridlines` + `renderAxes` + `renderNumericXAxisLabels` trio for those two types when an
+ * {@link GraphOptions.axisOrigin} is set. Details:
+ *   - LIGHT GRIDLINES stay at every tick position on BOTH axes (graph-paper readability); the bold
+ *     crossing axes are drawn on top of them. (Standard mode draws only horizontal gridlines; the
+ *     vertical ones are a deliberate textbook-mode enhancement, active only when this path is.)
+ *   - The two bold axes are each CLAMPED to the nearest plot edge when the origin falls outside the
+ *     visible domain, so an off-domain origin degrades to an edge axis rather than drawing off-canvas.
+ *     The tick labels still sit at their true data positions regardless.
+ *   - The tick label sitting on the OTHER crossing axis (the origin's own zero) is DROPPED on each
+ *     axis so the two zero labels never collide (see {@link AXIS_CROSSING_LABEL_SKIP_PX}).
+ * LINEAR axes only, the caller never invokes this on a log value axis (a custom origin is a linear
+ * concept; see `renderFunctionPlot`/`renderScatterPlot`, which fall back to the standard edge axes
+ * under a log scale). `yTicks` are the linear value ticks; the x ticks are recomputed here from the
+ * axis x-range exactly as {@link renderNumericXAxisLabels} does, so the labels sit where they would.
+ */
+function renderTextbookAxes(
+   origin: { x: number; y: number },
+   yTicks: number[],
+   xAxisMin: number,
+   xAxisMax: number,
+   xScale: (value: number) => number,
+   yScale: (value: number) => number,
+   plot: { x: number; y: number; width: number; height: number },
+   theme: GraphTheme,
+): string {
+   const plotLeft = plot.x
+   const plotRight = plot.x + plot.width
+   const plotTop = plot.y
+   const plotBottom = plot.y + plot.height
+
+   // The x-axis tick positions, computed exactly like renderNumericXAxisLabels (same niceTicks + the
+   // same in-range filter), so the textbook x-labels land where the standard bottom labels would.
+   const xNice = niceTicks(xAxisMin, xAxisMax, TARGET_TICK_COUNT)
+   const xTicks = xNice.ticks.filter(tick => tick >= xAxisMin && tick <= xAxisMax)
+
+   // The bold crossing axes, each clamped to the nearest plot edge for an off-domain origin.
+   const verticalAxisX = clamp(xScale(origin.x), plotLeft, plotRight)
+   const horizontalAxisY = clamp(yScale(origin.y), plotTop, plotBottom)
+
+   const parts: string[] = []
+
+   // ====== light gridlines at every tick, both axes (graph-paper readability) ======
+   for (const tick of yTicks) {
+      const gridY = yScale(tick)
+      parts.push(selfClosingElement('line', {
+         x1: plotLeft, y1: gridY, x2: plotRight, y2: gridY,
+         stroke: theme.ink.grid, 'stroke-width': 1,
+      }))
+   }
+   for (const tick of xTicks) {
+      const gridX = xScale(tick)
+      parts.push(selfClosingElement('line', {
+         x1: gridX, y1: plotTop, x2: gridX, y2: plotBottom,
+         stroke: theme.ink.grid, 'stroke-width': 1,
+      }))
+   }
+
+   // ====== the two bold crossing axes ======
+   parts.push(selfClosingElement('line', {
+      x1: verticalAxisX, y1: plotTop, x2: verticalAxisX, y2: plotBottom,
+      stroke: theme.ink.axis, 'stroke-width': 1,
+   }))
+   parts.push(selfClosingElement('line', {
+      x1: plotLeft, y1: horizontalAxisY, x2: plotRight, y2: horizontalAxisY,
+      stroke: theme.ink.axis, 'stroke-width': 1,
+   }))
+
+   // ====== y-axis tick marks + labels, riding the vertical axis (labels to its left) ======
+   for (const tick of yTicks) {
+      const tickY = yScale(tick)
+      // Drop the origin's own row (the tick sitting on the horizontal axis) so the two zero labels
+      // never collide at the crossing.
+      if (Math.abs(tickY - horizontalAxisY) < AXIS_CROSSING_LABEL_SKIP_PX) continue
+      parts.push(selfClosingElement('line', {
+         x1: verticalAxisX - TEXTBOOK_TICK_MARK_HALF_LENGTH, y1: tickY,
+         x2: verticalAxisX + TEXTBOOK_TICK_MARK_HALF_LENGTH, y2: tickY,
+         stroke: theme.ink.axis, 'stroke-width': 1,
+      }))
+      parts.push(textElement({
+         x: verticalAxisX - TEXTBOOK_TICK_MARK_HALF_LENGTH - TEXTBOOK_TICK_LABEL_GAP,
+         y: tickY,
+         'text-anchor': 'end',
+         'dominant-baseline': 'central',
+         'font-size': TICK_FONT_SIZE,
+         'font-variant-numeric': 'tabular-nums',
+         fill: theme.ink.textMuted,
+      }, formatNumber(tick)))
+   }
+
+   // ====== x-axis tick marks + labels, riding the horizontal axis (labels below it) ======
+   for (const tick of xTicks) {
+      const tickX = xScale(tick)
+      // Drop the origin's own column (the tick sitting on the vertical axis) for the same reason.
+      if (Math.abs(tickX - verticalAxisX) < AXIS_CROSSING_LABEL_SKIP_PX) continue
+      parts.push(selfClosingElement('line', {
+         x1: tickX, y1: horizontalAxisY - TEXTBOOK_TICK_MARK_HALF_LENGTH,
+         x2: tickX, y2: horizontalAxisY + TEXTBOOK_TICK_MARK_HALF_LENGTH,
+         stroke: theme.ink.axis, 'stroke-width': 1,
+      }))
+      parts.push(textElement({
+         x: tickX,
+         y: horizontalAxisY + TEXTBOOK_TICK_MARK_HALF_LENGTH + TICK_FONT_SIZE,
+         'text-anchor': 'middle',
+         'font-size': TICK_FONT_SIZE,
+         'font-variant-numeric': 'tabular-nums',
+         fill: theme.ink.textMuted,
+      }, formatNumber(tick)))
+   }
+
+   return element('g', {}, parts.join(''))
 }
 
 /** Category (x) labels centered under each band. */
@@ -1413,7 +1958,7 @@ function barRect(
  *
  * Coloring is UNIFORM by default (every bar wears the one series' resolved base color, so a plain
  * simple-bar chart is byte-identical to before per-bar color existed). A per-category override in
- * `categoryColors[categoryIndex]` recolors just that one bar — the same `categoryColors` array the
+ * `categoryColors[categoryIndex]` recolors just that one bar, the same `categoryColors` array the
  * radial families use for per-slice color, here defaulting to the uniform base instead of a palette
  * slot per index.
  */
@@ -1427,6 +1972,7 @@ function renderSingleBars(
    theme: GraphTheme,
    showValues: boolean,
    barWidthFraction: number,
+   axisMode: AxisMode = 'linear',
 ): string {
    const baseColor = resolveSeriesColor(0, series.color, theme)
    // The band-capped base thickness is what the bar draws at full width today; the fraction then
@@ -1437,7 +1983,7 @@ function renderSingleBars(
    const parts: string[] = []
    for (let index = 0; index < labels.length; index++) {
       const value = series.values[index]
-      if (value === null || value === undefined || !Number.isFinite(value)) continue
+      if (!isPlottableValue(value, axisMode)) continue
       const valueY = yScale(value)
       const rectY = Math.min(baselineY, valueY)
       const rectHeight = Math.abs(valueY - baselineY)
@@ -1463,6 +2009,7 @@ function renderGroupedBars(
    theme: GraphTheme,
    showValues: boolean,
    barWidthFraction: number,
+   axisMode: AxisMode = 'linear',
 ): string {
    const seriesCount = series.length
    const subStep = xBand.bandwidth / seriesCount
@@ -1475,7 +2022,7 @@ function renderGroupedBars(
       const bandStart = xBand.start(categoryIndex)
       for (let seriesIndex = 0; seriesIndex < seriesCount; seriesIndex++) {
          const value = series[seriesIndex].values[categoryIndex]
-         if (value === null || value === undefined || !Number.isFinite(value)) continue
+         if (!isPlottableValue(value, axisMode)) continue
          const color = resolveSeriesColor(seriesIndex, series[seriesIndex].color, theme)
          const valueY = yScale(value)
          const rectY = Math.min(baselineY, valueY)
@@ -1540,7 +2087,7 @@ function renderStackedBars(
 // ####################
 
 /**
- * Draw a line through each drawn series' bar-top peaks — a bar+line combo — for the bar-family
+ * Draw a line through each drawn series' bar-top peaks, a bar+line combo, for the bar-family
  * chart types only. Reuses `buildPointRuns` (defined below, in the LINE/AREA section) so `null`
  * gaps break the line exactly like a line chart does, and reuses the same round-capped polyline
  * draw. Called AFTER the bar marks push their pieces (see `renderCartesian`), so it sits visually
@@ -1548,7 +2095,7 @@ function renderStackedBars(
  *
  *   - bar (single series): the line follows the one drawn series' bar tops (band center x).
  *   - bar-grouped: one line PER drawn series, each through that series' own sub-bars (its own x
- *     offset within each category's band — the same `bandStart + subStep*seriesIndex + subStep/2`
+ *     offset within each category's band, the same `bandStart + subStep*seriesIndex + subStep/2`
  *     center {@link renderGroupedBars} places its rects at).
  *   - bar-stacked: ONE line through each category's cumulative stack top (the total across every
  *     drawn series), colored with the topmost (last) series' color since that is the segment the
@@ -1561,15 +2108,18 @@ function renderBarPeakLines(
    xBand: { start(index: number): number; center(index: number): number; bandwidth: number },
    yScale: (value: number) => number,
    theme: GraphTheme,
+   axisMode: AxisMode = 'linear',
 ): string {
    if (series.length === 0) return ''
 
    if (type === 'bar-stacked') {
+      // bar-stacked never renders on a log axis (see LOG_SCALE_UNSUPPORTED_TYPES), `axisMode` here
+      // is always 'linear' in practice; the summed totals are passed through unchanged either way.
       const topSeriesIndex = series.length - 1
       const color = resolveSeriesColor(topSeriesIndex, series[topSeriesIndex].color, theme)
       const stackedTotals = computeStackedTotals(labels, series)
       const totalsSeries: GraphSeries = { name: '', values: stackedTotals }
-      return renderOnePeakLine(labels, totalsSeries, xBand, yScale, color)
+      return renderOnePeakLine(labels, totalsSeries, xBand, yScale, color, axisMode)
    }
 
    if (type === 'bar-grouped') {
@@ -1582,22 +2132,22 @@ function renderBarPeakLines(
             center: (categoryIndex: number): number =>
                xBand.start(categoryIndex) + subStep * seriesIndex + subStep / 2,
          }
-         parts.push(renderOnePeakLine(labels, series[seriesIndex], perSeriesXBand, yScale, color))
+         parts.push(renderOnePeakLine(labels, series[seriesIndex], perSeriesXBand, yScale, color, axisMode))
       }
       return element('g', {}, parts.join(''))
    }
 
    // 'bar' (single series): the same band-center x every renderSingleBars rect already sits at.
    const color = resolveSeriesColor(0, series[0].color, theme)
-   return renderOnePeakLine(labels, series[0], xBand, yScale, color)
+   return renderOnePeakLine(labels, series[0], xBand, yScale, color, axisMode)
 }
 
 /**
  * Per-category cumulative total across every drawn series, for the bar-stacked peak line. A
- * missing/malformed cell contributes zero (mirrors how {@link renderStackedBars} treats it — the
+ * missing/malformed cell contributes zero (mirrors how {@link renderStackedBars} treats it, the
  * cursor simply does not move for that series), matching the "bar treats a gap as zero" semantics
  * documented on {@link GraphSeries}. A category is a gap (`null`, breaking the line) only when
- * EVERY series is missing there — the stack has no drawn segment at all to trace a peak through.
+ * EVERY series is missing there, the stack has no drawn segment at all to trace a peak through.
  */
 function computeStackedTotals(labels: string[], series: GraphSeries[]): (number | null)[] {
    const totals: (number | null)[] = []
@@ -1617,7 +2167,7 @@ function computeStackedTotals(labels: string[], series: GraphSeries[]): (number 
 
 /**
  * Draw one peak-line series as a round-capped polyline per contiguous run (breaking across `null`
- * gaps), reusing {@link buildPointRuns}. No point markers — kept visually distinct from a full
+ * gaps), reusing {@link buildPointRuns}. No point markers, kept visually distinct from a full
  * line chart, per the bar-peak-line display option's intent.
  */
 function renderOnePeakLine(
@@ -1626,8 +2176,9 @@ function renderOnePeakLine(
    xBand: { center(index: number): number },
    yScale: (value: number) => number,
    color: string,
+   axisMode: AxisMode = 'linear',
 ): string {
-   const runs = buildPointRuns(labels, series, xBand, yScale)
+   const runs = buildPointRuns(labels, series, xBand, yScale, axisMode)
    const parts: string[] = []
    for (const run of runs) {
       if (run.points.length < 2) continue // a lone peak has nothing to connect to
@@ -1655,18 +2206,23 @@ interface PointRun {
    points: { x: number; y: number; value: number; label: string }[]
 }
 
-/** Split a series into contiguous point runs, dropping null/malformed cells (they become gaps). */
+/**
+ * Split a series into contiguous point runs, dropping null/malformed cells (they become gaps),
+ * and, on a log axis, non-positive cells too (log is undefined at <= 0, so such a cell is treated
+ * exactly like a missing one: it breaks the run rather than being drawn).
+ */
 function buildPointRuns(
    labels: string[],
    series: GraphSeries,
    xBand: { center(index: number): number },
    yScale: (value: number) => number,
+   axisMode: AxisMode = 'linear',
 ): PointRun[] {
    const runs: PointRun[] = []
    let current: PointRun | null = null
    for (let index = 0; index < labels.length; index++) {
       const value = series.values[index]
-      if (value === null || value === undefined || !Number.isFinite(value)) {
+      if (!isPlottableValue(value, axisMode)) {
          current = null
          continue
       }
@@ -1708,11 +2264,12 @@ function renderLineSeries(
    theme: GraphTheme,
    lineStrokeWidth: number,
    showPoints: boolean,
+   axisMode: AxisMode = 'linear',
 ): string {
    const parts: string[] = []
    for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
       const color = resolveSeriesColor(seriesIndex, series[seriesIndex].color, theme)
-      const runs = buildPointRuns(labels, series[seriesIndex], xBand, yScale)
+      const runs = buildPointRuns(labels, series[seriesIndex], xBand, yScale, axisMode)
       for (const run of runs) {
          if (run.points.length === 1) {
             // A lone point cannot form a polyline; the marker below carries it.
@@ -1746,11 +2303,12 @@ function renderAreaSeries(
    lineStrokeWidth: number,
    showPoints: boolean,
    areaFillOpacity: number,
+   axisMode: AxisMode = 'linear',
 ): string {
    const parts: string[] = []
    for (let seriesIndex = 0; seriesIndex < series.length; seriesIndex++) {
       const color = resolveSeriesColor(seriesIndex, series[seriesIndex].color, theme)
-      const runs = buildPointRuns(labels, series[seriesIndex], xBand, yScale)
+      const runs = buildPointRuns(labels, series[seriesIndex], xBand, yScale, axisMode)
       for (const run of runs) {
          if (run.points.length === 0) continue
          const topPath = run.points
@@ -1856,7 +2414,7 @@ function renderLegend(
    // Color each swatch by its SERIES INDEX, not by name. The legend items are laid out in input
    // series order, so a running counter maps swatch -> series positionally. Keying by name (the old
    // approach) collapses every swatch onto the last series' color whenever names are empty or
-   // duplicated — e.g. scatter series names default to blank. A running index is collision-proof.
+   // duplicated, e.g. scatter series names default to blank. A running index is collision-proof.
    const firstRowY = layout.canvasHeight - layout.margin.bottom + 30
    let legendItemIndex = 0
    for (let rowIndex = 0; rowIndex < legendLayout.rows.length; rowIndex++) {

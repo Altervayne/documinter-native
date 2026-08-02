@@ -4,7 +4,7 @@
  * PURE FUNCTIONS. This is the trickiest pure piece: an SVG string has NO DOM, so text cannot
  * be measured. Axis-tick, axis-caption, and legend widths are ESTIMATED from character count
  * times an average glyph advance for the chart font-size. The estimate intentionally runs a
- * little wide (over-reserving margin) rather than risk clipping — the same limitation every
+ * little wide (over-reserving margin) rather than risk clipping, the same limitation every
  * server-side SVG chart lives with.
  *
  * The renderer draws into a fixed internal coordinate space (CANVAS_WIDTH x CANVAS_HEIGHT);

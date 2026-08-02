@@ -15,7 +15,7 @@ export type ClampAnchor =
    | { type: 'rect';  rect: DOMRect; preferAbove?: boolean }
 
 interface ClampedResult<ElementType extends HTMLElement> {
-   /** Attach to the popover element — its rendered size drives the clamp. */
+   /** Attach to the popover element, its rendered size drives the clamp. */
    ref:  RefObject<ElementType | null>
    top:  number
    left: number
@@ -32,7 +32,7 @@ const DEFAULT_MARGIN = 8
 // ############
 
 // Two-sided clamp: never past the far edge (Math.min) and never before the near
-// edge (Math.max). The near-edge floor is the fix for the audited bug — a Math.min-only
+// edge (Math.max). The near-edge floor is the fix for the audited bug, a Math.min-only
 // clamp lets `viewport − size − margin` go negative and pushes the popover off-screen.
 // Exported so the draggable-window primitive reuses the exact same clamp rule rather than
 // re-deriving it (single source of truth for "can never leave the viewport").
@@ -77,7 +77,7 @@ function computePosition(
  * Positions a portaled popover so it stays fully on-screen on both axes.
  *
  * The popover's size is measured from the actual rendered node (layout effect + ref),
- * not estimated from an item count — heights here are dynamic (a context menu grows with
+ * not estimated from an item count, heights here are dynamic (a context menu grows with
  * its rows, BlockContextMenu can reach ~650px), and estimating is exactly what let the
  * off-screen-clamp bug slip in. Recomputes on window resize so an open popover follows
  * the viewport.
@@ -94,7 +94,7 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
    }))
 
    // Measure the rendered popover before paint (synchronous, so no visible flicker as the
-   // 0×0 first pass is corrected). This captures the real box on mount — the fix for the
+   // 0×0 first pass is corrected). This captures the real box on mount, the fix for the
    // estimate-driven off-screen bug.
    useLayoutEffect(() => {
       const element = ref.current
@@ -103,7 +103,7 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
       setSize({ width: rect.width, height: rect.height })
    }, [])
 
-   // A menu's content isn't always stable while open — e.g. the document-background context
+   // A menu's content isn't always stable while open, e.g. the document-background context
    // menu's accent section expands an inline ColorPicker in place, growing the menu's own box.
    // Re-measure whenever the rendered size actually changes so the clamp keeps the (now taller)
    // popover fully on-screen instead of freezing the stale mount-time box.

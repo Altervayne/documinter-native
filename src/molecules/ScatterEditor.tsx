@@ -45,7 +45,7 @@ import type { ContextMenuEntry } from './ContextMenu'
 
 /** Positional sortable id prefixes. A scatter series carries a `scatter-series-<index>` synthetic
  *  id (series have no stable model id); each point carries a `scatter-point-<index>` id WITHIN its
- *  series' own DndContext (isolated per series, so a bare point index suffices — the series index is
+ *  series' own DndContext (isolated per series, so a bare point index suffices, the series index is
  *  captured in the drag-end closure). onDragEnd parses the trailing index back into the helper. */
 const SCATTER_SERIES_ID_PREFIX = 'scatter-series-'
 const SCATTER_POINT_ID_PREFIX  = 'scatter-point-'
@@ -60,7 +60,7 @@ const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 
 
 /**
  * Parse a clipboard payload as delimited rows: split on newlines (normalizing CRLF/CR, dropping a
- * single trailing newline), then each row on TAB or COMMA — so a scatter paste accepts spreadsheet
+ * single trailing newline), then each row on TAB or COMMA, so a scatter paste accepts spreadsheet
  * TSV, comma-separated `x,y`, or newline-separated single x values. Returns [] for an empty payload.
  * Never throws.
  */
@@ -78,7 +78,7 @@ function isMultiCellPaste(grid: string[][]): boolean {
 /**
  * Parse one pasted cell into a finite `number`, or `NaN` for an empty / non-numeric cell (the
  * blank-gap seed the renderer + fence serializer both skip). Surrounding whitespace and thousands-
- * grouping is not stripped beyond a trim — a comma is a COLUMN delimiter here, not a grouping mark.
+ * grouping is not stripped beyond a trim, a comma is a COLUMN delimiter here, not a grouping mark.
  */
 function parsePointNumber(raw: string): number {
    const trimmed = raw.trim()
@@ -128,7 +128,7 @@ interface ScatterEditorProps {
 const FALLBACK_SCATTER_PLOT: ScatterPlot = { series: [{ name: '', points: [{ x: 0, y: 0 }] }] }
 
 /** Which (series, point, field) numeric cell is being typed into, holding its raw text so an
- *  unparseable intermediate ("-", "1.") stays on screen without corrupting the stored value —
+ *  unparseable intermediate ("-", "1.") stays on screen without corrupting the stored value,
  *  mirrors GraphDataGrid's `EditingCell` / EquationEditor's `EditingDomainField`. */
 interface EditingPointField {
    seriesIndex: number
@@ -159,8 +159,8 @@ interface SortableScatterSeriesProps {
  * grip on the heading bar carries the drag listeners (render-prop `handle`), so typing in the name
  * or any point cell never starts a series reorder. A raised z-index while dragging keeps the lifted
  * block above its neighbors (mirrors GraphDataGrid's SortableSeriesHeader). The series right-click
- * menu is bound to the heading bar (not this whole block) so a point-row right-click — nested inside
- * the same block — never also resolves to the series menu.
+ * menu is bound to the heading bar (not this whole block) so a point-row right-click, nested inside
+ * the same block, never also resolves to the series menu.
  */
 function SortableScatterSeries({ seriesIndex, children }: SortableScatterSeriesProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
@@ -223,13 +223,13 @@ function SortableScatterPoint({ pointIndex, onContextMenu, children }: SortableS
 /**
  * The Data-tab editor for a `scatter` chart: one block per series (color swatch + name + a small
  * X/Y numeric grid of that series' points, with add/remove point) followed by a "+ Series" footer,
- * replacing `GraphDataGrid` for this type — a scatter series has no categories and no shared
+ * replacing `GraphDataGrid` for this type, a scatter series has no categories and no shared
  * domain, so it earns its own dedicated surface (mirrors `EquationEditor`'s layout, one block per
  * SERIES here instead of one row per equation).
  *
  * Draft/commit model exactly like `EquationEditor`/`GraphDataGrid`: numeric x/y typing drafts on
  * every keystroke (instant preview) and commits on blur; add/remove/color commit immediately.
- * v1 is points-only — no per-series trendline (a deferred fast-follow, not built here).
+ * v1 is points-only, no per-series trendline (a deferred fast-follow, not built here).
  */
 export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: ScatterEditorProps) {
    const scatterPlot = spec.scatterPlot ?? FALLBACK_SCATTER_PLOT
@@ -254,7 +254,7 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
          && editingPoint.seriesIndex === seriesIndex
          && editingPoint.pointIndex === pointIndex
          && editingPoint.field === field) return editingPoint.text
-      // A blank-seeded point (non-finite x/y) renders as an empty field — the muted "–" placeholder
+      // A blank-seeded point (non-finite x/y) renders as an empty field, the muted "–" placeholder
       // then reads it as a gap to type over, not a literal "0" to select-and-overwrite.
       return Number.isFinite(value) ? String(value) : ''
    }
@@ -363,10 +363,10 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
    //  Bulk paste (into the point grid)
    // ================
    // A paste over a point cell parses TSV / comma / newline rows as `x[<tab|comma>y]`, auto-appending
-   // points downward from the FOCUSED row (never past MAX — a series has no point cap). A single value
+   // points downward from the FOCUSED row (never past MAX, a series has no point cap). A single value
    // falls through to normal typing. Non-numeric cells land as a NaN gap (the same blank seed a `+
    // Point` uses); a single-column paste fills x and leaves y blank. Applied over the pure transforms
-   // and committed once — mirrors GraphDataGrid.handleMultiSeriesPaste.
+   // and committed once, mirrors GraphDataGrid.handleMultiSeriesPaste.
    function handlePointPaste(event: React.ClipboardEvent<HTMLInputElement>, seriesIndex: number, focusPointIndex: number): void {
       const grid = parseScatterClipboard(event.clipboardData.getData('text/plain'))
       if (!isMultiCellPaste(grid)) return
@@ -375,7 +375,7 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
       let next = spec
       for (let rowOffset = 0; rowOffset < grid.length; rowOffset++) {
          const pointIndex = focusPointIndex + rowOffset
-         // Grow the series' point list until it reaches the target row (uncapped — points have no MAX).
+         // Grow the series' point list until it reaches the target row (uncapped, points have no MAX).
          while (pointIndex >= (next.scatterPlot?.series[seriesIndex]?.points.length ?? 0)) {
             next = addScatterPoint(next, seriesIndex)
          }

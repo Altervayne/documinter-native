@@ -57,7 +57,7 @@ const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
 // ################
 
 /**
- * A small, illustrative, STABLE dataset per chart type used only to render the card thumbnails —
+ * A small, illustrative, STABLE dataset per chart type used only to render the card thumbnails,
  * NOT the author's data, so the cards never re-shape as the real spec is edited. Legend + title +
  * value labels are left off (options stay lean) so the chart SHAPE reads clearly at thumbnail size.
  * Pure and deterministic: same type in, same spec out.

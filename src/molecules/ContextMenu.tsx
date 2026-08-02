@@ -26,7 +26,7 @@ export interface ContextMenuItem {
 /**
  * One row of a menu: an actionable item, a horizontal separator, a non-interactive section
  * header, or the accent picker's swatch grid (a nameless grid of color tiles + an inline-
- * expanding custom-color picker — see molecules/AccentSwatchGrid). Items are the entries without
+ * expanding custom-color picker, see molecules/AccentSwatchGrid). Items are the entries without
  * a `type` discriminant.
  */
 export type ContextMenuEntry =
@@ -72,7 +72,7 @@ function stepFocus(items: ContextMenuItem[], current: number, direction: 1 | -1)
 
 /**
  * Portaled context menu with a declarative `entries` API (items, separators, section
- * headers). Owns viewport clamping (via useViewportClampedPosition — two-sided, measured),
+ * headers). Owns viewport clamping (via useViewportClampedPosition, two-sided, measured),
  * roving-focus keyboard navigation, and outside-pointerdown / Escape / scroll dismissal.
  * Selecting an item runs its `onSelect` and then closes the menu.
  */

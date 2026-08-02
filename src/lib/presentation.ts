@@ -4,11 +4,11 @@
  * Pure types, defaults, and normalization for the presentation features that render IN the editor
  * and bake into the self-contained HTML export, but are intentionally NOT serialized to Mintdown /
  * Markdown (those carry portable content, not presentation). This object rides ALONGSIDE the flat
- * docTheme / docAccent presentation fields (never inside DocState) — same category, same seams.
+ * docTheme / docAccent presentation fields (never inside DocState), same category, same seams.
  *
  * Pass 1 implements the background watermark; pass 2 adds the header logo. The nav model
  * (pass 3) slots into DocPresentationExtras as a sibling optional field, and normalizePresentation
- * grows a branch for it — no consumer needs to change for the field to stay absent-tolerant.
+ * grows a branch for it, no consumer needs to change for the field to stay absent-tolerant.
  *
  * No React, no DOM: the canvas image encode lives in imageDownscale.ts; everything here is pure so
  * it is unit-testable and reusable by both the editor render and the export pipeline.
@@ -56,9 +56,9 @@ export type HeaderAlign = 'left' | 'center' | 'right'
 
 /**
  * For `placement:'beside'` only: which end of the row the logo pins to, with the title at the other
- * end. 'left' (the default) preserves the original behavior — logo and title ride together as one
+ * end. 'left' (the default) preserves the original behavior, logo and title ride together as one
  * group, positioned as a unit by `align`. 'right' pins the logo to the row's trailing edge and the
- * title to its leading edge (a space-between row), so `align` no longer applies — see
+ * title to its leading edge (a space-between row), so `align` no longer applies, see
  * resolveHeaderBesideLayout. Ignored for `placement:'above'`.
  */
 export type HeaderLogoSide = 'left' | 'right'
@@ -140,7 +140,7 @@ export const WATERMARK_MAX_OPACITY = 0.3
 export const WATERMARK_DEFAULT_OPACITY = 0.08
 
 // In the dark document theme the watermark is dimmed a touch further (on top of the clamp) so light
-// text over a light-ish watermark stays readable — the "subtle auto-dim" legibility guard.
+// text over a light-ish watermark stays readable, the "subtle auto-dim" legibility guard.
 export const WATERMARK_DARK_DIM_FACTOR = 0.8
 
 export const DEFAULT_WATERMARK_FIT: WatermarkFit = 'contain'
@@ -152,8 +152,8 @@ const WATERMARK_POSITIONS: ReadonlySet<WatermarkPosition> = new Set([
 ])
 
 // Rotation applies to both the single and tiled watermark. A full turn either way is never useful
-// (180deg already mirrors every meaningful orientation), so the range is a plain, non-cyclic clamp —
-// consistent with clampWatermarkOpacity — rather than wrap-around, which would silently flip the sign
+// (180deg already mirrors every meaningful orientation), so the range is a plain, non-cyclic clamp,
+// consistent with clampWatermarkOpacity, rather than wrap-around, which would silently flip the sign
 // of an out-of-range stored value.
 export const WATERMARK_MIN_ROTATION = -180
 export const WATERMARK_MAX_ROTATION = 180
@@ -180,7 +180,7 @@ export const WATERMARK_DEFAULT_ASPECT_RATIO = 1
 
 // Position offset: a fine X/Y nudge (px) on top of the position anchor (single) / pattern phase
 // (tiled), composed with rotation rather than replacing it. May be negative (nudge left/up). Bounded
-// to a generous but sane window against corrupt/malicious data — well past any plausible page size.
+// to a generous but sane window against corrupt/malicious data, well past any plausible page size.
 export const WATERMARK_MIN_OFFSET = -1000
 export const WATERMARK_MAX_OFFSET = 1000
 export const WATERMARK_DEFAULT_OFFSET = 0
@@ -195,7 +195,7 @@ export const DEFAULT_HEADER_PLACEMENT: HeaderPlacement = 'above'
 export const DEFAULT_HEADER_ALIGN: HeaderAlign = 'left'
 export const DEFAULT_HEADER_LOGO_SIDE: HeaderLogoSide = 'left'
 
-// A logo doesn't need the watermark's full 2048px longest-edge cap — it renders at most at
+// A logo doesn't need the watermark's full 2048px longest-edge cap, it renders at most at
 // HEADER_MAX_MAX_HEIGHT tall. Passed as the maxEdge to the shared downscaleImageToDataUrl.
 export const HEADER_LOGO_MAX_EDGE = 1024
 
@@ -263,7 +263,7 @@ export function headerJustifyContent(align: HeaderAlign): string {
    }
 }
 
-/** The concrete row layout `placement:'beside'` renders from — see resolveHeaderBesideLayout. */
+/** The concrete row layout `placement:'beside'` renders from, see resolveHeaderBesideLayout. */
 export interface HeaderBesideLayout {
    justifyContent: string    // CSS justify-content for the row
    logoFirst:      boolean   // DOM order: logo-then-title (true) or title-then-logo (false)
@@ -273,10 +273,10 @@ export interface HeaderBesideLayout {
  * Resolve a 'beside' header's row layout from `logoSide` (+ `align` when logoSide is 'left'). Shared
  * by the editor render and the export's renderPageTitle so both surfaces lay out identically.
  *
- *   - logoSide 'left' (default): today's behavior, UNCHANGED — logo and title ride together as one
+ *   - logoSide 'left' (default): today's behavior, UNCHANGED, logo and title ride together as one
  *     group (logo first in the DOM), the group positioned by `align` via justify-content.
- *   - logoSide 'right': the logo pins to the row's trailing edge and the title to its leading edge —
- *     a space-between row — so `align` does not apply (there is no single "group" to align).
+ *   - logoSide 'right': the logo pins to the row's trailing edge and the title to its leading edge,
+ *     a space-between row, so `align` does not apply (there is no single "group" to align).
  */
 export function resolveHeaderBesideLayout(header: Header): HeaderBesideLayout {
    if (header.logoSide === 'right') {
@@ -321,7 +321,7 @@ export function resolveWatermarkLayout(watermark: Watermark): WatermarkLayout {
 /**
  * The CSS `transform` value for a SINGLE (non-tiled) watermark: the X/Y position offset composed
  * with rotation. `translate()` is listed first so the offset moves the box in screen space, then
- * `rotate()` spins it around its own (now-shifted) center — "nudge, then spin in place", so rotation
+ * `rotate()` spins it around its own (now-shifted) center, "nudge, then spin in place", so rotation
  * keeps its original meaning regardless of the offset. When both offsets are 0 (the default) this
  * degrades to the bare `rotate(...)` string, byte-identical to the pre-offset output. Shared by the
  * editor render (WysiwygArea) and export.ts's renderWatermarkLayer so both surfaces compose identically.
@@ -361,9 +361,9 @@ function round2(value: number): number {
 export interface WatermarkPatternGeometry {
    imageWidth:  number   // the tile motif's rendered width, from tileSize
    imageHeight: number   // derived from imageWidth / aspectRatio, so the image is never squashed
-   cellWidth:   number   // imageWidth + spacingX — the pattern tile's repeat width
-   cellHeight:  number   // imageHeight + spacingY — the pattern tile's repeat height
-   imageX:      number   // spacingX / 2 — centers the image in its cell so the gap is even
+   cellWidth:   number   // imageWidth + spacingX, the pattern tile's repeat width
+   cellHeight:  number   // imageHeight + spacingY, the pattern tile's repeat height
+   imageX:      number   // spacingX / 2, centers the image in its cell so the gap is even
    imageY:      number   // spacingY / 2
    rotation:    number   // clamped rotation, degrees
    offsetX:     number   // clamped X phase shift (px) of the pattern origin; 0 = no shift
@@ -372,7 +372,7 @@ export interface WatermarkPatternGeometry {
 
 /**
  * Resolve a watermark's tileSize / spacingX / spacingY / aspectRatio / rotation into the concrete
- * geometry an SVG `<pattern>` needs. Pure — shared by the editor render and the export pipeline (via
+ * geometry an SVG `<pattern>` needs. Pure, shared by the editor render and the export pipeline (via
  * renderWatermarkPatternSvg below) so both surfaces compute the exact same numbers.
  */
 export function resolveWatermarkPatternGeometry(watermark: Watermark): WatermarkPatternGeometry {
@@ -396,7 +396,7 @@ export function resolveWatermarkPatternGeometry(watermark: Watermark): Watermark
 
 /**
  * The SVG `patternTransform` value for a tiled watermark: the X/Y position offset composed with
- * rotation, same "translate then rotate" order as watermarkTransform (single case) — the offset
+ * rotation, same "translate then rotate" order as watermarkTransform (single case), the offset
  * shifts the pattern's phase (where its origin sits), then rotation spins the whole tiled field
  * around that shifted origin. When both offsets are 0 this degrades to the bare `rotate(...)`
  * string, byte-identical to the pre-offset output.
@@ -433,7 +433,7 @@ export function renderWatermarkPatternSvg(watermark: Watermark, theme: 'light' |
 }
 
 /**
- * Set spacingX and spacingY to the same clamped value in one step — the pure helper behind the
+ * Set spacingX and spacingY to the same clamped value in one step, the pure helper behind the
  * Presentation window's linked "density" slider (spacingX === spacingY until the user opts into
  * per-axis control).
  */
@@ -447,10 +447,10 @@ export function applyLinkedWatermarkSpacing(watermark: Watermark, spacing: numbe
 // ####################
 
 /**
- * The set of every live deep-link handle in the document — one per block (including container inner
+ * The set of every live deep-link handle in the document, one per block (including container inner
  * blocks) that carries a `handle`. Mirrors the exact walk getAnchoredBlocks (hooks/useLinkMode.ts)
  * uses for the inline "jump to block" picker, so an anchor nav target resolves against the same
- * universe of anchors. Pure — shared by reconcileNav (drop dead anchor targets) and the export
+ * universe of anchors. Pure, shared by reconcileNav (drop dead anchor targets) and the export
  * scroll-spy (observe the referenced anchor elements).
  */
 export function collectAnchoredHandles(sections: Section[]): Set<string> {
@@ -472,16 +472,16 @@ function collectInnerBlocks(block: Block): Block[] {
 }
 
 /**
- * Reconcile a stored nav model against the live section list into a clean NavEntry[] — the linchpin
+ * Reconcile a stored nav model against the live section list into a clean NavEntry[], the linchpin
  * run at BOTH edit and export. Pure and deterministic:
  *
  *   - `auto` entries whose section no longer exists are DROPPED (deleted section).
  *   - `custom` / `divider` entries PASS THROUGH untouched, in their stored order.
  *   - any section not yet referenced by an `auto` entry is APPENDED as a fresh `auto` at the tail,
- *     in section order — so newly added sections auto-appear without the user re-editing the nav.
+ *     in section order, so newly added sections auto-appear without the user re-editing the nav.
  *
  * When `nav` is undefined (or has no entries), the result is one unhidden `auto` per section in
- * section order — exactly today's `sections.map(...)` derivation. The editor seeds and edits from
+ * section order, exactly today's `sections.map(...)` derivation. The editor seeds and edits from
  * THIS list (so a first touch starts from today's derived nav, then customizes).
  */
 export function reconcileNavEntries(nav: NavModel | undefined, sections: Section[]): NavEntry[] {
@@ -513,7 +513,7 @@ export function reconcileNavEntries(nav: NavModel | undefined, sections: Section
 }
 
 /**
- * A nav entry resolved to its concrete render form — what both the export pipeline and any render
+ * A nav entry resolved to its concrete render form, what both the export pipeline and any render
  * surface consume. A `link` carries its final label + href + whether it points offsite (external →
  * open in a new tab, not scroll-spy observed) + an optional 1-based positional `number` (see the
  * numbering rule in reconcileNav). A `divider` carries only its optional caption.
@@ -530,9 +530,9 @@ export type ResolvedNavEntry =
  *
  * Numbering: section-target links (unhidden `auto` + `custom` → section) are numbered 1..N in nav
  * order; anchor links (custom → block handle), external links, and dividers are NOT numbered and do
- * not consume a number — an anchor link is a sub-reference into a section, sibling to an external
+ * not consume a number, an anchor link is a sub-reference into a section, sibling to an external
  * link, so it stays unnumbered. When `nav` is absent this yields all sections numbered 1..N in
- * order — byte-identical to today's derivation.
+ * order, byte-identical to today's derivation.
  *
  * An anchor target whose `handle` no longer exists among the document's anchored blocks is DROPPED
  * (mirrors a custom section link pointing at a deleted section), so a stale anchor never emits a
@@ -571,7 +571,7 @@ export function reconcileNav(nav: NavModel | undefined, sections: Section[]): Re
          resolved.push({ kind: 'link', id: entry.id, label: entry.label, href: entry.target.href, external: true })
       } else if (entry.target.type === 'anchor') {
          if (!anchoredHandles.has(entry.target.handle)) continue   // points at a dropped anchor → drop
-         // An anchor is an internal smooth-scroll link (external:false) but UNNUMBERED — a
+         // An anchor is an internal smooth-scroll link (external:false) but UNNUMBERED, a
          // sub-reference into a section, sibling to an external link, so it consumes no number.
          resolved.push({
             kind:     'link',
@@ -699,7 +699,7 @@ function normalizeNavEntry(raw: unknown): NavEntry | undefined {
 
 /**
  * Defensive read-time normalization of a stored nav model, or undefined when nothing usable remains.
- * A model with no valid entries collapses to undefined — an empty entries array reconciles to exactly
+ * A model with no valid entries collapses to undefined, an empty entries array reconciles to exactly
  * today's derivation, so it is equivalent to none and should never linger as a shell.
  */
 function normalizeNav(raw: unknown): NavModel | undefined {

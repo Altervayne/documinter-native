@@ -153,7 +153,7 @@ export function useDraggableWindow(options: UseDraggableWindowOptions): UseDragg
       if (disabled) return
       // Don't start a drag when the press lands on an interactive control inside the title bar
       // (e.g. the close button). Otherwise setPointerCapture below redirects the pointer to the
-      // title bar and the control's click never fires — the window becomes impossible to close.
+      // title bar and the control's click never fires, the window becomes impossible to close.
       if ((event.target as Element).closest('button, input, select, textarea, a, [role="button"]')) return
       moveOffset.current = { x: event.clientX - position.left, y: event.clientY - position.top }
       event.currentTarget.setPointerCapture(event.pointerId)

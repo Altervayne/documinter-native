@@ -198,7 +198,7 @@ describe('normalizePresentation', () => {
       expect(inRange?.watermark?.offsetX).toBe(-120)
       expect(inRange?.watermark?.offsetY).toBe(250)
 
-      // An old backup file, saved before offsetX/offsetY existed, has neither field — normalize
+      // An old backup file, saved before offsetX/offsetY existed, has neither field, normalize
       // must default them rather than carrying through `undefined`, so old docs stay safe.
       const preOffsetDoc = normalizePresentation({
          watermark: { src: 'data:img', rotation: 10, tileSize: 100, spacingX: 5, spacingY: 5, aspectRatio: 1 },
@@ -383,12 +383,12 @@ describe('applyLinkedWatermarkSpacing', () => {
    })
 })
 
-// watermarkTransform is the SINGLE (non-tiled) case's shared transform builder — used by both the
+// watermarkTransform is the SINGLE (non-tiled) case's shared transform builder, used by both the
 // editor render (WysiwygArea) and export.ts's renderWatermarkLayer, so both surfaces compose the
 // offset + rotation identically. The byte-identical guarantee lives here: offset 0,0 must degrade
 // to the bare pre-offset `rotate(...)` string, never emit an inert `translate(0px, 0px)`.
 describe('watermarkTransform', () => {
-   it('degrades to a bare rotate() when both offsets are 0 (the default) — byte-identical guarantee', () => {
+   it('degrades to a bare rotate() when both offsets are 0 (the default), byte-identical guarantee', () => {
       expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 25, offsetX: 0, offsetY: 0 })).toBe('rotate(25deg)')
       expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 0, offsetX: 0, offsetY: 0 })).toBe('rotate(0deg)')
    })
@@ -645,7 +645,7 @@ describe('reconcileNav (resolved)', () => {
    })
 })
 
-describe('normalizePresentation — nav', () => {
+describe('normalizePresentation, nav', () => {
    it('drops a nav with no valid entries (equivalent to absent)', () => {
       expect(normalizePresentation({ nav: { entries: [] } })).toBeUndefined()
       expect(normalizePresentation({ nav: { entries: [{ kind: 'auto' }, { kind: 'bogus' }] } })).toBeUndefined()
@@ -682,7 +682,7 @@ describe('normalizePresentation — nav', () => {
 // # ANCHOR NAV LINKS #
 // ####################
 
-/** A section carrying blocks — some anchored (handle), one nested inside a container column. */
+/** A section carrying blocks, some anchored (handle), one nested inside a container column. */
 function makeSectionWithBlocks(id: string, title: string, blocks: Block[]): Section {
    return { id, title, collapsed: false, blocks }
 }
@@ -712,7 +712,7 @@ describe('collectAnchoredHandles', () => {
    })
 })
 
-describe('reconcileNav — anchor target', () => {
+describe('reconcileNav, anchor target', () => {
    it('resolves a live anchor to an internal, UNNUMBERED #handle link', () => {
       const nav: NavModel = { entries: [
          { kind: 'auto', sectionId: 'a' },
@@ -745,7 +745,7 @@ describe('reconcileNav — anchor target', () => {
    })
 })
 
-describe('normalizePresentation — anchor nav entry', () => {
+describe('normalizePresentation, anchor nav entry', () => {
    it('accepts and round-trips a valid anchor custom entry', () => {
       const result = normalizePresentation({ nav: { entries: [
          { kind: 'custom', id: 'c1', label: 'Note', target: { type: 'anchor', handle: 'intro-note' } },

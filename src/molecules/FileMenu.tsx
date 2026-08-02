@@ -6,7 +6,7 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
 // stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
 // below, sized to the dropdown's own `min-w-56` Tailwind class.
 const DROPDOWN_WIDTH = 224
@@ -17,7 +17,7 @@ const EDGE_MARGIN     = 8
 // #########
 
 interface FileMenuProps {
-   /** Binder vs document mode — drives which items are enabled. */
+   /** Binder vs document mode, drives which items are enabled. */
    mode: 'binder' | 'document'
    // Available in both modes:
    onNewDocument:    () => void
@@ -74,7 +74,7 @@ export function FileMenu({
       setOpen(false)
    }
 
-   // Inapplicable groups are not mounted (invisible), at whole-group + separator granularity —
+   // Inapplicable groups are not mounted (invisible), at whole-group + separator granularity,
    // never individual items winking out mid-list.
    const isDocumentMode = mode === 'document'
 
@@ -106,10 +106,10 @@ export function FileMenu({
                <MenuItem icon={<Archive size={13} />}  label={t.fileOpenTin}     onClick={() => handleItemClick(onOpenTin)} />
                <MenuSeparator />
 
-               {/* Open into the editor — one format-detecting entry (both modes) */}
+               {/* Open into the editor, one format-detecting entry (both modes) */}
                <MenuItem icon={<FolderOpen size={13} />} label={t.menuOpen} onClick={() => handleItemClick(onOpen)} />
 
-               {/* Save + Export groups — document mode only (not mounted in binder mode) */}
+               {/* Save + Export groups, document mode only (not mounted in binder mode) */}
                {isDocumentMode && (
                   <>
                      <MenuSeparator />
@@ -121,7 +121,7 @@ export function FileMenu({
                   </>
                )}
 
-               {/* Import group — binder mode only (not mounted in document mode) */}
+               {/* Import group, binder mode only (not mounted in document mode) */}
                {!isDocumentMode && (
                   <>
                      <MenuSeparator />

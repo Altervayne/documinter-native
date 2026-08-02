@@ -1,21 +1,21 @@
 /**
  * GraphLinkPanel.tsx, the graph<->table LIVE LINK's editor surface (stage 2b of
- * docs/reference/graph_table_linking_study.md — the architecture, stage 2a, is already built; this
+ * docs/reference/graph_table_linking_study.md, the architecture, stage 2a, is already built; this
  * is the UI to CREATE and MANAGE a link). Lives in the graph editor's Data tab, tabular chart types
- * only (bar family / line / area / pie / donut — the continuous-x types never carry a `source`).
+ * only (bar family / line / area / pie / donut, the continuous-x types never carry a `source`).
  *
  * Two render modes, switched on `spec.source`:
  *   - UNLINKED: a compact "Link to a table…" picker row above the ordinary editable GraphDataGrid
- *     (rendered by the caller, not here — see GraphBlock.tsx's dataTab). Picking a table calls
+ *     (rendered by the caller, not here, see GraphBlock.tsx's dataTab). Picking a table calls
  *     `onLinkTable`; nothing else in this panel is shown.
  *   - LINKED: REPLACES the editable grid entirely (the caller hides GraphDataGrid while linked) with
- *     a banner naming the source table, a READ-ONLY preview of the resolved data (never editable —
+ *     a banner naming the source table, a READ-ONLY preview of the resolved data (never editable,
  *     the table is the source of truth), a mapping panel (label column + orientation), a "change
  *     source table" re-pick, and an "Unlink (keep current data)" escape hatch. A dangling link
  *     (source handle not found) additionally shows the existing quiet missing-source notice; the
  *     preview + mapping still render against the last-known materialized snapshot.
  *
- * This component owns NO document mutation itself — auto-assigning a handle to a handle-less table
+ * This component owns NO document mutation itself, auto-assigning a handle to a handle-less table
  * touches a DIFFERENT block than this graph, which only GraphBlock (via DocumentMutationsContext)
  * can do. `onLinkTable` hands the picked `LinkableTable` back up; GraphBlock resolves the handle
  * assignment + commits `graph.source`. The three lighter edits (mapping change, unlink) route
@@ -46,17 +46,17 @@ interface GraphLinkPanelProps {
    /** Every document table (handled or not), for the picker + the linked-state "change table"
     *  re-pick. Order follows document order. */
    linkableTables: LinkableTable[]
-   /** The already-resolved data for the CURRENT link (GraphBlock's own `resolveGraphSpec` call) —
+   /** The already-resolved data for the CURRENT link (GraphBlock's own `resolveGraphSpec` call),
     *  the live remap when the source is found, or the last materialized snapshot when dangling.
     *  Ignored while unlinked. */
    resolvedData: GraphData
    /** True when `spec.source` is set but its handle did not resolve in the document's table
-    *  catalog (the source table was deleted/renamed) — `resolvedData` is then the last snapshot. */
+    *  catalog (the source table was deleted/renamed), `resolvedData` is then the last snapshot. */
    dangling: boolean
    /** Link (or re-link) to a table. GraphBlock auto-assigns the table a handle first if it has
     *  none, then commits `graph.source`. */
    onLinkTable: (entry: LinkableTable) => void
-   /** Apply a mapping change (label column and/or orientation); commits immediately — a `<select>`
+   /** Apply a mapping change (label column and/or orientation); commits immediately, a `<select>`
     *  change is discrete, not draft-as-you-type. */
    onUpdateMapping: (partial: Partial<Omit<GraphSource, 'handle'>>) => void
    /** Unlink: materialize `resolvedData` onto `data` and drop `source`, reverting to a normal
@@ -144,7 +144,7 @@ export function GraphLinkPanel({
             <div className="graph-source-missing graph-link-dangling" role="status">{t.graphSourceMissing}</div>
          )}
 
-         {/* Read-only preview of the resolved (or last-known snapshot) data — never editable, the
+         {/* Read-only preview of the resolved (or last-known snapshot) data, never editable, the
              table is the source of truth. Reuses the grid's own table/cell chrome classes. */}
          <div className="graph-grid-scroll graph-link-preview-scroll">
             <table className="graph-grid-table">
@@ -190,7 +190,7 @@ export function GraphLinkPanel({
                      ))}
                   </select>
                ) : (
-                  // The source table couldn't be found in the catalog (fully dangling — deleted, not
+                  // The source table couldn't be found in the catalog (fully dangling, deleted, not
                   // just reshaped), so there is no column list to offer: fall back to a bare number.
                   <input
                      className="graph-text-input"

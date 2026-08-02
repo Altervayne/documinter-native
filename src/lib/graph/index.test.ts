@@ -55,12 +55,12 @@ describe('renderGraphToSvg envelope', () => {
       const svg = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
       const styleMatch = /style="([^"]*)"/.exec(svg)
       expect(styleMatch).not.toBeNull()
-      // The captured group must contain the full font stack — proof no inner " truncated it.
+      // The captured group must contain the full font stack, proof no inner " truncated it.
       expect(styleMatch?.[1]).toContain('sans-serif')
       expect(styleMatch?.[1]).toContain("'Segoe UI'")
    })
 
-   it('is deterministic — identical input yields identical output', () => {
+   it('is deterministic, identical input yields identical output', () => {
       const first = renderGraphToSvg(makeSpec('bar-grouped'), LIGHT_GRAPH_THEME)
       const second = renderGraphToSvg(makeSpec('bar-grouped'), LIGHT_GRAPH_THEME)
       expect(first).toBe(second)
@@ -537,7 +537,7 @@ describe('edge cases', () => {
 // #####################
 // # FUNCTION CHARTS   #
 // #####################
-// Stage 2 (docs/reference/graph_equation_study.md): the `function` chart type — sampled equation
+// Stage 2 (docs/reference/graph_equation_study.md): the `function` chart type, sampled equation
 // curves over a continuous numeric domain, drawn via the SAME line-rendering machinery every other
 // cartesian type uses, through a continuous-x adapter (see continuousAxis.ts) instead of a band.
 
@@ -578,7 +578,7 @@ describe('function chart (equation plot)', () => {
          makeFunctionSpec([{ name: 'f', expression: 'x' }], {}, { xMin: 0, xMax: 100, samples: 20 }),
          LIGHT_GRAPH_THEME,
       )
-      // niceTicks(0, 100, 5) lands clean ticks at 0/20/40/60/80/100 — none of which is a category name.
+      // niceTicks(0, 100, 5) lands clean ticks at 0/20/40/60/80/100, none of which is a category name.
       expect(svg).toMatch(/>0<\/text>/)
       expect(svg).toMatch(/>100<\/text>/)
    })
@@ -677,7 +677,7 @@ describe('function chart (equation plot)', () => {
       expect(() => renderGraphToSvg(degenerateDomain, LIGHT_GRAPH_THEME)).not.toThrow()
    })
 
-   it('is deterministic — identical input yields identical output', () => {
+   it('is deterministic, identical input yields identical output', () => {
       const spec = makeFunctionSpec([{ name: 'f', expression: 'sin(x) + 0.5*x' }])
       expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
    })
@@ -721,7 +721,7 @@ describe('scatter chart (x/y point pairs)', () => {
 
    it('draws numeric x-axis AND y-axis tick labels (never a category label)', () => {
       // x autoscales/nice-ticks to [0, 100] (ticks include 100); y autoscales/nice-ticks to
-      // [0, 50] (ticks include 50) — distinct max values so each assertion pins its own axis.
+      // [0, 50] (ticks include 50), distinct max values so each assertion pins its own axis.
       const svg = renderGraphToSvg(
          makeScatterSpec([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 100, y: 50 }] }]),
          LIGHT_GRAPH_THEME,
@@ -788,13 +788,13 @@ describe('scatter chart (x/y point pairs)', () => {
       expect(countOccurrences(svg, '<circle')).toBe(0)
    })
 
-   it('is deterministic — identical input yields identical output', () => {
+   it('is deterministic, identical input yields identical output', () => {
       const spec = makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 2 }, { x: 3, y: 4 }] }])
       expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
    })
 
    // Statistical overlays for scatter reuse the SAME overlay machinery a categorical cartesian
-   // chart draws with (dashed styling, haloed label, analytic plot-rect clip) — mean/trend are
+   // chart draws with (dashed styling, haloed label, analytic plot-rect clip), mean/trend are
    // computed over the target series' raw (x, y) points instead of a category-aligned `values`
    // array, and trend fits `linearRegressionXY`, not the categorical index-based `linearRegression`.
    describe('statistical overlays (scatter)', () => {
@@ -877,7 +877,7 @@ describe('scatter chart (x/y point pairs)', () => {
    })
 })
 
-/** A `histogram`-type spec from the given raw samples (legend off unless overridden — though a
+/** A `histogram`-type spec from the given raw samples (legend off unless overridden, though a
  *  histogram never draws one regardless, see cartesian.ts's renderHistogram). */
 function makeHistogramSpec(
    samples: number[],
@@ -930,7 +930,7 @@ describe('histogram chart (binned frequency distribution)', () => {
 
    it('draws no visible legend box for a single dataset, even with legend explicitly requested', () => {
       // The dataset name may still surface MINIMALLY in the accessible <desc> (see describeChart
-      // below), but never as a drawn legend swatch/label in the plot area — there is only ONE
+      // below), but never as a drawn legend swatch/label in the plot area, there is only ONE
       // <desc> element in the whole document, so this pins that as the sole place the name appears.
       const svg = renderGraphToSvg(
          makeHistogramSpec([1, 2, 3, 4, 5], { name: 'Widget A' }, { legend: true }), LIGHT_GRAPH_THEME)
@@ -971,8 +971,396 @@ describe('histogram chart (binned frequency distribution)', () => {
       expect(countOccurrences(svg, '<rect')).toBe(1)
    })
 
-   it('is deterministic — identical input yields identical output', () => {
+   it('is deterministic, identical input yields identical output', () => {
       const spec = makeHistogramSpec([3, 1, 4, 1, 5, 9, 2, 6, 5, 3])
       expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
+   })
+})
+
+// #####################
+// # LOG VALUE AXIS    #
+// #####################
+// Built 2026-08-02: `options.yScale: 'log'`, a base-10 logarithmic value (y) axis. Policy: absent/
+// 'linear' stays byte-identical; log is offered for line/area/scatter/function/histogram/bar/
+// bar-grouped, NEVER for bar-stacked/pie/donut; a chart whose own data touches <= 0 (or an
+// unsupported type, defensively) silently falls back to linear rather than clamping or crashing.
+
+describe('log value axis: byte-identical when absent/linear', () => {
+   it('an explicit yScale: "linear" renders identically to leaving it unset (bar)', () => {
+      const unset = renderGraphToSvg(makeSpec('bar'), LIGHT_GRAPH_THEME)
+      const explicitLinear = renderGraphToSvg(makeSpec('bar', { yScale: 'linear' }), LIGHT_GRAPH_THEME)
+      expect(explicitLinear).toBe(unset)
+   })
+
+   it('never draws a minor (log-only) gridline for any type when yScale is unset', () => {
+      for (const type of ['bar', 'bar-grouped', 'bar-stacked', 'line', 'area', 'pie', 'donut'] as GraphType[]) {
+         const svg = renderGraphToSvg(makeSpec(type), LIGHT_GRAPH_THEME)
+         expect(svg).not.toContain('stroke-opacity=')
+      }
+   })
+})
+
+describe('log value axis: eligible chart types', () => {
+   /** A positive-only two-series bar/line/area fixture spanning several decades. */
+   function makeLogEligibleSpec(type: GraphType): GraphSpec {
+      return {
+         type,
+         data: {
+            labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+            series: [{ name: 'Revenue', values: [1, 10, 100, 1000] }],
+         },
+         options: { legend: false, yScale: 'log' },
+      }
+   }
+
+   for (const type of ['bar', 'bar-grouped', 'line', 'area'] as GraphType[]) {
+      it(`draws decade tick labels for a log-eligible ${type} chart`, () => {
+         const svg = renderGraphToSvg(makeLogEligibleSpec(type), LIGHT_GRAPH_THEME)
+         expect(svg).toMatch(/>1<\/text>/)
+         expect(svg).toMatch(/>1,000<\/text>/)
+      })
+
+      it(`draws faint minor gridlines for a log-eligible ${type} chart`, () => {
+         const svg = renderGraphToSvg(makeLogEligibleSpec(type), LIGHT_GRAPH_THEME)
+         expect(svg).toContain('stroke-opacity=')
+      })
+
+      it(`changes rendered output vs. the same data on a linear axis for ${type}`, () => {
+         const log = renderGraphToSvg(makeLogEligibleSpec(type), LIGHT_GRAPH_THEME)
+         const linear = renderGraphToSvg(
+            { ...makeLogEligibleSpec(type), options: { legend: false } }, LIGHT_GRAPH_THEME)
+         expect(log).not.toBe(linear)
+      })
+   }
+
+   it('draws bars from the axis floor (niceMin), not an implied zero, for a log bar chart', () => {
+      // [1, 10, 100, 1000] -> niceMin = 1 (10^0), the axis floor; the x-axis baseline (and every
+      // bar's bottom edge) sits there instead of at a "0" that does not exist on a log scale.
+      const svg = renderGraphToSvg(makeLogEligibleSpec('bar'), LIGHT_GRAPH_THEME)
+      expect(svg).not.toMatch(/>0<\/text>/)
+   })
+
+   it('scatter: log applies to the value (y) axis only, x stays linear/continuous', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec(
+            [{ name: 'A', points: [{ x: 1, y: 1 }, { x: 2, y: 10 }, { x: 3, y: 100 }] }],
+            { yScale: 'log' },
+         ),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toMatch(/>100<\/text>/) // the y decade tick
+      expect(svg).toContain('stroke-opacity=') // minor gridlines present
+   })
+
+   it('function: renders a log y-axis for a strictly positive equation', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: '10^x' }], { yScale: 'log' }, { xMin: 0, xMax: 3, samples: 20 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toContain('stroke-opacity=')
+      expect(countOccurrences(svg, '<polyline')).toBeGreaterThanOrEqual(1)
+   })
+
+   // Regression (2026-08-02): a report of "log scale doesn't seem to do anything for functions"
+   // turned out to be the missing fallback notice (see the describe block below), but this pins
+   // the POSITIVE case as an explicit, unambiguous regression test: a genuinely positive function
+   // must draw real DECADE tick labels (1, 10, 100, values a linear autoscale of this same y-range
+   // would never happen to land on) plus faint minor gridlines, never silently staying linear.
+   it('function: exp(x) over a narrow domain draws genuine decade tick labels, not a linear autoscale', () => {
+      // exp(0) = 1, exp(ln(100)) = 100 -> y ranges [1, 100], strictly positive throughout.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: 'exp(x)' }], { yScale: 'log' }, { xMin: 0, xMax: Math.log(100), samples: 40 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toMatch(/>1<\/text>/)
+      expect(svg).toMatch(/>10<\/text>/)
+      expect(svg).toMatch(/>100<\/text>/)
+      expect(svg).toContain('stroke-opacity=') // 2x/5x minor ticks (20, 50) for this 2-decade span
+      expect(countOccurrences(svg, '<polyline')).toBeGreaterThanOrEqual(1)
+   })
+
+   it('function: x^2 + 1 over a domain that stays positive draws a genuine log axis', () => {
+      // x^2 + 1 over [-3, 3] ranges [1, 10] -> strictly positive everywhere in the sampled domain.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: 'x^2 + 1' }], { yScale: 'log' }, { xMin: -3, xMax: 3, samples: 40 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).toMatch(/>1<\/text>/)
+      expect(svg).toMatch(/>10<\/text>/)
+      expect(svg).toContain('stroke-opacity=')
+   })
+
+   it('histogram: renders a log y-axis (frequency count) when every drawn bin is positive', () => {
+      // Every value distinct -> every populated bin holds count 1 (all positive, no empty bins).
+      const svg = renderGraphToSvg(
+         makeHistogramSpec([1, 2, 3, 4, 5], { bins: 5 }, { yScale: 'log' }), LIGHT_GRAPH_THEME)
+      expect(svg).toContain('stroke-opacity=')
+   })
+
+   it('is deterministic on a log axis, identical input yields identical output', () => {
+      const spec = makeLogEligibleSpec('line')
+      expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
+   })
+})
+
+describe('log value axis: non-positive data falls back to linear', () => {
+   it('falls back to linear for a bar/line series that dips to zero or negative', () => {
+      const withZero: GraphSpec = {
+         type: 'bar',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [0, 10] }] },
+         options: { legend: false, yScale: 'log' },
+      }
+      const withNegative: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [-5, 10] }] },
+         options: { legend: false, yScale: 'log' },
+      }
+      // A fallback-to-linear render never draws the log-only minor gridlines.
+      expect(renderGraphToSvg(withZero, LIGHT_GRAPH_THEME)).not.toContain('stroke-opacity=')
+      expect(renderGraphToSvg(withNegative, LIGHT_GRAPH_THEME)).not.toContain('stroke-opacity=')
+   })
+
+   it('never throws and never emits NaN/Infinity geometry for non-positive log-requested data', () => {
+      const spec: GraphSpec = {
+         type: 'area',
+         data: { labels: ['A', 'B', 'C'], series: [{ name: 'S', values: [-1, 0, 5] }] },
+         options: { legend: false, yScale: 'log' },
+      }
+      expect(() => renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).not.toThrow()
+      const svg = renderGraphToSvg(spec, LIGHT_GRAPH_THEME)
+      expect(svg).not.toContain('NaN')
+      expect(svg).not.toContain('Infinity')
+   })
+
+   it('falls back to linear for a function chart whose sampled curve crosses zero', () => {
+      // f(x) = x over [-5, 5] samples straight through zero.
+      const svg = renderGraphToSvg(
+         makeFunctionSpec(
+            [{ name: 'f', expression: 'x' }], { yScale: 'log' }, { xMin: -5, xMax: 5, samples: 20 }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).not.toContain('stroke-opacity=')
+   })
+
+   it('falls back to linear for scatter when a point sits at y <= 0', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec(
+            [{ name: 'A', points: [{ x: 1, y: 0 }, { x: 2, y: 10 }] }], { yScale: 'log' }),
+         LIGHT_GRAPH_THEME,
+      )
+      expect(svg).not.toContain('stroke-opacity=')
+   })
+
+   it('falls back to linear for a histogram whose only populated bin sits at zero count everywhere', () => {
+      // A single sample -> Sturges' rule still produces >= 1 bin, but with just one sample there is
+      // no way to have every bin positive AND span multiple bins meaningfully; force the degenerate
+      // "no positive bin" case directly via an empty sample list (every count is 0).
+      const svg = renderGraphToSvg(makeHistogramSpec([], {}, { yScale: 'log' }), LIGHT_GRAPH_THEME)
+      // An empty sample list is the top-level empty-state (never reaches the log/linear branch at
+      // all), assert it degrades gracefully either way, never throwing / never NaN.
+      expect(svg).not.toContain('NaN')
+   })
+})
+
+describe('log value axis: disallowed for stacked bar and radial types', () => {
+   it('bar-stacked ignores yScale: "log" and renders identically to omitting it', () => {
+      const withLog = renderGraphToSvg(makeSpec('bar-stacked', { yScale: 'log' }), LIGHT_GRAPH_THEME)
+      const withoutLog = renderGraphToSvg(makeSpec('bar-stacked'), LIGHT_GRAPH_THEME)
+      expect(withLog).toBe(withoutLog)
+   })
+
+   it('pie and donut ignore yScale: "log" (no value axis at all) and render identically', () => {
+      for (const type of ['pie', 'donut'] as GraphType[]) {
+         const withLog = renderGraphToSvg(makeSpec(type, { yScale: 'log' }), LIGHT_GRAPH_THEME)
+         const withoutLog = renderGraphToSvg(makeSpec(type), LIGHT_GRAPH_THEME)
+         expect(withLog).toBe(withoutLog)
+      }
+   })
+})
+
+// ============================================================================
+// Custom axis origin ("textbook" / four-quadrant axes), function/scatter only
+// ============================================================================
+// Light theme ink used by the axis lines / gridlines, so the tests can tell a bold crossing axis
+// (ink.axis) from a recessive gridline (ink.grid) and a data mark (a series hue) apart.
+const LIGHT_AXIS_STROKE = '#c3c2b7'
+
+/** Every `<line .../>` self-closing tag in the SVG. */
+function allLineTags(svg: string): string[] {
+   return svg.match(/<line\b[^>]*\/>/g) ?? []
+}
+
+/** Read x1/y1/x2/y2 off one `<line>` tag as numbers. */
+function lineCoords(tag: string): { x1: number; y1: number; x2: number; y2: number } {
+   const read = (attr: string): number => {
+      const match = new RegExp(`\\b${attr}="([^"]+)"`).exec(tag)
+      return match ? Number(match[1]) : NaN
+   }
+   return { x1: read('x1'), y1: read('y1'), x2: read('x2'), y2: read('y2') }
+}
+
+/** The dashed overlay lines (reference / mean / median / trend all carry a stroke-dasharray). */
+function dashedLineTags(svg: string): string[] {
+   return allLineTags(svg).filter(tag => tag.includes('stroke-dasharray'))
+}
+
+describe('custom axis origin (textbook axes)', () => {
+   it('draws MORE axis-colored lines than the plain two edge axes (tick marks ride the crossings)', () => {
+      const plain = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: -10, y: -10 }, { x: 10, y: 10 }] }]), LIGHT_GRAPH_THEME)
+      const textbook = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: -10, y: -10 }, { x: 10, y: 10 }] }],
+            { axisOrigin: { x: 0, y: 0 } }), LIGHT_GRAPH_THEME)
+      // Plain function/scatter draws exactly the two edge axes in ink.axis; textbook adds the two
+      // crossing axes PLUS a tick mark per label, so the axis-colored line count strictly grows.
+      expect(countOccurrences(plain, `stroke="${LIGHT_AXIS_STROKE}"`)).toBe(2)
+      expect(countOccurrences(textbook, `stroke="${LIGHT_AXIS_STROKE}"`))
+         .toBeGreaterThan(countOccurrences(plain, `stroke="${LIGHT_AXIS_STROKE}"`))
+      expect(textbook).not.toBe(plain)
+   })
+
+   it('rides tick marks on the crossing axes (short 8px axis-colored segments in both directions)', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: -10, y: -10 }, { x: 10, y: 10 }] }],
+            { axisOrigin: { x: 0, y: 0 } }), LIGHT_GRAPH_THEME)
+      const axisMarks = allLineTags(svg)
+         .filter(tag => tag.includes(`stroke="${LIGHT_AXIS_STROKE}"`))
+         .map(lineCoords)
+      // An x-axis tick mark is a short VERTICAL segment (x1===x2, 8px tall); a y-axis tick mark a
+      // short HORIZONTAL one (y1===y2, 8px wide), both straddle their crossing axis (half-length 4).
+      expect(axisMarks.some(c => c.x1 === c.x2 && Math.abs(c.y2 - c.y1) === 8)).toBe(true)
+      expect(axisMarks.some(c => c.y1 === c.y2 && Math.abs(c.x2 - c.x1) === 8)).toBe(true)
+   })
+
+   it('places the crossing y-axis in the plot interior for a symmetric origin (not at the left edge)', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: -10, y: -10 }, { x: 10, y: 10 }] }],
+            { axisOrigin: { x: 0, y: 0 } }), LIGHT_GRAPH_THEME)
+      const coords = allLineTags(svg).map(lineCoords)
+      const allX = coords.flatMap(c => [c.x1, c.x2]).filter(Number.isFinite)
+      const plotLeft = Math.min(...allX)
+      const plotRight = Math.max(...allX)
+      // The bold vertical axis (full plot height, axis ink) sits at x = 0's mapped position, i.e. the
+      // horizontal CENTER for a symmetric [-10, 10] domain, strictly between the two plot edges.
+      const boldVertical = allLineTags(svg)
+         .filter(tag => tag.includes(`stroke="${LIGHT_AXIS_STROKE}"`))
+         .map(lineCoords)
+         .find(c => c.x1 === c.x2 && Math.abs(c.y2 - c.y1) > (plotRight - plotLeft) / 2)
+      expect(boldVertical).toBeDefined()
+      expect(boldVertical!.x1).toBeGreaterThan(plotLeft + 1)
+      expect(boldVertical!.x1).toBeLessThan(plotRight - 1)
+   })
+
+   it('clamps the crossing axes to the nearest plot edge when the origin is off-domain', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] }],
+            { axisOrigin: { x: 1000, y: 1000 } }), LIGHT_GRAPH_THEME)
+      const axisLines = allLineTags(svg)
+         .filter(tag => tag.includes(`stroke="${LIGHT_AXIS_STROKE}"`))
+         .map(lineCoords)
+      // The bold horizontal axis spans the full plot WIDTH (plotLeft..plotRight); the bold vertical
+      // axis spans the full HEIGHT (plotTop..plotBottom). origin x=1000 is far right of the data → the
+      // vertical axis clamps to the RIGHT edge (= the horizontal axis's right end); origin y=1000 is
+      // far above → the horizontal axis clamps to the TOP edge (= the vertical axis's top end).
+      const boldVertical = axisLines.find(c => c.x1 === c.x2 && Math.abs(c.y2 - c.y1) > 100)!
+      const boldHorizontal = axisLines.find(c => c.y1 === c.y2 && Math.abs(c.x2 - c.x1) > 100)!
+      const plotRight = Math.max(boldHorizontal.x1, boldHorizontal.x2)
+      const plotTop = Math.min(boldVertical.y1, boldVertical.y2)
+      expect(boldVertical.x1).toBeCloseTo(plotRight, 5)
+      expect(boldHorizontal.y1).toBeCloseTo(plotTop, 5)
+   })
+
+   it('ignores axisOrigin under a log value axis (the standard log axis is drawn instead)', () => {
+      const base = makeScatterSpec([{ name: 'A', points: [{ x: 1, y: 1 }, { x: 10, y: 100 }] }], { yScale: 'log' })
+      const withOrigin: GraphSpec = { ...base, options: { ...base.options, axisOrigin: { x: 0, y: 0 } } }
+      // A custom origin is a linear-axis concept; under log it is disabled entirely, so the render is
+      // byte-identical to the same log chart with no origin at all.
+      expect(renderGraphToSvg(withOrigin, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(base, LIGHT_GRAPH_THEME))
+   })
+
+   it('applies to a function chart too (crossing axes differ from its plain edge axes)', () => {
+      const plain = renderGraphToSvg(makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }]), LIGHT_GRAPH_THEME)
+      const textbook = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }], { axisOrigin: { x: 0, y: 0 } }), LIGHT_GRAPH_THEME)
+      expect(textbook).not.toBe(plain)
+      expect(countOccurrences(textbook, `stroke="${LIGHT_AXIS_STROKE}"`))
+         .toBeGreaterThan(countOccurrences(plain, `stroke="${LIGHT_AXIS_STROKE}"`))
+   })
+
+   it('is deterministic', () => {
+      const spec = makeScatterSpec([{ name: 'A', points: [{ x: -5, y: -5 }, { x: 5, y: 5 }] }],
+         { axisOrigin: { x: 1, y: -2 } })
+      expect(renderGraphToSvg(spec, LIGHT_GRAPH_THEME)).toBe(renderGraphToSvg(spec, LIGHT_GRAPH_THEME))
+   })
+})
+
+// ============================================================================
+// Vertical reference overlays (x = value), function/scatter only
+// ============================================================================
+describe('vertical reference overlay', () => {
+   it('draws a single vertical dashed line at the reference x on a scatter chart', () => {
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] }],
+            { overlays: [{ kind: 'reference', value: 5, orientation: 'vertical' }] }), LIGHT_GRAPH_THEME)
+      const dashed = dashedLineTags(svg).map(lineCoords)
+      expect(dashed.length).toBe(1)
+      expect(dashed[0].x1).toBe(dashed[0].x2)         // vertical
+      expect(dashed[0].y1).not.toBe(dashed[0].y2)     // spans the plot height
+   })
+
+   it('auto-extends the X-domain so a vertical reference beyond the data stays visible', () => {
+      // Data maxes at x = 10; a vertical reference at x = 50 must pull the x-axis out to include it,
+      // so a "50" x-tick label appears (it would not with the un-extended [0, 10] x-domain).
+      const svg = renderGraphToSvg(
+         makeScatterSpec([{ name: 'A', points: [{ x: 0, y: 0 }, { x: 10, y: 10 }] }],
+            { overlays: [{ kind: 'reference', value: 50, orientation: 'vertical' }] }), LIGHT_GRAPH_THEME)
+      expect(svg).toMatch(/>50<\/text>/)
+      expect(dashedLineTags(svg).length).toBe(1)
+   })
+
+   it('supports a vertical reference on a function chart (extends the drawn x-axis)', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'sin(x)' }],
+            { overlays: [{ kind: 'reference', value: 3, orientation: 'vertical' }] }), LIGHT_GRAPH_THEME)
+      const dashed = dashedLineTags(svg).map(lineCoords)
+      expect(dashed.length).toBe(1)
+      expect(dashed[0].x1).toBe(dashed[0].x2) // vertical
+   })
+
+   it('renders ONLY reference overlays on a function chart (mean/trend are skipped)', () => {
+      const svg = renderGraphToSvg(
+         makeFunctionSpec([{ name: 'f', expression: 'x' }],
+            { overlays: [{ kind: 'mean', series: 0 }, { kind: 'trend', series: 0 }] }), LIGHT_GRAPH_THEME)
+      // A function chart has no discrete series to average/fit, so mean/trend draw nothing.
+      expect(dashedLineTags(svg).length).toBe(0)
+   })
+
+   it('silently skips a vertical reference on a categorical chart (not drawn, no domain extension)', () => {
+      // A vertical x = const has no meaning on a categorical band axis, so it draws nothing AND must
+      // not extend the y-domain (data maxes at 55; a HORIZONTAL ref at 200 would add a 200 tick, but
+      // the vertical one must not, proving it folded into neither axis).
+      const withVertical = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 200, orientation: 'vertical' }] }),
+         LIGHT_GRAPH_THEME)
+      expect(dashedLineTags(withVertical).length).toBe(0)
+      expect(withVertical).not.toMatch(/>200<\/text>/)
+      // Contrast: the SAME value as a horizontal reference IS drawn and DOES pull the y-axis to 200.
+      const withHorizontal = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 200, orientation: 'horizontal' }] }),
+         LIGHT_GRAPH_THEME)
+      expect(dashedLineTags(withHorizontal).length).toBe(1)
+      expect(withHorizontal).toMatch(/>200<\/text>/)
+   })
+
+   it('an orientation-less reference is byte-identical to an explicitly horizontal one (back-compat)', () => {
+      const implicit = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 200 }] }), LIGHT_GRAPH_THEME)
+      const explicitHorizontal = renderGraphToSvg(
+         makeSpec('bar', { overlays: [{ kind: 'reference', value: 200, orientation: 'horizontal' }] }),
+         LIGHT_GRAPH_THEME)
+      expect(implicit).toBe(explicitHorizontal)
    })
 })

@@ -68,7 +68,7 @@ export interface BlockContextMenuProps {
 
 /**
  * WYSIWYG block right-click menu: a base Block section plus conditional List-item and
- * Table-cell sections. This is a thin adapter over the shared <ContextMenu> — it maps the
+ * Table-cell sections. This is a thin adapter over the shared <ContextMenu>, it maps the
  * per-context actions to a declarative `entries` array; the shared component owns the
  * portal, the (measured, two-sided) viewport clamp, keyboard nav, and dismissal.
  */

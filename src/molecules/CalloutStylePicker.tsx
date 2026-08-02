@@ -33,7 +33,7 @@ const PICKER_FALLBACK = '#6b7280'
 interface CalloutStylePickerProps {
    current: CalloutStyle
    /** Optional custom hex override; when set, it takes precedence over `current` visually
-    *  (the presets render unselected — the callout is following its own color, not a preset). */
+    *  (the presets render unselected, the callout is following its own color, not a preset). */
    customColor?: string
    onChange: (style: CalloutStyle) => void
    /** Applies live while adjusting the custom color (mirrors GraphSeriesColorPopover's onPick). */
@@ -72,7 +72,7 @@ export function CalloutStylePicker({ current, customColor, onChange, onCustomCol
             </button>
          ))}
 
-         {/* Custom color swatch — opens a popover; picking here overrides the preset entirely. */}
+         {/* Custom color swatch, opens a popover; picking here overrides the preset entirely. */}
          <button
             ref={customButtonRef}
             type="button"
@@ -118,7 +118,7 @@ interface CalloutColorPopoverProps {
 }
 
 /**
- * Floating color popover for the callout's custom-color swatch — the react-piqua-color
+ * Floating color popover for the callout's custom-color swatch, the react-piqua-color
  * ColorPicker plus a "clear to preset" action. Mirrors GraphSeriesColorPopover's shell
  * (molecules/GraphDataGrid.tsx) and MetaFieldColorPopover's dismissal pattern, kept local here
  * rather than imported so the callout block doesn't reach into the graph editor module.

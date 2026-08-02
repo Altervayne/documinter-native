@@ -20,7 +20,7 @@
 // every LaTeX control word to its first letter (\pi -> \p), so a normal bundled import
 // breaks ALL math rendering, in dev and prod. Loading the raw file at runtime sidesteps
 // the transform. The package's `exports` map ("./*": "./*") permits this deep path.
-// Keep until the upstream Rolldown bug is fixed — see docs/reference/rolldown-temml-bundler-bug.md
+// Keep until the upstream Rolldown bug is fixed, see docs/reference/rolldown-temml-bundler-bug.md
 // (filable issue + repro) and docs/reports/2026-07-31-temml-optimizedeps-fix.md.
 import temmlUrl from 'temml/dist/temml.mjs?url'
 

@@ -10,7 +10,7 @@ interface TableBlockProps {
    onAddCol:    () => void
    onRemoveRow: () => void
    /** Inserts an already-built block right after this table block (the "Create chart from this
-    *  table" one-shot extract — see docs/reference/graph_table_linking_study.md, stage 1). */
+    *  table" one-shot extract, see docs/reference/graph_table_linking_study.md, stage 1). */
    onInsertBlockAfter: (newBlock: Block) => void
    readOnly?:   boolean
 }
@@ -21,7 +21,7 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, onIn
    const richRows    = block.richRows    ?? []
 
    // One-shot extract: build a default bar chart from this table's current data and drop it in
-   // right after the table. Pure data mapping (graphDataFromTable); no link is retained — this is
+   // right after the table. Pure data mapping (graphDataFromTable); no link is retained, this is
    // stage 1 of graph<->table linking, the live link is a separate, unbuilt stage 2.
    function handleCreateChart(): void {
       const newBlock: Block = {

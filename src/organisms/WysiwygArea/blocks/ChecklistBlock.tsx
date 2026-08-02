@@ -11,7 +11,7 @@ interface ChecklistBlockProps {
 
 /**
  * A checklist is a list with a per-item checkbox. It reuses ListBlock's recursive row family
- * verbatim — same indent / Enter / Tab / Backspace / drag behaviour — in checklist mode, which
+ * verbatim, same indent / Enter / Tab / Backspace / drag behaviour, in checklist mode, which
  * renders a checkbox marker (wired to itemOps.toggle) instead of a bullet. No forked recursion.
  */
 export function ChecklistBlock(props: ChecklistBlockProps) {

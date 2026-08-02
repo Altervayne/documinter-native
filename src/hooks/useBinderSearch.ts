@@ -21,9 +21,9 @@ interface UseBinderSearchResult {
    setScope:          Dispatch<SetStateAction<SearchScope>>
    /** The assembled multi-criteria query (debounced text + fields, date constraints, never-opened). */
    criteria:          SearchCriteria
-   /** True when any criterion is active — drives global-scope listing and the empty-state copy. */
+   /** True when any criterion is active,drives global-scope listing and the empty-state copy. */
    hasActiveCriteria: boolean
-   /** Reset the advanced filters (fields, dates, never-opened, scope) — NOT the search text. */
+   /** Reset the advanced filters (fields, dates, never-opened, scope), NOT the search text. */
    clearFilters:      () => void
    /** Reset everything search-related (text + filters); used when navigating folders. */
    resetSearch:       () => void
@@ -32,7 +32,7 @@ interface UseBinderSearchResult {
 /**
  * Owns the binder's session-local search + advanced-filter draft state, the two 250ms debounces
  * (text and per-field queries), and the assembled `criteria` / `hasActiveCriteria`. State stays
- * local to the binder subtree — the root consumes this hook and threads the results into
+ * local to the binder subtree, the root consumes this hook and threads the results into
  * BinderControls and the document-list query. Sort (sortBy/sortDir) is not search state and
  * stays in the root.
  */

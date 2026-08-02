@@ -24,7 +24,7 @@ export function isValidCalloutHex(value: string): boolean {
 
 /**
  * Validates and normalises a candidate hex string for storage as `Block.calloutColor`.
- * Returns the trimmed, lower-cased hex on success, or `undefined` when malformed — callers
+ * Returns the trimmed, lower-cased hex on success, or `undefined` when malformed, callers
  * treat `undefined` as "fall back to the style preset" rather than throwing.
  */
 export function sanitizeCalloutHex(value: string): string | undefined {

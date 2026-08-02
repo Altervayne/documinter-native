@@ -29,7 +29,7 @@ const PANEL_OPTIONS: {
    { id: 'markdown', icon: <FileText     size={14} />, labelKey: 'viewMarkdown', shortcutKey: 'shortcutToggleMarkdown' },
 ]
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern) — this dropdown
+// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
 // stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
 // below, sized to the dropdown's own `w-56` Tailwind class.
 const DROPDOWN_WIDTH = 224

@@ -27,7 +27,7 @@ const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to f
 
 /** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
  *  image-bearing export/editor extras (watermark, …); it stores on the HEAVY content record, not
- *  the light card record — see saveDocument. */
+ *  the light card record, see saveDocument. */
 export interface DocPresentation {
    docTheme:  'light' | 'dark'
    docAccent: string
@@ -133,7 +133,7 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
       docTheme: record.docTheme,
       docAccent: record.docAccent,
       // Presentation extras ride on the heavy content record; normalize defensively on read
-      // (clamp opacity, drop an empty-src watermark) — the mirror of migrateMeta for metadata.
+      // (clamp opacity, drop an empty-src watermark), the mirror of migrateMeta for metadata.
       presentation: normalizePresentation(content.presentation),
    }
 }

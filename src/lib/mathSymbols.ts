@@ -1,7 +1,7 @@
 /**
  * mathSymbols.ts, the assisted-input catalog for the math block's symbol palette.
  *
- * PURE DATA — side-effect free. This module deliberately imports NOTHING that loads
+ * PURE DATA, side-effect free. This module deliberately imports NOTHING that loads
  * Temml (lib/math.ts kicks off the raw-asset load on import) or lucide (lib/constants.ts):
  * the palette component renders the glyphs by feeding each entry's `latex` to the
  * renderer itself. Keeping the catalog import-clean means the serializers and any test
@@ -12,7 +12,7 @@
  * exactly as if the user had typed it. The ```math fence is untouched.
  *
  * Every display `latex` in this catalog has been render-verified against Temml
- * (renderToString with throwOnError) — see docs/reports/2026-07-31-math-palette-catalog-expansion.md.
+ * (renderToString with throwOnError), see docs/reports/2026-07-31-math-palette-catalog-expansion.md.
  */
 
 // #############
@@ -52,7 +52,7 @@ export interface MathSymbolEntry {
    name:   string
    /**
     * The LaTeX rendered onto the button so it is scannable by sight. Always renderable
-    * (never contains the caret marker) — a clean glyph or a small representative template.
+    * (never contains the caret marker), a clean glyph or a small representative template.
     */
    latex:  string
    /**
@@ -499,7 +499,7 @@ export const MATH_SYMBOL_CATEGORIES: MathSymbolCategory[] = [
  * Resolve an entry's `insert` string against the currently selected text and return the
  * literal text to splice in plus the resulting caret offset (relative to that text).
  *
- * Pure and deterministic — the whole caret contract lives here so it is unit-testable
+ * Pure and deterministic, the whole caret contract lives here so it is unit-testable
  * without a DOM. Rules:
  *   - No marker: the snippet replaces the selection outright; the caret lands at its end.
  *   - Marker present: the selection (possibly empty) is placed at the marker; the caret

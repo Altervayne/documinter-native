@@ -37,7 +37,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const editing = useRef(false)
 
    // Symbol palette: a pure-UI assisted-input tool over the same `latex` source, hosted in a
-   // persistent, draggable BlockEditorWindow (NOT a modal / not the block-editor-window context —
+   // persistent, draggable BlockEditorWindow (NOT a modal / not the block-editor-window context,
    // it is a per-block tool). The textarea ref lets an inserted snippet read the live
    // caret/selection and hand focus straight back; the palette opens with focusOnOpen={false} so
    // the source textarea keeps focus and the user can keep typing while inserting symbols.
@@ -53,7 +53,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const [pendingCaret, setPendingCaret] = useState<number | null>(null)
 
    // Structured-construct builder (matrix / cases / aligned). `builderKind` holds the open
-   // request; `builderCaret` snapshots the textarea selection at OPEN time — the modal steals
+   // request; `builderCaret` snapshots the textarea selection at OPEN time, the modal steals
    // focus, so the insertion point must be captured up-front and can no longer be read live.
    const [builderKind,  setBuilderKind]  = useState<{ kind: MathBuilderKind; bracket?: MatrixBracket } | null>(null)
    const [builderCaret, setBuilderCaret] = useState<{ start: number; end: number } | null>(null)
@@ -91,11 +91,11 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    // Owns the caret contract because the textarea + `draft` live here. Reads the live selection,
    // resolves the snippet (marker stripped; a non-empty selection wraps into the marker slot),
    // splices it into `draft`, and schedules the caret restore. Marks `editing` so the external
-   // sync does not clobber the edit, but does NOT commit `latex` — the commit-on-blur model is
+   // sync does not clobber the edit, but does NOT commit `latex`, the commit-on-blur model is
    // preserved, an insert only mutates the live draft.
    // Core splice, shared by the palette insert (live selection) and the builder insert (a caret
    // captured at open time). Resolves the snippet against the selected text, splices it in, and
-   // schedules the caret restore. Marks `editing` but does NOT commit — commit stays on blur.
+   // schedules the caret restore. Marks `editing` but does NOT commit, commit stays on blur.
    function spliceInsertAt(insert: string, selectionStart: number, selectionEnd: number): void {
       const selectedText = draft.slice(selectionStart, selectionEnd)
       const { text, caretOffset } = buildSnippetInsertion(insert, selectedText)

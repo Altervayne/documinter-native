@@ -33,10 +33,10 @@ import { useLang } from '../contexts/LangContext'
 
 interface SectionItemProps {
    section:         Section
-   /** Position within the sections array — drives Insert above/below targets and Move up/down
+   /** Position within the sections array, drives Insert above/below targets and Move up/down
     *  disabled state (mirrors WysiwygSection's canvas menu). */
    index:           number
-   /** Whether this is the last section — disables the panel menu's Move down. */
+   /** Whether this is the last section, disables the panel menu's Move down. */
    isLastSection:   boolean
    onToggle:        () => void
    onDuplicate:     () => void
@@ -89,7 +89,7 @@ export function SectionItem({
       setSectionMenu({ x: event.clientX, y: event.clientY })
    }
 
-   /** "Rename" resolves to the canvas section title — the panel row is navigation-only (click
+   /** "Rename" resolves to the canvas section title, the panel row is navigation-only (click
     *  scrolls to the section), so it has no inline edit affordance of its own. Scrolls the canvas
     *  title into view (it may be off-screen) and focuses it, same DOM reach-around the canvas
     *  section menu uses for its own Rename. */

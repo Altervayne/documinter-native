@@ -1,5 +1,5 @@
 // -- Library Imports --
-import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, ImagePlus, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // -- Type Imports --
@@ -14,7 +14,7 @@ export const ACCENT_PRESETS: string[] = [
 //  Accent preset friendly names
 // ==========================================================
 // The document background context menu's accent rows show a human name (this lookup) rather
-// than the raw hex — the color swatch icon still conveys the exact value. Keyed by hex so a
+// than the raw hex, the color swatch icon still conveys the exact value. Keyed by hex so a
 // caller can resolve a name for any ACCENT_PRESETS entry without relying on array position.
 export const ACCENT_PRESET_NAME_KEYS: Record<string, keyof T> = {
    '#f97316': 'accentNameOrange',
@@ -27,7 +27,7 @@ export const ACCENT_PRESET_NAME_KEYS: Record<string, keyof T> = {
 }
 
 /** Resolves an ACCENT_PRESETS hex to its localized friendly name, falling back to the raw hex
- *  for any color with no entry in ACCENT_PRESET_NAME_KEYS (defensive — every current preset has
+ *  for any color with no entry in ACCENT_PRESET_NAME_KEYS (defensive, every current preset has
  *  one, but a future preset added without a name shouldn't render a blank label). */
 export function accentPresetName(hex: string, t: T): string {
    const nameKey = ACCENT_PRESET_NAME_KEYS[hex]
@@ -87,6 +87,7 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
    { type: 'code',      icon: Code2     },
    { type: 'math',      icon: Sigma     },
    { type: 'graph',     icon: BarChart3 },
+   { type: 'image-markup', icon: ImagePlus },
    { type: 'list',      icon: List      },
    { type: 'checklist', icon: ListChecks },
    { type: 'table',     icon: Table     },

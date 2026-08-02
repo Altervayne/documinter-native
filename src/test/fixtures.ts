@@ -13,7 +13,7 @@ import type { DocState, Block, ListItem, InlineContent } from '../types'
 // Built by hand with constant ids so the fixture is deterministic. Ids never
 // appear in the serialized text (they survive only as opaque comments that the
 // round-trip preserves verbatim), and the deep-equal parse checks blank them
-// via normalizeIds — so the exact id values here are irrelevant.
+// via normalizeIds, so the exact id values here are irrelevant.
 
 // Inline content covering every formatting flag the inline (de)serializer must
 // preserve. Each flag sits on its own word so adjacent runs stay distinct.
@@ -133,7 +133,7 @@ const allBlocks: Block[] = [
 //  Public builders
 // =====================
 
-/** The full fixture, including containers — used by the lossless Mintdown round-trip. */
+/** The full fixture, including containers, used by the lossless Mintdown round-trip. */
 export function buildFixtureDocument(): DocState {
    return {
       meta: {
@@ -160,7 +160,7 @@ export function buildFixtureDocument(): DocState {
 }
 
 /**
- * The same fixture minus container blocks — used by the Markdown round-trip,
+ * The same fixture minus container blocks, used by the Markdown round-trip,
  * since Markdown flattens containers by design (TESTING_STUDY §2.4/§2.5).
  */
 export function buildFixtureWithoutContainers(): DocState {
