@@ -6,6 +6,7 @@ import { highlight } from './highlight'
 import { renderLatexToMathML, TEMML_STYLES } from './math'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
 import { renderImageMarkupToSvg } from './imageMarkup'
+import { imageBlockToMarkupSpec } from './imageMarkupBlock'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
 import type { GraphTableCatalog } from './graphTableData'
 import {
@@ -89,15 +90,6 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       const svg = renderGraphToSvg(renderSpec, graphTheme)
       return withHandle(block, `<div class="doc-graph">${svg}</div>`)
    }
-   if (block.type === 'image-markup') {
-      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Unlike graph, no
-      // theme argument, annotation colors are the author's explicit per-element choices (see
-      // lib/imageMarkup/index.ts). The base64 `src` is carried IN FULL here: export is the
-      // full-fidelity path (the `.mint`/`.md` fence drops it, see lib/imageMarkupFence.ts).
-      if (!block.imageMarkup) return ''
-      const svg = renderImageMarkupToSvg(block.imageMarkup)
-      return withHandle(block, `<div class="doc-image-markup">${svg}</div>`)
-   }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {
          const childHtml = item.children.length > 0
@@ -129,6 +121,15 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
    if (block.type === 'image') {
+      // A marked-up image is the full-fidelity path: a self-contained inline SVG (base64 baked in,
+      // unlike the `.mint`/`.md` fence which drops it). Annotation colors are the author's explicit
+      // per-element choices, so, unlike graph, there is no theme argument (see lib/imageMarkup).
+      // Handled BEFORE the empty-src short-circuit so a src-less-but-annotated image still renders
+      // its placeholder ground + overlay.
+      if (block.imageMarkup) {
+         const svg = renderImageMarkupToSvg(imageBlockToMarkupSpec(block))
+         return withHandle(block, `<div class="doc-image-markup">${svg}</div>`)
+      }
       if (!block.src) {
          // Preview snapshots strip image src. With imagePlaceholder on (binder mini preview),
          // render a muted placeholder; otherwise (full export) emit nothing, as before.

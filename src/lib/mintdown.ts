@@ -4,6 +4,7 @@ import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { fenceToGraphSpec } from './graphFence'
 import { fenceToImageMarkupSpec } from './imageMarkupFence'
+import { markupSpecToImageBlock } from './imageMarkupBlock'
 import { slugify } from './text'
 import { sanitizeCalloutHex } from './calloutColor'
 
@@ -55,9 +56,10 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
    }
    if (langTag.toLowerCase() === 'imagemarkup') {
+      // Reads into an `image` block WITH a markup overlay (the standalone block type is gone).
       // `src` always comes back empty (no base64 in Mintdown either, see imageMarkupFence.ts);
       // malformed fences degrade gracefully, never throw.
-      return { id: crypto.randomUUID(), type: 'image-markup', imageMarkup: fenceToImageMarkupSpec(fenceInfo, body) }
+      return markupSpecToImageBlock(crypto.randomUUID(), fenceToImageMarkupSpec(fenceInfo, body))
    }
    const lang: CodeLang = FENCE_TO_CODE_LANG[langTag.toLowerCase()] ?? 'plain'
    return { id: crypto.randomUUID(), type: 'code', lang, code: body }

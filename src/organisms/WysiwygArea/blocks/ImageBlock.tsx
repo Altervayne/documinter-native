@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react'
-import { AlignLeft, AlignCenter, AlignRight, GripHorizontal } from 'lucide-react'
+import { AlignLeft, AlignCenter, AlignRight, GripHorizontal, Pencil } from 'lucide-react'
 import { PlainEditable } from '../../../atoms/PlainEditable'
 import { compressImage } from '../../../lib/image'
+import { decodeImageSize } from '../../../lib/imageDownscale'
+import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../../contexts/LangContext'
+import { ImageMarkupEditor } from './ImageMarkupEditor'
 import type { Block } from '../../../types'
 
 interface ImageBlockProps {
@@ -11,8 +14,21 @@ interface ImageBlockProps {
    readOnly?: boolean
 }
 
+/**
+ * The image block. A plain image (no `block.imageMarkup` overlay) renders and edits exactly as it
+ * always has (byte-identical output). Once markup is added (the "Add markup" affordance below, or a
+ * legacy `image-markup` block migrated in), rendering + editing hand off to {@link ImageMarkupEditor},
+ * which owns the annotation canvas + floating tool window. Markup is a feature ON an image, not a
+ * separate block type.
+ */
 export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
+   if (block.imageMarkup) return <ImageMarkupEditor block={block} patch={patch} readOnly={readOnly} />
+   return <PlainImageBlock block={block} patch={patch} readOnly={readOnly} />
+}
+
+function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
    const { t } = useLang()
+   const editorWindow = useBlockEditorWindow()
    const inputRef  = useRef<HTMLInputElement>(null)
    const imageRef  = useRef<HTMLImageElement>(null)
    const [dropping, setDropping]             = useState(false)
@@ -22,6 +38,15 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
       if (!file || !file.type.startsWith('image/')) return
       const src = await compressImage(file)
       patch({ src })
+   }
+
+   // Turn markup on for this image: capture the base image's natural dimensions (the overlay's
+   // normalized-0..1 coordinate system needs the aspect ratio) by decoding the current src, then
+   // flip the block into markup mode and open the annotation editor in the same gesture.
+   async function handleAddMarkup() {
+      const { width, height } = block.src ? await decodeImageSize(block.src) : { width: 0, height: 0 }
+      patch({ imageMarkup: { width, height, elements: [] } })
+      editorWindow.openEditor(block.id)
    }
 
    function handleResizeMouseDown(event: React.MouseEvent) {
@@ -162,6 +187,9 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                      </button>
                   )}
                </div>
+               <button className="doc-img-ctrl flex items-center gap-1" onClick={handleAddMarkup}>
+                  <Pencil size={12} /> {t.imageMarkupAdd}
+               </button>
                <button className="danger" onClick={() => patch({ src: '', alt: '', caption: '' })}>
                   ✕ Remove
                </button>

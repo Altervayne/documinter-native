@@ -228,3 +228,67 @@ describe('Mintdown math block scale', () => {
       expect(nan.mathScale).toBeUndefined()
    })
 })
+
+// The image-markup capability was folded INTO the image block: a marked-up image serializes as the
+// ```imagemarkup fence (dims + alt/caption on the info string, one overlay element per body line,
+// NEVER any base64), while a plain image keeps its own convention byte-identical. Legacy standalone
+// `image-markup` fences must parse back into an `image` block carrying the overlay.
+describe('Mintdown, image block with markup overlay', () => {
+   const meta = { title: 'Doc', fields: [] }
+
+   function markupSection() {
+      const sections = [{
+         id: 's', title: 'Section', collapsed: false, blocks: [{
+            id: 'img', type: 'image' as const,
+            src: 'data:image/webp;base64,SHOULDNOTLEAK',
+            alt: 'Login screen', caption: 'Figure 1',
+            imageMarkup: {
+               width: 1600, height: 900,
+               elements: [
+                  { id: 'a', kind: 'rect' as const, x: 0.1, y: 0.1, w: 0.2, h: 0.2, stroke: '#e5484d' },
+                  { id: 'b', kind: 'arrow' as const, x1: 0.3, y1: 0.3, x2: 0.6, y2: 0.7 },
+               ],
+            },
+         }],
+      }]
+      return sections
+   }
+
+   it('serializes a marked-up image as an imagemarkup fence with NO base64', () => {
+      const text = documentToMintdown(markupSection(), meta)
+      expect(text).toContain('```imagemarkup w=1600 h=900 alt="Login screen" caption="Figure 1"')
+      expect(text).toContain('rect x=0.1 y=0.1 w=0.2 h=0.2 stroke=#e5484d')
+      expect(text).not.toContain('base64')
+      expect(text).not.toContain('SHOULDNOTLEAK')
+   })
+
+   it('parses an imagemarkup fence back into an image block with the overlay, src empty', () => {
+      const text  = documentToMintdown(markupSection(), meta)
+      const block = mintdownToDocument(text).sections[0].blocks[0]
+      expect(block.type).toBe('image')
+      expect(block.src).toBe('')                 // base64 never survives the text format
+      expect(block.alt).toBe('Login screen')
+      expect(block.caption).toBe('Figure 1')
+      expect(block.imageMarkup?.width).toBe(1600)
+      expect(block.imageMarkup?.height).toBe(900)
+      expect(block.imageMarkup?.elements.map(element => element.kind)).toEqual(['rect', 'arrow'])
+   })
+
+   it('round-trips a marked-up image (serialize → parse → serialize), overlay preserved', () => {
+      const text1    = documentToMintdown(markupSection(), meta)
+      const reparsed = mintdownToDocument(text1)
+      const text2    = documentToMintdown(reparsed.sections, reparsed.meta)
+      expect(text2).toBe(text1)
+   })
+
+   it('a plain image (no overlay) serializes on its own convention, never as a fence', () => {
+      const sections = [{
+         id: 's', title: 'Section', collapsed: false, blocks: [{
+            id: 'img', type: 'image' as const, src: 'data:image/png;base64,PLAIN', alt: 'Plain', caption: 'Cap',
+         }],
+      }]
+      const text = documentToMintdown(sections, meta)
+      expect(text).not.toContain('imagemarkup')
+      expect(text).toContain('<!-- image:')
+   })
+})

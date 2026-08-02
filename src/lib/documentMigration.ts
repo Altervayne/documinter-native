@@ -8,6 +8,7 @@
  */
 
 import { parseInlineContent, stripTrailingNewlines } from './inline'
+import type { MarkupElement } from './imageMarkup'
 import type { Block, DocMeta, DocState, InlineContent, ListItem, MetaField, Section } from '../types'
 
 // Fields present in JSON files saved before the InlineContent migration.
@@ -45,6 +46,26 @@ function migrateListItem(raw: unknown): ListItem {
  */
 function migrateBlock(rawBlock: LegacyRawBlock): Block {
    const base: LegacyRawBlock = { ...rawBlock, id: String(rawBlock.id) }
+
+   // Legacy standalone `image-markup` block → an `image` block carrying a markup overlay. The old
+   // shape stored an `ImageMarkupSpec` ({ src, width, height, elements, alt?, caption? }) on
+   // `imageMarkup`; the new model puts src/alt/caption on the block and only the viewBox dims +
+   // element stack on the overlay. Compared as a string since 'image-markup' is no longer a BlockType.
+   if ((base.type as string) === 'image-markup') {
+      const legacy = (base as unknown as {
+         imageMarkup?: { src?: string; width?: number; height?: number; elements?: MarkupElement[]; alt?: string; caption?: string }
+      }).imageMarkup
+      const image: Block = {
+         id:   base.id,
+         type: 'image',
+         src:  legacy?.src ?? '',
+         imageMarkup: { width: legacy?.width ?? 0, height: legacy?.height ?? 0, elements: legacy?.elements ?? [] },
+      }
+      if (base.handle)     image.handle  = base.handle
+      if (legacy?.alt)     image.alt     = legacy.alt
+      if (legacy?.caption) image.caption = legacy.caption
+      return image
+   }
 
    if (base.type === 'container') {
       return {

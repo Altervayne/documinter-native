@@ -89,3 +89,19 @@ export function downscaleImageToDataUrl(file: File, maxEdge = DEFAULT_MAX_EDGE):
       image.src = url
    })
 }
+
+/**
+ * Decode an image's natural pixel dimensions from an existing `data:`/URL `src`, WITHOUT re-encoding
+ * it. Used when markup is first added to an image that already has pixels but no stored dims (the
+ * overlay's normalized-0..1 coordinate system needs the base aspect ratio). Total: a src that fails
+ * to load resolves to { width: 0, height: 0 } rather than rejecting, so adding markup never throws.
+ */
+export function decodeImageSize(src: string): Promise<{ width: number; height: number }> {
+   return new Promise(resolve => {
+      if (!src) { resolve({ width: 0, height: 0 }); return }
+      const image = new Image()
+      image.onload  = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => resolve({ width: 0, height: 0 })
+      image.src = src
+   })
+}

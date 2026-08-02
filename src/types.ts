@@ -1,8 +1,8 @@
 import type { GraphSpec } from './lib/graph'
-import type { ImageMarkupSpec } from './lib/imageMarkup'
+import type { MarkupElement } from './lib/imageMarkup'
 import type { DocPresentationExtras } from './lib/presentation'
 
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'image-markup' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -62,6 +62,21 @@ export interface ListItem {
    checked?:  boolean   // checklist items only; absent = unchecked
 }
 
+/**
+ * The optional annotation overlay carried by an `image` block. Its PRESENCE on the block switches
+ * the image from the plain `<img>` path into marked-up mode (self-contained SVG render + the
+ * `imagemarkup` fence serializer). `width`/`height` are the base image's natural pixel dimensions,
+ * the source of truth for the normalized-0..1 overlay coordinate system's viewBox aspect ratio,
+ * kept even when the block's `src` is empty (a `.mint`/`.md` reopen drops the base64 pixels). The
+ * base image itself lives on the block's own `src`/`alt`/`caption`, NEVER duplicated here; the
+ * pure renderer/fence consume an `ImageMarkupSpec` reconstructed from those fields (see
+ * `lib/imageMarkupBlock.ts`). `elements` is the ordered overlay stack (array order = z-order). */
+export interface ImageMarkupOverlay {
+   width:    number
+   height:   number
+   elements: MarkupElement[]
+}
+
 export interface Block {
    id: string
    type: BlockType
@@ -73,7 +88,7 @@ export interface Block {
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
    mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
    graph?: GraphSpec     // graph: chart type + data + presentation options (rendered to inline SVG)
-   imageMarkup?: ImageMarkupSpec // image-markup: base image + annotation overlay stack (rendered to inline SVG)
+   imageMarkup?: ImageMarkupOverlay // image: optional annotation overlay; presence = markup mode (SVG render + imagemarkup fence)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table

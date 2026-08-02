@@ -20,7 +20,7 @@
 import { titleElement, descElement, selfClosingElement } from '../svg'
 import { computeViewBox } from './geometry'
 import { renderElement } from './render'
-import type { ImageMarkupSpec } from './types'
+import type { ImageMarkupSpec, MarkupElement } from './types'
 
 const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
@@ -50,6 +50,25 @@ export function renderImageMarkupToSvg(spec: ImageMarkupSpec): string {
    const accessibleDesc = describeMarkup(elements.length, !!spec.src)
 
    return wrapSvg(accessibleTitle, accessibleDesc, vbWidth, vbHeight, baseLayer + overlayMarkup)
+}
+
+/**
+ * Render ONLY the overlay elements (no base image, no accessible title/desc) into a bare, responsive
+ * `<svg>` whose viewBox matches the base image aspect ratio. This is an EDITOR-ONLY helper: the
+ * interactive block layers this transparent element-overlay over a plain `<img>` of the base image
+ * so a live drag re-renders just the (cheap) shapes each pointer-move without re-parsing the base
+ * image's heavy base64 `data:` URI every frame. It does NOT change the export path, which still goes
+ * through {@link renderImageMarkupToSvg} (base image + overlay, self-contained). Pure + total, same
+ * as the full renderer.
+ */
+export function renderMarkupOverlayToSvg(elements: MarkupElement[], width: number, height: number): string {
+   const { vbWidth, vbHeight } = computeViewBox(width, height)
+   const body = (elements ?? []).map(oneElement => renderElement(oneElement, vbWidth, vbHeight)).join('')
+   return (
+      `<svg xmlns="http://www.w3.org/2000/svg"` +
+      ` viewBox="0 0 ${vbWidth} ${vbHeight}" preserveAspectRatio="none"` +
+      ` style="position:absolute;inset:0;width:100%;height:100%;font-family:${FONT_STACK}">${body}</svg>`
+   )
 }
 
 /** A one-line accessible summary of what the block shows. */

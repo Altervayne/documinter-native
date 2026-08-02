@@ -68,7 +68,6 @@ export function mkBlock(type: BlockType, t: T): Block {
             options: { legend: true },
          },
       }
-      case 'image-markup': return { id, type, imageMarkup: { src: '', width: 0, height: 0, elements: [] } }
       case 'list':      return {
          id, type,
          items: [
@@ -175,16 +174,17 @@ export function blkPreview(block: Block): string {
       const seriesCount = graph?.data?.series?.length ?? 0
       return `Graph, ${chartType} (${seriesCount} series)`
    }
-   if (block.type === 'image-markup') {
-      const elementCount = block.imageMarkup?.elements?.length ?? 0
-      return `[Image markup] ${elementCount} annotation${elementCount === 1 ? '' : 's'}`
-   }
    if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)
    if (block.type === 'table')
       return `${(block.richHeaders ?? []).length} col × ${(block.richRows ?? []).length} rows`
-   if (block.type === 'image')
+   if (block.type === 'image') {
+      if (block.imageMarkup) {
+         const elementCount = block.imageMarkup.elements?.length ?? 0
+         return `[Image] ${elementCount} annotation${elementCount === 1 ? '' : 's'}`
+      }
       return `[Image] ${block.alt || '—'}`
+   }
    if (block.type === 'container') {
       const pct = Math.round((block.ratio ?? 0.5) * 100)
       return `Container (${pct}/${100 - pct})`

@@ -135,3 +135,44 @@ describe('migrateMeta', () => {
       expect(migrateMeta(undefined)).toEqual({ title: '', fields: [] })
    })
 })
+
+// The standalone `image-markup` block type was removed: any persisted such block must load as an
+// `image` block carrying a markup overlay, with the base64 src / alt / caption re-homed onto the
+// block and only the viewBox dims + element stack left on the overlay.
+describe('migrateIds, legacy image-markup block → image block with overlay', () => {
+   const legacyState = {
+      meta: { title: 'T', fields: [] },
+      sections: [{
+         id: 's', title: 'Screens', collapsed: false,
+         blocks: [{
+            id: 'm1', type: 'image-markup', handle: 'shot',
+            imageMarkup: {
+               src: 'data:image/webp;base64,PIXELS', width: 800, height: 600,
+               alt: 'Login', caption: 'Fig 1',
+               elements: [{ id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2 }],
+            },
+         }],
+      }],
+   }
+
+   it('converts the block type to image and re-homes src/alt/caption onto the block', () => {
+      const migrated = migrateIds(legacyState as unknown as DocState)
+      const block = migrated.sections[0].blocks[0]
+      expect(block.type).toBe('image')
+      expect(block.src).toBe('data:image/webp;base64,PIXELS')
+      expect(block.alt).toBe('Login')
+      expect(block.caption).toBe('Fig 1')
+      expect(block.handle).toBe('shot')
+   })
+
+   it('keeps only the viewBox dims + element stack on the overlay', () => {
+      const migrated = migrateIds(legacyState as unknown as DocState)
+      const overlay = migrated.sections[0].blocks[0].imageMarkup
+      expect(overlay).toEqual({
+         width: 800, height: 600,
+         elements: [{ id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2 }],
+      })
+      // No src/alt/caption linger on the overlay sub-object.
+      expect(overlay && 'src' in overlay).toBe(false)
+   })
+})

@@ -3,6 +3,7 @@ import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
 import { imageMarkupSpecToFence, fenceToImageMarkupSpec } from './imageMarkupFence'
+import { imageBlockToMarkupSpec, markupSpecToImageBlock } from './imageMarkupBlock'
 import { slugify } from './text'
 import { sanitizeCalloutHex } from './calloutColor'
 
@@ -137,19 +138,6 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
          return `\`\`\`graph ${info}\n${body}\n\`\`\``
       }
 
-      case 'image-markup': {
-         // A ```imagemarkup fence: base dims + alt/caption on the info string, one overlay
-         // element per body line. RATIFIED DIVERGENCE from the `image` block's own convention
-         // (which also drops base64): here it is EXPLICIT policy (see imageMarkupFence.ts), the
-         // base64 `src` is NEVER emitted in either flavour, so a `.mint`/`.md` reopen restores
-         // every annotation but with an empty `src`. The rendered SVG is never serialized; it is
-         // re-derived from this spec on load.
-         const spec = block.imageMarkup
-         if (!spec) return '```imagemarkup\n```'
-         const { info, body } = imageMarkupSpecToFence(spec)
-         return body ? `\`\`\`${info}\n${body}\n\`\`\`` : `\`\`\`${info}\n\`\`\``
-      }
-
       case 'list': {
          const items = block.items ?? []
          if (items.length === 0) return ''
@@ -184,6 +172,16 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
       }
 
       case 'image': {
+         // A marked-up image serializes as a ```imagemarkup fence: base dims + alt/caption on the
+         // info string, one overlay element per body line. RATIFIED (see imageMarkupFence.ts): the
+         // base64 `src` is NEVER emitted in either flavour, so a `.mint`/`.md` reopen restores every
+         // annotation but with an empty `src`. A PLAIN image (no overlay) keeps its own convention
+         // below, byte-identical. The rendered SVG is never serialized, re-derived from the spec.
+         if (block.imageMarkup) {
+            const { info, body } = imageMarkupSpecToFence(imageBlockToMarkupSpec(block))
+            return body ? `\`\`\`${info}\n${body}\n\`\`\`` : `\`\`\`${info}\n\`\`\``
+         }
+
          const src     = block.src ?? ''
          const alt     = block.alt ?? ''
          const isUrl   = /^https?:\/\//i.test(src) || src.startsWith('/')
@@ -275,9 +273,10 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
    }
    if (langTag.toLowerCase() === 'imagemarkup') {
       // Pass the FULL info string so the parser can tokenize quoted alt/caption values itself.
+      // Reads into an `image` block WITH a markup overlay (the standalone block type is gone).
       // `src` always comes back empty (no base64 in this format, see imageMarkupFence.ts);
       // malformed fences degrade gracefully (unknown element kinds skipped), never throw.
-      return { id: crypto.randomUUID(), type: 'image-markup', imageMarkup: fenceToImageMarkupSpec(fenceInfo, body) }
+      return markupSpecToImageBlock(crypto.randomUUID(), fenceToImageMarkupSpec(fenceInfo, body))
    }
    return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(langTag), code: body }
 }

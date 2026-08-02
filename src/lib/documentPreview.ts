@@ -12,10 +12,9 @@ const PREVIEW_BLOCK_COUNT = 8
 
 /** Structural copy of a block with image src removed (recurses into containers). */
 function stripImageSource(block: Block): Block {
+   // An image block's base64 lives on its own `src` (the markup overlay never duplicates it), so
+   // stripping the src covers both plain and marked-up images.
    if (block.type === 'image') return { ...block, src: '' }
-   if (block.type === 'image-markup' && block.imageMarkup) {
-      return { ...block, imageMarkup: { ...block.imageMarkup, src: '' } }
-   }
    if (block.type === 'container') {
       return {
          ...block,
@@ -59,9 +58,9 @@ function blockText(block: Block): string {
    if (block.latex)    parts.push(block.latex)
    if (block.alt)      parts.push(block.alt)
    if (block.caption)  parts.push(block.caption)
+   // Image markup overlay: alt/caption are on the block itself (covered above); pull any text/callout
+   // annotation labels into the searchable text.
    if (block.imageMarkup) {
-      if (block.imageMarkup.alt)     parts.push(block.imageMarkup.alt)
-      if (block.imageMarkup.caption) parts.push(block.imageMarkup.caption)
       for (const oneElement of block.imageMarkup.elements) {
          if ('text' in oneElement && oneElement.text) parts.push(oneElement.text)
       }

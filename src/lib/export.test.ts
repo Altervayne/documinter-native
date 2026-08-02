@@ -2,22 +2,24 @@ import { describe, it, expect } from 'vitest'
 import { generateExportHTML } from './export'
 import type { DocMeta, Block, Section } from '../types'
 import type { GraphSpec } from './graph'
-import type { ImageMarkupSpec } from './imageMarkup'
 import type { Watermark, Header } from './presentation'
 
-// Image-markup export is the full-fidelity path (unlike its `.mint`/`.md` fence, which never
-// carries the base64 pixels, see imageMarkupFence.ts): generateExportHTML must inline the base
-// image verbatim inside the self-contained SVG, same as the graph block bakes a static chart.
-describe('generateExportHTML, image-markup block', () => {
+// A marked-up image (an `image` block carrying an `imageMarkup` overlay) exports as the full-fidelity
+// path (unlike its `.mint`/`.md` fence, which never carries the base64 pixels, see imageMarkupFence.ts):
+// generateExportHTML must inline the base image verbatim inside the self-contained SVG, same as the
+// graph block bakes a static chart. A PLAIN image (no overlay) stays on its own <figure> path.
+describe('generateExportHTML, marked-up image block', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
 
    it('inlines the base64 image inside a self-contained <svg> under .doc-image-markup', () => {
-      const imageMarkup: ImageMarkupSpec = {
-         src: 'data:image/webp;base64,ZZZZ1234', width: 800, height: 600,
-         elements: [{ id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, stroke: '#e5484d' }],
-         alt: 'Annotated screenshot',
+      const block: Block = {
+         id: 'markup', type: 'image',
+         src: 'data:image/webp;base64,ZZZZ1234', alt: 'Annotated screenshot',
+         imageMarkup: {
+            width: 800, height: 600,
+            elements: [{ id: 'a', kind: 'rect', x: 0.1, y: 0.1, w: 0.2, h: 0.2, stroke: '#e5484d' }],
+         },
       }
-      const block: Block = { id: 'markup', type: 'image-markup', imageMarkup }
       const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
 
@@ -26,20 +28,22 @@ describe('generateExportHTML, image-markup block', () => {
       expect(html).toContain('<title>Annotated screenshot</title>')
       expect(html).toContain('stroke="#e5484d"')
       expect(html).toContain('.doc-image-markup')
+      // The plain <figure>/<img> image path is NOT taken for a marked-up image.
+      expect(html).not.toContain('<figure class="doc-figure"')
    })
 
-   it('is a no-op for a block with no imageMarkup spec', () => {
+   it('does not take the markup path for a plain image (no overlay)', () => {
       // Note: `.doc-image-markup` CSS is always present in the stylesheet (unconditional, same as
-      // `.doc-graph`/`.doc-math`), the no-op is about the BLOCK markup, not the shared CSS rule.
-      const block: Block = { id: 'markup', type: 'image-markup' }
+      // `.doc-graph`/`.doc-math`), the check is about the BLOCK markup, not the shared CSS rule.
+      const block: Block = { id: 'plain', type: 'image', src: 'data:image/png;base64,PLAINPIX', alt: 'Plain' }
       const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
       expect(html).not.toContain('<div class="doc-image-markup">')
+      expect(html).toContain('<figure class="doc-figure"')
    })
 
    it('renders a neutral placeholder ground (never blank/throws) when src is empty', () => {
-      const imageMarkup: ImageMarkupSpec = { src: '', width: 400, height: 300, elements: [] }
-      const block: Block = { id: 'markup', type: 'image-markup', imageMarkup }
+      const block: Block = { id: 'markup', type: 'image', src: '', imageMarkup: { width: 400, height: 300, elements: [] } }
       const sections: Section[] = [{ id: 's', title: 'Screens', collapsed: false, blocks: [block] }]
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
       expect(html).toContain('<div class="doc-image-markup"><svg')
