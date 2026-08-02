@@ -1,8 +1,9 @@
 import type { GraphSpec } from './lib/graph'
+import type { DiagramSpec } from './lib/diagram/types'
 import type { MarkupElement } from './lib/imageMarkup'
 import type { DocPresentationExtras } from './lib/presentation'
 
-export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
+export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'diagram' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
@@ -88,6 +89,7 @@ export interface Block {
    latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
    mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
    graph?: GraphSpec     // graph: chart type + data + presentation options (rendered to inline SVG)
+   diagram?: DiagramSpec // diagram: nodes + edges + options (rendered to inline SVG)
    imageMarkup?: ImageMarkupOverlay // image: optional annotation overlay; presence = markup mode (SVG render + imagemarkup fence)
    items?: ListItem[]    // list, checklist
    richHeaders?: InlineContent[]    // table

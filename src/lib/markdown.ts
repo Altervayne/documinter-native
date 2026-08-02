@@ -2,6 +2,7 @@ import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, S
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
+import { diagramSpecToFence, fenceToDiagramSpec } from './diagramFence'
 import { imageMarkupSpecToFence, fenceToImageMarkupSpec } from './imageMarkupFence'
 import { imageBlockToMarkupSpec, markupSpecToImageBlock } from './imageMarkupBlock'
 import { slugify } from './text'
@@ -138,6 +139,19 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
          return `\`\`\`graph ${info}\n${body}\n\`\`\``
       }
 
+      case 'diagram': {
+         // A ```diagram fence: options on the info string, TWO pipe tables (nodes + edges) in the
+         // body separated by a blank line. Documint-specific in both flavours (no mintdown branch).
+         // The rendered SVG is never serialized; it is re-derived from this spec on load.
+         const spec = block.diagram
+         if (!spec) {
+            const { info, body } = diagramSpecToFence({ nodes: [], edges: [], options: {} })
+            return `\`\`\`${info}\n${body}\n\`\`\``
+         }
+         const { info, body } = diagramSpecToFence(spec)
+         return `\`\`\`${info}\n${body}\n\`\`\``
+      }
+
       case 'list': {
          const items = block.items ?? []
          if (items.length === 0) return ''
@@ -270,6 +284,12 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       // Pass the FULL info string (not the pre-split tokens) so the graph parser can tokenize
       // quoted options itself. Malformed fences degrade gracefully inside fenceToGraphSpec.
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
+   }
+   if (langTag.toLowerCase() === 'diagram') {
+      // Pass the FULL info string so the diagram parser can tokenize quoted options itself; the
+      // two-table body (nodes + edges) is parsed by fenceToDiagramSpec. Malformed fences degrade
+      // gracefully (bad fields default, dangling edges kept for the renderer to skip), never throw.
+      return { id: crypto.randomUUID(), type: 'diagram', diagram: fenceToDiagramSpec(fenceInfo, body) }
    }
    if (langTag.toLowerCase() === 'imagemarkup') {
       // Pass the FULL info string so the parser can tokenize quoted alt/caption values itself.

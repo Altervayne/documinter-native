@@ -3,6 +3,7 @@ import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { fenceToGraphSpec } from './graphFence'
+import { fenceToDiagramSpec } from './diagramFence'
 import { fenceToImageMarkupSpec } from './imageMarkupFence'
 import { markupSpecToImageBlock } from './imageMarkupBlock'
 import { slugify } from './text'
@@ -54,6 +55,11 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       // Pass the FULL info string so the graph parser can tokenize quoted options itself;
       // malformed fences degrade gracefully (default type + empty data), never throw.
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
+   }
+   if (langTag.toLowerCase() === 'diagram') {
+      // Pass the FULL info string so the diagram parser can tokenize quoted options itself; the
+      // two-table body (nodes + edges) degrades gracefully on malformed input, never throws.
+      return { id: crypto.randomUUID(), type: 'diagram', diagram: fenceToDiagramSpec(fenceInfo, body) }
    }
    if (langTag.toLowerCase() === 'imagemarkup') {
       // Reads into an `image` block WITH a markup overlay (the standalone block type is gone).

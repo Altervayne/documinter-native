@@ -5,6 +5,7 @@ import { blockAnchor } from './document'
 import { highlight } from './highlight'
 import { renderLatexToMathML, TEMML_STYLES } from './math'
 import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
+import { renderDiagramToSvg, LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from './diagram'
 import { renderImageMarkupToSvg } from './imageMarkup'
 import { imageBlockToMarkupSpec } from './imageMarkupBlock'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
@@ -89,6 +90,15 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       const { renderSpec } = resolveGraphSpec(block.graph, options?.tables ?? EMPTY_TABLE_CATALOG)
       const svg = renderGraphToSvg(renderSpec, graphTheme)
       return withHandle(block, `<div class="doc-graph">${svg}</div>`)
+   }
+   if (block.type === 'diagram') {
+      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Colors are baked
+      // as literal hex for the export's single theme (matching the graph/math blocks), so the
+      // diagram theme is resolved from the export theme rather than a live CSS variable.
+      if (!block.diagram) return ''
+      const diagramTheme = options?.theme === 'dark' ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME
+      const svg = renderDiagramToSvg(block.diagram, diagramTheme)
+      return withHandle(block, `<div class="doc-diagram">${svg}</div>`)
    }
    if (block.type === 'list') {
       function exportListItem(item: ListItem): string {
@@ -405,6 +415,10 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             /* Graph block, self-contained inline SVG (colors baked for this export's theme). */
             .doc-render .doc-graph      { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
             .doc-render .doc-graph svg  { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+
+            /* Diagram block, self-contained inline SVG (colors baked for this export's theme). */
+            .doc-render .doc-diagram      { margin: 1.5rem 0; max-width: 100%; overflow-x: auto; }
+            .doc-render .doc-diagram svg  { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 
             /* Image-markup block, self-contained inline SVG (annotation colors are the author's
                explicit choice, not theme-baked, no light/dark variant needed here). */

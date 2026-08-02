@@ -31,6 +31,7 @@ import { downscaleImageToDataUrl } from '../../../lib/imageDownscale'
 import { PlainEditable } from '../../../atoms/PlainEditable'
 import { SegmentedIconToggle } from '../../../atoms/SegmentedIconToggle'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
+import { ColorSwatchField } from '../../../molecules/ColorSwatchField'
 import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
 import { useLang } from '../../../contexts/LangContext'
 
@@ -775,11 +776,12 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
                <>
                   <label className="image-markup-field">
                      <span className="image-markup-field-label">{t.imageMarkupStroke}</span>
-                     <input
-                        type="color"
-                        className="image-markup-color"
+                     <ColorSwatchField
                         value={strokeValue}
-                        onChange={event => applyStyle({ stroke: event.target.value })}
+                        title={t.imageMarkupStroke}
+                        ariaLabel={t.imageMarkupStroke}
+                        onChange={stroke => applyStyle({ stroke })}
+                        className="image-markup-color"
                      />
                   </label>
 
@@ -853,11 +855,12 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
 
                   <label className="image-markup-field">
                      <span className="image-markup-field-label">{t.imageMarkupTextColor}</span>
-                     <input
-                        type="color"
-                        className="image-markup-color"
+                     <ColorSwatchField
                         value={textColorValue}
-                        onChange={event => applyStyle({ textColor: event.target.value })}
+                        title={t.imageMarkupTextColor}
+                        ariaLabel={t.imageMarkupTextColor}
+                        onChange={textColor => applyStyle({ textColor })}
+                        className="image-markup-color"
                      />
                   </label>
 
@@ -894,11 +897,12 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
                   {fillActive && (
                      <label className="image-markup-field">
                         <span className="image-markup-field-label">{t.imageMarkupFillColor}</span>
-                        <input
-                           type="color"
-                           className="image-markup-color"
+                        <ColorSwatchField
                            value={fillColorValue}
-                           onChange={event => applyStyle({ fill: event.target.value })}
+                           title={t.imageMarkupFillColor}
+                           ariaLabel={t.imageMarkupFillColor}
+                           onChange={fill => applyStyle({ fill })}
+                           className="image-markup-color"
                         />
                      </label>
                   )}

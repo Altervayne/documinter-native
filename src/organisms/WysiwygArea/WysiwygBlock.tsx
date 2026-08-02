@@ -20,6 +20,7 @@ import { CalloutBlock }     from './blocks/CalloutBlock'
 import { CodeBlock }        from './blocks/CodeBlock'
 import { MathBlock }        from './blocks/MathBlock'
 import { GraphBlock }       from './blocks/GraphBlock'
+import { DiagramBlock }     from './blocks/DiagramBlock'
 import { ListBlock, type ListItemOperations } from './blocks/ListBlock'
 import { ChecklistBlock }   from './blocks/ChecklistBlock'
 import { TableBlock }       from './blocks/TableBlock'
@@ -229,6 +230,8 @@ export function WysiwygBlock({
          return <MathBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'graph')
          return <GraphBlock block={block} patch={patch} onInsertBlockAfter={handleInsertBlockAfter} readOnly={readOnly} />
+      if (block.type === 'diagram')
+         return <DiagramBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
          return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
       if (block.type === 'checklist')

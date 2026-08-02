@@ -1,5 +1,5 @@
 // -- Library Imports --
-import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
+import { AlignLeft, Heading3, Heading4, Info, Code2, Sigma, BarChart3, Workflow, List, ListChecks, Table, Image, Columns2, SeparatorHorizontal } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // -- Type Imports --
@@ -87,6 +87,7 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
    { type: 'code',      icon: Code2     },
    { type: 'math',      icon: Sigma     },
    { type: 'graph',     icon: BarChart3 },
+   { type: 'diagram',   icon: Workflow  },
    { type: 'list',      icon: List      },
    { type: 'checklist', icon: ListChecks },
    { type: 'table',     icon: Table     },

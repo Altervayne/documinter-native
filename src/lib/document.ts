@@ -68,6 +68,19 @@ export function mkBlock(type: BlockType, t: T): Block {
             options: { legend: true },
          },
       }
+      case 'diagram':   return {
+         id, type,
+         diagram: {
+            nodes: [
+               { id: 'n1', x: 40,  y: 40, width: 120, height: 56, shape: 'rounded', label: 'Start' },
+               { id: 'n2', x: 40,  y: 180, width: 120, height: 56, shape: 'rounded', label: 'End' },
+            ],
+            edges: [
+               { id: 'e1', from: 'n1', to: 'n2' },
+            ],
+            options: {},
+         },
+      }
       case 'list':      return {
          id, type,
          items: [
@@ -173,6 +186,14 @@ export function blkPreview(block: Block): string {
       const chartType   = graph?.type ?? 'bar'
       const seriesCount = graph?.data?.series?.length ?? 0
       return `Graph, ${chartType} (${seriesCount} series)`
+   }
+   if (block.type === 'diagram') {
+      const diagram = block.diagram
+      const title = diagram?.options?.title?.trim()
+      if (title) return title.substring(0, 32)
+      const nodeCount = diagram?.nodes?.length ?? 0
+      const edgeCount = diagram?.edges?.length ?? 0
+      return `Diagram (${nodeCount} nodes, ${edgeCount} links)`
    }
    if (block.type === 'list' || block.type === 'checklist')
       return (block.items?.[0] ? listItemPlainText(block.items[0]) : '').substring(0, 32)
