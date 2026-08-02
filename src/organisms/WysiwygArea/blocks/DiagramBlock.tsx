@@ -56,7 +56,7 @@ import { useLang } from '../../../contexts/LangContext'
 
 // -- Type Imports --
 import type { Block } from '../../../types'
-import type { DiagramSpec, DiagramNode, NodeShape } from '../../../lib/diagram'
+import type { DiagramSpec, NodeShape } from '../../../lib/diagram'
 
 // #############
 // # CONSTANTS #
@@ -70,9 +70,8 @@ const ADD_CASCADE_STEP = 16
 const ADD_CASCADE_WRAP = 6
 
 /**
- * How far (diagram units) a duplicated node is nudged from its source on both axes, so a Ctrl+V paste
- * or a right-click "Duplicate" lands visibly clear of the original. Repeated pastes re-offset from the
- * PREVIOUS copy (the clipboard is re-seeded with each paste), so stacked pastes cascade.
+ * How far (diagram units) a duplicated node is nudged from its source on both axes, so a right-click
+ * "Duplicate node" lands visibly clear of the original rather than exactly on top.
  */
 const DUPLICATE_OFFSET = 20
 
@@ -172,17 +171,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const [outputHovered, setOutputHovered] = useState(false)
    const [interacting, setInteracting] = useState(false)
 
-   // The EPHEMERAL editor clipboard: a single copied node held only for this session (never persisted,
-   // never the OS clipboard). Ctrl+C fills it; Ctrl+V pastes an offset duplicate + re-seeds it with the
-   // copy so stacked pastes cascade. The right-click "Duplicate" shares the same insert path.
-   const clipboardRef = useRef<DiagramNode | null>(null)
-
    // The open node context menu (right-click on a node), at the cursor's client coords, or null.
    const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number } | null>(null)
-
-   // The editor body wrapper: keyboard copy/paste consults it to confirm the diagram editor is the
-   // focused surface (so global Ctrl+C / Ctrl+V elsewhere in the app is never hijacked).
-   const editorBodyRef = useRef<HTMLDivElement>(null)
 
    const rootRef = useRef<HTMLDivElement>(null)
    const interactionRef = useRef<Interaction | null>(null)
@@ -357,27 +347,17 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Duplicate / copy-paste (ephemeral clipboard) + the right-click node context menu
+   //  Duplicate + the right-click node context menu
    // ============
-   /**
-    * Insert an offset duplicate of `source`, select the copy, and re-seed the clipboard WITH the copy so
-    * a second paste offsets from the first (stacked pastes cascade rather than landing on top of each
-    * other). Shared by the Ctrl+V paste and the right-click "Duplicate" action.
-    */
-   function insertDuplicate(source: DiagramNode): void {
-      const newId = crypto.randomUUID()
-      const copy = duplicateNode(source, () => newId, DUPLICATE_OFFSET)
-      selectNode(newId)
-      commit(addNode(workingRef.current, copy))
-      clipboardRef.current = copy
-   }
-
-   /** Duplicate the selected node in place with an offset (the context-menu Duplicate = copy+paste-in-one). */
+   /** Duplicate the selected node in place with an offset (the right-click "Duplicate node" action). */
    function duplicateSelectedNode(): void {
       const id = selectedIdRef.current
       if (!id) return
       const node = findNode(workingRef.current, id)
-      if (node) insertDuplicate(node)
+      if (!node) return
+      const newId = crypto.randomUUID()
+      selectNode(newId)
+      commit(addNode(workingRef.current, duplicateNode(node, () => newId, DUPLICATE_OFFSET)))
    }
 
    /**
@@ -652,54 +632,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [isEditing])
 
-   // Ctrl/Cmd+C copies the selected node into the EPHEMERAL editor clipboard; Ctrl/Cmd+V pastes an
-   // offset duplicate. SCOPED to this open editor so global copy/paste is never hijacked: the listener
-   // attaches only while THIS diagram's editor window is open, and each keystroke additionally bails
-   // when (a) a text field / editable region is focused, (b) a real (non-collapsed) text selection
-   // exists anywhere, or (c) focus sits in another surface (the canvas isn't focusable, so a node click
-   // leaves focus idle on <body> — allowed — but focus inside another block/editor is not). We
-   // preventDefault ONLY when we actually handle the key.
-   useEffect(() => {
-      if (!isEditing) return
-      function onKeyDown(event: KeyboardEvent): void {
-         if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return
-         const key = event.key.toLowerCase()
-         const isCopy = key === 'c'
-         const isPaste = key === 'v'
-         if (!isCopy && !isPaste) return
-
-         const target = event.target as HTMLElement | null
-         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-
-         const selection = window.getSelection?.()
-         if (selection && !selection.isCollapsed && selection.toString().trim() !== '') return
-
-         const active = document.activeElement
-         const focusOk = active === null || active === document.body
-            || !!editorBodyRef.current?.contains(active)
-         if (!focusOk) return
-
-         if (isCopy) {
-            const id = selectedIdRef.current
-            if (!id) return
-            const node = findNode(workingRef.current, id)
-            if (!node) return
-            event.preventDefault()
-            clipboardRef.current = node
-            return
-         }
-         // Paste: only when the clipboard holds a copied node.
-         const source = clipboardRef.current
-         if (!source) return
-         event.preventDefault()
-         insertDuplicate(source)
-      }
-      document.addEventListener('keydown', onKeyDown)
-      return () => document.removeEventListener('keydown', onKeyDown)
-      // Handlers read refs, so only the isEditing gate matters here.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [isEditing])
-
    // ============
    //  Read-only view (the canonical export-consistent renderer)
    // ============
@@ -756,7 +688,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const inspectorLabel = selectedEdge ? t.diagramEdgeSection : t.diagramInspectorSection
 
    const editorBody = (
-      <div className="diagram-editor" ref={editorBodyRef}>
+      <div className="diagram-editor">
          {/* ===== Add shape ===== */}
          <section className="diagram-section">
             <span className="diagram-section-label">{t.diagramShapesSection}</span>
