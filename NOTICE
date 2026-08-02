@@ -1,0 +1,26 @@
+Documinter
+Copyright 2026 Florian Douay
+
+This product includes software developed by Florian Douay, licensed under the
+Apache License, Version 2.0 (see the LICENSE file).
+
+==============================================================================
+TRADEMARK & BRAND NOTICE
+==============================================================================
+
+The "Documinter" name, the Documinter logo, and the associated visual identity
+(including public/favicon.svg, src/assets/logo-color.svg, src/assets/logo.svg,
+and src/atoms/Logo.tsx) are trademarks of Florian Douay and remain his
+exclusive copyright. Copyright (c) 2026 Florian Douay. All rights reserved.
+
+These marks are NOT licensed under the Apache License 2.0. As stated in
+Section 6 of that license, it does not grant permission to use the trade
+names, trademarks, service marks, or product names of the licensor. The
+Apache License covers the source code only; it grants no right to use the
+Documinter name, logo, or brand identity.
+
+You may use, modify, and redistribute the source code under the terms of the
+Apache License 2.0. However, you may not use the Documinter name or logo in a
+way that suggests endorsement by or affiliation with the original project, and
+any substantial fork or redistribution should adopt its own distinct name and
+logo.

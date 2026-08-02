@@ -5,6 +5,7 @@ import {
    clampWatermarkTileSize,
    clampWatermarkSpacing,
    clampWatermarkAspectRatio,
+   clampWatermarkOffset,
    clampHeaderMaxHeight,
    headerJustifyContent,
    resolveHeaderBesideLayout,
@@ -12,6 +13,7 @@ import {
    resolveWatermarkLayout,
    resolveWatermarkPatternGeometry,
    renderWatermarkPatternSvg,
+   watermarkTransform,
    applyLinkedWatermarkSpacing,
    normalizePresentation,
    makeWatermark,
@@ -32,6 +34,9 @@ import {
    WATERMARK_MIN_ASPECT_RATIO,
    WATERMARK_MAX_ASPECT_RATIO,
    WATERMARK_DEFAULT_ASPECT_RATIO,
+   WATERMARK_MIN_OFFSET,
+   WATERMARK_MAX_OFFSET,
+   WATERMARK_DEFAULT_OFFSET,
    HEADER_MIN_MAX_HEIGHT,
    HEADER_MAX_MAX_HEIGHT,
    HEADER_DEFAULT_MAX_HEIGHT,
@@ -40,16 +45,18 @@ import {
    DEFAULT_HEADER_LOGO_SIDE,
    reconcileNavEntries,
    reconcileNav,
+   collectAnchoredHandles,
    type Watermark,
    type Header,
    type NavModel,
 } from './presentation'
-import type { Section } from '../types'
+import type { Block, Section } from '../types'
 
 /** A fully-specified base watermark for tests that don't care about the new fields' exact values. */
 const BASE_WATERMARK: Watermark = {
    src: 'data:x', opacity: 0.1, fit: 'contain', tile: false, position: 'center',
    rotation: 0, tileSize: WATERMARK_DEFAULT_TILE_SIZE, spacingX: 40, spacingY: 40, aspectRatio: 1,
+   offsetX: 0, offsetY: 0,
 }
 
 describe('clampWatermarkOpacity', () => {
@@ -127,6 +134,8 @@ describe('normalizePresentation', () => {
          spacingX: WATERMARK_DEFAULT_SPACING,
          spacingY: WATERMARK_DEFAULT_SPACING,
          aspectRatio: WATERMARK_DEFAULT_ASPECT_RATIO,
+         offsetX: WATERMARK_DEFAULT_OFFSET,
+         offsetY: WATERMARK_DEFAULT_OFFSET,
       })
    })
    it('passes a fully-specified watermark through, coercing invalid enums to defaults', () => {
@@ -144,6 +153,8 @@ describe('normalizePresentation', () => {
          spacingX: WATERMARK_DEFAULT_SPACING,
          spacingY: WATERMARK_DEFAULT_SPACING,
          aspectRatio: WATERMARK_DEFAULT_ASPECT_RATIO,
+         offsetX: WATERMARK_DEFAULT_OFFSET,
+         offsetY: WATERMARK_DEFAULT_OFFSET,
       })
    })
    it('keeps a valid fit / position', () => {
@@ -173,6 +184,27 @@ describe('normalizePresentation', () => {
       expect(inRange?.watermark?.spacingX).toBe(10)
       expect(inRange?.watermark?.spacingY).toBe(20)
       expect(inRange?.watermark?.aspectRatio).toBe(2)
+   })
+   it('clamps offsetX / offsetY and defaults them for old docs that never had the field', () => {
+      const outOfRange = normalizePresentation({
+         watermark: { src: 'data:img', offsetX: 99999, offsetY: -99999 },
+      })
+      expect(outOfRange?.watermark?.offsetX).toBe(WATERMARK_MAX_OFFSET)
+      expect(outOfRange?.watermark?.offsetY).toBe(WATERMARK_MIN_OFFSET)
+
+      const inRange = normalizePresentation({
+         watermark: { src: 'data:img', offsetX: -120, offsetY: 250 },
+      })
+      expect(inRange?.watermark?.offsetX).toBe(-120)
+      expect(inRange?.watermark?.offsetY).toBe(250)
+
+      // An old backup file, saved before offsetX/offsetY existed, has neither field — normalize
+      // must default them rather than carrying through `undefined`, so old docs stay safe.
+      const preOffsetDoc = normalizePresentation({
+         watermark: { src: 'data:img', rotation: 10, tileSize: 100, spacingX: 5, spacingY: 5, aspectRatio: 1 },
+      })
+      expect(preOffsetDoc?.watermark?.offsetX).toBe(WATERMARK_DEFAULT_OFFSET)
+      expect(preOffsetDoc?.watermark?.offsetY).toBe(WATERMARK_DEFAULT_OFFSET)
    })
 
    it('drops a header with an empty src (same as none)', () => {
@@ -279,6 +311,8 @@ describe('makeWatermark', () => {
          spacingX: WATERMARK_DEFAULT_SPACING,
          spacingY: WATERMARK_DEFAULT_SPACING,
          aspectRatio: WATERMARK_DEFAULT_ASPECT_RATIO,
+         offsetX: WATERMARK_DEFAULT_OFFSET,
+         offsetY: WATERMARK_DEFAULT_OFFSET,
       })
    })
    it('captures the picked image aspect ratio when supplied', () => {
@@ -321,6 +355,15 @@ describe('rotation / tile-size / spacing / aspect-ratio clamps', () => {
       expect(clampWatermarkAspectRatio(1.5)).toBe(1.5)
       expect(clampWatermarkAspectRatio(undefined)).toBe(WATERMARK_DEFAULT_ASPECT_RATIO)
    })
+   it('clampWatermarkOffset clamps into range (negative allowed) and defaults on non-number', () => {
+      expect(clampWatermarkOffset(9999)).toBe(WATERMARK_MAX_OFFSET)
+      expect(clampWatermarkOffset(-9999)).toBe(WATERMARK_MIN_OFFSET)
+      expect(clampWatermarkOffset(-40)).toBe(-40)
+      expect(clampWatermarkOffset(0)).toBe(0)
+      expect(clampWatermarkOffset('x')).toBe(WATERMARK_DEFAULT_OFFSET)
+      expect(clampWatermarkOffset(undefined)).toBe(WATERMARK_DEFAULT_OFFSET)
+      expect(clampWatermarkOffset(NaN)).toBe(WATERMARK_DEFAULT_OFFSET)
+   })
 })
 
 describe('applyLinkedWatermarkSpacing', () => {
@@ -337,6 +380,31 @@ describe('applyLinkedWatermarkSpacing', () => {
    it('leaves every other field untouched', () => {
       const result = applyLinkedWatermarkSpacing(BASE_WATERMARK, 10)
       expect(result).toEqual({ ...BASE_WATERMARK, spacingX: 10, spacingY: 10 })
+   })
+})
+
+// watermarkTransform is the SINGLE (non-tiled) case's shared transform builder — used by both the
+// editor render (WysiwygArea) and export.ts's renderWatermarkLayer, so both surfaces compose the
+// offset + rotation identically. The byte-identical guarantee lives here: offset 0,0 must degrade
+// to the bare pre-offset `rotate(...)` string, never emit an inert `translate(0px, 0px)`.
+describe('watermarkTransform', () => {
+   it('degrades to a bare rotate() when both offsets are 0 (the default) — byte-identical guarantee', () => {
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 25, offsetX: 0, offsetY: 0 })).toBe('rotate(25deg)')
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 0, offsetX: 0, offsetY: 0 })).toBe('rotate(0deg)')
+   })
+   it('composes a non-zero offset with rotation, translate first then rotate', () => {
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 25, offsetX: 40, offsetY: -15 }))
+         .toBe('translate(40px, -15px) rotate(25deg)')
+   })
+   it('emits the translate even when only one axis is offset', () => {
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 0, offsetX: 10, offsetY: 0 }))
+         .toBe('translate(10px, 0px) rotate(0deg)')
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 0, offsetX: 0, offsetY: 10 }))
+         .toBe('translate(0px, 10px) rotate(0deg)')
+   })
+   it('clamps out-of-range offsets and rotation before composing', () => {
+      expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 999, offsetX: 99999, offsetY: -99999 }))
+         .toBe(`translate(${WATERMARK_MAX_OFFSET}px, ${WATERMARK_MIN_OFFSET}px) rotate(${WATERMARK_MAX_ROTATION}deg)`)
    })
 })
 
@@ -382,6 +450,14 @@ describe('resolveWatermarkPatternGeometry', () => {
       expect(resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, rotation: 45 }).rotation).toBe(45)
       expect(resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, rotation: 999 }).rotation).toBe(WATERMARK_MAX_ROTATION)
    })
+   it('carries the clamped offsetX/offsetY through', () => {
+      const geometry = resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, offsetX: -30, offsetY: 15 })
+      expect(geometry.offsetX).toBe(-30)
+      expect(geometry.offsetY).toBe(15)
+      const outOfRange = resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, offsetX: 99999, offsetY: -99999 })
+      expect(outOfRange.offsetX).toBe(WATERMARK_MAX_OFFSET)
+      expect(outOfRange.offsetY).toBe(WATERMARK_MIN_OFFSET)
+   })
 })
 
 describe('renderWatermarkPatternSvg', () => {
@@ -415,6 +491,17 @@ describe('renderWatermarkPatternSvg', () => {
       expect(second).toContain('id="pattern-two"')
       expect(first).toContain('url(#pattern-one)')
       expect(second).toContain('url(#pattern-two)')
+   })
+
+   it('offset 0,0 is byte-identical to the pre-offset patternTransform (rotation alone)', () => {
+      const svg = renderWatermarkPatternSvg({ ...watermark, offsetX: 0, offsetY: 0 }, 'light', 'pattern-abc')
+      expect(svg).toContain('patternTransform="rotate(30)"')
+      expect(svg).not.toContain('translate')
+   })
+
+   it('shifts the pattern phase by composing a non-zero offset into patternTransform', () => {
+      const svg = renderWatermarkPatternSvg({ ...watermark, offsetX: 25, offsetY: -10 }, 'light', 'pattern-abc')
+      expect(svg).toContain('patternTransform="translate(25,-10) rotate(30)"')
    })
 })
 
@@ -588,5 +675,92 @@ describe('normalizePresentation — nav', () => {
       expect(result?.watermark).toBeDefined()
       expect(result?.header).toBeDefined()
       expect(result?.nav?.entries).toHaveLength(1)
+   })
+})
+
+// ####################
+// # ANCHOR NAV LINKS #
+// ####################
+
+/** A section carrying blocks — some anchored (handle), one nested inside a container column. */
+function makeSectionWithBlocks(id: string, title: string, blocks: Block[]): Section {
+   return { id, title, collapsed: false, blocks }
+}
+
+const ANCHOR_SECTIONS: Section[] = [
+   makeSectionWithBlocks('a', 'Intro', [
+      { id: 'p1', type: 'p', handle: 'intro-note', richText: [{ text: 'Read me first' }] },
+      { id: 'p2', type: 'p', richText: [{ text: 'No handle here' }] },
+   ]),
+   makeSectionWithBlocks('b', 'Details', [
+      {
+         id: 'cont', type: 'container', ratio: 0.5,
+         left:  [{ id: 'in1', type: 'p', handle: 'nested-anchor', richText: [{ text: 'Inside a column' }] }],
+         right: [{ id: 'in2', type: 'p', richText: [{ text: 'Plain inner block' }] }],
+      },
+   ]),
+]
+
+describe('collectAnchoredHandles', () => {
+   it('collects handles from top-level AND container inner blocks, skipping handle-less blocks', () => {
+      const handles = collectAnchoredHandles(ANCHOR_SECTIONS)
+      expect(handles).toEqual(new Set(['intro-note', 'nested-anchor']))
+   })
+
+   it('is an empty set when no block carries a handle', () => {
+      expect(collectAnchoredHandles(SECTIONS)).toEqual(new Set())
+   })
+})
+
+describe('reconcileNav — anchor target', () => {
+   it('resolves a live anchor to an internal, UNNUMBERED #handle link', () => {
+      const nav: NavModel = { entries: [
+         { kind: 'auto', sectionId: 'a' },
+         { kind: 'custom', id: 'x', label: 'Jump to note', target: { type: 'anchor', handle: 'intro-note' } },
+      ] }
+      const resolved = reconcileNav(nav, ANCHOR_SECTIONS)
+      const anchorLink = resolved.find(entry => entry.kind === 'link' && entry.id === 'x')
+      expect(anchorLink).toMatchObject({ label: 'Jump to note', href: '#intro-note', external: false })
+      // Unnumbered: the section link kept number 1, the anchor consumes no number.
+      expect(anchorLink && 'number' in anchorLink ? anchorLink.number : undefined).toBeUndefined()
+      expect(resolved.find(entry => entry.kind === 'link' && entry.href === '#section-a')).toMatchObject({ number: 1 })
+   })
+
+   it('resolves a live nested (container inner) anchor', () => {
+      const nav: NavModel = { entries: [
+         { kind: 'custom', id: 'n', label: 'Deep link', target: { type: 'anchor', handle: 'nested-anchor' } },
+      ] }
+      const resolved = reconcileNav(nav, ANCHOR_SECTIONS)
+      expect(resolved).toContainEqual({ kind: 'link', id: 'n', label: 'Deep link', href: '#nested-anchor', external: false })
+   })
+
+   it('drops an anchor link whose handle no longer exists', () => {
+      const nav: NavModel = { entries: [
+         { kind: 'custom', id: 'dead', label: 'Gone', target: { type: 'anchor', handle: 'removed-handle' } },
+         { kind: 'auto', sectionId: 'a' },
+      ] }
+      const resolved = reconcileNav(nav, ANCHOR_SECTIONS)
+      expect(resolved.find(entry => entry.kind === 'link' && entry.id === 'dead')).toBeUndefined()
+      expect(resolved.find(entry => entry.kind === 'link' && entry.href === '#section-a')).toBeDefined()
+   })
+})
+
+describe('normalizePresentation — anchor nav entry', () => {
+   it('accepts and round-trips a valid anchor custom entry', () => {
+      const result = normalizePresentation({ nav: { entries: [
+         { kind: 'custom', id: 'c1', label: 'Note', target: { type: 'anchor', handle: 'intro-note' } },
+      ] } })
+      expect(result?.nav?.entries).toEqual([
+         { kind: 'custom', id: 'c1', label: 'Note', target: { type: 'anchor', handle: 'intro-note' } },
+      ])
+   })
+
+   it('rejects an anchor entry with a missing or empty handle', () => {
+      expect(normalizePresentation({ nav: { entries: [
+         { kind: 'custom', id: 'c1', label: 'X', target: { type: 'anchor' } },
+      ] } })).toBeUndefined()
+      expect(normalizePresentation({ nav: { entries: [
+         { kind: 'custom', id: 'c2', label: 'X', target: { type: 'anchor', handle: '   ' } },
+      ] } })).toBeUndefined()
    })
 })

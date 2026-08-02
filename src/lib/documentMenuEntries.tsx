@@ -33,10 +33,21 @@ export interface DocumentMenuOptions {
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    /** Pick one of the accent presets, or apply a live change from the custom ColorPicker. */
    onDocAccentChange?: (hex: string) => void
-   /** Whether the surface's inline "Custom accent…" ColorPicker is currently expanded. */
-   customAccentExpanded?: boolean
-   /** Toggle the inline custom-accent ColorPicker open/closed (each surface owns its own bool). */
-   onOpenCustomAccent?: () => void
+   /** Whether the user has explicitly chosen the Custom tile (or adjusted its picker) since the
+    *  menu last opened — the "custom is the selected choice" intent. Kept separate from whether
+    *  `docAccent` happens to coincide with a preset hex; each surface owns its own bool. Combined
+    *  below with the "docAccent matches no preset" fallback so a freshly reopened menu with a
+    *  truly off-palette color still reads Custom as active even though this flag resets to false
+    *  on each open. */
+   customAccentSelected?: boolean
+   /** Select the Custom tile: mark it the active choice and (re)apply the current `docAccent`
+    *  through `onDocAccentChange` — a no-op on the value itself (the picker is already seeded from
+    *  `docAccent`), but it hands off cleanly: flipping from a preset into Custom keeps that color
+    *  rather than resetting it. */
+   onSelectCustomAccent?: () => void
+   /** Clear the "Custom is selected" intent — called when a preset swatch is clicked, so the ring
+    *  moves cleanly off Custom even if the picker's last color happened to equal that preset's hex. */
+   onDeselectCustomAccent?: () => void
    /** Open the document-level Presentation window. */
    onOpenPresentation?: () => void
    /** Open the document-level Navigation window. */
@@ -65,7 +76,8 @@ export interface DocumentMenuOptions {
 export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextMenuEntry[] {
    const {
       t, docTheme, docAccent, previewMode, readOnly,
-      onAddSection, onDocThemeChange, onDocAccentChange, customAccentExpanded, onOpenCustomAccent,
+      onAddSection, onDocThemeChange, onDocAccentChange,
+      customAccentSelected, onSelectCustomAccent, onDeselectCustomAccent,
       onOpenPresentation, onOpenNavigation, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
    } = options
 
@@ -91,23 +103,30 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
 
       // Nameless swatch grid — each preset's localized name rides along as a tooltip/aria-label
       // only (AccentSwatchGrid never renders it as text); "active" drives the tile's ring.
-      const isPresetHex = (hex: string) => hex.toLowerCase() === docAccent.toLowerCase()
+      const isPresetHex   = (hex: string) => hex.toLowerCase() === docAccent.toLowerCase()
+      const customSelected = !!customAccentSelected
+
       const presets: AccentSwatchOption[] = ACCENT_PRESETS.map(hex => ({
          hex,
-         name:     accentPresetName(hex, t),
-         active:   isPresetHex(hex),
-         onSelect: () => onDocAccentChange(hex),
+         name:   accentPresetName(hex, t),
+         // Never active while Custom is the selected choice, even if this preset's hex happens to
+         // coincide with the current (custom) docAccent — Custom alone owns the ring in that case.
+         active: isPresetHex(hex) && !customSelected,
+         onSelect: () => {
+            onDocAccentChange(hex)
+            onDeselectCustomAccent?.()
+         },
       }))
 
-      // The custom tile is "active" whenever the document accent doesn't match any preset — it
-      // then reads as the tile currently in effect, even while collapsed.
-      const custom: AccentCustomSwatchOption | undefined = onOpenCustomAccent
+      // Custom is the active choice either because it was explicitly selected (or its picker
+      // adjusted) — customSelected — or, as a fallback for a freshly (re)opened menu, because the
+      // document accent doesn't match any preset at all.
+      const custom: AccentCustomSwatchOption | undefined = onSelectCustomAccent
          ? {
               name:     t.bgMenuCustomAccentTitle,
-              active:   !ACCENT_PRESETS.some(isPresetHex),
-              expanded: !!customAccentExpanded,
+              active:   customSelected || !ACCENT_PRESETS.some(isPresetHex),
               value:    docAccent,
-              onToggle: onOpenCustomAccent,
+              onSelect: onSelectCustomAccent,
               onChange: onDocAccentChange,
            }
          : undefined

@@ -48,8 +48,9 @@ const fullOptions: DocumentMenuOptions = {
    onAddSection:       () => {},
    onDocThemeChange:   () => {},
    onDocAccentChange:  () => {},
-   customAccentExpanded: false,
-   onOpenCustomAccent: () => {},
+   customAccentSelected: false,
+   onSelectCustomAccent: () => {},
+   onDeselectCustomAccent: () => {},
    onOpenPresentation: () => {},
    onOpenNavigation:   () => {},
    onOpenExport:       () => {},
@@ -92,13 +93,13 @@ describe('buildDocumentMenuEntries', () => {
       // projection.
       const contextMenuSurface = buildDocumentMenuEntries({
          ...fullOptions,
-         onOpenCustomAccent: () => { /* toggles this surface's own customAccentExpanded state */ },
-         onTogglePreview:    () => { /* onSetMode('preview') */ },
+         onSelectCustomAccent: () => { /* selects Custom, setting this surface's own customAccentSelected flag */ },
+         onTogglePreview:      () => { /* onSetMode('preview') */ },
       })
       const topBarSurface = buildDocumentMenuEntries({
          ...fullOptions,
-         onOpenCustomAccent: () => { /* toggles this surface's own customAccentExpanded state */ },
-         onTogglePreview:    () => { /* onSetMode(previewMode === 'preview' ? 'wysiwyg' : 'preview') */ },
+         onSelectCustomAccent: () => { /* selects Custom, setting this surface's own customAccentSelected flag */ },
+         onTogglePreview:      () => { /* onSetMode(previewMode === 'preview' ? 'wysiwyg' : 'preview') */ },
       })
       expect(project(topBarSurface)).toEqual(project(contextMenuSurface))
    })
@@ -109,8 +110,8 @@ describe('buildDocumentMenuEntries', () => {
       expect(darkLabels).not.toContain(t.toDarkMode)
    })
 
-   it('omits the custom-accent tile when no custom-accent opener is wired', () => {
-      const entries = buildDocumentMenuEntries({ ...fullOptions, onOpenCustomAccent: undefined })
+   it('omits the custom-accent tile when no custom-accent selector is wired', () => {
+      const entries = buildDocumentMenuEntries({ ...fullOptions, onSelectCustomAccent: undefined })
       const labels = project(entries)
       // The header + preset grid still render (they only need onDocAccentChange); only the
       // custom tile drops out.
@@ -142,10 +143,43 @@ describe('buildDocumentMenuEntries', () => {
       expect(accentGrid.custom?.active).toBe(true)
    })
 
-   it('carries the customAccentExpanded flag through to the custom tile', () => {
-      const collapsed = findAccentGridEntry(buildDocumentMenuEntries({ ...fullOptions, customAccentExpanded: false }))
-      const expanded  = findAccentGridEntry(buildDocumentMenuEntries({ ...fullOptions, customAccentExpanded: true }))
-      expect(collapsed.custom?.expanded).toBe(false)
-      expect(expanded.custom?.expanded).toBe(true)
+   it('marks Custom active (and no preset active) when customAccentSelected is set, even though docAccent matches a preset', () => {
+      const targetHex = ACCENT_PRESETS[2]
+      const entries = buildDocumentMenuEntries({ ...fullOptions, docAccent: targetHex, customAccentSelected: true })
+      const accentGrid = findAccentGridEntry(entries)
+      expect(accentGrid.presets.every(preset => !preset.active)).toBe(true)
+      expect(accentGrid.custom?.active).toBe(true)
+   })
+
+   it('leaves the matching preset active when customAccentSelected is unset, even though docAccent matches it', () => {
+      const targetHex = ACCENT_PRESETS[2]
+      const entries = buildDocumentMenuEntries({ ...fullOptions, docAccent: targetHex, customAccentSelected: false })
+      const accentGrid = findAccentGridEntry(entries)
+      expect(accentGrid.presets.find(preset => preset.hex === targetHex)?.active).toBe(true)
+      expect(accentGrid.custom?.active).toBe(false)
+   })
+
+   it('selecting a preset applies its hex and clears the custom-selected flag', () => {
+      const appliedHexes: string[] = []
+      let deselectCalls = 0
+      const entries = buildDocumentMenuEntries({
+         ...fullOptions,
+         customAccentSelected: true,
+         onDocAccentChange: (hex) => appliedHexes.push(hex),
+         onDeselectCustomAccent: () => { deselectCalls++ },
+      })
+      const accentGrid = findAccentGridEntry(entries)
+      accentGrid.presets[0].onSelect()
+      expect(appliedHexes).toEqual([ACCENT_PRESETS[0]])
+      expect(deselectCalls).toBe(1)
+   })
+
+   it('wires the custom tile\'s onSelect directly to onSelectCustomAccent (the surface applies the hand-off)', () => {
+      let selectCalls = 0
+      const onSelectCustomAccent = () => { selectCalls++ }
+      const entries = buildDocumentMenuEntries({ ...fullOptions, onSelectCustomAccent })
+      const accentGrid = findAccentGridEntry(entries)
+      accentGrid.custom?.onSelect()
+      expect(selectCalls).toBe(1)
    })
 })

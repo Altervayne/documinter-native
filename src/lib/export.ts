@@ -8,8 +8,9 @@ import { renderGraphToSvg, LIGHT_GRAPH_THEME, DARK_GRAPH_THEME } from './graph'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
 import type { GraphTableCatalog } from './graphTableData'
 import {
-   resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, headerJustifyContent,
-   resolveHeaderBesideLayout, reconcileNav,
+   resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform,
+   headerJustifyContent, resolveHeaderBesideLayout, reconcileNav, reconcileNavEntries,
+   collectAnchoredHandles,
    type DocPresentationExtras, type Watermark, type Header,
 } from './presentation'
 
@@ -523,12 +524,13 @@ function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: stri
 /**
  * Render a SINGLE (non-tiled) background watermark layer as a self-contained
  * `<div class="doc-watermark">` whose base64 image is inlined (no external fetch, no runtime). Fit /
- * position map to CSS background-* via the shared resolveWatermarkLayout, rotation is a centered CSS
- * transform (the div is full-bleed via .doc-watermark's `inset:0`, so the default center transform
- * origin already lands on the sheet's center), and opacity is dimmed for the dark theme exactly as
- * the editor dims it (shared effectiveWatermarkOpacity). Only ever called when the watermark has a
- * src, so absent ⇒ this emits nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts),
- * shared verbatim with the editor render — see the branch in generateExportHTML below.
+ * position map to CSS background-* via the shared resolveWatermarkLayout; offset + rotation compose
+ * into one CSS transform via the shared watermarkTransform (the div is full-bleed via
+ * .doc-watermark's `inset:0`, so the default center transform origin already lands on the sheet's
+ * center), and opacity is dimmed for the dark theme exactly as the editor dims it (shared
+ * effectiveWatermarkOpacity). Only ever called when the watermark has a src, so absent ⇒ this emits
+ * nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts), shared verbatim with the
+ * editor render — see the branch in generateExportHTML below.
  */
 function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): string {
    const layout  = resolveWatermarkLayout(watermark)
@@ -539,7 +541,7 @@ function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): st
       `background-size:${layout.size}`,
       `background-position:${layout.position}`,
       `opacity:${opacity}`,
-      `transform:rotate(${watermark.rotation}deg)`,
+      `transform:${watermarkTransform(watermark)}`,
    ].join(';')
    return `<div class="doc-watermark" aria-hidden="true" style="${style}"></div>`
 }
@@ -635,6 +637,24 @@ ${blocksHTML}
                   const t = document.querySelector(l.getAttribute('href'));
                   if (t) t.scrollIntoView({ behavior: 'smooth' });`
 
+   // The scroll-spy IntersectionObserver observes the `.doc-section` wrappers so a section link gets
+   // the `.active` highlight as its section scrolls into the band. A custom nav can also link to an
+   // anchored block (`#handle`); those block elements aren't `.doc-section`, so collect the handles
+   // the nav actually references (live anchors only) and observe them too, so anchor links highlight
+   // like section links. Absent anchor links ⇒ navAnchorIds is empty ⇒ no extra script is emitted,
+   // keeping the export byte-identical to the pre-feature output. The `en.target.id`-keyed matcher in
+   // the observer callback is already generic (a block div's id IS its handle), so it needs no change.
+   const anchoredHandles = collectAnchoredHandles(sections)
+   const navAnchorIds: string[] = []
+   for (const entry of reconcileNavEntries(opts.presentation?.nav, sections)) {
+      if (entry.kind === 'custom' && entry.target.type === 'anchor' && anchoredHandles.has(entry.target.handle)) {
+         if (!navAnchorIds.includes(entry.target.handle)) navAnchorIds.push(entry.target.handle)
+      }
+   }
+   const anchorObserveScript = navAnchorIds.length > 0
+      ? `\n      ${JSON.stringify(navAnchorIds)}.forEach(id => { const anchorEl = document.getElementById(id); if (anchorEl) observer.observe(anchorEl); });`
+      : ''
+
    return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -683,7 +703,7 @@ ${navLinks}
                   }
             });
       }, { rootMargin: '-30% 0px -60% 0px' });
-      secs.forEach(s => observer.observe(s));
+      secs.forEach(s => observer.observe(s));${anchorObserveScript}
       links.forEach(l => {
             l.addEventListener('click', e => {
                   ${navClickBody}

@@ -30,7 +30,7 @@ import { WysiwygSection } from './WysiwygSection'
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
 import { buildDocumentMenuEntries } from '../../lib/documentMenuEntries'
-import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
+import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
 import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
@@ -125,28 +125,31 @@ export function WysiwygArea({
    // already self-disable their own context menus under readOnly, see WysiwygSection.tsx /
    // WysiwygBlock.tsx), so a right-click still reaches theme/accent/export/save/preview-toggle.
    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number; y: number } | null>(null)
-   // Whether the background menu's inline "Custom accent…" ColorPicker is expanded, rendered
-   // directly under the accent swatch grid (AccentSwatchGrid) rather than a detached popover —
-   // the same inline-under-the-entry pattern the top-bar Document dropdown uses (DocumentMenu's
-   // own customAccentExpanded). The context menu's own viewport-clamped positioning
-   // (useViewportClampedPosition, re-measured via ResizeObserver) re-clamps as the menu grows.
-   const [customAccentExpanded, setCustomAccentExpanded] = useState(false)
+   // Whether Custom is the background menu's selected accent choice — a genuine selection, on par
+   // with clicking a preset swatch, NOT a disclosure toggle. Selecting it applies the current
+   // docAccent (smooth hand-off) and reveals the inline ColorPicker directly under the accent
+   // swatch grid (AccentSwatchGrid) rather than a detached popover — the same inline-under-the-entry
+   // pattern the top-bar Document dropdown uses (DocumentMenu's own customAccentSelected). The
+   // context menu's own viewport-clamped positioning (useViewportClampedPosition, re-measured via
+   // ResizeObserver) re-clamps as the menu grows.
+   const [customAccentSelected, setCustomAccentSelected] = useState(false)
 
    function handleBackgroundContextMenu(event: React.MouseEvent) {
       event.preventDefault()
-      setCustomAccentExpanded(false)
+      setCustomAccentSelected(false)
       setBackgroundMenu({ x: event.clientX, y: event.clientY })
    }
 
    function closeBackgroundMenu() {
       setBackgroundMenu(null)
-      setCustomAccentExpanded(false)
+      setCustomAccentSelected(false)
    }
 
    // The document-background context menu shares its entry list with the top-bar "Document" dropdown
    // (HeaderMenuBar) via the single buildDocumentMenuEntries source of truth, so the two surfaces can
-   // never drift in label or order. Only the surface-specific openers differ: here "Custom accent…"
-   // toggles this surface's own expand state, and the preview toggle routes through onSetMode.
+   // never drift in label or order. Only the surface-specific openers differ: here selecting "Custom
+   // accent…" sets this surface's own selected-flag (and clicking a preset clears it), and the
+   // preview toggle routes through onSetMode.
    function buildBackgroundMenuEntries(): ContextMenuEntry[] {
       return buildDocumentMenuEntries({
          t,
@@ -157,8 +160,11 @@ export function WysiwygArea({
          onAddSection,
          onDocThemeChange,
          onDocAccentChange,
-         customAccentExpanded,
-         onOpenCustomAccent: onDocAccentChange ? () => setCustomAccentExpanded(current => !current) : undefined,
+         customAccentSelected,
+         onSelectCustomAccent: onDocAccentChange
+            ? () => { setCustomAccentSelected(true); onDocAccentChange(docAccent) }
+            : undefined,
+         onDeselectCustomAccent: () => setCustomAccentSelected(false),
          onOpenPresentation,
          onOpenNavigation: onOpenNav,
          onOpenExport,
@@ -427,7 +433,9 @@ export function WysiwygArea({
                 Tiled ⇒ an inline SVG <pattern> (rotated as a whole, gapped by spacingX/spacingY),
                 rendered from the EXACT SAME string builder export.ts uses (renderWatermarkPatternSvg)
                 via dangerouslySetInnerHTML, so editor and export can never drift apart. Single ⇒ the
-                positioned/fit CSS background image, plus a centered CSS rotation. */}
+                positioned/fit CSS background image, plus offset + rotation composed into one CSS
+                transform (shared watermarkTransform, same string export.ts's renderWatermarkLayer
+                builds). */}
             {presentation?.watermark?.src && (() => {
                const watermark = presentation.watermark
                if (watermark.tile) {
@@ -449,7 +457,7 @@ export function WysiwygArea({
                         backgroundSize:     layout.size,
                         backgroundPosition: layout.position,
                         opacity:            effectiveWatermarkOpacity(watermark.opacity, docTheme),
-                        transform:          `rotate(${watermark.rotation}deg)`,
+                        transform:          watermarkTransform(watermark),
                      }}
                   />
                )

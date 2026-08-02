@@ -46,8 +46,10 @@ interface DocumentMenuProps {
  * entry list as the document-background context menu — both derive from buildDocumentMenuEntries, the
  * single source of truth — so the two surfaces can never drift in label or order. The accent section
  * (a nameless swatch grid + a "Custom accent…" tile) is rendered by the shared AccentSwatchGrid
- * component; this surface only owns its own `customAccentExpanded` toggle state, exactly like the
- * background context menu does — both expand the same inline ColorPicker directly under the grid.
+ * component; this surface only owns its own `customAccentSelected` flag, exactly like the
+ * background context menu does — the Custom tile is a selectable choice, not a disclosure toggle,
+ * so both surfaces reveal the same inline ColorPicker directly under the grid only while Custom is
+ * the active choice.
  *
  * The document theme + accent edited here are PER-DOCUMENT; the app/chrome theme + language live in
  * the Preferences menu. The two are deliberately separate.
@@ -58,7 +60,7 @@ export function DocumentMenu({
    onOpenPresentation, onOpenNavigation, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
 }: DocumentMenuProps) {
    const [open, setOpen]                                 = useState(false)
-   const [customAccentExpanded, setCustomAccentExpanded] = useState(false)
+   const [customAccentSelected, setCustomAccentSelected] = useState(false)
    const [alignRight, setAlignRight]                     = useState(false)
    const containerRef                                    = useRef<HTMLDivElement>(null)
 
@@ -67,7 +69,7 @@ export function DocumentMenu({
       function handleOutsideMouseDown(event: MouseEvent) {
          if (!containerRef.current?.contains(event.target as Node)) {
             setOpen(false)
-            setCustomAccentExpanded(false)
+            setCustomAccentSelected(false)
          }
       }
       document.addEventListener('mousedown', handleOutsideMouseDown)
@@ -83,9 +85,10 @@ export function DocumentMenu({
       if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
-   // The shared entry list. The custom-accent opener is this surface's own: it toggles the inline
-   // ColorPicker rendered directly under the accent swatch grid (AccentSwatchGrid), rather than
-   // anchoring a detached popover.
+   // The shared entry list. This surface owns its own `customAccentSelected` flag: selecting the
+   // Custom tile applies the current docAccent (a smooth hand-off from whatever preset/color was
+   // active) and reveals the inline ColorPicker rendered directly under the accent swatch grid
+   // (AccentSwatchGrid); selecting a preset clears the flag again.
    const entries = buildDocumentMenuEntries({
       t,
       docTheme,
@@ -95,8 +98,11 @@ export function DocumentMenu({
       onAddSection,
       onDocThemeChange,
       onDocAccentChange,
-      customAccentExpanded,
-      onOpenCustomAccent: onDocAccentChange ? () => setCustomAccentExpanded(current => !current) : undefined,
+      customAccentSelected,
+      onSelectCustomAccent: onDocAccentChange
+         ? () => { setCustomAccentSelected(true); onDocAccentChange(docAccent) }
+         : undefined,
+      onDeselectCustomAccent: () => setCustomAccentSelected(false),
       onOpenPresentation,
       onOpenNavigation,
       onOpenExport,
@@ -106,11 +112,13 @@ export function DocumentMenu({
    })
 
    // The accent-grid entry renders its own swatches/picker (see below) and never runs through
-   // this — every remaining item closes the dropdown on select, same as before.
+   // this — every remaining item closes the dropdown on select, same as before. Custom's selected
+   // state is NOT reset here: it is a persistent choice now (see the class doc comment above), only
+   // cleared by picking a preset (onDeselectCustomAccent, wired into the accent grid) or by the
+   // dropdown's outside-click close. An unrelated item like Save or Export must leave it untouched.
    function handleItemSelect(item: ContextMenuItem) {
       if (item.disabled) return
       item.onSelect()
-      setCustomAccentExpanded(false)
       setOpen(false)
    }
 

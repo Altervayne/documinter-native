@@ -104,6 +104,7 @@ describe('generateExportHTML — background watermark', () => {
       src: 'data:image/png;base64,ABC123',
       opacity: 0.1, fit: 'contain', tile: false, position: 'center',
       rotation: 0, tileSize: 160, spacingX: 40, spacingY: 40, aspectRatio: 1,
+      offsetX: 0, offsetY: 0,
    }
 
    it('is byte-identical whether presentation is absent or an empty extras object', () => {
@@ -154,6 +155,27 @@ describe('generateExportHTML — background watermark', () => {
       expect(html).toContain('transform:rotate(25deg)')
    })
 
+   it('offset 0,0 is byte-identical to the pre-offset transform (rotation alone, no translate)', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         presentation: { watermark: { ...watermark, rotation: 25, offsetX: 0, offsetY: 0 } },
+      })
+      // Scoped to the watermark div's own style attribute — the document also embeds Temml's CSS,
+      // which legitimately uses `translate(...)` elsewhere, so a page-wide "not contain" would false-fail.
+      const watermarkDivStart = html.indexOf('class="doc-watermark"')
+      const watermarkDivChunk = html.slice(watermarkDivStart, watermarkDivStart + 400)
+      expect(watermarkDivChunk).toContain('transform:rotate(25deg)"')
+      expect(watermarkDivChunk).not.toContain('translate')
+   })
+
+   it('composes a non-zero offset with rotation into one transform, translate first', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         presentation: { watermark: { ...watermark, rotation: 25, offsetX: 40, offsetY: -15 } },
+      })
+      expect(html).toContain('transform:translate(40px, -15px) rotate(25deg)')
+   })
+
    it('renders a tiled watermark as an inline SVG <pattern> instead of a CSS background', () => {
       const html = generateExportHTML(meta, sections, {
          theme: 'light', accent: '#f97316',
@@ -177,6 +199,22 @@ describe('generateExportHTML — background watermark', () => {
       // cellWidth/Height = tileSize (100) + spacing (20) = 120.
       expect(html).toContain('width="120" height="120"')
       expect(html).toContain('<image href="data:image/png;base64,ABC123" width="100" height="100" x="10" y="10"')
+   })
+
+   it('offset 0,0 leaves a tiled watermark\'s patternTransform byte-identical (rotation alone)', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         presentation: { watermark: { ...watermark, tile: true, rotation: 40, offsetX: 0, offsetY: 0 } },
+      })
+      expect(html).toContain('patternTransform="rotate(40)"')
+   })
+
+   it('shifts a tiled watermark\'s pattern phase by composing the offset into patternTransform', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         presentation: { watermark: { ...watermark, tile: true, rotation: 40, offsetX: 12, offsetY: -8 } },
+      })
+      expect(html).toContain('patternTransform="translate(12,-8) rotate(40)"')
    })
 })
 
@@ -291,6 +329,7 @@ describe('generateExportHTML — header logo', () => {
       const watermark: Watermark = {
          src: 'data:image/png;base64,WM', opacity: 0.1, fit: 'contain', tile: false, position: 'center',
          rotation: 0, tileSize: 160, spacingX: 40, spacingY: 40, aspectRatio: 1,
+         offsetX: 0, offsetY: 0,
       }
       const html = generateExportHTML(meta, sections, {
          theme: 'light', accent: '#f97316', presentation: { watermark, header },

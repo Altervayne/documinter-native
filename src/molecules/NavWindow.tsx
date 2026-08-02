@@ -2,7 +2,7 @@
 import type React from 'react'
 
 // -- Library Imports --
-import { Trash2, GripVertical, Eye, EyeOff, Link2, Globe, Minus, RotateCcw, PanelLeft } from 'lucide-react'
+import { Trash2, GripVertical, Eye, EyeOff, Link2, Globe, Hash, Minus, RotateCcw, PanelLeft } from 'lucide-react'
 
 // -- DnD Imports --
 import {
@@ -18,9 +18,11 @@ import { CSS } from '@dnd-kit/utilities'
 // -- Component / Hook Imports --
 import { BlockEditorWindow } from './BlockEditorWindow'
 import { useLang } from '../contexts/LangContext'
+import { getAnchoredBlocks } from '../hooks/useLinkMode'
 
 // -- Lib Imports --
-import type { Section } from '../types'
+import type { Block, Section } from '../types'
+import { blkPreview } from '../lib/document'
 import {
    reconcileNavEntries,
    type DocPresentationExtras,
@@ -154,6 +156,17 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const titleBySectionId = new Map(sections.map(section => [section.id, section.title]))
    const isCustomized = nav !== undefined
 
+   // Every block carrying a deep-link handle — the "Element link" target universe, matching the
+   // inline "jump to block" picker (FormatToolbar). No anchors ⇒ the element-link adder is disabled.
+   const anchoredBlocks = getAnchoredBlocks(sections)
+
+   /** A readable option label for an anchored block: its content preview plus the `#handle`. */
+   function anchorOptionLabel(block: Block): string {
+      const handle = block.handle ?? ''
+      const preview = blkPreview(block).trim()
+      return preview ? `${preview} — #${handle}` : `#${handle}`
+   }
+
    function commit(nextEntries: NavEntry[]): void {
       onChange({ entries: nextEntries })
    }
@@ -187,6 +200,17 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
       const sectionId = sections[0]?.id
       if (!sectionId) return
       const entry: NavCustomEntry = { kind: 'custom', id: crypto.randomUUID(), label: '', target: { type: 'section', sectionId } }
+      commit([...entries, entry])
+   }
+
+   function addAnchorLink(): void {
+      const firstAnchor = anchoredBlocks[0]?.block
+      const handle = firstAnchor?.handle
+      if (!handle) return
+      // Seed the label from the block's content preview so the new link is meaningful on sight,
+      // falling back to the raw handle when the block has no previewable text.
+      const label = blkPreview(firstAnchor).trim() || handle
+      const entry: NavCustomEntry = { kind: 'custom', id: crypto.randomUUID(), label, target: { type: 'anchor', handle } }
       commit([...entries, entry])
    }
 
@@ -246,12 +270,12 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    }
 
    function customRow(entry: NavCustomEntry, index: number, handle: DragHandleProps): React.ReactNode {
-      const isSection = entry.target.type === 'section'
+      const targetType = entry.target.type
       return (
          <>
             {dragGrip(handle)}
             <span className="presentation-nav-kind-icon" aria-hidden="true">
-               {isSection ? <Link2 size={13} /> : <Globe size={13} />}
+               {targetType === 'section' ? <Link2 size={13} /> : targetType === 'anchor' ? <Hash size={13} /> : <Globe size={13} />}
             </span>
             <input
                className="presentation-input presentation-nav-label"
@@ -270,6 +294,17 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
                >
                   {sections.map(section => (
                      <option key={section.id} value={section.id}>{section.title || t.presentationNavUntitledSection}</option>
+                  ))}
+               </select>
+            ) : entry.target.type === 'anchor' ? (
+               <select
+                  className="presentation-select presentation-nav-target"
+                  value={entry.target.handle}
+                  aria-label={t.presentationNavTargetAnchor}
+                  onChange={event => updateEntryAt(index, { ...entry, target: { type: 'anchor', handle: event.target.value } })}
+               >
+                  {anchoredBlocks.map(({ block }) => (
+                     <option key={block.id} value={block.handle ?? ''}>{anchorOptionLabel(block)}</option>
                   ))}
                </select>
             ) : (
@@ -362,6 +397,15 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
          <div className="presentation-nav-adders">
             <button type="button" className="presentation-btn" onClick={addSectionLink} disabled={sections.length === 0}>
                <Link2 size={13} />{t.presentationNavAddSectionLink}
+            </button>
+            <button
+               type="button"
+               className="presentation-btn"
+               onClick={addAnchorLink}
+               disabled={anchoredBlocks.length === 0}
+               title={anchoredBlocks.length === 0 ? t.presentationNavNoAnchorsHint : undefined}
+            >
+               <Hash size={13} />{t.presentationNavAddAnchorLink}
             </button>
             <button type="button" className="presentation-btn" onClick={addExternalLink}>
                <Globe size={13} />{t.presentationNavAddExternalLink}

@@ -23,6 +23,8 @@ import {
    WATERMARK_MAX_TILE_SIZE,
    WATERMARK_MIN_SPACING,
    WATERMARK_MAX_SPACING,
+   WATERMARK_MIN_OFFSET,
+   WATERMARK_MAX_OFFSET,
    WATERMARK_DEFAULT_ASPECT_RATIO,
    HEADER_MIN_MAX_HEIGHT,
    HEADER_MAX_MAX_HEIGHT,
@@ -205,6 +207,28 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                   value={watermark.rotation}
                   unit="Â°"
                   onChange={next => onChange({ ...watermark, rotation: next })}
+               />
+
+               {/* Position offset: a fine X/Y nudge on top of the position anchor / pattern phase,
+                   composed with rotation rather than replacing it. Applies to BOTH the single and
+                   tiled watermark, same as rotation. */}
+               <SliderWithNumberInput
+                  label={t.presentationWatermarkOffsetX}
+                  min={WATERMARK_MIN_OFFSET}
+                  max={WATERMARK_MAX_OFFSET}
+                  step={1}
+                  value={watermark.offsetX}
+                  unit="px"
+                  onChange={next => onChange({ ...watermark, offsetX: next })}
+               />
+               <SliderWithNumberInput
+                  label={t.presentationWatermarkOffsetY}
+                  min={WATERMARK_MIN_OFFSET}
+                  max={WATERMARK_MAX_OFFSET}
+                  step={1}
+                  value={watermark.offsetY}
+                  unit="px"
+                  onChange={next => onChange({ ...watermark, offsetY: next })}
                />
 
                {/* Tile toggle. */}

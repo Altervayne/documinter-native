@@ -14,7 +14,7 @@
  * it is unit-testable and reusable by both the editor render and the export pipeline.
  */
 
-import type { Section } from '../types'
+import type { Block, Section } from '../types'
 
 // ############
 // # WATERMARK #
@@ -40,6 +40,8 @@ export interface Watermark {
    spacingX:    number             // horizontal gap (px) between tile repeats; tiled only; 0 = edge-to-edge
    spacingY:    number             // vertical gap (px) between tile repeats; tiled only; 0 = edge-to-edge
    aspectRatio: number             // the source image's natural width / height, so tile height derives from tileSize
+   offsetX:     number             // fine horizontal position nudge (px), may be negative; applies to single AND tiled
+   offsetY:     number             // fine vertical position nudge (px), may be negative; applies to single AND tiled
 }
 
 // ##########
@@ -74,9 +76,13 @@ export interface Header {
 // # NAV #
 // #######
 
-/** Where a custom nav entry points: an in-document section anchor, or an external URL. */
+/**
+ * Where a custom nav entry points: an in-document section anchor, a specific anchored block (any
+ * block carrying a `handle`), or an external URL.
+ */
 export type NavTarget =
    | { type: 'section'; sectionId: string }
+   | { type: 'anchor';  handle: string }
    | { type: 'url';     href: string }
 
 /**
@@ -172,6 +178,13 @@ export const WATERMARK_MIN_ASPECT_RATIO = 0.05
 export const WATERMARK_MAX_ASPECT_RATIO = 20
 export const WATERMARK_DEFAULT_ASPECT_RATIO = 1
 
+// Position offset: a fine X/Y nudge (px) on top of the position anchor (single) / pattern phase
+// (tiled), composed with rotation rather than replacing it. May be negative (nudge left/up). Bounded
+// to a generous but sane window against corrupt/malicious data — well past any plausible page size.
+export const WATERMARK_MIN_OFFSET = -1000
+export const WATERMARK_MAX_OFFSET = 1000
+export const WATERMARK_DEFAULT_OFFSET = 0
+
 // Header logo max-height: a px cap on the rendered logo, clamped to stay a "logo", not a banner
 // that overwhelms the title it sits beside/above.
 export const HEADER_MIN_MAX_HEIGHT = 24
@@ -222,6 +235,12 @@ export function clampWatermarkSpacing(value: unknown): number {
 export function clampWatermarkAspectRatio(value: unknown): number {
    if (typeof value !== 'number' || Number.isNaN(value)) return WATERMARK_DEFAULT_ASPECT_RATIO
    return Math.min(WATERMARK_MAX_ASPECT_RATIO, Math.max(WATERMARK_MIN_ASPECT_RATIO, value))
+}
+
+/** Clamp a raw position offset (px) into range, falling back to the default (0) for a non-number. */
+export function clampWatermarkOffset(value: unknown): number {
+   if (typeof value !== 'number' || Number.isNaN(value)) return WATERMARK_DEFAULT_OFFSET
+   return Math.min(WATERMARK_MAX_OFFSET, Math.max(WATERMARK_MIN_OFFSET, value))
 }
 
 /** Clamp a raw header logo max-height (px) into range, falling back to the default for a non-number. */
@@ -299,6 +318,22 @@ export function resolveWatermarkLayout(watermark: Watermark): WatermarkLayout {
    return { repeat, size, position: cssBackgroundPosition(watermark.position) }
 }
 
+/**
+ * The CSS `transform` value for a SINGLE (non-tiled) watermark: the X/Y position offset composed
+ * with rotation. `translate()` is listed first so the offset moves the box in screen space, then
+ * `rotate()` spins it around its own (now-shifted) center — "nudge, then spin in place", so rotation
+ * keeps its original meaning regardless of the offset. When both offsets are 0 (the default) this
+ * degrades to the bare `rotate(...)` string, byte-identical to the pre-offset output. Shared by the
+ * editor render (WysiwygArea) and export.ts's renderWatermarkLayer so both surfaces compose identically.
+ */
+export function watermarkTransform(watermark: Watermark): string {
+   const offsetX  = clampWatermarkOffset(watermark.offsetX)
+   const offsetY  = clampWatermarkOffset(watermark.offsetY)
+   const rotation = clampWatermarkRotation(watermark.rotation)
+   if (offsetX === 0 && offsetY === 0) return `rotate(${rotation}deg)`
+   return `translate(${offsetX}px, ${offsetY}px) rotate(${rotation}deg)`
+}
+
 /** Map a WatermarkPosition to a CSS background-position value. */
 function cssBackgroundPosition(position: WatermarkPosition): string {
    switch (position) {
@@ -331,6 +366,8 @@ export interface WatermarkPatternGeometry {
    imageX:      number   // spacingX / 2 — centers the image in its cell so the gap is even
    imageY:      number   // spacingY / 2
    rotation:    number   // clamped rotation, degrees
+   offsetX:     number   // clamped X phase shift (px) of the pattern origin; 0 = no shift
+   offsetY:     number   // clamped Y phase shift (px) of the pattern origin; 0 = no shift
 }
 
 /**
@@ -352,7 +389,21 @@ export function resolveWatermarkPatternGeometry(watermark: Watermark): Watermark
       imageX:     round2(spacingX / 2),
       imageY:     round2(spacingY / 2),
       rotation:   clampWatermarkRotation(watermark.rotation),
+      offsetX:    clampWatermarkOffset(watermark.offsetX),
+      offsetY:    clampWatermarkOffset(watermark.offsetY),
    }
+}
+
+/**
+ * The SVG `patternTransform` value for a tiled watermark: the X/Y position offset composed with
+ * rotation, same "translate then rotate" order as watermarkTransform (single case) — the offset
+ * shifts the pattern's phase (where its origin sits), then rotation spins the whole tiled field
+ * around that shifted origin. When both offsets are 0 this degrades to the bare `rotate(...)`
+ * string, byte-identical to the pre-offset output.
+ */
+function watermarkPatternTransform(geometry: WatermarkPatternGeometry): string {
+   if (geometry.offsetX === 0 && geometry.offsetY === 0) return `rotate(${geometry.rotation})`
+   return `translate(${geometry.offsetX},${geometry.offsetY}) rotate(${geometry.rotation})`
 }
 
 /**
@@ -371,7 +422,7 @@ export function renderWatermarkPatternSvg(watermark: Watermark, theme: 'light' |
       `<defs>` +
       `<pattern id="${patternId}" patternUnits="userSpaceOnUse" ` +
       `width="${geometry.cellWidth}" height="${geometry.cellHeight}" ` +
-      `patternTransform="rotate(${geometry.rotation})">` +
+      `patternTransform="${watermarkPatternTransform(geometry)}">` +
       `<image href="${watermark.src}" width="${geometry.imageWidth}" height="${geometry.imageHeight}" ` +
       `x="${geometry.imageX}" y="${geometry.imageY}" preserveAspectRatio="xMidYMid meet"/>` +
       `</pattern>` +
@@ -394,6 +445,31 @@ export function applyLinkedWatermarkSpacing(watermark: Watermark, spacing: numbe
 // ####################
 // # NAV RECONCILIATION #
 // ####################
+
+/**
+ * The set of every live deep-link handle in the document — one per block (including container inner
+ * blocks) that carries a `handle`. Mirrors the exact walk getAnchoredBlocks (hooks/useLinkMode.ts)
+ * uses for the inline "jump to block" picker, so an anchor nav target resolves against the same
+ * universe of anchors. Pure — shared by reconcileNav (drop dead anchor targets) and the export
+ * scroll-spy (observe the referenced anchor elements).
+ */
+export function collectAnchoredHandles(sections: Section[]): Set<string> {
+   const handles = new Set<string>()
+   for (const section of sections) {
+      for (const block of section.blocks) {
+         if (block.handle) handles.add(block.handle)
+         for (const inner of collectInnerBlocks(block)) {
+            if (inner.handle) handles.add(inner.handle)
+         }
+      }
+   }
+   return handles
+}
+
+/** A block's container inner blocks (left + right columns), flattened; empty for non-containers. */
+function collectInnerBlocks(block: Block): Block[] {
+   return [...(block.left ?? []), ...(block.right ?? [])]
+}
 
 /**
  * Reconcile a stored nav model against the live section list into a clean NavEntry[] — the linchpin
@@ -453,12 +529,19 @@ export type ResolvedNavEntry =
  * raw reconcileNavEntries still keeps it so the editor can show + fix it).
  *
  * Numbering: section-target links (unhidden `auto` + `custom` → section) are numbered 1..N in nav
- * order; external links and dividers are NOT numbered and do not consume a number. When `nav` is
- * absent this yields all sections numbered 1..N in order — byte-identical to today's derivation.
+ * order; anchor links (custom → block handle), external links, and dividers are NOT numbered and do
+ * not consume a number — an anchor link is a sub-reference into a section, sibling to an external
+ * link, so it stays unnumbered. When `nav` is absent this yields all sections numbered 1..N in
+ * order — byte-identical to today's derivation.
+ *
+ * An anchor target whose `handle` no longer exists among the document's anchored blocks is DROPPED
+ * (mirrors a custom section link pointing at a deleted section), so a stale anchor never emits a
+ * dead `#handle` link into the export.
  */
 export function reconcileNav(nav: NavModel | undefined, sections: Section[]): ResolvedNavEntry[] {
    const entries = reconcileNavEntries(nav, sections)
    const titleBySectionId = new Map(sections.map(section => [section.id, section.title]))
+   const anchoredHandles = collectAnchoredHandles(sections)
    const resolved: ResolvedNavEntry[] = []
    let sectionLinkNumber = 0
 
@@ -486,6 +569,17 @@ export function reconcileNav(nav: NavModel | undefined, sections: Section[]): Re
       if (entry.target.type === 'url') {
          if (entry.target.href.trim() === '') continue   // half-filled external adder → don't emit a broken link
          resolved.push({ kind: 'link', id: entry.id, label: entry.label, href: entry.target.href, external: true })
+      } else if (entry.target.type === 'anchor') {
+         if (!anchoredHandles.has(entry.target.handle)) continue   // points at a dropped anchor → drop
+         // An anchor is an internal smooth-scroll link (external:false) but UNNUMBERED — a
+         // sub-reference into a section, sibling to an external link, so it consumes no number.
+         resolved.push({
+            kind:     'link',
+            id:       entry.id,
+            label:    entry.label,
+            href:     `#${entry.target.handle}`,
+            external: false,
+         })
       } else {
          if (!titleBySectionId.has(entry.target.sectionId)) continue   // points at a deleted section → drop
          sectionLinkNumber += 1
@@ -530,6 +624,8 @@ function normalizeWatermark(raw: unknown): Watermark | undefined {
       spacingX:    clampWatermarkSpacing(source.spacingX),
       spacingY:    clampWatermarkSpacing(source.spacingY),
       aspectRatio: clampWatermarkAspectRatio(source.aspectRatio),
+      offsetX:     clampWatermarkOffset(source.offsetX),
+      offsetY:     clampWatermarkOffset(source.offsetY),
    }
 }
 
@@ -580,6 +676,9 @@ function normalizeNavEntry(raw: unknown): NavEntry | undefined {
       const target = rawTarget as Record<string, unknown>
       if (target.type === 'section' && typeof target.sectionId === 'string' && target.sectionId.trim() !== '') {
          return { kind: 'custom', id, label, target: { type: 'section', sectionId: target.sectionId } }
+      }
+      if (target.type === 'anchor' && typeof target.handle === 'string' && target.handle.trim() !== '') {
+         return { kind: 'custom', id, label, target: { type: 'anchor', handle: target.handle } }
       }
       if (target.type === 'url' && typeof target.href === 'string') {
          return { kind: 'custom', id, label, target: { type: 'url', href: target.href } }
@@ -653,6 +752,8 @@ export function makeWatermark(src: string, aspectRatio: number = WATERMARK_DEFAU
       spacingX:    WATERMARK_DEFAULT_SPACING,
       spacingY:    WATERMARK_DEFAULT_SPACING,
       aspectRatio: clampWatermarkAspectRatio(aspectRatio),
+      offsetX:     WATERMARK_DEFAULT_OFFSET,
+      offsetY:     WATERMARK_DEFAULT_OFFSET,
    }
 }
 
