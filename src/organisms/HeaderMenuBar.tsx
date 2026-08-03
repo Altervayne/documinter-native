@@ -14,7 +14,7 @@ import { ExportModal } from './ExportModal'
 
 // -- Molecule Imports --
 import { FileMenu } from '../molecules/FileMenu'
-import { ViewMenu } from '../molecules/ViewMenu'
+import { ViewMenu, type DockPanelToggle } from '../molecules/ViewMenu'
 import { PreferencesMenu } from '../molecules/PreferencesMenu'
 import { DocumentMenu } from '../molecules/DocumentMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
@@ -114,6 +114,8 @@ interface HeaderMenuBarProps {
    onToggleTheme:    () => void
    onSetMode:        (mode: Mode) => void
    onTogglePanel:    (id: PaneId) => void
+   /** The dockable side panels applicable to the active document, shown as toggles in the View menu. */
+   dockPanels:       DockPanelToggle[]
    onManualSave:     () => void
    onSaveAs:         () => void
    onNew:            () => void
@@ -150,7 +152,7 @@ interface HeaderMenuBarProps {
 
 export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onAddSection, onToggleBinder,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
    format, onOpenFormat,
@@ -251,7 +253,7 @@ export function HeaderMenuBar({
                onImportMintdown={comingSoon}
                t={t}
             />
-            {isDocumentMode && <ViewMenu paneLayout={paneLayout} onTogglePanel={onTogglePanel} t={t} />}
+            {isDocumentMode && <ViewMenu paneLayout={paneLayout} onTogglePanel={onTogglePanel} dockPanels={dockPanels} t={t} />}
             {/* Preferences = app-wide settings (chrome theme + language). */}
             <PreferencesMenu
                theme={theme}

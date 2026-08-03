@@ -29,6 +29,9 @@ import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
+import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
+import { isPanelVisible } from './lib/dockPolicy'
+import type { DockPanelToggle } from './molecules/ViewMenu'
 import type { PanelId } from './lib/dockLayout'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
@@ -765,7 +768,8 @@ export default function App() {
    // The dock owns the side panels' layout; applicability is driven by the active document's format
    // (Pages needs a paged doc) and mode (Pages needs edit mode). The Pages data + handlers are derived
    // here so the body can be hosted by the App-level dock instead of buried in WysiwygArea.
-   const dock      = useDockState({ formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' })
+   const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
+   const dock      = useDockState(panelContext)
    const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t)
 
    // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
@@ -798,6 +802,16 @@ export default function App() {
       ),
    }
 
+   // The applicable dockable panels as View-menu toggles: on = visible (docked or floating), off =
+   // hidden. Toggling routes through the dock's show/hide, which remembers the prior config.
+   const dockPanels: DockPanelToggle[] = applicablePanels(panelContext).map(panelId => ({
+      id:       panelId,
+      label:    PANEL_REGISTRY[panelId].title(t),
+      icon:     PANEL_REGISTRY[panelId].icon,
+      visible:  isPanelVisible(dock.layout, dock.floatingPanels, panelId),
+      onToggle: () => dock.togglePanelVisibility(panelId),
+   }))
+
    return (
       <LangProvider lang={lang} setLang={setLang}>
          {/* Shared app menu bar, mounted in both modes; context-aware via mode. */}
@@ -815,6 +829,7 @@ export default function App() {
             onToggleTheme={toggleTheme}
             onSetMode={handleSetMode}
             onTogglePanel={togglePanel}
+            dockPanels={dockPanels}
             onManualSave={handleManualSave}
             onSaveAs={handleSaveAs}
             onNew={handleHeaderNew}

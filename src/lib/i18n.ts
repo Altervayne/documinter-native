@@ -726,6 +726,8 @@ export const translations = {
       dockClosePanel:      'Close panel',
       dockCollapseDock:    'Collapse dock',
       dockExpandDock:      'Expand dock',
+      dockPopOut:          'Pop out to window',
+      dockDockPanel:       'Dock panel',
       // About menu
       menuAbout:       'About',
       aboutTagline:    'Personal documentation builder',
@@ -1460,6 +1462,8 @@ export const translations = {
       dockClosePanel:      'Fermer le panneau',
       dockCollapseDock:    'Réduire le dock',
       dockExpandDock:      'Développer le dock',
+      dockPopOut:          'Détacher en fenêtre',
+      dockDockPanel:       'Ancrer le panneau',
       // About menu
       menuAbout:       'À propos',
       aboutTagline:    'Éditeur de documentation personnel',

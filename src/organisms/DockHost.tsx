@@ -6,7 +6,7 @@ import type { ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactM
 import {
    MoreVertical, ChevronUp, ChevronDown, X,
    PanelLeft, PanelRight, PanelLeftClose, PanelRightClose, PanelLeftOpen, PanelRightOpen,
-   Rows2, Combine,
+   Rows2, Combine, PictureInPicture2,
 } from 'lucide-react'
 
 // -- Molecule / Lib / Hook / Context Imports --
@@ -22,11 +22,21 @@ import type { T } from '../lib/i18n'
 // #########
 
 /** Where a dragged tab would land, resolved by group id so an index shift after detaching the panel
- *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock. */
+ *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock, `float` is the
+ *  center drop that pops the panel out as a window, and `cancel` is the neutral no-op zone over the
+ *  panel's own group (its center / its icon). */
 export type DockDropTarget =
    | { kind: 'merge';     groupId: string }
    | { kind: 'adjacent';  groupId: string; position: 'before' | 'after' }
    | { kind: 'emptySide'; side: DockSide }
+   | { kind: 'float' }
+   | { kind: 'cancel';    groupId: string }
+
+// A group's drop bands by fraction of its height: above (new group before), merge (add as a tab), and
+// below (new group after). Shared with the hit-testing in DockedWorkspace so the drawn zone and the
+// resolved target always agree.
+export const DROP_BEFORE_MAX = 0.36
+export const DROP_AFTER_MIN  = 0.64
 
 /** The drag state + callbacks the DockedWorkspace shares with both DockHosts, so a tab dragged out of
  *  one dock can land in the other. */
@@ -157,7 +167,7 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
    const tabRail = hasTabRail && !group.collapsed ? (
       <div
          role="tablist"
-         className={`shrink-0 flex flex-col items-center gap-1 p-1 ${side === 'left' ? 'border-r' : 'border-l'} border-border`}
+         className={`shrink-0 flex flex-col items-center gap-1 p-1 ${side === 'left' ? 'border-l' : 'border-r'} border-border`}
       >
          {group.panels.map((panelId) => {
             const descriptor = PANEL_REGISTRY[panelId]
@@ -242,7 +252,9 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
          ref={(element) => drag.registerGroup(group.id, element)}
          className="relative flex overflow-hidden flex-1 min-h-0"
       >
-         {side === 'left' ? <>{tabRail}{groupContent}</> : <>{groupContent}{tabRail}</>}
+         {/* Rail on the INNER side of the dock (toward the center): left dock -> rail on the right,
+             right dock -> rail on the left. Photoshop-style. */}
+         {side === 'left' ? <>{groupContent}{tabRail}</> : <>{tabRail}{groupContent}</>}
 
          {menuPosition && (
             <ContextMenu
@@ -267,13 +279,21 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
 function GroupDropOverlay({ groupId, drag }: { groupId: string; drag: DockDragApi }) {
    const target = drag.dropTarget
    if (drag.draggingPanelId === null || target === null) return null
-   if (target.kind === 'emptySide' || target.groupId !== groupId) return null
+   if (target.kind === 'emptySide' || target.kind === 'float') return null
+   if (target.groupId !== groupId) return null
 
-   if (target.kind === 'merge') {
-      return <div className="absolute inset-0 z-30 pointer-events-none rounded-sm border-2 border-accent/60 bg-accent/15" />
+   // The panel's own group: a neutral "release to cancel" wash, so a no-op drop reads as intentional.
+   if (target.kind === 'cancel') {
+      return <div className="absolute inset-0 z-30 pointer-events-none rounded-sm border-2 border-dashed border-muted/40 bg-muted/15" />
    }
-   const edgeClass = target.position === 'before' ? 'top-0' : 'bottom-0'
-   return <div className={`absolute ${edgeClass} left-0 right-0 h-[3px] z-30 pointer-events-none bg-accent`} />
+
+   // A full filled band showing exactly where the panel will land: above / merge (center) / below.
+   const bandStyle: CSSProperties =
+      target.kind === 'merge'        ? { top: `${DROP_BEFORE_MAX * 100}%`, bottom: `${(1 - DROP_AFTER_MIN) * 100}%` }
+      : target.position === 'before' ? { top: 0,    height: `${DROP_BEFORE_MAX * 100}%` }
+      :                                { bottom: 0, height: `${(1 - DROP_AFTER_MIN) * 100}%` }
+
+   return <div className="absolute left-0 right-0 z-30 pointer-events-none border-2 border-accent/50 bg-accent/20 rounded-sm" style={bandStyle} />
 }
 
 // ##########################
@@ -319,6 +339,15 @@ function buildConfigEntries(
       })
    }
 
+   // ===== Pop out into a floating window =====
+   if (PANEL_REGISTRY[activePanel].canFloat) {
+      entries.push({
+         label:    t.dockPopOut,
+         icon:     <PictureInPicture2 size={13} />,
+         onSelect: () => actions.floatPanel(activePanel),
+      })
+   }
+
    entries.push({ type: 'separator' })
 
    entries.push({
@@ -338,7 +367,7 @@ function buildConfigEntries(
       label:    t.dockClosePanel,
       icon:     <X size={13} />,
       danger:   true,
-      onSelect: () => actions.togglePanel(activePanel),
+      onSelect: () => actions.togglePanelVisibility(activePanel),
    })
 
    return entries

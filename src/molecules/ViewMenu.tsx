@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Layout, FileText, FileType, Check } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Layout, FileText, FileType, Check, ChevronDown } from 'lucide-react'
 import type { PaneId, PaneNode } from '../types'
 import type { T } from '../lib/i18n'
 import { isPanelVisible } from '../lib/paneTree'
@@ -8,9 +9,21 @@ import { isPanelVisible } from '../lib/paneTree'
 // # TYPES #
 // #########
 
+/** A dockable side panel presented as a View-menu toggle: on = visible (docked or floating), off =
+ *  hidden. Toggling preserves the panel's previous config (docked-where / floating-at-geometry). */
+export interface DockPanelToggle {
+   id:      string
+   label:   string
+   icon:    ReactNode
+   visible: boolean
+   onToggle: () => void
+}
+
 interface ViewMenuProps {
    paneLayout:    PaneNode
    onTogglePanel: (id: PaneId) => void
+   /** The dockable side panels applicable to the current document, listed under the workspace panes. */
+   dockPanels:    DockPanelToggle[]
    t:             T
 }
 
@@ -39,7 +52,7 @@ const EDGE_MARGIN     = 8
 // # COMPONENT #
 // #############
 
-export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
+export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuProps) {
    const [open, setOpen]  = useState(false)
    const [alignRight, setAlignRight] = useState(false)
    const containerRef     = useRef<HTMLDivElement>(null)
@@ -63,10 +76,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
       if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
-   function handleOptionClick(id: PaneId) {
-      onTogglePanel(id)
-   }
-
    return (
       <div ref={containerRef} className="relative">
          {/* Trigger button */}
@@ -82,6 +91,7 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
          >
             <Layout size={14} />
             <span>{t.menuView}</span>
+            <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
          {/* Dropdown panel */}
@@ -90,12 +100,13 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
                className={`absolute top-full mt-1.5 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`}
                style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}
             >
+               {/* The three workspace panes. */}
                {PANEL_OPTIONS.map(({ id, icon, labelKey, shortcutKey }) => {
                   const isActive = isPanelVisible(paneLayout, id)
                   return (
                      <button
                         key={id}
-                        onClick={() => handleOptionClick(id)}
+                        onClick={() => onTogglePanel(id)}
                         className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left
                            transition-colors cursor-pointer hover:bg-border/50
                            ${isActive ? 'text-accent' : 'text-text'}`}
@@ -109,6 +120,24 @@ export function ViewMenu({ paneLayout, onTogglePanel, t }: ViewMenuProps) {
                      </button>
                   )
                })}
+
+               {/* The dockable side panels, each a show/hide toggle that preserves its previous config. */}
+               {dockPanels.length > 0 && <div className="h-px bg-border my-1 mx-2" />}
+               {dockPanels.map((panel) => (
+                  <button
+                     key={panel.id}
+                     onClick={panel.onToggle}
+                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left
+                        transition-colors cursor-pointer hover:bg-border/50
+                        ${panel.visible ? 'text-accent' : 'text-text'}`}
+                  >
+                     <span className="shrink-0 flex items-center">{panel.icon}</span>
+                     <span className="flex-1 min-w-0">{panel.label}</span>
+                     <span className="w-[13px] shrink-0 flex items-center justify-center">
+                        {panel.visible && <Check size={13} />}
+                     </span>
+                  </button>
+               ))}
             </div>
          )}
       </div>

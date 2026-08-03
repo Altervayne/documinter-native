@@ -42,6 +42,8 @@ export interface PanelDescriptor {
    isApplicable: (context: PanelContext) => boolean
    /** Side the panel first docks to when it has never been placed (ratified: Structure left, Pages right). */
    defaultSide: DockSide
+   /** Whether the panel may be popped out into a floating window (Phase 3 window-pinning). */
+   canFloat: boolean
 }
 
 // ############
@@ -55,6 +57,7 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       title:        translations => translations.structure,
       isApplicable: () => true,
       defaultSide:  'left',
+      canFloat:     true,
    },
    pages: {
       id:           'pages',
@@ -64,6 +67,7 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       // discrete pages, and preview mode has nothing for the sorter to reorder.
       isApplicable: context => context.formatKind !== 'infinite' && !context.readOnly,
       defaultSide:  'right',
+      canFloat:     true,
    },
 }
 

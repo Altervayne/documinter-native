@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload } from 'lucide-react'
+import { ChevronDown, File, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #############
@@ -87,14 +87,15 @@ export function FileMenu({
          {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
                border transition-colors cursor-pointer
                ${open
                   ? 'bg-accent/10 border-accent/50 text-accent'
                   : 'border-border text-muted hover:text-text hover:border-border'
                }`}
          >
-            {t.menuFile}
+            <File size={14} />
+            <span>{t.menuFile}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

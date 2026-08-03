@@ -58,6 +58,18 @@ export interface PanelLocation {
    tabIndex:   number
 }
 
+/** Geometry of a floating panel window (Phase 3 window-pinning). */
+export interface WindowPlacement {
+   top:    number
+   left:   number
+   width:  number
+   height: number
+}
+
+/** Panels currently floating as windows, keyed by id, with their last window geometry. A panel is in
+ *  at most one of the dock layout or this map (the no-duplicates rule spans both). */
+export type FloatingPanels = Partial<Record<PanelId, WindowPlacement>>
+
 // #############
 // # CONSTANTS #
 // #############

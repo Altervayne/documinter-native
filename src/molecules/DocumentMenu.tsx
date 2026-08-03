@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, FileText } from 'lucide-react'
 import { AccentSwatchGrid } from './AccentSwatchGrid'
 import type { ContextMenuItem } from './ContextMenu'
 import { buildDocumentMenuEntries } from '../lib/documentMenuEntries'
@@ -133,14 +133,15 @@ export function DocumentMenu({
          {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
                border transition-colors cursor-pointer
                ${open
                   ? 'bg-accent/10 border-accent/50 text-accent'
                   : 'border-border text-muted hover:text-text hover:border-border'
                }`}
          >
-            {t.menuDocument}
+            <FileText size={14} />
+            <span>{t.menuDocument}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

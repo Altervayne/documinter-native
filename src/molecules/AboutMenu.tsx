@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 // -- Library Imports --
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Info, ChevronDown } from 'lucide-react'
 
 // -- Atom Imports --
 import { LogoColor, LogoMono } from '../atoms/Logo'
@@ -68,14 +68,16 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
          {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
                border transition-colors cursor-pointer
                ${open
                   ? 'bg-accent/10 border-accent/50 text-accent'
                   : 'border-border text-muted hover:text-text hover:border-border'
                }`}
          >
-            {t.menuAbout}
+            <Info size={14} />
+            <span>{t.menuAbout}</span>
+            <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
          {/* Dropdown */}
