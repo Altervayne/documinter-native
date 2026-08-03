@@ -140,51 +140,83 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
+   const activeDescriptor = PANEL_REGISTRY[group.activePanel]
+   const hasTabRail       = group.panels.length > 1
+   const columnGroupCount = layout[side]?.groups.length ?? 1
+   const CollapseDockIcon = side === 'left' ? PanelLeftClose : PanelRightClose
+
    function openConfigMenu(event: ReactMouseEvent<HTMLButtonElement>) {
       const rect = event.currentTarget.getBoundingClientRect()
       setMenuPosition({ x: rect.left, y: rect.bottom + 4 })
    }
 
-   return (
+   // The label-less vertical icon rail = the tab selector for a multi-panel group (Photoshop style),
+   // so two panels no longer crowd a narrow header. A single-panel group needs no rail (its one
+   // identity lives in the header). Each icon doubles as a drag handle: a click selects it, a drag past
+   // the activation distance tears the panel out. Hidden while collapsed, where there is no room for it.
+   const tabRail = hasTabRail && !group.collapsed ? (
       <div
-         ref={(element) => drag.registerGroup(group.id, element)}
-         className="relative flex flex-col overflow-hidden flex-1 min-h-0"
+         role="tablist"
+         className={`shrink-0 flex flex-col items-center gap-1 p-1 ${side === 'left' ? 'border-r' : 'border-l'} border-border`}
       >
-         {/* Header: tab strip + collapse + config. One shared header for every group, so headers are
-             always the same height (this is what fixes the old two-panel header mismatch). */}
-         <div className="flex items-center h-9 pl-1.5 pr-1 border-b border-border shrink-0 gap-1">
-            <div className="flex-1 flex items-center gap-0.5 overflow-hidden" role="tablist">
-               {group.panels.map((panelId) => {
-                  const descriptor = PANEL_REGISTRY[panelId]
-                  const isActive   = panelId === group.activePanel
-                  return (
-                     <button
-                        key={panelId}
-                        role="tab"
-                        aria-selected={isActive}
-                        title={descriptor.title(t)}
-                        onPointerDown={(event) => drag.onTabPointerDown(panelId, group.id, event)}
-                        className={[
-                           'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-grab border-0 transition-colors min-w-0 touch-none select-none',
-                           isActive
-                              ? 'text-accent bg-accent/10'
-                              : 'text-muted/70 hover:text-text hover:bg-accent/8 bg-transparent',
-                        ].join(' ')}
-                     >
-                        <span className="shrink-0">{descriptor.icon}</span>
-                        <span className="truncate">{descriptor.title(t)}</span>
-                     </button>
-                  )
-               })}
-            </div>
+         {group.panels.map((panelId) => {
+            const descriptor = PANEL_REGISTRY[panelId]
+            const isActive   = panelId === group.activePanel
+            return (
+               <button
+                  key={panelId}
+                  role="tab"
+                  aria-selected={isActive}
+                  title={descriptor.title(t)}
+                  aria-label={descriptor.title(t)}
+                  onPointerDown={(event) => drag.onTabPointerDown(panelId, group.id, event)}
+                  className={[
+                     'w-7 h-7 flex items-center justify-center rounded-md cursor-grab border-0 transition-colors touch-none select-none',
+                     isActive ? 'text-accent bg-accent/10' : 'text-muted/60 hover:text-text hover:bg-accent/8 bg-transparent',
+                  ].join(' ')}
+               >
+                  {descriptor.icon}
+               </button>
+            )
+         })}
+      </div>
+   ) : null
 
+   const groupContent = (
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+         {/* Header adopts the active tab's icon + label (the group's identity), which doubles as a drag
+             handle for the active panel. Same height for every group, so headers never mismatch. */}
+         <div className="flex items-center h-9 pl-2 pr-1 border-b border-border shrink-0 gap-1">
             <button
-               onClick={() => actions.toggleGroupCollapsed(group.id)}
-               title={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
-               aria-label={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
+               onPointerDown={(event) => drag.onTabPointerDown(group.activePanel, group.id, event)}
+               title={activeDescriptor.title(t)}
+               className="flex-1 flex items-center gap-1.5 min-w-0 text-left cursor-grab border-0 bg-transparent touch-none select-none"
+            >
+               <span className="shrink-0 text-accent">{activeDescriptor.icon}</span>
+               <span className="truncate text-xs font-semibold text-text">{activeDescriptor.title(t)}</span>
+            </button>
+
+            {/* Per-group collapse only earns a slot when the column stacks more than one group;
+                otherwise the whole-dock collapse below covers the "get this out of the way" case. */}
+            {columnGroupCount > 1 && (
+               <button
+                  onClick={() => actions.toggleGroupCollapsed(group.id)}
+                  title={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
+                  aria-label={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
+                  className="shrink-0 text-muted hover:text-accent p-1 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+               >
+                  {group.collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+               </button>
+            )}
+
+            {/* Whole-dock collapse: a visible one-click affordance, no longer only in the config menu. */}
+            <button
+               onClick={() => actions.toggleColumnCollapsed(side)}
+               title={t.dockCollapseDock}
+               aria-label={t.dockCollapseDock}
                className="shrink-0 text-muted hover:text-accent p-1 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
             >
-               {group.collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+               <CollapseDockIcon size={15} />
             </button>
 
             <button
@@ -202,6 +234,15 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
                {body}
             </div>
          )}
+      </div>
+   )
+
+   return (
+      <div
+         ref={(element) => drag.registerGroup(group.id, element)}
+         className="relative flex overflow-hidden flex-1 min-h-0"
+      >
+         {side === 'left' ? <>{tabRail}{groupContent}</> : <>{groupContent}{tabRail}</>}
 
          {menuPosition && (
             <ContextMenu
