@@ -40,6 +40,9 @@ export interface DockColumn {
    width:  number
    /** Groups stacked top-to-bottom. A column is never stored empty (the side is set to null instead). */
    groups: DockGroup[]
+   /** When true the whole dock is collapsed to its rail. Distinct from a single group's `collapsed`
+    *  (the ratified granularity is both per-group and whole-dock). */
+   collapsed?: boolean
 }
 
 export interface DockLayout {
@@ -294,6 +297,13 @@ export function reorderTabInGroup(layout: DockLayout, groupId: string, fromIndex
 /** Flips a single group's collapsed state (per-group collapse). */
 export function toggleGroupCollapsed(layout: DockLayout, groupId: string): DockLayout {
    return mapGroup(layout, groupId, group => ({ ...group, collapsed: !group.collapsed }))
+}
+
+/** Flips a whole dock's collapsed state (collapse the entire side to its rail). No-op if empty. */
+export function toggleColumnCollapsed(layout: DockLayout, side: DockSide): DockLayout {
+   const column = layout[side]
+   if (!column) return layout
+   return withSide(layout, side, { ...column, collapsed: !column.collapsed })
 }
 
 // #####################

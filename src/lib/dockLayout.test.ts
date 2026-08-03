@@ -13,6 +13,7 @@ import {
    setActiveTab,
    reorderTabInGroup,
    toggleGroupCollapsed,
+   toggleColumnCollapsed,
    setColumnWidth,
    setGroupFlex,
    MIN_COLUMN_WIDTH,
@@ -217,6 +218,14 @@ describe('tab + collapse state', () => {
       expect(collapsed.left?.groups[0].collapsed).toBe(true)
       const expanded  = toggleGroupCollapsed(collapsed, 'group-structure')
       expect(expanded.left?.groups[0].collapsed).toBe(false)
+   })
+
+   it('toggles whole-dock collapsed state, and is a no-op on an empty side', () => {
+      const layout    = defaultLayout()
+      const collapsed = toggleColumnCollapsed(layout, 'left')
+      expect(collapsed.left?.collapsed).toBe(true)
+      expect(toggleColumnCollapsed(collapsed, 'left').left?.collapsed).toBe(false)
+      expect(toggleColumnCollapsed(layout, 'right')).toEqual(layout)
    })
 })
 
