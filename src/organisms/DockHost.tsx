@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import type { ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, CSSProperties } from 'react'
 
 // -- Icon Imports --
@@ -22,13 +22,15 @@ import type { T } from '../lib/i18n'
 // #########
 
 /** Where a dragged tab would land, resolved by group id so an index shift after detaching the panel
- *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock, `float` is the
+ *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock, `dockSide` is
+ *  a drop over a populated dock's empty area (append as a new group at the bottom), `float` is the
  *  center drop that pops the panel out as a window, and `cancel` is the neutral no-op zone over the
  *  panel's own group (its center / its icon). */
 export type DockDropTarget =
    | { kind: 'merge';     groupId: string }
    | { kind: 'adjacent';  groupId: string; position: 'before' | 'after' }
    | { kind: 'emptySide'; side: DockSide }
+   | { kind: 'dockSide';  side: DockSide }
    | { kind: 'float' }
    | { kind: 'cancel';    groupId: string }
 
@@ -47,6 +49,8 @@ export interface DockDragApi {
    onTabPointerDown: (panelId: PanelId, groupId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
    /** A group reports its rendered element (or null on unmount) for pointer hit-testing during a drag. */
    registerGroup:    (groupId: string, element: HTMLElement | null) => void
+   /** A dock reports its rendered aside (or null on unmount), so a drop over its empty area docks there. */
+   registerDock:     (side: DockSide, element: HTMLElement | null) => void
 }
 
 interface DockHostProps {
@@ -90,16 +94,14 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
    if (!column) return null
 
    if (column.collapsed) {
-      return <CollapsedDockRail side={side} column={column} actions={actions} />
+      return <CollapsedDockRail side={side} column={column} actions={actions} drag={drag} />
    }
 
    const borderClass = side === 'left' ? 'border-r' : 'border-l'
 
-   return (
-      <aside
-         style={{ width: column.width }}
-         className={`relative shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col h-full overflow-hidden`}
-      >
+   const rail = <DockRail side={side} column={column} actions={actions} drag={drag} />
+   const content = (
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
          {column.groups.map((group, groupIndex) => (
             <div key={group.id} className="flex flex-col overflow-hidden" style={groupFlexStyle(group)}>
                {groupIndex > 0 && (
@@ -110,7 +112,7 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
                      }}
                   />
                )}
-               <DockGroupView
+               <DockGroupContent
                   group={group}
                   side={side}
                   layout={layout}
@@ -121,9 +123,95 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
                />
             </div>
          ))}
+      </div>
+   )
+
+   return (
+      <aside
+         ref={(element) => drag.registerDock(side, element)}
+         style={{ width: column.width }}
+         className={`relative shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex h-full overflow-hidden`}
+      >
+         {/* Rail on the INNER edge (toward the center): left dock -> rail on the right, right dock -> left. */}
+         {side === 'left' ? <>{content}{rail}</> : <>{rail}{content}</>}
 
          <WidthDivider side={side} onResize={(width) => actions.setColumnWidth(side, width)} />
+         <DockDropOverlay side={side} drag={drag} />
       </aside>
+   )
+}
+
+// ##########################
+// # DOCK DROP OVERLAY      #
+// ##########################
+
+/** A full-dock wash shown while dragging over a populated dock's empty area (below / around its group
+ *  headers), where releasing docks the panel as a new group at the bottom. This is what gives a dock
+ *  of all-collapsed groups a large, reachable drop target instead of slivers on each tiny header. */
+function DockDropOverlay({ side, drag }: { side: DockSide; drag: DockDragApi }) {
+   const target = drag.dropTarget
+   if (drag.draggingPanelId === null || target === null) return null
+   if (target.kind !== 'dockSide' || target.side !== side) return null
+   return <div className="absolute inset-1 z-40 pointer-events-none rounded-md border-2 border-dashed border-accent bg-accent/15" />
+}
+
+// ##########################
+// # DOCK RAIL (SPINE)      #
+// ##########################
+
+/** The dock's persistent icon rail on its inner edge: the whole-dock collapse button at the top, then
+ *  every panel's icon (grouped, active one highlighted). Always present, so the tab icons stay visible
+ *  and switchable even when a group's body is collapsed. Each icon is a tab selector (click) and a drag
+ *  handle (drag past the threshold to reconfigure). */
+function DockRail({ side, column, actions, drag }: { side: DockSide; column: DockColumn; actions: DockStateResult; drag: DockDragApi }) {
+   const { t } = useLang()
+   const CollapseDockIcon = side === 'left' ? PanelLeftClose : PanelRightClose
+   // The rail's border faces the content column: left dock -> content is to the rail's left (border-l),
+   // right dock -> content is to the rail's right (border-r).
+   const borderClass = side === 'left' ? 'border-l' : 'border-r'
+
+   return (
+      <div className={`shrink-0 flex flex-col items-center gap-1 p-1 ${borderClass} border-border`}>
+         {/* Whole-dock collapse, at the top of the rail. */}
+         <button
+            onClick={() => actions.toggleColumnCollapsed(side)}
+            title={t.dockCollapseDock}
+            aria-label={t.dockCollapseDock}
+            className="shrink-0 text-muted hover:text-accent p-1.5 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
+         >
+            <CollapseDockIcon size={16} />
+         </button>
+
+         <div className="w-5 h-px bg-border shrink-0" />
+
+         <div role="tablist" className="flex flex-col items-center gap-1">
+            {column.groups.map((group, groupIndex) => (
+               <Fragment key={group.id}>
+                  {groupIndex > 0 && <div className="w-4 h-px bg-border/50 my-0.5 shrink-0" />}
+                  {group.panels.map((panelId) => {
+                     const descriptor = PANEL_REGISTRY[panelId]
+                     const isActive   = panelId === group.activePanel
+                     return (
+                        <button
+                           key={panelId}
+                           role="tab"
+                           aria-selected={isActive}
+                           title={descriptor.title(t)}
+                           aria-label={descriptor.title(t)}
+                           onPointerDown={(event) => drag.onTabPointerDown(panelId, group.id, event)}
+                           className={[
+                              'w-7 h-7 flex items-center justify-center rounded-md cursor-grab border-0 transition-colors touch-none select-none shrink-0',
+                              isActive ? 'text-accent bg-accent/10' : 'text-muted/60 hover:text-text hover:bg-accent/8 bg-transparent',
+                           ].join(' ')}
+                        >
+                           {descriptor.icon}
+                        </button>
+                     )
+                  })}
+               </Fragment>
+            ))}
+         </div>
+      </div>
    )
 }
 
@@ -136,7 +224,7 @@ function groupFlexStyle(group: DockGroup): CSSProperties {
 // # ONE GROUP     #
 // #################
 
-interface DockGroupViewProps {
+interface DockGroupContentProps {
    group:      DockGroup
    side:       DockSide
    layout:     DockLayout
@@ -146,54 +234,26 @@ interface DockGroupViewProps {
    drag:       DockDragApi
 }
 
-function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }: DockGroupViewProps) {
+/** One group's content column: a header (active tab identity as a drag handle, an always-present group
+ *  collapse/expand button, and the config menu) plus the active panel's body when expanded. The tab
+ *  icons live in the dock-level DockRail, not here; the whole-dock collapse lives at the rail's top.
+ *  This element is what the drag hit-test registers, so its rect defines the group's drop bands. */
+function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag }: DockGroupContentProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
    const activeDescriptor = PANEL_REGISTRY[group.activePanel]
-   const hasTabRail       = group.panels.length > 1
-   const columnGroupCount = layout[side]?.groups.length ?? 1
-   const CollapseDockIcon = side === 'left' ? PanelLeftClose : PanelRightClose
 
    function openConfigMenu(event: ReactMouseEvent<HTMLButtonElement>) {
       const rect = event.currentTarget.getBoundingClientRect()
       setMenuPosition({ x: rect.left, y: rect.bottom + 4 })
    }
 
-   // The label-less vertical icon rail = the tab selector for a multi-panel group (Photoshop style),
-   // so two panels no longer crowd a narrow header. A single-panel group needs no rail (its one
-   // identity lives in the header). Each icon doubles as a drag handle: a click selects it, a drag past
-   // the activation distance tears the panel out. Hidden while collapsed, where there is no room for it.
-   const tabRail = hasTabRail && !group.collapsed ? (
+   return (
       <div
-         role="tablist"
-         className={`shrink-0 flex flex-col items-center gap-1 p-1 ${side === 'left' ? 'border-l' : 'border-r'} border-border`}
+         ref={(element) => drag.registerGroup(group.id, element)}
+         className="relative flex flex-col overflow-hidden flex-1 min-h-0"
       >
-         {group.panels.map((panelId) => {
-            const descriptor = PANEL_REGISTRY[panelId]
-            const isActive   = panelId === group.activePanel
-            return (
-               <button
-                  key={panelId}
-                  role="tab"
-                  aria-selected={isActive}
-                  title={descriptor.title(t)}
-                  aria-label={descriptor.title(t)}
-                  onPointerDown={(event) => drag.onTabPointerDown(panelId, group.id, event)}
-                  className={[
-                     'w-7 h-7 flex items-center justify-center rounded-md cursor-grab border-0 transition-colors touch-none select-none',
-                     isActive ? 'text-accent bg-accent/10' : 'text-muted/60 hover:text-text hover:bg-accent/8 bg-transparent',
-                  ].join(' ')}
-               >
-                  {descriptor.icon}
-               </button>
-            )
-         })}
-      </div>
-   ) : null
-
-   const groupContent = (
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
          {/* Header adopts the active tab's icon + label (the group's identity), which doubles as a drag
              handle for the active panel. Same height for every group, so headers never mismatch. */}
          <div className="flex items-center h-9 pl-2 pr-1 border-b border-border shrink-0 gap-1">
@@ -206,27 +266,14 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
                <span className="truncate text-xs font-semibold text-text">{activeDescriptor.title(t)}</span>
             </button>
 
-            {/* Per-group collapse only earns a slot when the column stacks more than one group;
-                otherwise the whole-dock collapse below covers the "get this out of the way" case. */}
-            {columnGroupCount > 1 && (
-               <button
-                  onClick={() => actions.toggleGroupCollapsed(group.id)}
-                  title={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
-                  aria-label={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
-                  className="shrink-0 text-muted hover:text-accent p-1 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
-               >
-                  {group.collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-               </button>
-            )}
-
-            {/* Whole-dock collapse: a visible one-click affordance, no longer only in the config menu. */}
+            {/* Per-group collapse, always available (not only via the config menu). */}
             <button
-               onClick={() => actions.toggleColumnCollapsed(side)}
-               title={t.dockCollapseDock}
-               aria-label={t.dockCollapseDock}
+               onClick={() => actions.toggleGroupCollapsed(group.id)}
+               title={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
+               aria-label={group.collapsed ? t.dockExpandGroup : t.dockCollapseGroup}
                className="shrink-0 text-muted hover:text-accent p-1 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
             >
-               <CollapseDockIcon size={15} />
+               {group.collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
             </button>
 
             <button
@@ -244,17 +291,6 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
                {body}
             </div>
          )}
-      </div>
-   )
-
-   return (
-      <div
-         ref={(element) => drag.registerGroup(group.id, element)}
-         className="relative flex overflow-hidden flex-1 min-h-0"
-      >
-         {/* Rail on the INNER side of the dock (toward the center): left dock -> rail on the right,
-             right dock -> rail on the left. Photoshop-style. */}
-         {side === 'left' ? <>{groupContent}{tabRail}</> : <>{tabRail}{groupContent}</>}
 
          {menuPosition && (
             <ContextMenu
@@ -279,7 +315,7 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }:
 function GroupDropOverlay({ groupId, drag }: { groupId: string; drag: DockDragApi }) {
    const target = drag.dropTarget
    if (drag.draggingPanelId === null || target === null) return null
-   if (target.kind === 'emptySide' || target.kind === 'float') return null
+   if (target.kind === 'emptySide' || target.kind === 'dockSide' || target.kind === 'float') return null
    if (target.groupId !== groupId) return null
 
    // The panel's own group: a neutral "release to cancel" wash, so a no-op drop reads as intentional.
@@ -381,9 +417,10 @@ interface CollapsedDockRailProps {
    side:    DockSide
    column:  DockColumn
    actions: DockStateResult
+   drag:    DockDragApi
 }
 
-function CollapsedDockRail({ side, column, actions }: CollapsedDockRailProps) {
+function CollapsedDockRail({ side, column, actions, drag }: CollapsedDockRailProps) {
    const { t } = useLang()
    const ExpandIcon  = side === 'left' ? PanelLeftOpen : PanelRightOpen
    const borderClass = side === 'left' ? 'border-r' : 'border-l'
@@ -391,9 +428,11 @@ function CollapsedDockRail({ side, column, actions }: CollapsedDockRailProps) {
 
    return (
       <aside
+         ref={(element) => drag.registerDock(side, element)}
          style={{ width: '2.5rem' }}
-         className={`shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col items-center p-2 gap-1 h-full overflow-hidden`}
+         className={`relative shrink-0 bg-raised ${borderClass} border-border border-t-2 border-t-accent/30 flex flex-col items-center p-2 gap-1 h-full overflow-hidden`}
       >
+         <DockDropOverlay side={side} drag={drag} />
          <button
             onClick={() => actions.toggleColumnCollapsed(side)}
             title={t.dockExpandDock}
