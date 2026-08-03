@@ -16,7 +16,6 @@ import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
-import { useToast } from '../../contexts/ToastContext'
 import { usePageOverflow } from '../../hooks/usePageOverflow'
 
 // -- Component Imports --
@@ -29,7 +28,6 @@ import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { PresentationWindow } from '../../molecules/PresentationWindow'
 import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
-import { PageSorterPane } from '../PageSorterPane'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --
@@ -40,7 +38,6 @@ import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type 
 import {
    partitionIntoPages, reconcilePages, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
-   reorderPages, duplicatePage, deletePage,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
@@ -73,9 +70,6 @@ interface WysiwygAreaProps {
    onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Commit the document's page format (infinite width, later paged A4); undefined clears it. */
    onFormatChange?: (next: DocFormat | undefined) => void
-   /** Replace the whole section flow (the page-sorter's reorder/duplicate/delete commit the moved
-    *  block ranges through this, alongside onFormatChange for the re-derived breaks). */
-   onReplaceSections?: (sections: Section[]) => void
    /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
@@ -110,22 +104,14 @@ interface WysiwygAreaProps {
 
 export function WysiwygArea({
    meta, sections, docTheme, docAccent, presentation, format, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onReplaceSections, onOpenExport, onManualSave, onSaveAs,
+   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onOpenExport, onManualSave, onSaveAs,
    presentationOpen, onOpenPresentation, onClosePresentation,
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
 }: WysiwygAreaProps) {
    const { t } = useLang()
-   const { showToast, dismissToast } = useToast()
    const { reorderSections } = useDocumentMutations()
-
-   // Page-sorter pane open state (paged mode only), persisted like the sidebar Panel's. Default open,
-   // so the headline "see several pages" surface is visible the moment a document goes paged.
-   const [sorterOpen, setSorterOpen] = useState(
-      () => localStorage.getItem('documinter-page-sorter-open') !== 'false',
-   )
-   useEffect(() => { localStorage.setItem('documinter-page-sorter-open', String(sorterOpen)) }, [sorterOpen])
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
    // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
@@ -442,15 +428,10 @@ export function WysiwygArea({
    // overflow ribbon offering a one-click assisted break. MEASURED from the DOM, never predicted.
    const pagedMargins            = format?.margins ?? DEFAULT_A4_MARGINS
    const pagedIsLandscape        = format?.kind === 'a4-landscape'
-   const pagedSheetWidthPx       = pagedIsLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
    const pagedSheetHeightPx      = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
    const availableContentHeightPx = pagedSheetHeightPx
       - millimetresToPx(pagedMargins.top)
       - millimetresToPx(pagedMargins.bottom)
-
-   // Phase 4: the page-sorter pane mounts only in paged EDIT mode with the levers it commits through
-   // (a page reorder/duplicate/delete needs to write BOTH the section flow and the format breaks).
-   const sorterEnabled = paged && !readOnly && !!onReplaceSections && !!onFormatChange
 
    // Overflow is an editor-only affordance: only in paged EDIT mode (readOnly/preview never shows the
    // ribbon, and infinite mode has no overflow concept at all). The hook measures the rendered sheets
@@ -474,60 +455,6 @@ export function WysiwygArea({
       }
    }
 
-   // ==========================================================
-   //  Document Formats Phase 4: the page-sorter's content-touching operations
-   // ==========================================================
-   // Reorder / duplicate / delete a page. Each routes through a pure transform in pageModel that moves
-   // the real block ranges AND re-derives the break markers, then commits BOTH the new section flow
-   // (onReplaceSections) and the new break list (onFormatChange) in one event, React batches the two
-   // setState calls into a single commit, so the render never sees a half-applied state.
-   function commitPageOperation(result: { sections: Section[]; pages: PageBreak[] }): void {
-      if (!onReplaceSections || !onFormatChange) return
-      onReplaceSections(result.sections)
-      const base = normalizeFormat(format)
-      if (result.pages.length === 0) {
-         const { pages: _dropped, ...rest } = base
-         onFormatChange(rest)
-      } else {
-         onFormatChange({ ...base, pages: result.pages })
-      }
-   }
-
-   function handleReorderPages(fromIndex: number, toIndex: number): void {
-      commitPageOperation(reorderPages(sections, pageBreaks, fromIndex, toIndex))
-   }
-
-   function handleDuplicatePage(pageIndex: number): void {
-      commitPageOperation(duplicatePage(sections, pageBreaks, pageIndex))
-   }
-
-   // Delete removes content, so it is undoable via the shared delete/undo-toast pattern (mirrors
-   // useSectionMutations.removeSec): snapshot the pre-delete sections + format, and offer an Undo that
-   // restores both. A no-op (the single-page guard in deletePage returns the same reference) shows no
-   // toast.
-   function handleDeletePage(pageIndex: number): void {
-      const result = deletePage(sections, pageBreaks, pageIndex)
-      if (result.sections === sections) return
-      const previousSections = sections
-      const previousFormat   = format
-      commitPageOperation(result)
-      const toastId = showToast(t.pageSorterDeleted, {
-         action: {
-            label:   t.undo,
-            onClick: () => {
-               onReplaceSections?.(previousSections)
-               onFormatChange?.(previousFormat)
-               dismissToast(toastId)
-            },
-         },
-      })
-   }
-
-   // Jump-to-page: scroll the clicked thumbnail's sheet into view. The paged sheets carry a unique
-   // [data-page-id]; only the active tab's pages are ever in the DOM, so a document query is safe.
-   function handleJumpToPage(pageId: string): void {
-      document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-   }
 
    // Reconcile-on-change: drop any break whose anchor block was deleted/undone (mirrors reconcileNav),
    // so a dangling marker can never leave a phantom cut. Inlined (not via commitPageBreaks) so the
@@ -941,22 +868,6 @@ export function WysiwygArea({
             )}
             {renderDocWindowsAndMenus()}
          </div>
-         {sorterEnabled && derivedPages && (
-            <PageSorterPane
-               open={sorterOpen}
-               onToggle={() => setSorterOpen(current => !current)}
-               pages={derivedPages}
-               docTheme={docTheme}
-               docAccent={docAccent}
-               margins={pagedMargins}
-               sheetWidthPx={pagedSheetWidthPx}
-               sheetHeightPx={pagedSheetHeightPx}
-               onReorder={handleReorderPages}
-               onDuplicate={handleDuplicatePage}
-               onDelete={handleDeletePage}
-               onJump={handleJumpToPage}
-            />
-         )}
          </div>
          </div>
          </PageBreaksContext.Provider>

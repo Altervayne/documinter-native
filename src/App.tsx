@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type SetStateAction, type ReactNode } from 'react'
 
 // -- Library Imports --
 import { arrayMove } from '@dnd-kit/sortable'
@@ -24,7 +24,12 @@ import { useToast } from './contexts/ToastContext'
 // -- Component Imports --
 import { HeaderMenuBar } from './organisms/HeaderMenuBar'
 import { DocumentTitleBar } from './organisms/DocumentTitleBar'
-import { Panel } from './organisms/Panel'
+import { DockHost } from './organisms/DockHost'
+import { StructurePanelBody } from './organisms/StructurePanelBody'
+import { PagesPanelBody } from './organisms/PagesPanelBody'
+import { useDockState } from './hooks/useDockState'
+import { usePagesPanelData } from './hooks/usePagesPanelData'
+import type { PanelId } from './lib/dockLayout'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
 import { MintdownEditor } from './organisms/MintdownEditor'
@@ -177,23 +182,6 @@ export default function App() {
          document.tabKey === tabKey && document.saveStatus !== status
             ? { ...document, saveStatus: status }
             : document))
-   }, [])
-   const [panelOpen, setPanelOpen] = useState(
-      () => localStorage.getItem('documinter-panel-open') !== 'false'
-   )
-   useEffect(() => {
-      localStorage.setItem('documinter-panel-open', String(panelOpen))
-   }, [panelOpen])
-
-   const [panelDockSide, setPanelDockSide] = useState<'left' | 'right'>(
-      () => (localStorage.getItem('documinter-panel-dock') as 'left' | 'right') ?? 'left'
-   )
-   useEffect(() => {
-      localStorage.setItem('documinter-panel-dock', panelDockSide)
-   }, [panelDockSide])
-
-   const handleTogglePanelDockSide = useCallback(() => {
-      setPanelDockSide(current => current === 'left' ? 'right' : 'left')
    }, [])
 
    // Theme
@@ -770,6 +758,46 @@ export default function App() {
    const blockMutations     = useBlockMutations(setActiveSections, t)
    const containerMutations = useContainerMutations(setActiveSections, t)
 
+   // ######################
+   // # SIDE-PANEL DOCK    #
+   // ######################
+
+   // The dock owns the side panels' layout; applicability is driven by the active document's format
+   // (Pages needs a paged doc) and mode (Pages needs edit mode). The Pages data + handlers are derived
+   // here so the body can be hosted by the App-level dock instead of buried in WysiwygArea.
+   const dock      = useDockState({ formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' })
+   const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t)
+
+   // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
+   // wires each body's data + handlers here; the dock hosts only the chrome.
+   const panelBodies: Record<PanelId, ReactNode> = {
+      structure: (
+         <StructurePanelBody
+            sections={sections}
+            onAddSection={sectionMutations.addSection}
+            onToggleSec={sectionMutations.toggleSec}
+            onDuplicateSec={sectionMutations.duplicateSec}
+            onRemoveSec={sectionMutations.removeSec}
+            onReorderSections={sectionMutations.reorderSections}
+            onReorderBlocks={blockMutations.reorderBlocks}
+         />
+      ),
+      pages: (
+         <PagesPanelBody
+            pages={pagesData.pages}
+            docTheme={docTheme}
+            docAccent={docAccent}
+            margins={pagesData.margins}
+            sheetWidthPx={pagesData.sheetWidthPx}
+            sheetHeightPx={pagesData.sheetHeightPx}
+            onReorder={pagesData.onReorder}
+            onDuplicate={pagesData.onDuplicate}
+            onDelete={pagesData.onDelete}
+            onJump={pagesData.onJump}
+         />
+      ),
+   }
+
    return (
       <LangProvider lang={lang} setLang={setLang}>
          {/* Shared app menu bar, mounted in both modes; context-aware via mode. */}
@@ -865,19 +893,7 @@ export default function App() {
                toggleSec:         sectionMutations.toggleSec,
             }}>
                <div className="flex flex-1 min-h-0 overflow-hidden">
-                  <Panel
-                     open={panelOpen}
-                     onToggle={() => setPanelOpen(current => !current)}
-                     dockSide={panelDockSide}
-                     onToggleDockSide={handleTogglePanelDockSide}
-                     sections={sections}
-                     onAddSection={sectionMutations.addSection}
-                     onToggleSec={sectionMutations.toggleSec}
-                     onDuplicateSec={sectionMutations.duplicateSec}
-                     onRemoveSec={sectionMutations.removeSec}
-                     onReorderSections={sectionMutations.reorderSections}
-                     onReorderBlocks={blockMutations.reorderBlocks}
-                  />
+                  <DockHost side="left" layout={dock.layout} panelBodies={panelBodies} actions={dock} />
 
                   <WorkspaceLayout
                      paneLayout={paneLayout}
@@ -899,7 +915,6 @@ export default function App() {
                               onDocAccentChange={setActiveDocAccent}
                               onPresentationChange={setActivePresentation}
                               onFormatChange={setActiveFormat}
-                              onReplaceSections={setActiveSections}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}
@@ -932,6 +947,8 @@ export default function App() {
                         ),
                      }}
                   />
+
+                  <DockHost side="right" layout={dock.layout} panelBodies={panelBodies} actions={dock} />
                </div>
             </DocumentMutationsContext.Provider>
           </>

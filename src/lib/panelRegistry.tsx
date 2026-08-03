@@ -27,6 +27,8 @@ import type { T } from './i18n'
 export interface PanelContext {
    /** The active document's page-format kind, so Pages can require a paged (A4) document. */
    formatKind: PageKind
+   /** True in preview (read-only) mode, where the page-editing sorter has nothing to act on. */
+   readOnly:   boolean
 }
 
 export interface PanelDescriptor {
@@ -58,8 +60,9 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       id:           'pages',
       icon:         <BookOpen size={16} />,
       title:        translations => translations.pageSorterTitle,
-      // Pages only makes sense for a paged (A4) document; an infinite canvas has no discrete pages.
-      isApplicable: context => context.formatKind !== 'infinite',
+      // Pages only makes sense for a paged (A4) document being edited; an infinite canvas has no
+      // discrete pages, and preview mode has nothing for the sorter to reorder.
+      isApplicable: context => context.formatKind !== 'infinite' && !context.readOnly,
       defaultSide:  'right',
    },
 }

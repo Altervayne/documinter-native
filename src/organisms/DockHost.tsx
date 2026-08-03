@@ -1,6 +1,6 @@
 // -- React Imports --
 import { useState } from 'react'
-import type { ReactNode, PointerEvent as ReactPointerEvent, CSSProperties } from 'react'
+import type { ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, CSSProperties } from 'react'
 
 // -- Icon Imports --
 import {
@@ -119,7 +119,7 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockG
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
-   function openConfigMenu(event: ReactPointerEvent<HTMLButtonElement>) {
+   function openConfigMenu(event: ReactMouseEvent<HTMLButtonElement>) {
       const rect = event.currentTarget.getBoundingClientRect()
       setMenuPosition({ x: rect.left, y: rect.bottom + 4 })
    }
@@ -164,7 +164,7 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockG
             </button>
 
             <button
-               onPointerDown={openConfigMenu}
+               onClick={openConfigMenu}
                title={t.dockConfigMenu}
                aria-label={t.dockConfigMenu}
                className="shrink-0 text-muted hover:text-accent p-1 rounded-md hover:bg-accent/8 cursor-pointer border-0 bg-transparent transition-colors"
