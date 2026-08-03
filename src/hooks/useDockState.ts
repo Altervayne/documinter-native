@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import {
    createDefaultDockLayout,
    movePanelToSide as movePanelToSideTransform,
+   movePanelAdjacentToGroup as movePanelAdjacentToGroupTransform,
    mergePanelIntoGroup as mergePanelIntoGroupTransform,
    splitPanelToNewGroup as splitPanelToNewGroupTransform,
    setActiveTab as setActiveTabTransform,
@@ -83,6 +84,7 @@ export interface DockStateResult {
    /** Add a panel (to its remembered or default side) or close it. */
    togglePanel:           (panelId: PanelId) => void
    movePanelToSide:       (panelId: PanelId, side: DockSide) => void
+   movePanelAdjacentToGroup: (panelId: PanelId, targetGroupId: string, position: 'before' | 'after') => void
    mergePanelIntoGroup:   (panelId: PanelId, targetGroupId: string, tabIndex: number) => void
    splitPanelToNewGroup:  (panelId: PanelId, side: DockSide, columnIndex: number) => void
    setActiveTab:          (groupId: string, panelId: PanelId) => void
@@ -133,6 +135,7 @@ export function useDockState(context: PanelContext): DockStateResult {
       }),
 
       movePanelToSide:      (panelId, side)                 => updateLayout(layout => movePanelToSideTransform(layout, panelId, side, newGroupId())),
+      movePanelAdjacentToGroup: (panelId, targetGroupId, position) => updateLayout(layout => movePanelAdjacentToGroupTransform(layout, panelId, targetGroupId, position, newGroupId())),
       splitPanelToNewGroup: (panelId, side, columnIndex)    => updateLayout(layout => splitPanelToNewGroupTransform(layout, panelId, side, columnIndex, newGroupId())),
       mergePanelIntoGroup:  (panelId, targetGroupId, index) => updateLayout(layout => mergePanelIntoGroupTransform(layout, panelId, targetGroupId, index)),
       setActiveTab:         (groupId, panelId)              => updateLayout(layout => setActiveTabTransform(layout, groupId, panelId)),

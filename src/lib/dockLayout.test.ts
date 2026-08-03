@@ -10,6 +10,7 @@ import {
    mergePanelIntoGroup,
    splitPanelToNewGroup,
    movePanelToSide,
+   movePanelAdjacentToGroup,
    setActiveTab,
    reorderTabInGroup,
    toggleGroupCollapsed,
@@ -185,6 +186,34 @@ describe('movePanelToSide', () => {
       const moved  = movePanelToSide(layout, 'pages', 'right', 'group-pages-2')
       expect(dockedPanels(moved)).toEqual(['structure', 'pages'])
       assertInvariants(moved)
+   })
+})
+
+describe('movePanelAdjacentToGroup (drag above/below a group)', () => {
+   it('drops a panel into a new group before a target group', () => {
+      // structure (left) and pages tabbed together with structure, then pages dropped above structure
+      const stacked = addPanel(defaultLayout(), 'pages', 'left', 'group-pages')
+      // stacked: [structure, pages] as two groups on the left
+      const moved = movePanelAdjacentToGroup(stacked, 'pages', 'group-structure', 'before', 'group-pages-2')
+      expect(moved.left?.groups.map(group => group.panels)).toEqual([['pages'], ['structure']])
+      assertInvariants(moved)
+   })
+
+   it('drops a panel into a new group after a target group', () => {
+      const stacked = addPanel(defaultLayout(), 'pages', 'right', 'group-pages')
+      // pages is on the right; drop it after structure on the left
+      const moved = movePanelAdjacentToGroup(stacked, 'pages', 'group-structure', 'after', 'group-pages-2')
+      expect(moved.right).toBeNull()
+      expect(moved.left?.groups.map(group => group.panels)).toEqual([['structure'], ['pages']])
+      assertInvariants(moved)
+   })
+
+   it('is a no-op when the target group vanishes after detaching the panel', () => {
+      const layout = addPanel(defaultLayout(), 'pages', 'right', 'group-pages')
+      // pages lives alone in group-pages; dropping it adjacent to that same group is meaningless
+      const result = movePanelAdjacentToGroup(layout, 'pages', 'group-pages', 'before', 'group-new')
+      expect(result).toEqual(layout)
+      assertInvariants(result)
    })
 })
 

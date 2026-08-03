@@ -274,6 +274,24 @@ export function movePanelToSide(layout: DockLayout, panelId: PanelId, side: Dock
    return insertNewGroup(detached, panelId, side, endIndex, newGroupId)
 }
 
+/** Moves a panel into its own new group directly before or after a target group (drag-drop onto the
+ *  upper / lower half of a group). Resolved by target id AFTER the detach, so an index shift from
+ *  removing the panel's old group can never land it in the wrong slot. No-op when the target group no
+ *  longer exists after detaching (for example dropping a panel adjacent to the group it lived alone in). */
+export function movePanelAdjacentToGroup(
+   layout:        DockLayout,
+   panelId:       PanelId,
+   targetGroupId: string,
+   position:      'before' | 'after',
+   newGroupId:    string,
+): DockLayout {
+   const detached = detachPanel(layout, panelId)
+   const found    = findGroup(detached, targetGroupId)
+   if (!found) return layout
+   const index = position === 'before' ? found.groupIndex : found.groupIndex + 1
+   return insertNewGroup(detached, panelId, found.side, index, newGroupId)
+}
+
 /** Changes which tab is active in a group. No-op if the panel is not in that group. */
 export function setActiveTab(layout: DockLayout, groupId: string, panelId: PanelId): DockLayout {
    return mapGroup(layout, groupId, group =>

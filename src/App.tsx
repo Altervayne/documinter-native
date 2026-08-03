@@ -24,7 +24,7 @@ import { useToast } from './contexts/ToastContext'
 // -- Component Imports --
 import { HeaderMenuBar } from './organisms/HeaderMenuBar'
 import { DocumentTitleBar } from './organisms/DocumentTitleBar'
-import { DockHost } from './organisms/DockHost'
+import { DockedWorkspace } from './organisms/DockedWorkspace'
 import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
@@ -892,9 +892,7 @@ export default function App() {
                moveSecDown:       sectionMutations.moveSecDown,
                toggleSec:         sectionMutations.toggleSec,
             }}>
-               <div className="flex flex-1 min-h-0 overflow-hidden">
-                  <DockHost side="left" layout={dock.layout} panelBodies={panelBodies} actions={dock} />
-
+               <DockedWorkspace dock={dock} panelBodies={panelBodies}>
                   <WorkspaceLayout
                      paneLayout={paneLayout}
                      onPaneLayoutChange={setPaneLayout}
@@ -947,9 +945,7 @@ export default function App() {
                         ),
                      }}
                   />
-
-                  <DockHost side="right" layout={dock.layout} panelBodies={panelBodies} actions={dock} />
-               </div>
+               </DockedWorkspace>
             </DocumentMutationsContext.Provider>
           </>
          )}

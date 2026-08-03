@@ -21,12 +21,31 @@ import type { T } from '../lib/i18n'
 // # TYPES #
 // #########
 
+/** Where a dragged tab would land, resolved by group id so an index shift after detaching the panel
+ *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock. */
+export type DockDropTarget =
+   | { kind: 'merge';     groupId: string }
+   | { kind: 'adjacent';  groupId: string; position: 'before' | 'after' }
+   | { kind: 'emptySide'; side: DockSide }
+
+/** The drag state + callbacks the DockedWorkspace shares with both DockHosts, so a tab dragged out of
+ *  one dock can land in the other. */
+export interface DockDragApi {
+   draggingPanelId:  PanelId | null
+   dropTarget:       DockDropTarget | null
+   /** Begin a tab press: the workspace decides click-to-activate vs drag by an activation distance. */
+   onTabPointerDown: (panelId: PanelId, groupId: string, event: ReactPointerEvent<HTMLButtonElement>) => void
+   /** A group reports its rendered element (or null on unmount) for pointer hit-testing during a drag. */
+   registerGroup:    (groupId: string, element: HTMLElement | null) => void
+}
+
 interface DockHostProps {
    side:        DockSide
    layout:      DockLayout
    /** Rendered panel bodies keyed by id, supplied by App (mirrors WorkspaceLayout's `panels` record). */
    panelBodies: Record<PanelId, ReactNode>
    actions:     DockStateResult
+   drag:        DockDragApi
 }
 
 // ##################
@@ -56,7 +75,7 @@ function allGroups(layout: DockLayout): DockGroup[] {
  * are supplied by App; this component owns only the dock chrome. Drag-and-drop reconfiguration comes in
  * Phase 2; the config menu stays permanently as the second way to reconfigure.
  */
-export function DockHost({ side, layout, panelBodies, actions }: DockHostProps) {
+export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostProps) {
    const column = layout[side]
    if (!column) return null
 
@@ -88,6 +107,7 @@ export function DockHost({ side, layout, panelBodies, actions }: DockHostProps) 
                   groupIndex={groupIndex}
                   body={panelBodies[group.activePanel]}
                   actions={actions}
+                  drag={drag}
                />
             </div>
          ))}
@@ -113,9 +133,10 @@ interface DockGroupViewProps {
    groupIndex: number
    body:       ReactNode
    actions:    DockStateResult
+   drag:       DockDragApi
 }
 
-function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockGroupViewProps) {
+function DockGroupView({ group, side, layout, groupIndex, body, actions, drag }: DockGroupViewProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
@@ -125,7 +146,10 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockG
    }
 
    return (
-      <div className="flex flex-col overflow-hidden flex-1 min-h-0">
+      <div
+         ref={(element) => drag.registerGroup(group.id, element)}
+         className="relative flex flex-col overflow-hidden flex-1 min-h-0"
+      >
          {/* Header: tab strip + collapse + config. One shared header for every group, so headers are
              always the same height (this is what fixes the old two-panel header mismatch). */}
          <div className="flex items-center h-9 pl-1.5 pr-1 border-b border-border shrink-0 gap-1">
@@ -139,9 +163,9 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockG
                         role="tab"
                         aria-selected={isActive}
                         title={descriptor.title(t)}
-                        onClick={() => actions.setActiveTab(group.id, panelId)}
+                        onPointerDown={(event) => drag.onTabPointerDown(panelId, group.id, event)}
                         className={[
-                           'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-pointer border-0 transition-colors min-w-0',
+                           'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium cursor-grab border-0 transition-colors min-w-0 touch-none select-none',
                            isActive
                               ? 'text-accent bg-accent/10'
                               : 'text-muted/70 hover:text-text hover:bg-accent/8 bg-transparent',
@@ -186,8 +210,29 @@ function DockGroupView({ group, side, layout, groupIndex, body, actions }: DockG
                onClose={() => setMenuPosition(null)}
             />
          )}
+
+         <GroupDropOverlay groupId={group.id} drag={drag} />
       </div>
    )
+}
+
+// ##########################
+// # DROP OVERLAY           #
+// ##########################
+
+/** The highlight shown on a group that is the current drag drop target: a full-group wash for a merge
+ *  (drop onto the tab strip), or a thin insertion bar at the top / bottom edge for an adjacent drop
+ *  (a new group above / below). */
+function GroupDropOverlay({ groupId, drag }: { groupId: string; drag: DockDragApi }) {
+   const target = drag.dropTarget
+   if (drag.draggingPanelId === null || target === null) return null
+   if (target.kind === 'emptySide' || target.groupId !== groupId) return null
+
+   if (target.kind === 'merge') {
+      return <div className="absolute inset-0 z-30 pointer-events-none rounded-sm border-2 border-accent/60 bg-accent/15" />
+   }
+   const edgeClass = target.position === 'before' ? 'top-0' : 'bottom-0'
+   return <div className={`absolute ${edgeClass} left-0 right-0 h-[3px] z-30 pointer-events-none bg-accent`} />
 }
 
 // ##########################
