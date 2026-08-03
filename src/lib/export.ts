@@ -16,6 +16,7 @@ import {
    collectAnchoredHandles,
    type DocPresentationExtras, type Watermark, type Header,
 } from './presentation'
+import { resolveDocumentSheetWidthPx, type DocFormat } from './format'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
@@ -25,6 +26,10 @@ export interface ExportOptions {
     *  pre-feature output: every emission below is guarded on the optional field, including the
     *  added CSS. */
    presentation?: DocPresentationExtras
+   /** Document page format (infinite width, later paged A4). Absent, or `{ kind: 'infinite' }` with
+    *  no width / a 'normal' width, all resolve to the SAME 860px `.doc-card` max-width as before this
+    *  feature existed, byte-identical output (see resolveDocumentSheetWidthPx). */
+   format?: DocFormat
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
@@ -245,7 +250,7 @@ function getColors(theme: 'light' | 'dark'): Colors {
    }
 }
 
-function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean): string {
+function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean, sheetWidthPx: number): string {
    // Watermark CSS is appended ONLY when a watermark is present, so an absent watermark leaves the
    // style block byte-identical to pre-feature output. The rules layer a static image behind the
    // card content: .doc-card becomes the positioning context (overflow clips to its radius), the
@@ -349,7 +354,7 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             /* Document card */
             .doc-card {
                   width: 100%;
-                  max-width: 860px;
+                  max-width: ${sheetWidthPx}px;
                   background: ${colors.cardBg};
                   border-radius: 2px;
                   border-top: 4px solid ${accent};
@@ -612,7 +617,11 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // Custom nav: present ⇒ the sidebar is built from the reconciled model (below) and the nav CSS +
    // the external-link scroll-spy guard are emitted; absent ⇒ today's derivation, byte-identical.
    const hasCustomNav = !!opts.presentation?.nav
-   const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav)
+   // Document sheet width: absent format / infinite+normal all resolve to the SAME 860px as before
+   // this feature existed (byte-identical guard); only a non-normal infinite width (or later, a paged
+   // A4 sheet) changes it.
+   const sheetWidthPx = resolveDocumentSheetWidthPx(opts.format)
+   const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx)
    // Tiled ⇒ the shared SVG <pattern> builder (identical to the editor's render, see WysiwygArea/
    // index.tsx); single ⇒ the positioned/fit CSS layer. The pattern id only needs to be unique
    // within this one exported document, so a short random suffix is enough.

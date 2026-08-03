@@ -23,6 +23,7 @@ import { AboutMenu } from '../molecules/AboutMenu'
 import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocPresentation } from '../lib/binderDocuments'
 import type { DocPresentationExtras } from '../lib/presentation'
+import type { DocFormat } from '../lib/format'
 
 // -- Icon Imports --
 import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck } from 'lucide-react'
@@ -136,6 +137,11 @@ interface HeaderMenuBarProps {
    onOpenPresentation?: () => void
    /** Opens the document-level Navigation window (the Document menu's "Navigation…" entry). */
    onOpenNav?:          () => void
+   /** Document page format (infinite width, later paged A4) of the active document, threaded into
+    *  the Export dialog's ExportOptions so a non-default width bakes into the exported HTML. */
+   format?:    DocFormat
+   /** Opens the document-level Page setup window (the Document menu's "Page setup…" entry). */
+   onOpenFormat?: () => void
 }
 
 // #############
@@ -147,6 +153,7 @@ export function HeaderMenuBar({
    onLoad, onToggleTheme, onSetMode, onTogglePanel, onManualSave, onSaveAs, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
+   format, onOpenFormat,
 }: HeaderMenuBarProps) {
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
@@ -268,6 +275,7 @@ export function HeaderMenuBar({
                   onDocAccentChange={onDocAccentChange}
                   onOpenPresentation={onOpenPresentation}
                   onOpenNavigation={onOpenNav}
+                  onOpenFormat={onOpenFormat}
                   onOpenExport={onOpenExport}
                   onManualSave={onManualSave}
                   onSaveAs={onSaveAs}
@@ -318,6 +326,7 @@ export function HeaderMenuBar({
                defaultTheme={docTheme}
                defaultAccent={docAccent}
                presentation={presentation}
+               format={format}
                lang={lang}
                onClose={onCloseExport}
                onOpenPresentation={onOpenPresentation}

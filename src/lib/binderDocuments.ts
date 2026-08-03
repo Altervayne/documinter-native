@@ -15,6 +15,7 @@ import { buildPreviewSections, extractDocumentText } from './documentPreview'
 import { matchesCriteria, documentComparator, type DocumentListFilter } from './binderSearch'
 import { migrateIds, migrateMeta } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
+import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
 import { cloneBlock } from './document'
 import type {
    DocMeta, DocState, Section,
@@ -27,11 +28,13 @@ const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to f
 
 /** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
  *  image-bearing export/editor extras (watermark, …); it stores on the HEAVY content record, not
- *  the light card record, see saveDocument. */
+ *  the light card record, see saveDocument. `format` (infinite width, later paged A4) rides the same
+ *  bundle, absent = today's infinite/normal behavior. */
 export interface DocPresentation {
    docTheme:  'light' | 'dark'
    docAccent: string
    presentation?: DocPresentationExtras
+   format?: DocFormat
 }
 
 /** Full editable document returned by loadDocument, DocState plus presentation. */
@@ -41,6 +44,7 @@ export interface LoadedDocument {
    docTheme:  'light' | 'dark'
    docAccent: string
    presentation?: DocPresentationExtras
+   format?: DocFormat
 }
 
 /** Next manual sort position for a new document appended to the end of a folder. */
@@ -105,10 +109,13 @@ export async function saveDocument(
    }
    // The image-bearing presentation extras live on the HEAVY content record ONLY (never the light
    // card record above), so a full-bleed watermark base64 can't bloat the listDocuments() query.
+   // `format` is tiny (no base64) but groups with presentation for seam consistency; only written
+   // when it diverges from the default, so a document that never touched Page Setup stays byte-clean.
    const content: BinderDocumentContent = {
       id,
       sections: state.sections,
       ...(presentation.presentation ? { presentation: presentation.presentation } : {}),
+      ...(presentation.format && !isDefaultFormat(presentation.format) ? { format: presentation.format } : {}),
    }
 
    documentsStore.put(record)
@@ -135,6 +142,9 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
       // Presentation extras ride on the heavy content record; normalize defensively on read
       // (clamp opacity, drop an empty-src watermark), the mirror of migrateMeta for metadata.
       presentation: normalizePresentation(content.presentation),
+      // format normalizes to a concrete DocFormat even when absent (unlike presentation, which
+      // collapses to undefined), see normalizeFormat: absent ⇒ DEFAULT_FORMAT (infinite/normal).
+      format: normalizeFormat(content.format),
    }
 }
 
@@ -238,6 +248,7 @@ export async function duplicateDocument(id: string): Promise<string> {
       id: newId,
       sections: clonedSections,
       ...(sourceContent.presentation ? { presentation: sourceContent.presentation } : {}),
+      ...(sourceContent.format ? { format: sourceContent.format } : {}),
    }
 
    documentsStore.put(newRecord)

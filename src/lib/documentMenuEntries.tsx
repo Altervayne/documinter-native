@@ -1,5 +1,5 @@
 // -- Icon Imports --
-import { Plus, Sun, Moon, Image, PanelLeft, Download, Save, FileDown, Eye, EyeOff } from 'lucide-react'
+import { Plus, Sun, Moon, Image, PanelLeft, Ruler, Download, Save, FileDown, Eye, EyeOff } from 'lucide-react'
 
 // -- Type Imports --
 import type { ContextMenuEntry } from '../molecules/ContextMenu'
@@ -52,6 +52,8 @@ export interface DocumentMenuOptions {
    onOpenPresentation?: () => void
    /** Open the document-level Navigation window. */
    onOpenNavigation?:   () => void
+   /** Open the document-level Page setup window (Phase 1: infinite-canvas width only). */
+   onOpenFormat?:       () => void
    /** Open the format-aware Export dialog. */
    onOpenExport?: () => void
    onManualSave?: () => void
@@ -71,14 +73,15 @@ export interface DocumentMenuOptions {
  * the identical `ContextMenuEntry[]`, each through its own thin renderer.
  *
  * Order: Add section · Doc theme · Accent (header + swatch grid) · Presentation… · Navigation…
- * · Export… · Save · Save As… · Preview toggle. Icon size 13 matches both surfaces' existing rows.
+ * · Page setup… · Export… · Save · Save As… · Preview toggle. Icon size 13 matches both surfaces'
+ * existing rows.
  */
 export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextMenuEntry[] {
    const {
       t, docTheme, docAccent, previewMode, readOnly,
       onAddSection, onDocThemeChange, onDocAccentChange,
       customAccentSelected, onSelectCustomAccent, onDeselectCustomAccent,
-      onOpenPresentation, onOpenNavigation, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
+      onOpenPresentation, onOpenNavigation, onOpenFormat, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
    } = options
 
    const entries: ContextMenuEntry[] = []
@@ -134,10 +137,11 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
       entries.push({ type: 'accent-grid', presets, custom })
    }
 
-   const hasActions = !!onOpenPresentation || !!onOpenNavigation || !!onOpenExport || !!onManualSave || !!onSaveAs || !!onTogglePreview
+   const hasActions = !!onOpenPresentation || !!onOpenNavigation || !!onOpenFormat || !!onOpenExport || !!onManualSave || !!onSaveAs || !!onTogglePreview
    if (hasActions && entries.length > 0) entries.push({ type: 'separator' })
    if (onOpenPresentation) entries.push({ label: t.presentationMenu,  icon: <Image size={13} />,    onSelect: onOpenPresentation })
    if (onOpenNavigation)   entries.push({ label: t.menuNavigation,    icon: <PanelLeft size={13} />, onSelect: onOpenNavigation })
+   if (onOpenFormat)       entries.push({ label: t.formatMenuPageSetup, icon: <Ruler size={13} />,   onSelect: onOpenFormat })
    if (onOpenExport)       entries.push({ label: t.menuExport,        icon: <Download size={13} />,  onSelect: onOpenExport })
    if (onManualSave)       entries.push({ label: t.fileSave,          icon: <Save size={13} />,      onSelect: onManualSave })
    if (onSaveAs)           entries.push({ label: t.fileSaveAs,        icon: <FileDown size={13} />,  onSelect: onSaveAs })

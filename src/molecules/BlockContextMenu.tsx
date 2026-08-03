@@ -6,6 +6,7 @@ import {
    IndentIncrease, IndentDecrease,
    BetweenHorizontalStart, BetweenHorizontalEnd,
    BetweenVerticalStart, BetweenVerticalEnd,
+   Scissors,
 } from 'lucide-react'
 
 // -- Context Imports --
@@ -60,6 +61,10 @@ export interface BlockContextMenuProps {
    onClose:        () => void
    listItem?:      ListItemContextActions
    tableCell?:     TableCellContextActions
+   /** Paged-format page-break action (Document Formats Phase 2). Present only in paged mode for an
+    *  outer block that has a place to break (or already has a break) after it. `insert` adds a break
+    *  after this block, `remove` drops the one already there. */
+   pageBreak?:     { mode: 'insert' | 'remove'; onSelect: () => void }
 }
 
 // #############
@@ -81,6 +86,7 @@ export function BlockContextMenu({
    onClose,
    listItem,
    tableCell,
+   pageBreak,
 }: BlockContextMenuProps) {
    const { t } = useLang()
 
@@ -106,6 +112,18 @@ export function BlockContextMenu({
       { type: 'separator' },
       { label: t.deleteBlock, icon: <Trash2 size={13} />, danger: true, onSelect: onDelete },
    ]
+
+   // ============ Page-break section (paged format only) ============
+   if (pageBreak) {
+      entries.push(
+         { type: 'separator' },
+         {
+            label:    pageBreak.mode === 'remove' ? t.blockRemovePageBreak : t.blockInsertPageBreak,
+            icon:     <Scissors size={13} />,
+            onSelect: pageBreak.onSelect,
+         },
+      )
+   }
 
    // ============ List-item section ============
    if (listItem) {

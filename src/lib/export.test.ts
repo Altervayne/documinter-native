@@ -503,3 +503,39 @@ describe('generateExportHTML, sidebar nav', () => {
       expect(html).toContain('<a href="#section-b" class="nav-link">2. Details</a>')
    })
 })
+
+// Document Formats Phase 1: the infinite-width preset applied to `.doc-card`'s max-width. The
+// central guarantee is that an absent format, a bare `{ kind: 'infinite' }`, and an explicit
+// `width: 'normal'` all produce BYTE-IDENTICAL export output to before this feature existed.
+describe('generateExportHTML, document format / infinite width', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+   const sections: Section[] = []
+
+   it('is byte-identical whether format is absent, bare infinite, or explicit normal width', () => {
+      const absent      = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
+      const bareInfinite = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite' } })
+      const explicitNormal = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite', width: 'normal' } })
+      expect(bareInfinite).toBe(absent)
+      expect(explicitNormal).toBe(absent)
+      expect(absent).toContain('max-width: 860px;')
+   })
+
+   it('applies a narrow / wide infinite width to .doc-card', () => {
+      const narrow = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite', width: 'narrow' } })
+      const wide   = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite', width: 'wide' } })
+      expect(narrow).toContain('max-width: 640px;')
+      expect(wide).toContain('max-width: 1080px;')
+   })
+
+   it('applies a clamped custom infinite width', () => {
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite', width: { custom: 950 } } })
+      expect(html).toContain('max-width: 950px;')
+      const clamped = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'infinite', width: { custom: 99999 } } })
+      expect(clamped).toContain('max-width: 1600px;')
+   })
+
+   it('ignores width for an A4 kind this phase (paged rendering is Phase 2, falls back to normal)', () => {
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait', width: 'wide' } })
+      expect(html).toContain('max-width: 860px;')
+   })
+})

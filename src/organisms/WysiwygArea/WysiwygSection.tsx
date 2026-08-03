@@ -40,9 +40,30 @@ interface WysiwygSectionProps {
    isLastSection?:  boolean
    activeSectionId: string | null
    readOnly?:       boolean
+   // ==========================================================
+   //  Paged-format slice rendering (Document Formats Phase 2). When a section spans a page break it
+   //  is rendered as several slices (one per page it touches), each a WysiwygSection over a SUBSET of
+   //  the section's blocks. Absent = infinite mode = today's whole-section render (byte-identical).
+   // ==========================================================
+   /** Render only these blocks (a page slice). Block indices are still resolved ABSOLUTELY against
+    *  section.blocks, so insert/move/reorder stay correct. Absent = render the whole section. */
+   renderBlocks?:   Block[]
+   /** Render the section title chrome + empty-state (the slice that STARTS the section). Default true. */
+   showTitle?:      boolean
+   /** Render the trailing add-block row + bottom drop zone (the slice that ENDS the section). Default true. */
+   showAddRow?:     boolean
+   /** The dnd-kit sortable id for this instance. Per-slice-unique in paged mode so a split section's
+    *  two slices never register the same id twice. Default = section.id (infinite mode). */
+   sortableId?:     string
+   /** Disable canvas section drag-reorder (paged mode routes section reorder through the sidebar /
+    *  the section context menu instead, since a split section can't drag across sheets). Default false. */
+   sectionDragDisabled?: boolean
 }
 
-export function WysiwygSection({ section, index, isLastSection, activeSectionId, readOnly }: WysiwygSectionProps) {
+export function WysiwygSection({
+   section, index, isLastSection, activeSectionId, readOnly,
+   renderBlocks, showTitle = true, showAddRow = true, sortableId, sectionDragDisabled,
+}: WysiwygSectionProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
    const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
@@ -57,8 +78,14 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
       insertSectionAt, moveSecUp, moveSecDown, duplicateSec,
    } = useDocumentMutations()
 
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: section.id, disabled: !!readOnly })
+   const sectionDragOff = !!readOnly || !!sectionDragDisabled
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: sortableId ?? section.id, disabled: sectionDragOff })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+
+   // The blocks this instance renders: a page slice's subset in paged mode, else the whole section.
+   // Absolute indices are always resolved against section.blocks so mutations address the right block.
+   const blocksToRender = renderBlocks ?? section.blocks
+   const bottomZoneId   = `${sortableId ?? section.id}-bottom`
 
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -123,47 +150,52 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
 
    return (
       <div
-         ref={readOnly ? undefined : setNodeRef}
+         ref={sectionDragOff ? undefined : setNodeRef}
          style={style}
          className="sec-wrap"
          data-section-id={section.id}
-         {...(readOnly ? {} : attributes)}
+         {...(sectionDragOff ? {} : attributes)}
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
          {/* DnD section insertion indicator */}
-         {!readOnly && isOver && activeSectionId !== section.id && <DropIndicator />}
+         {!sectionDragOff && isOver && activeSectionId !== section.id && <DropIndicator />}
 
-         {/* Drag handle, always in DOM to hold the 2rem gutter, section chrome, opens the section menu */}
+         {/* Drag handle, always in DOM to hold the 2rem gutter, section chrome, opens the section menu.
+             In paged mode canvas section drag is off (a split section can't drag across sheets), so the
+             grip + listeners are suppressed; the section context menu (right-click) still works. */}
          <div
-            {...(readOnly ? {} : listeners)}
+            {...(sectionDragOff ? {} : listeners)}
             className="sec-drag-handle"
-            title={!readOnly && hovered ? t.dragSection : undefined}
+            title={!sectionDragOff && hovered ? t.dragSection : undefined}
             onContextMenu={readOnly ? undefined : handleSectionContextMenu}
          >
-            {!readOnly && hovered && <GripVertical size={22} />}
+            {!sectionDragOff && hovered && <GripVertical size={22} />}
          </div>
 
          {/* Section content */}
          <div className="doc-section">
 
-            {/* Delete, appears top-right only while hovered, never in readOnly */}
-            {!readOnly && hovered && (
+            {/* Delete, appears top-right only while hovered, on the section-start slice, never readOnly */}
+            {!readOnly && showTitle && hovered && (
                <button className="sec-delete" onClick={() => removeSection(section.id)} title={t.deleteSection}>
                   <Trash2 size={16} />
                </button>
             )}
 
-            {/* Title chrome, also opens the section menu */}
-            <div onContextMenu={readOnly ? undefined : handleSectionContextMenu}>
-               <PlainEditable
-                  tag="h2"
-                  content={`${index + 1}. ${section.title}`}
-                  onBlur={handleTitleBlur}
-                  singleLine
-                  readOnly={readOnly}
-               />
-            </div>
+            {/* Title chrome, also opens the section menu. Only the slice that STARTS the section shows
+                the title; a page-continuation slice renders its blocks with no title. */}
+            {showTitle && (
+               <div onContextMenu={readOnly ? undefined : handleSectionContextMenu}>
+                  <PlainEditable
+                     tag="h2"
+                     content={`${index + 1}. ${section.title}`}
+                     onBlur={handleTitleBlur}
+                     singleLine
+                     readOnly={readOnly}
+                  />
+               </div>
+            )}
 
             {!readOnly && sectionMenu && (
                <ContextMenu
@@ -173,7 +205,7 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
                />
             )}
 
-            {section.blocks.length === 0 && !readOnly && (
+            {section.blocks.length === 0 && showTitle && !readOnly && (
                <>
                   <div
                      ref={emptyCardRef}
@@ -201,7 +233,7 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
 
             {readOnly ? (
                <div ref={containerRef}>
-                  {section.blocks.map((block: Block) => (
+                  {blocksToRender.map((block: Block) => (
                      <WysiwygBlock
                         key={block.id}
                         secId={section.id}
@@ -213,8 +245,12 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
             ) : (
                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleBlockDragStart} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveBlockId(null); setDragWidth(null) }}>
                   <div ref={containerRef}>
-                     <SortableContext items={section.blocks.map(block => block.id)} strategy={noopStrategy}>
-                        {section.blocks.map((block: Block, blockIndex: number) => (
+                     <SortableContext items={blocksToRender.map(block => block.id)} strategy={noopStrategy}>
+                        {blocksToRender.map((block: Block) => {
+                           // Absolute index in section.blocks (blocksToRender may be a page-slice subset),
+                           // so insert / move / reorder always address the right position in the section.
+                           const blockIndex = section.blocks.findIndex(candidate => candidate.id === block.id)
+                           return (
                            <WysiwygBlock
                               key={block.id}
                               secId={section.id}
@@ -226,9 +262,10 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
                               onMoveUp={blockIndex > 0 ? () => reorderBlocks(section.id, blockIndex, blockIndex - 1) : undefined}
                               onMoveDown={blockIndex < section.blocks.length - 1 ? () => reorderBlocks(section.id, blockIndex, blockIndex + 1) : undefined}
                            />
-                        ))}
+                           )
+                        })}
                      </SortableContext>
-                     {activeBlockId !== null && <BottomDropZone id={`${section.id}-bottom`} />}
+                     {activeBlockId !== null && showAddRow && <BottomDropZone id={bottomZoneId} />}
                   </div>
                   <DragOverlay>
                      {activeBlockId && (() => {
@@ -249,7 +286,7 @@ export function WysiwygSection({ section, index, isLastSection, activeSectionId,
                </DndContext>
             )}
 
-            {!readOnly && section.blocks.length > 0 && (
+            {!readOnly && showAddRow && section.blocks.length > 0 && (
                <AddBlockRow onAdd={type => addBlock(section.id, type)} />
             )}
          </div>

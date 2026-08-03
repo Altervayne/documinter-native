@@ -42,6 +42,7 @@ import { importMintdownFile } from './lib/mintdown'
 // -- Type Imports --
 import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
 import type { DocPresentationExtras } from './lib/presentation'
+import type { DocFormat } from './lib/format'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { title: '', fields: [] }
@@ -102,6 +103,7 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
       docTheme:  loaded.docTheme,
       docAccent: loaded.docAccent,
       presentation: loaded.presentation,
+      format:       loaded.format,
       documentId,
       saveStatus:            'clean',
       pendingNewDocFolderId: null,
@@ -130,7 +132,7 @@ export default function App() {
    // The active document and the content + identity the render + effects below read, derived from the
    // list. documentId / saveStatus are per-tab (phase 2); the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
-   const { meta, sections, docTheme, docAccent, presentation, documentId, saveStatus } = activeDocument
+   const { meta, sections, docTheme, docAccent, presentation, format, documentId, saveStatus } = activeDocument
 
    // Binder records that currently have an open tab (for the open-vs-active card highlight).
    const openDocumentIds = openDocuments
@@ -159,6 +161,13 @@ export default function App() {
    const setActivePresentation = useCallback((next: DocPresentationExtras | undefined) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, presentation: next } : document))
+   }, [])
+   // Patch the active tab's page format (infinite width, later paged A4). Mirrors setActivePresentation;
+   // a real document change, so it flows through autosave + persist like any other edit. `undefined`
+   // clears it entirely (back to today's infinite/normal behavior).
+   const setActiveFormat = useCallback((next: DocFormat | undefined) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
    }, [])
    // Per-tab save-status setter. Status lives on each OpenDocument (phase 2), so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
@@ -259,6 +268,7 @@ export default function App() {
             // A supplied presentation (e.g. a JSON backup) restores its extras; a plain new/import
             // carries the current tab's forward, matching the theme/accent carry above.
             presentation: presentation ? presentation.presentation : current?.presentation,
+            format:       presentation ? presentation.format       : current?.format,
             documentId:            null,   // not yet a binder record; the first edit forks a fresh one
             saveStatus:            'clean',
             pendingNewDocFolderId: pendingFolderId ?? null,
@@ -343,7 +353,7 @@ export default function App() {
          setTabSaveStatus(originatingTabKey, 'saving')
          saveDocument(
             { meta, sections },
-            { docTheme, docAccent, presentation },
+            { docTheme, docAccent, presentation, format },
             originatingTab?.documentId ?? undefined,
             originatingTab?.pendingNewDocFolderId ?? undefined,
          ).then(savedId => {
@@ -360,7 +370,7 @@ export default function App() {
       return () => {
          if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
       }
-   }, [meta, sections, docTheme, docAccent, presentation, setTabSaveStatus])
+   }, [meta, sections, docTheme, docAccent, presentation, format, setTabSaveStatus])
 
    // Fade the "Saved" indicator out after 2.5 s
    useEffect(() => {
@@ -389,7 +399,7 @@ export default function App() {
       try {
          const savedId = await saveDocument(
             { meta: flushTab.meta, sections: flushTab.sections },
-            { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent, presentation: flushTab.presentation },
+            { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent, presentation: flushTab.presentation, format: flushTab.format },
             flushTab.documentId ?? undefined,
             flushTab.pendingNewDocFolderId ?? undefined,
          )
@@ -663,6 +673,13 @@ export default function App() {
    const handleOpenNav  = useCallback(() => setNavOpen(true), [])
    const handleCloseNav = useCallback(() => setNavOpen(false), [])
 
+   // Page setup window: split out on its own launcher (Document → Page setup…), a document-level,
+   // non-modal draggable window (open-state lifted here like the presentation/nav windows'). Phase 1:
+   // infinite-width control only; its controls mutate the document's format (a real doc change).
+   const [formatOpen, setFormatOpen] = useState(false)
+   const handleOpenFormat  = useCallback(() => setFormatOpen(true), [])
+   const handleCloseFormat = useCallback(() => setFormatOpen(false), [])
+
    // ######################
    // # PANE LAYOUT SYSTEM #
    // ######################
@@ -785,6 +802,8 @@ export default function App() {
             presentation={presentation}
             onOpenPresentation={handleOpenPresentation}
             onOpenNav={handleOpenNav}
+            format={format}
+            onOpenFormat={handleOpenFormat}
          />
 
          {binderOpen ? (
@@ -871,6 +890,7 @@ export default function App() {
                               docTheme={docTheme}
                               docAccent={docAccent}
                               presentation={presentation}
+                              format={format}
                               activeTabKey={activeTabKey}
                               onUpdateMeta={handleMetaChange}
                               onAddSection={sectionMutations.addSection}
@@ -878,6 +898,7 @@ export default function App() {
                               onDocThemeChange={setActiveDocTheme}
                               onDocAccentChange={setActiveDocAccent}
                               onPresentationChange={setActivePresentation}
+                              onFormatChange={setActiveFormat}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}
@@ -887,6 +908,9 @@ export default function App() {
                               navOpen={navOpen}
                               onOpenNav={handleOpenNav}
                               onCloseNav={handleCloseNav}
+                              formatOpen={formatOpen}
+                              onOpenFormat={handleOpenFormat}
+                              onCloseFormat={handleCloseFormat}
                               previewMode={mode}
                               onSetMode={handleSetMode}
                            />

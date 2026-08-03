@@ -10,6 +10,7 @@ import { GripVertical, TriangleAlert } from 'lucide-react'
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { useDocumentHandles } from '../../contexts/DocumentHandlesContext'
 import { useBlockEditorWindow } from '../../contexts/BlockEditorWindowContext'
+import { usePageBreaks } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
 import { useAnchorEditor } from './useAnchorEditor'
 import { useBlockContextMenu } from './useBlockContextMenu'
@@ -101,6 +102,7 @@ export function WysiwygBlock({
    const { t }        = useLang()
    const allHandles   = useDocumentHandles()
    const editorWindow = useBlockEditorWindow()
+   const pageBreaks   = usePageBreaks()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
    // The block's editor window is open → highlight it and drop its inline controls (block-owned).
    const isWindowOpen = !readOnly && editorWindow.isEditing(block.id)
@@ -177,6 +179,17 @@ export function WysiwygBlock({
    //  Anchor + context menu
    // =======================
    const anchor = useAnchorEditor({ block, blockDivRef, patch })
+   // Paged-format page-break action: only for an OUTER, editable block in paged mode. A break already
+   // after this block → "remove"; a place to break after it → "insert"; otherwise (the document's
+   // last block) no entry. Container inner blocks are never page-break targets.
+   const pageBreakOption: { mode: 'insert' | 'remove'; onSelect: () => void } | undefined =
+      (!inner && !readOnly && pageBreaks.paged)
+         ? (pageBreaks.hasBreakAfter(block.id)
+            ? { mode: 'remove', onSelect: () => pageBreaks.removeBreakAfter(block.id) }
+            : (pageBreaks.canBreakAfter(block.id)
+               ? { mode: 'insert', onSelect: () => pageBreaks.insertBreakAfter(block.id) }
+               : undefined))
+         : undefined
    const { contextMenuProps, openContextMenu } = useBlockContextMenu({
       block,
       blockDivRef,
@@ -197,6 +210,7 @@ export function WysiwygBlock({
       onDeleteTableRowAt: handleDeleteTableRowAt,
       onInsertTableColAt: handleInsertTableColAt,
       onDeleteTableColAt: handleDeleteTableColAt,
+      pageBreak: pageBreakOption,
    })
 
    // ========================

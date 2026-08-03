@@ -2,6 +2,7 @@ import type { GraphSpec } from './lib/graph'
 import type { DiagramSpec } from './lib/diagram/types'
 import type { MarkupElement } from './lib/imageMarkup'
 import type { DocPresentationExtras } from './lib/presentation'
+import type { DocFormat } from './lib/format'
 
 export type BlockType = 'p' | 'h3' | 'h4' | 'callout' | 'code' | 'math' | 'graph' | 'diagram' | 'list' | 'checklist' | 'table' | 'image' | 'container' | 'hr'
 export type Side = 'left' | 'right'
@@ -148,6 +149,10 @@ export interface OpenDocument {
    /** Export-only / editor-only presentation extras (watermark, …); absent = today's behavior.
     *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Mintdown / Markdown. */
    presentation?: DocPresentationExtras
+   /** Document page format (infinite canvas width, and later paged A4); absent = today's infinite/
+    *  normal-width behavior. Rides on the SAME seams as presentation; NEVER serialized to Mintdown /
+    *  Markdown (chrome, not content, see lib/format.ts). */
+   format?: DocFormat
    documentId:            string | null   // binder record id; null until first save
    saveStatus:            SaveStatus       // per-tab dirty/saving/saved cycle
    pendingNewDocFolderId: string | null    // folder a fresh doc lands in on first save; null = root
@@ -202,6 +207,10 @@ export interface BinderDocumentContent {
     *  the light record listDocuments() reads for every card, a full-bleed base64 must never bloat
     *  the card-list query. Absent on documents saved before presentation existed. */
    presentation?: DocPresentationExtras
+   /** Document page format (infinite width, later paged A4); grouped with presentation on the heavy
+    *  store for seam consistency, even though it carries no base64. Absent on documents saved before
+    *  format existed, or on a document that never left the default (see isDefaultFormat). */
+   format?: DocFormat
 }
 
 export type Mode = 'wysiwyg' | 'preview'

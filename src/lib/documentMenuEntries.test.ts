@@ -53,6 +53,7 @@ const fullOptions: DocumentMenuOptions = {
    onDeselectCustomAccent: () => {},
    onOpenPresentation: () => {},
    onOpenNavigation:   () => {},
+   onOpenFormat:       () => {},
    onOpenExport:       () => {},
    onManualSave:       () => {},
    onSaveAs:           () => {},
@@ -70,6 +71,7 @@ describe('buildDocumentMenuEntries', () => {
          '---',
          t.presentationMenu,
          t.menuNavigation,                   // Navigation sits right after Presentation
+         t.formatMenuPageSetup,              // Page setup sits right after Navigation
          t.menuExport,
          t.fileSave,
          t.fileSaveAs,

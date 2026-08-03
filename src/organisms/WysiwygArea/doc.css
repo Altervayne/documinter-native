@@ -39,6 +39,79 @@
   color: #1a1a2e;
 }
 
+/* ############################################################
+   Paged (A4) format, Document Formats Phase 2. The single infinite sheet is replaced by a centered
+   column of A4-sized page sheets. Each `.doc-page` is sized to the kind's portrait/landscape px in
+   an inline style (WysiwygArea), inset by the page margins (inline padding on its own .doc-render),
+   and carries a page label; pages 2..N carry a remove-break affordance. The sheet chrome mirrors the
+   infinite sheet (shadow / rounded / accent top border) so the two modes read as the same document.
+   ############################################################ */
+.doc-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem 0 4rem;
+}
+/* One page sheet. width / min-height / accent border / background come from the inline style. */
+.doc-page {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+/* Page number badge, pinned top-right just inside the sheet, muted so it reads as chrome. */
+.doc-page-label {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.7rem;
+  z-index: 2;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  pointer-events: none;
+  user-select: none;
+}
+.doc-dark .doc-page-label { color: #6b7280; }
+/* Remove-break affordance (pages 2..N), pinned top-left just inside the sheet; reveals on sheet
+   hover so it doesn't clutter the reading view. App-chrome-ish, tinted with the doc accent. */
+.doc-page-break-remove {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.6rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.24rem 0.5rem;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+.doc-page:hover .doc-page-break-remove { opacity: 1; }
+.doc-page-break-remove:hover {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
+  color: var(--doc-accent, var(--color-accent));
+}
+.doc-page-break-remove:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--doc-accent, var(--color-accent));
+  outline-offset: 1px;
+}
+.doc-dark .doc-page-break-remove {
+  background: #161b22;
+  border-color: #21262d;
+  color: #8b949e;
+}
+
 /* Background watermark layer (presentation). Absolutely fills the sheet behind .doc-render; the
    sheet is position:relative (set in WysiwygArea) and rounds its corners, which this inherits.
    Fit / tile / position / opacity come from inline style (resolveWatermarkLayout + the doc-theme

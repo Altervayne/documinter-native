@@ -33,6 +33,9 @@ interface UseBlockContextMenuOptions {
    onDeleteTableRowAt: (rowIndex: number) => void
    onInsertTableColAt: (colIndex: number) => void
    onDeleteTableColAt: (colIndex: number) => void
+   /** Paged-format page-break action, computed by the caller (present only in paged mode for an
+    *  outer block that can break / already breaks after it). */
+   pageBreak?: { mode: 'insert' | 'remove'; onSelect: () => void }
 }
 
 interface UseBlockContextMenuResult {
@@ -55,6 +58,7 @@ export function useBlockContextMenu({
    onRequestInsertBefore, onRequestInsertAfter,
    onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
+   pageBreak,
 }: UseBlockContextMenuOptions): UseBlockContextMenuResult {
    const [contextMenu,           setContextMenu]           = useState<{ x: number; y: number } | null>(null)
    const [contextMenuListItemId, setContextMenuListItemId] = useState<string | null>(null)
@@ -162,6 +166,7 @@ export function useBlockContextMenu({
          onClose:    closeContextMenu,
          listItem:   listItemActions,
          tableCell:  tableCellActions,
+         pageBreak,
       }
    }
 

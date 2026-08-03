@@ -4,6 +4,7 @@ import { Button } from '../atoms/Button'
 import { ColorPicker } from 'react-piqua-color'
 import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
+import type { DocFormat } from '../lib/format'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
@@ -26,6 +27,9 @@ interface ExportModalProps {
    defaultAccent: string
    /** Active document's presentation extras, baked into the exported HTML (watermark, …). */
    presentation?: DocPresentationExtras
+   /** Active document's page format (infinite width, later paged A4), baked into the exported HTML's
+    *  `.doc-card` width. */
+   format?: DocFormat
    lang: Lang
    onClose: () => void
    /** Opens the document-level Presentation window (watermark / header / nav editing). */
@@ -46,16 +50,18 @@ interface ExportModalProps {
  *   - Mintdown, documentToMintdown → download (via exportMintdownFile). Lean, no options.
  *   - Markdown, documentToMarkdown → download (via exportMarkdownFile). Lean, no options.
  */
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, lang, onClose, onOpenPresentation }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
    const { t } = useLang()
    const { showToast } = useToast()
 
-   // Presentation extras ride into the HTML export via ExportOptions; the .mint / .md paths never
-   // see them (they serialize content only).
-   const opts: ExportOptions = { theme, accent, lang, presentation }
+   // Presentation extras + document format ride into the HTML export via ExportOptions; the .mint /
+   // .md paths never see them (they serialize content only). Renamed to docFormat above to avoid
+   // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
+   // markdown, an unrelated concept that predates the document page format).
+   const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
    // =========
    //  Actions

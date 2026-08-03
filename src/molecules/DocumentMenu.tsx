@@ -31,6 +31,7 @@ interface DocumentMenuProps {
    onDocAccentChange?: (hex: string) => void
    onOpenPresentation?: () => void
    onOpenNavigation?:   () => void
+   onOpenFormat?:       () => void
    onOpenExport?: () => void
    onManualSave?: () => void
    onSaveAs?:     () => void
@@ -57,7 +58,7 @@ interface DocumentMenuProps {
 export function DocumentMenu({
    t, docTheme, docAccent, previewMode, readOnly,
    onAddSection, onDocThemeChange, onDocAccentChange,
-   onOpenPresentation, onOpenNavigation, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
+   onOpenPresentation, onOpenNavigation, onOpenFormat, onOpenExport, onManualSave, onSaveAs, onTogglePreview,
 }: DocumentMenuProps) {
    const [open, setOpen]                                 = useState(false)
    const [customAccentSelected, setCustomAccentSelected] = useState(false)
@@ -105,6 +106,7 @@ export function DocumentMenu({
       onDeselectCustomAccent: () => setCustomAccentSelected(false),
       onOpenPresentation,
       onOpenNavigation,
+      onOpenFormat,
       onOpenExport,
       onManualSave,
       onSaveAs,
