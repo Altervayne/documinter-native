@@ -1,16 +1,15 @@
-import { useState } from 'react'
-
+// -- Type Imports --
 import type { Section } from '../types'
-import { SectionItem } from '../molecules/SectionItem'
-import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+
+// -- Icon Imports --
 import {
-   Plus, SquareDashed,
-   GripVertical, ChevronDown,
    PanelLeft, PanelRight,
    PanelLeftClose, PanelRightClose,
    PanelLeftOpen, PanelRightOpen,
 } from 'lucide-react'
+
+// -- Organism / Context Imports --
+import { StructurePanelBody } from './StructurePanelBody'
 import { useLang } from '../contexts/LangContext'
 
 // #########
@@ -43,8 +42,6 @@ export function Panel({
    onReorderSections, onReorderBlocks,
 }: PanelProps) {
    const { t } = useLang()
-   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
 
    const isLeft         = dockSide === 'left'
    const borderClass    = isLeft ? 'border-r' : 'border-l'
@@ -52,23 +49,6 @@ export function Panel({
    const CloseIcon      = isLeft ? PanelLeftClose : PanelRightClose
    const OpenIcon       = isLeft ? PanelLeftOpen  : PanelRightOpen
    const dockLabel      = isLeft ? t.dockToRight : t.dockToLeft
-
-   function handleDragStart(event: DragStartEvent) {
-      setActiveSectionId(String(event.active.id))
-   }
-
-   function handleDragEnd(event: DragEndEvent) {
-      setActiveSectionId(null)
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const oldIdx = sections.findIndex(section => section.id === active.id)
-      const newIdx = sections.findIndex(section => section.id === over.id)
-      if (oldIdx !== -1 && newIdx !== -1) onReorderSections(oldIdx, newIdx)
-   }
-
-   function handleDragCancel() {
-      setActiveSectionId(null)
-   }
 
    // ==============================================================================
    //  Always-mounted aside, width transitions between rail (3rem) and full (18rem)
@@ -120,80 +100,15 @@ export function Panel({
                   </div>
                </div>
 
-               {/* Scrollable section tree, add-section button flows inside as sticky last child */}
-               <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-4">
-                  {sections.length === 0 ? (
-                     <button
-                        onClick={onAddSection}
-                        className="w-full flex flex-col items-center gap-2 mt-1 py-5 px-3 rounded-lg border border-dashed border-accent/25 bg-accent/[0.03] hover:bg-accent/[0.07] hover:border-accent/40 text-center cursor-pointer transition-colors select-none"
-                     >
-                        <SquareDashed size={20} className="text-accent/35" />
-                        <div className="flex flex-col gap-0.5">
-                           <span className="text-xs font-medium text-muted/60">{t.panelNoSections}</span>
-                           <span className="text-xs font-medium text-accent/55">{t.panelNoSectionsHint}</span>
-                        </div>
-                     </button>
-                  ) : (
-                     <DndContext
-                        sensors={sensors}
-                        collisionDetection={closestCenter}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        onDragCancel={handleDragCancel}
-                     >
-                        <SortableContext items={sections.map(section => section.id)} strategy={verticalListSortingStrategy}>
-                           {sections.map((section, index) => (
-                              <SectionItem
-                                 key={section.id}
-                                 section={section}
-                                 index={index}
-                                 isLastSection={index === sections.length - 1}
-                                 onToggle={()     => onToggleSec(section.id)}
-                                 onDuplicate={() => onDuplicateSec(section.id)}
-                                 onRemove={()    => onRemoveSec(section.id)}
-                                 onReorderBlocks={(oldIdx, newIdx) => onReorderBlocks(section.id, oldIdx, newIdx)}
-                              />
-                           ))}
-                        </SortableContext>
-
-                        <DragOverlay>
-                           {activeSectionId && (() => {
-                              const activeSection = sections.find(section => section.id === activeSectionId)
-                              return activeSection ? (
-                                 <div
-                                    className="flex items-center gap-1 h-8 rounded-md bg-raised border border-border shadow-lg px-0.5 pointer-events-none"
-                                    style={{ opacity: 0.92 }}
-                                 >
-                                    <span className="shrink-0 px-0.5 text-muted/50">
-                                       <GripVertical size={16} />
-                                    </span>
-                                    <span className="shrink-0 p-0.5 text-muted/50">
-                                       <ChevronDown size={12} />
-                                    </span>
-                                    <span className="flex-1 min-w-0 truncate text-xs font-medium text-text/80 select-none">
-                                       {activeSection.title || t.untitledDoc}
-                                    </span>
-                                 </div>
-                              ) : null
-                           })()}
-                        </DragOverlay>
-                     </DndContext>
-                  )}
-
-                  {/* Sticky add-section button, only shown when sections already exist */}
-                  {/* The empty-state card above handles the zero-section case */}
-                  {sections.length > 0 && (
-                     <div className="sticky bottom-0 bg-raised mt-4">
-                        <button
-                           onClick={onAddSection}
-                           className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs font-medium text-accent/50 hover:text-accent hover:bg-accent/8 rounded-md border border-dashed border-accent/25 hover:border-accent/50 transition-colors cursor-pointer"
-                        >
-                           <Plus size={13} />
-                           {t.addSection}
-                        </button>
-                     </div>
-                  )}
-               </div>
+               <StructurePanelBody
+                  sections={sections}
+                  onAddSection={onAddSection}
+                  onToggleSec={onToggleSec}
+                  onDuplicateSec={onDuplicateSec}
+                  onRemoveSec={onRemoveSec}
+                  onReorderSections={onReorderSections}
+                  onReorderBlocks={onReorderBlocks}
+               />
             </>
          )}
       </aside>

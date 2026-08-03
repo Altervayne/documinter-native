@@ -1,29 +1,11 @@
-// -- React Imports --
-import { useState } from 'react'
-import type React from 'react'
-
-// -- DnD Imports --
-import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-
 // -- Icon Imports --
-import { PanelRightClose, PanelRightOpen, Copy, Trash2, Layers } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Layers } from 'lucide-react'
 
-// -- Lib / Context Imports --
-import { renderBlocksToDocHtml } from '../lib/export'
-import { millimetresToPx, type Page } from '../lib/pageModel'
+// -- Organism / Lib / Context Imports --
+import { PagesPanelBody } from './PagesPanelBody'
+import type { Page } from '../lib/pageModel'
 import type { PageMargins } from '../lib/format'
 import { useLang } from '../contexts/LangContext'
-
-// #############
-// # CONSTANTS #
-// #############
-
-// The rendered thumbnail width in px; each thumbnail is a scaled-down render of the page's real A4
-// sheet (renderBlocksToDocHtml at full sheet px, CSS-scaled), so this width divided by the sheet
-// width gives the scale factor. Small + read-only, so it stays cheap.
-const THUMBNAIL_WIDTH_PX = 150
 
 // #########
 // # TYPES #
@@ -44,144 +26,24 @@ interface PageSorterPaneProps {
    onJump:       (pageId: string) => void
 }
 
-// #############################################################
-// # ONE THUMBNAIL: a scaled read-only render of a page's flow #
-// #############################################################
-
-interface PageThumbnailProps {
-   page:          Page
-   pageIndex:     number
-   pageCount:     number
-   docTheme:      'light' | 'dark'
-   docAccent:     string
-   margins:       PageMargins
-   sheetWidthPx:  number
-   sheetHeightPx: number
-   canDelete:     boolean
-   onJump:        (pageId: string) => void
-   onDuplicate:   (pageIndex: number) => void
-   onDelete:      (pageIndex: number) => void
-}
-
-function PageThumbnail({
-   page, pageIndex, pageCount, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   canDelete, onJump, onDuplicate, onDelete,
-}: PageThumbnailProps) {
-   const { t } = useLang()
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
-
-   // The page's flat block flow (across its section slices) → self-contained doc HTML, rendered at the
-   // real sheet px inside a scaled wrapper. Image blocks use the cheap placeholder (a thumbnail needs
-   // no full base64 fidelity); graphs / diagrams are inline SVG and render as-is.
-   const blocks = page.slices.flatMap(slice => slice.blocks)
-   const html   = renderBlocksToDocHtml(blocks, { theme: docTheme, imagePlaceholder: true })
-
-   const scale       = THUMBNAIL_WIDTH_PX / sheetWidthPx
-   const frameHeight = sheetHeightPx * scale
-
-   return (
-      <div
-         ref={setNodeRef}
-         style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
-         className="page-thumb"
-      >
-         <button
-            type="button"
-            className="page-thumb-frame"
-            style={{ width: `${THUMBNAIL_WIDTH_PX}px`, height: `${frameHeight}px`, '--doc-accent': docAccent } as React.CSSProperties}
-            title={t.pageSorterJump}
-            aria-label={`${t.pageSorterJump} ${pageIndex + 1}`}
-            onClick={() => onJump(page.id)}
-            {...attributes}
-            {...listeners}
-         >
-            <div
-               className="page-thumb-scaler"
-               style={{ width: `${sheetWidthPx}px`, height: `${sheetHeightPx}px`, transform: `scale(${scale})` }}
-            >
-               <div
-                  className={`doc-render page-thumb-render ${docTheme === 'dark' ? 'doc-dark' : ''}`}
-                  style={{
-                     background:    'var(--doc-canvas-bg)',
-                     paddingTop:    `${millimetresToPx(margins.top)}px`,
-                     paddingRight:  `${millimetresToPx(margins.right)}px`,
-                     paddingBottom: `${millimetresToPx(margins.bottom)}px`,
-                     paddingLeft:   `${millimetresToPx(margins.left)}px`,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: html }}
-               />
-            </div>
-         </button>
-
-         <div className="page-thumb-bar">
-            <span className="page-thumb-number">{pageIndex + 1} / {pageCount}</span>
-            <div className="page-thumb-actions">
-               <button
-                  type="button"
-                  className="page-thumb-action"
-                  title={t.pageSorterDuplicate}
-                  aria-label={t.pageSorterDuplicate}
-                  onPointerDown={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onDuplicate(pageIndex) }}
-               >
-                  <Copy size={13} />
-               </button>
-               <button
-                  type="button"
-                  className="page-thumb-action page-thumb-action-danger"
-                  title={t.pageSorterDelete}
-                  aria-label={t.pageSorterDelete}
-                  disabled={!canDelete}
-                  onPointerDown={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onDelete(pageIndex) }}
-               >
-                  <Trash2 size={13} />
-               </button>
-            </div>
-         </div>
-      </div>
-   )
-}
-
 // ####################################################
 // # THE PANE: a right-docked, sliding page-sorter aside
 // ####################################################
 
 /**
  * The page-sorter (Document Formats PHASE 4): a sliding pane, mounted ONLY in paged (A4) EDIT mode,
- * that shows the document's derived pages as scaled thumbnails and lets the author reorder them (dnd-
- * kit), jump to one (click), and duplicate / delete one. Pages are DERIVED from the break markers, so
- * every action routes through the pure `reorderPages` / `duplicatePage` / `deletePage` transforms in
- * lib/pageModel (which move the real block ranges + re-derive the breaks). Mirrors the Panel's always-
- * mounted width-transition (a collapsed rail ↔ full pane), one axis over.
+ * that shows the document's derived pages as scaled thumbnails and lets the author reorder them, jump
+ * to one, and duplicate / delete one. The thumbnail column + drag behavior live in PagesPanelBody;
+ * this pane is only the surrounding aside (rail + header). Mirrors the Panel's always-mounted
+ * width-transition, one axis over.
  */
 export function PageSorterPane({
    open, onToggle, pages, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
    onReorder, onDuplicate, onDelete, onJump,
 }: PageSorterPaneProps) {
    const { t } = useLang()
-   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-   const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
 
-   function handleDragStart(event: DragStartEvent) {
-      setDraggingPageId(String(event.active.id))
-   }
-   function handleDragEnd(event: DragEndEvent) {
-      setDraggingPageId(null)
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const fromIndex = pages.findIndex(page => page.id === active.id)
-      const toIndex   = pages.findIndex(page => page.id === over.id)
-      if (fromIndex !== -1 && toIndex !== -1) onReorder(fromIndex, toIndex)
-   }
-   function handleDragCancel() {
-      setDraggingPageId(null)
-   }
-
-   const draggingIndex = draggingPageId !== null ? pages.findIndex(page => page.id === draggingPageId) : -1
-   const countLabel    = `${pages.length} ${pages.length === 1 ? t.pageSorterCount : t.pageSorterCountPlural}`
-   // A single-page document can't lose its only page (that would empty it), so delete is disabled then.
-   const canDelete     = pages.length > 1
+   const countLabel = `${pages.length} ${pages.length === 1 ? t.pageSorterCount : t.pageSorterCountPlural}`
 
    return (
       <aside
@@ -221,51 +83,18 @@ export function PageSorterPane({
                   </button>
                </div>
 
-               {/* Scrollable thumbnail column. */}
-               <div className="overflow-y-auto flex-1 min-h-0 px-2 py-3 flex flex-col items-center gap-2">
-                  <DndContext
-                     sensors={sensors}
-                     collisionDetection={closestCenter}
-                     onDragStart={handleDragStart}
-                     onDragEnd={handleDragEnd}
-                     onDragCancel={handleDragCancel}
-                  >
-                     <SortableContext items={pages.map(page => page.id)} strategy={verticalListSortingStrategy}>
-                        {pages.map((page, pageIndex) => (
-                           <PageThumbnail
-                              key={page.id}
-                              page={page}
-                              pageIndex={pageIndex}
-                              pageCount={pages.length}
-                              docTheme={docTheme}
-                              docAccent={docAccent}
-                              margins={margins}
-                              sheetWidthPx={sheetWidthPx}
-                              sheetHeightPx={sheetHeightPx}
-                              canDelete={canDelete}
-                              onJump={onJump}
-                              onDuplicate={onDuplicate}
-                              onDelete={onDelete}
-                           />
-                        ))}
-                     </SortableContext>
-
-                     <DragOverlay>
-                        {draggingIndex !== -1 && (
-                           <div
-                              className="page-thumb-frame page-thumb-frame-overlay"
-                              style={{
-                                 width:  `${THUMBNAIL_WIDTH_PX}px`,
-                                 height: `${sheetHeightPx * (THUMBNAIL_WIDTH_PX / sheetWidthPx)}px`,
-                                 '--doc-accent': docAccent,
-                              } as React.CSSProperties}
-                           >
-                              <div className="page-thumb-overlay-label">{draggingIndex + 1}</div>
-                           </div>
-                        )}
-                     </DragOverlay>
-                  </DndContext>
-               </div>
+               <PagesPanelBody
+                  pages={pages}
+                  docTheme={docTheme}
+                  docAccent={docAccent}
+                  margins={margins}
+                  sheetWidthPx={sheetWidthPx}
+                  sheetHeightPx={sheetHeightPx}
+                  onReorder={onReorder}
+                  onDuplicate={onDuplicate}
+                  onDelete={onDelete}
+                  onJump={onJump}
+               />
             </>
          )}
       </aside>
