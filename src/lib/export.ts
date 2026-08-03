@@ -16,7 +16,11 @@ import {
    collectAnchoredHandles,
    type DocPresentationExtras, type Watermark, type Header,
 } from './presentation'
-import { resolveDocumentSheetWidthPx, type DocFormat } from './format'
+import { resolveDocumentSheetWidthPx, DEFAULT_A4_MARGINS, type DocFormat, type PageMargins } from './format'
+import {
+   partitionIntoPages, millimetresToPx,
+   A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
+} from './pageModel'
 
 export interface ExportOptions {
    theme: 'light' | 'dark'
@@ -250,7 +254,7 @@ function getColors(theme: 'light' | 'dark'): Colors {
    }
 }
 
-function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean, sheetWidthPx: number): string {
+function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean, sheetWidthPx: number, pagedStyles: string): string {
    // Watermark CSS is appended ONLY when a watermark is present, so an absent watermark leaves the
    // style block byte-identical to pre-feature output. The rules layer a static image behind the
    // card content: .doc-card becomes the positioning context (overflow clips to its radius), the
@@ -511,7 +515,66 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
 
             /* Temml MathML rendering-correction rules (self-contained, no fonts) */
             ${TEMML_STYLES}
-${watermarkStyles}${headerStyles}${navStyles}   `
+${watermarkStyles}${headerStyles}${navStyles}${pagedStyles}   `
+}
+
+// #############################################################
+// # PAGED (A4) EXPORT STYLES — Document Formats Phase 5       #
+// #############################################################
+
+/**
+ * The paged-A4 stylesheet, emitted ONLY for a paged format (empty string otherwise, so an infinite
+ * export stays byte-identical). It gives each derived page its own A4 `.doc-page` sheet: on screen the
+ * sheets stack like the editor (fixed A4 px size, margins as padding, a soft shadow); an `@page` rule
+ * plus `page-break-after: always` and `@media print` overrides make browser print-to-PDF emit one true
+ * A4 page per sheet at the right orientation and margins, with `page-break-inside: avoid` keeping
+ * self-contained figures (SVG graphs / diagrams, images, tables, math, callouts, code) off a page seam.
+ */
+function buildPagedStyles(
+   accent:        string,
+   colors:        Colors,
+   orientation:   'portrait' | 'landscape',
+   margins:       PageMargins,
+   sheetWidthPx:  number,
+   sheetHeightPx: number,
+   hasWatermark:  boolean,
+): string {
+   // Per-sheet watermark clipping, the paged analogue of the `.doc-card` rules; only when present.
+   const watermarkPaged = hasWatermark
+      ? `
+            .doc-page { position: relative; overflow: hidden; }
+            .doc-page > .doc-render { position: relative; z-index: 1; }`
+      : ''
+
+   return `
+            /* Paged (A4) layout */
+            @page { size: A4 ${orientation}; margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; }
+            .doc-pages { display: flex; flex-direction: column; align-items: center; gap: 2rem; }
+            .doc-page {
+                  box-sizing: border-box;
+                  width: ${sheetWidthPx}px;
+                  min-height: ${sheetHeightPx}px;
+                  background: ${colors.cardBg};
+                  border-top: 4px solid ${accent};
+                  border-radius: 2px;
+                  box-shadow: ${colors.cardShadow};
+            }
+            .doc-page > .doc-render { padding: ${millimetresToPx(margins.top)}px ${millimetresToPx(margins.right)}px ${millimetresToPx(margins.bottom)}px ${millimetresToPx(margins.left)}px; }
+            .doc-render .doc-figure, .doc-render .doc-image-markup, .doc-render .doc-graph,
+            .doc-render .doc-diagram, .doc-render .table-wrap, .doc-render .doc-math,
+            .doc-render .callout, .doc-render pre { page-break-inside: avoid; break-inside: avoid; }
+            @media print {
+                  body { background: #ffffff; }
+                  .sidebar { display: none; }
+                  .main { margin-left: 0; padding: 0; }
+                  .doc-pages { gap: 0; padding: 0; }
+                  .doc-page {
+                        box-shadow: none; border-radius: 0; width: auto; min-height: 0;
+                        page-break-after: always; break-after: page;
+                  }
+                  .doc-page:last-child { page-break-after: auto; break-after: auto; }
+                  .doc-page > .doc-render { padding: 0 !important; }
+            }${watermarkPaged}`
 }
 
 const STRINGS = {
@@ -621,7 +684,19 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // this feature existed (byte-identical guard); only a non-normal infinite width (or later, a paged
    // A4 sheet) changes it.
    const sheetWidthPx = resolveDocumentSheetWidthPx(opts.format)
-   const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx)
+
+   // Paged (A4) export (Document Formats Phase 5): guarded on a paged format, so an infinite / absent
+   // format leaves both the CSS (pagedStyles empty) and the <main> markup byte-identical to before.
+   const paged = !!opts.format && opts.format.kind !== 'infinite'
+   const pagedIsLandscape   = opts.format?.kind === 'a4-landscape'
+   const pagedMargins       = opts.format?.margins ?? DEFAULT_A4_MARGINS
+   const pagedSheetWidthPx  = pagedIsLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
+   const pagedSheetHeightPx = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
+   const pagedStyles = paged
+      ? buildPagedStyles(accent, colors, pagedIsLandscape ? 'landscape' : 'portrait', pagedMargins, pagedSheetWidthPx, pagedSheetHeightPx, hasWatermark)
+      : ''
+
+   const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx, pagedStyles)
    // Tiled ⇒ the shared SVG <pattern> builder (identical to the editor's render, see WysiwygArea/
    // index.tsx); single ⇒ the positioned/fit CSS layer. The pattern id only needs to be unique
    // within this one exported document, so a short random suffix is enough.
@@ -694,6 +769,57 @@ ${blocksHTML}
       ? `\n      ${JSON.stringify(navAnchorIds)}.forEach(id => { const anchorEl = document.getElementById(id); if (anchorEl) observer.observe(anchorEl); });`
       : ''
 
+   // The "made with" footer, extracted once so the infinite doc-card and the last paged sheet reuse the
+   // exact same markup (referencing it in the infinite branch below keeps that path byte-identical).
+   const docFooterHTML = `<div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${strings.madeWith}</div>`
+
+   // Paged pages: each derived page is one A4 `.doc-page` sheet holding its slices. A slice renders its
+   // section heading only when it STARTS the section (continuation slices flow headingless); the page
+   // header rides page 1 and the footer rides the last page. Empty for an infinite export.
+   const pagesHTML = paged
+      ? partitionIntoPages(sections, opts.format?.pages ?? []).map((page, pageIndex, allPages) => {
+           const pageWatermarkHTML = !hasWatermark
+              ? ''
+              : (watermark!.tile
+                 ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-p${pageIndex}`)
+                 : renderWatermarkLayer(watermark!, theme))
+           const slicesHTML = page.slices.map(slice => {
+              const sectionIndex = sections.findIndex(section => section.id === slice.section.id)
+              const headingHTML  = slice.isSectionStart ? `<h2>${sectionIndex + 1}. ${esc(slice.section.title)}</h2>` : ''
+              const idAttr       = slice.isSectionStart ? ` id="section-${slice.section.id}"` : ''
+              const blocksHTML   = slice.blocks.map(block => exportBlock(block, { theme, tables })).join('\n')
+              return `<div class="doc-section"${idAttr}>${headingHTML}${blocksHTML}</div>`
+           }).join('\n')
+           const headerHTML = pageIndex === 0
+              ? `<div class="page-header">${renderMetaZone(meta, 'above', accent)}${renderPageTitle(meta, strings.fallback, header)}${renderMetaZone(meta, 'below', accent)}</div>`
+              : ''
+           const footerHTML = pageIndex === allPages.length - 1 ? docFooterHTML : ''
+           return `<div class="doc-page" data-page-id="${esc(page.id)}">${pageWatermarkHTML}<div class="doc-render">${headerHTML}${slicesHTML}</div>${footerHTML}</div>`
+        }).join('\n')
+      : ''
+
+   // The <main> body: infinite = today's single .doc-card (verbatim, byte-identical); paged = the
+   // stacked A4 sheets.
+   const mainHTML = paged
+      ? `<main class="main">
+      <div class="doc-pages">
+${pagesHTML}
+      </div>
+</main>`
+      : `<main class="main">
+      <div class="doc-card">${watermarkHTML}
+            <div class="doc-render">
+                  <div class="page-header">
+                        ${renderMetaZone(meta, 'above', accent)}
+                        ${renderPageTitle(meta, strings.fallback, header)}
+                        ${renderMetaZone(meta, 'below', accent)}
+                  </div>
+                  ${sectionsHTML}
+            </div>
+            ${docFooterHTML}
+      </div>
+</main>`
+
    return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -712,19 +838,7 @@ ${navLinks}
       </nav>
 </aside>
 
-<main class="main">
-      <div class="doc-card">${watermarkHTML}
-            <div class="doc-render">
-                  <div class="page-header">
-                        ${renderMetaZone(meta, 'above', accent)}
-                        ${renderPageTitle(meta, strings.fallback, header)}
-                        ${renderMetaZone(meta, 'below', accent)}
-                  </div>
-                  ${sectionsHTML}
-            </div>
-            <div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${strings.madeWith}</div>
-      </div>
-</main>
+${mainHTML}
 
 <button onclick="scrollToTop()" id="toTopBtn" title="Back to top"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg></button>
 <script>

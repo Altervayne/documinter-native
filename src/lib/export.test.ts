@@ -534,8 +534,56 @@ describe('generateExportHTML, document format / infinite width', () => {
       expect(clamped).toContain('max-width: 1600px;')
    })
 
-   it('ignores width for an A4 kind this phase (paged rendering is Phase 2, falls back to normal)', () => {
+   it('still emits the normal 860px .doc-card rule for a paged kind (unused; the paged branch renders .doc-page sheets)', () => {
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait', width: 'wide' } })
       expect(html).toContain('max-width: 860px;')
+   })
+})
+
+// Document Formats Phase 5: the paged-A4 export branch. A paged format emits an `@page` rule plus a
+// stack of A4 `.doc-page` sheets with page-break rules for correct browser print-to-PDF; an infinite /
+// absent format takes NONE of this and stays byte-identical to the single-.doc-card output.
+describe('generateExportHTML, paged (A4) export', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+   const sections: Section[] = [{
+      id: 's', title: 'Intro', collapsed: false,
+      blocks: [{ id: 'b1', type: 'hr' }, { id: 'b2', type: 'hr' }],
+   }]
+
+   it('emits an @page rule (portrait, default 20mm margins), .doc-page sheets, and print break rules', () => {
+      const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait' } })
+      expect(html).toContain('@page { size: A4 portrait; margin: 20mm 20mm 20mm 20mm; }')
+      expect(html).toContain('<div class="doc-pages">')
+      expect(html).toContain('class="doc-page"')
+      expect(html).toContain('page-break-after: always')
+      expect(html).toContain('page-break-inside: avoid')
+      // The infinite single-card path is NOT used.
+      expect(html).not.toContain('<div class="doc-card">')
+   })
+
+   it('uses landscape orientation and custom margins', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         format: { kind: 'a4-landscape', margins: { top: 10, right: 15, bottom: 12, left: 15 } },
+      })
+      expect(html).toContain('@page { size: A4 landscape; margin: 10mm 15mm 12mm 15mm; }')
+   })
+
+   it('splits at a break marker into discrete pages, section heading only on the section-start slice', () => {
+      const html = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         format: { kind: 'a4-portrait', pages: [{ id: 'brk', before: { sectionId: 's', blockId: 'b2' } }] },
+      })
+      // Two sheets; the break puts b2 on page 2.
+      expect((html.match(/class="doc-page"/g) || []).length).toBe(2)
+      // The section title renders once (on the starting slice), not again on the continuation page.
+      expect((html.match(/1\. Intro<\/h2>/g) || []).length).toBe(1)
+   })
+
+   it('leaves an infinite / absent format byte-identical (no @page, no .doc-page)', () => {
+      const infinite = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
+      expect(infinite).not.toContain('@page')
+      expect(infinite).not.toContain('class="doc-page"')
+      expect(infinite).toContain('<div class="doc-card">')
    })
 })
