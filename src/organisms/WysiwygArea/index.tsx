@@ -16,9 +16,11 @@ import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
+import { useToast } from '../../contexts/ToastContext'
+import { usePageOverflow } from '../../hooks/usePageOverflow'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Scissors } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Scissors, TriangleAlert } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
@@ -27,6 +29,7 @@ import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { PresentationWindow } from '../../molecules/PresentationWindow'
 import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
+import { PageSorterPane } from '../PageSorterPane'
 import { WysiwygSection } from './WysiwygSection'
 
 // -- Type Imports --
@@ -37,6 +40,7 @@ import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type 
 import {
    partitionIntoPages, reconcilePages, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
+   reorderPages, duplicatePage, deletePage,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
@@ -69,6 +73,9 @@ interface WysiwygAreaProps {
    onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Commit the document's page format (infinite width, later paged A4); undefined clears it. */
    onFormatChange?: (next: DocFormat | undefined) => void
+   /** Replace the whole section flow (the page-sorter's reorder/duplicate/delete commit the moved
+    *  block ranges through this, alongside onFormatChange for the re-derived breaks). */
+   onReplaceSections?: (sections: Section[]) => void
    /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
@@ -103,14 +110,22 @@ interface WysiwygAreaProps {
 
 export function WysiwygArea({
    meta, sections, docTheme, docAccent, presentation, format, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onOpenExport, onManualSave, onSaveAs,
+   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onReplaceSections, onOpenExport, onManualSave, onSaveAs,
    presentationOpen, onOpenPresentation, onClosePresentation,
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
 }: WysiwygAreaProps) {
    const { t } = useLang()
+   const { showToast, dismissToast } = useToast()
    const { reorderSections } = useDocumentMutations()
+
+   // Page-sorter pane open state (paged mode only), persisted like the sidebar Panel's. Default open,
+   // so the headline "see several pages" surface is visible the moment a document goes paged.
+   const [sorterOpen, setSorterOpen] = useState(
+      () => localStorage.getItem('documinter-page-sorter-open') !== 'false',
+   )
+   useEffect(() => { localStorage.setItem('documinter-page-sorter-open', String(sorterOpen)) }, [sorterOpen])
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
    // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
@@ -418,6 +433,34 @@ export function WysiwygArea({
       [paged, sections, pageBreaks],
    )
 
+   // ==========================================================
+   //  Document Formats Phase 3: measured page-overflow detection + the "Split here" assist
+   // ==========================================================
+   // Paged geometry, resolved once for the overflow measurement (the per-sheet render below resolves
+   // the same values locally). The available content height is the A4 sheet height minus the top +
+   // bottom margins (uniform across pages); a page whose measured block content spills past it gets an
+   // overflow ribbon offering a one-click assisted break. MEASURED from the DOM, never predicted.
+   const pagedMargins            = format?.margins ?? DEFAULT_A4_MARGINS
+   const pagedIsLandscape        = format?.kind === 'a4-landscape'
+   const pagedSheetWidthPx       = pagedIsLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
+   const pagedSheetHeightPx      = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
+   const availableContentHeightPx = pagedSheetHeightPx
+      - millimetresToPx(pagedMargins.top)
+      - millimetresToPx(pagedMargins.bottom)
+
+   // Phase 4: the page-sorter pane mounts only in paged EDIT mode with the levers it commits through
+   // (a page reorder/duplicate/delete needs to write BOTH the section flow and the format breaks).
+   const sorterEnabled = paged && !readOnly && !!onReplaceSections && !!onFormatChange
+
+   // Overflow is an editor-only affordance: only in paged EDIT mode (readOnly/preview never shows the
+   // ribbon, and infinite mode has no overflow concept at all). The hook measures the rendered sheets
+   // inside the container it hands back a ref for; its verdict never touches the serialized model.
+   const { containerRef: pagesContainerRef, overflowByPageId } = usePageOverflow({
+      enabled:           paged && !readOnly && !!onFormatChange,
+      pages:             derivedPages,
+      availableHeightPx: availableContentHeightPx,
+   })
+
    // Commit a new page-break list back through onFormatChange, preserving kind/width/margins. An empty
    // list drops the `pages` key entirely (an untouched, non-default format stays clean).
    function commitPageBreaks(nextPages: PageBreak[]): void {
@@ -429,6 +472,61 @@ export function WysiwygArea({
       } else {
          onFormatChange({ ...base, pages: nextPages })
       }
+   }
+
+   // ==========================================================
+   //  Document Formats Phase 4: the page-sorter's content-touching operations
+   // ==========================================================
+   // Reorder / duplicate / delete a page. Each routes through a pure transform in pageModel that moves
+   // the real block ranges AND re-derives the break markers, then commits BOTH the new section flow
+   // (onReplaceSections) and the new break list (onFormatChange) in one event, React batches the two
+   // setState calls into a single commit, so the render never sees a half-applied state.
+   function commitPageOperation(result: { sections: Section[]; pages: PageBreak[] }): void {
+      if (!onReplaceSections || !onFormatChange) return
+      onReplaceSections(result.sections)
+      const base = normalizeFormat(format)
+      if (result.pages.length === 0) {
+         const { pages: _dropped, ...rest } = base
+         onFormatChange(rest)
+      } else {
+         onFormatChange({ ...base, pages: result.pages })
+      }
+   }
+
+   function handleReorderPages(fromIndex: number, toIndex: number): void {
+      commitPageOperation(reorderPages(sections, pageBreaks, fromIndex, toIndex))
+   }
+
+   function handleDuplicatePage(pageIndex: number): void {
+      commitPageOperation(duplicatePage(sections, pageBreaks, pageIndex))
+   }
+
+   // Delete removes content, so it is undoable via the shared delete/undo-toast pattern (mirrors
+   // useSectionMutations.removeSec): snapshot the pre-delete sections + format, and offer an Undo that
+   // restores both. A no-op (the single-page guard in deletePage returns the same reference) shows no
+   // toast.
+   function handleDeletePage(pageIndex: number): void {
+      const result = deletePage(sections, pageBreaks, pageIndex)
+      if (result.sections === sections) return
+      const previousSections = sections
+      const previousFormat   = format
+      commitPageOperation(result)
+      const toastId = showToast(t.pageSorterDeleted, {
+         action: {
+            label:   t.undo,
+            onClick: () => {
+               onReplaceSections?.(previousSections)
+               onFormatChange?.(previousFormat)
+               dismissToast(toastId)
+            },
+         },
+      })
+   }
+
+   // Jump-to-page: scroll the clicked thumbnail's sheet into view. The paged sheets carry a unique
+   // [data-page-id]; only the active tab's pages are ever in the DOM, so a document query is safe.
+   function handleJumpToPage(pageId: string): void {
+      document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
    }
 
    // Reconcile-on-change: drop any break whose anchor block was deleted/undone (mirrors reconcileNav),
@@ -677,9 +775,13 @@ export function WysiwygArea({
       const sheetWidth  = isLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
       const sheetHeight = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
       const isLastPage  = pageIndex === total - 1
+      // Phase 3: this sheet's measured overflow verdict (absent = fits). Only surfaced with a mutating
+      // onFormatChange, matching the hook's `enabled` gate, so the ribbon can always act.
+      const overflow    = onFormatChange ? overflowByPageId.get(page.id) : undefined
       return (
          <div
             key={page.id}
+            data-page-id={page.id}
             className={`doc-page relative shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
             style={{
                width:          `${sheetWidth}px`,
@@ -715,6 +817,41 @@ export function WysiwygArea({
                {page.slices.map(slice => renderPageSlice(slice, page))}
                {isLastPage && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
+            {/* Overflow assist ribbon (Phase 3), pinned to the page's bottom-margin line (the A4
+                boundary the spill crosses). Absolutely positioned so it never alters page flow, hence
+                never feeds a measurement back into itself. A splittable overflow offers a one-click
+                "Split here" (assisted, never automatic); a first-block-too-tall overflow shows a note
+                instead, since no break can make that block fit. */}
+            {!readOnly && onFormatChange && overflow && (
+               <div
+                  className="doc-page-overflow"
+                  style={{
+                     top:   `${sheetHeight - millimetresToPx(margins.bottom)}px`,
+                     left:  `${millimetresToPx(margins.left)}px`,
+                     right: `${millimetresToPx(margins.right)}px`,
+                  }}
+               >
+                  {overflow.blockTooTall || overflow.cutAfterBlockId === null ? (
+                     <div className="doc-page-overflow-pill doc-page-overflow-pill-note">
+                        <TriangleAlert size={13} />
+                        <span>{t.formatOverflowTooTall}</span>
+                     </div>
+                  ) : (
+                     <div className="doc-page-overflow-pill">
+                        <span className="doc-page-overflow-msg">{t.formatOverflowMessage}</span>
+                        <button
+                           type="button"
+                           className="doc-page-overflow-split"
+                           title={t.formatSplitHere}
+                           onClick={() => commitPageBreaks(addPageBreakAfter(pageBreaks, sections, overflow.cutAfterBlockId!))}
+                        >
+                           <Scissors size={13} />
+                           <span>{t.formatSplitHere}</span>
+                        </button>
+                     </div>
+                  )}
+               </div>
+            )}
          </div>
       )
    }
@@ -767,16 +904,18 @@ export function WysiwygArea({
        <DocThemeProvider theme={docTheme}>
         <BlockEditorWindowProvider resetKey={activeTabKey}>
          <PageBreaksContext.Provider value={pageBreaksApi}>
+         <div className="flex flex-col h-full min-h-0 w-full">
          {!readOnly && <FormatToolbar sections={sections} />}
+         <div className="flex-1 min-h-0 w-full flex">
          <div
-            className="flex-1 h-full w-full overflow-y-auto px-6"
+            className="flex-1 h-full overflow-y-auto px-6"
             style={{ background: 'var(--color-canvas)' }}
             onContextMenu={handleBackgroundContextMenu}
          >
             {paged && derivedPages ? (
                // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets. Infinite mode
                // (below) is untouched, byte-identical to Phase 1.
-               <div className="doc-pages">
+               <div className="doc-pages" ref={pagesContainerRef}>
                   {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
                </div>
             ) : (
@@ -801,6 +940,24 @@ export function WysiwygArea({
                </div>
             )}
             {renderDocWindowsAndMenus()}
+         </div>
+         {sorterEnabled && derivedPages && (
+            <PageSorterPane
+               open={sorterOpen}
+               onToggle={() => setSorterOpen(current => !current)}
+               pages={derivedPages}
+               docTheme={docTheme}
+               docAccent={docAccent}
+               margins={pagedMargins}
+               sheetWidthPx={pagedSheetWidthPx}
+               sheetHeightPx={pagedSheetHeightPx}
+               onReorder={handleReorderPages}
+               onDuplicate={handleDuplicatePage}
+               onDelete={handleDeletePage}
+               onJump={handleJumpToPage}
+            />
+         )}
+         </div>
          </div>
          </PageBreaksContext.Provider>
         </BlockEditorWindowProvider>

@@ -20,7 +20,7 @@ export type EdgeLineStyle = 'solid' | 'dashed'
 /**
  * A small inline-SVG glyph reading as an edge with the given arrowhead placement (a line with a
  * filled triangle at the chosen end(s)), so the arrowhead toggle doubles as a live legend.
- * `currentColor` follows the button's own text color (muted idle, accent selected — set by the CSS).
+ * `currentColor` follows the button's own text color (muted idle, accent selected, set by the CSS).
  */
 export function EdgeArrowGlyph({ arrow }: { arrow: EdgeArrow }) {
    const hasStart = arrow === 'start' || arrow === 'both'

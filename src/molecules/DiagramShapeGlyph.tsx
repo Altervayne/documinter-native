@@ -36,7 +36,7 @@ export const NODE_SHAPE_LABEL_KEYS: Record<NodeShape,
  * A small inline-SVG glyph that READS AS the node shape it names (an actual rounded rect, ellipse,
  * diamond, …) rather than a generic icon, so the palette button + the inspector's segmented shape
  * toggle double as a live legend. `currentColor` follows the button's own text color (muted when
- * idle, accent when active/selected — set by the CSS, not the glyph).
+ * idle, accent when active/selected, set by the CSS, not the glyph).
  */
 export function NodeShapeGlyph({ shape }: { shape: NodeShape }) {
    return (

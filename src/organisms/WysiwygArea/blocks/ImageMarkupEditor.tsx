@@ -79,15 +79,15 @@ const FILLABLE_KINDS = new Set<string>(['rect', 'ellipse', 'callout'])
 // ################
 //
 // Small inline-SVG glyphs for the three former `<select>` controls (line style, arrowhead shape,
-// arrowhead position), each drawn to READ AS the option rather than as a generic icon — the shapes
+// arrowhead position), each drawn to READ AS the option rather than as a generic icon, the shapes
 // mirror the actual renderer's look (dash/dot pattern, filled triangle vs open chevron, head at the
 // tip vs mid-line) so the segmented toggle doubles as a tiny live legend. All glyphs share one
 // viewBox/stroke width so the three rows line up visually; `currentColor` follows the button's own
-// text color (muted when idle, accent when selected — set by the CSS, not the glyph).
+// text color (muted when idle, accent when selected, set by the CSS, not the glyph).
 
 const STYLE_GLYPH_VIEW_BOX = '0 0 28 16'
 
-/** A short horizontal line rendered solid / dashed / dotted — the line-style option glyph. */
+/** A short horizontal line rendered solid / dashed / dotted, the line-style option glyph. */
 function StrokeStyleGlyph({ strokeStyle }: { strokeStyle: MarkupStrokeStyle }) {
    const dashArray = strokeStyle === 'dashed' ? '7 5' : strokeStyle === 'dotted' ? '0.1 6' : undefined
    return (
@@ -326,7 +326,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    }
 
    // The current render viewBox, needed by hitTest to give a text label its estimated glyph box
-   // (so a click near the text selects it — Bug 1) rather than its zero-size anchor point.
+   // (so a click near the text selects it, Bug 1) rather than its zero-size anchor point.
    function currentViewBox(): { vbWidth: number; vbHeight: number } {
       return computeViewBox(workingRef.current.width, workingRef.current.height)
    }
@@ -549,7 +549,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit({ ...workingRef.current, elements: removeElement(workingRef.current.elements, id) })
    }
 
-   // Set the selected text / callout element's label from the property-panel text field — a reliable
+   // Set the selected text / callout element's label from the property-panel text field, a reliable
    // edit path independent of the in-canvas edit-in-place overlay (Bug 1). No-op unless a text /
    // callout element is selected.
    function applyTextContent(value: string): void {
@@ -724,7 +724,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    const textColorValue = selectedTextStyled?.textColor ?? currentStyle.textColor ?? MARKUP_DEFAULT_TEXT_COLOR
 
    // ============
-   //  Windowed editor body (APP CHROME — app --color-* tokens, portaled under html[data-theme])
+   //  Windowed editor body (APP CHROME, app --color-* tokens, portaled under html[data-theme])
    // ============
    const editorBody = (
       <div className="image-markup-editor">
@@ -1031,7 +1031,7 @@ interface SelectionChromeProps {
 /**
  * The selection overlay for the currently-selected element: a dashed bounding outline plus a small
  * square per resize handle. Drawn in viewBox units (the container's aspect ratio matches the
- * viewBox, so `preserveAspectRatio="none"` maps 1:1 with no distortion). Pure presentation — all hit
+ * viewBox, so `preserveAspectRatio="none"` maps 1:1 with no distortion). Pure presentation, all hit
  * testing happens in JS against the pure `edit.ts` helpers, not against these nodes.
  */
 function SelectionChrome({ element, vbWidth, vbHeight }: SelectionChromeProps) {

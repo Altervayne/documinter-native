@@ -69,13 +69,15 @@ describe('buildDocumentMenuEntries', () => {
          `header:${t.accent}`,
          `accent-grid:${ACCENT_PRESETS.join(',')}:custom=yes`,
          '---',
-         t.presentationMenu,
+         t.presentationMenu,                 // windows group
          t.menuNavigation,                   // Navigation sits right after Presentation
          t.formatMenuPageSetup,              // Page setup sits right after Navigation
-         t.menuExport,
-         t.fileSave,
+         '---',
+         t.fileSave,                         // file group
          t.fileSaveAs,
-         t.previewMode,
+         t.menuExport,                       // Export moved down next to the save actions
+         '---',
+         t.previewMode,                      // preview group
       ]
       expect(project(buildDocumentMenuEntries(fullOptions))).toEqual(expected)
    })

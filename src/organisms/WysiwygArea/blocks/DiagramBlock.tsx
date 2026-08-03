@@ -4,7 +4,7 @@
  * NODE EDITOR PASS (phase 2): the block adopts the Block Editor Window (the next adopter after Graph
  * + Image-markup). Inline, the block shows only its rendered diagram (read-only `renderDiagramToSvg`,
  * self-contained SVG, no runtime, theme baked from the doc theme) plus a hover-reveal Edit pill; the
- * full node editor — an interactive 2D `DiagramCanvas`, a `ShapePalette`, and a `DiagramInspector` —
+ * full node editor, an interactive 2D `DiagramCanvas`, a `ShapePalette`, and a `DiagramInspector`,
  * lives in a floating, non-modal `BlockEditorWindow`. The window is APP CHROME (`--color-*`); only
  * the rendered diagram SVG follows the doc theme.
  *
@@ -161,7 +161,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const editingLabelIdRef = useRef<string | null>(null)
 
    // The hovered node (its connection ports show) + the live edge-connect drag (source node + the
-   // cursor point the preview line tracks). All ephemeral editor state — never touches the document.
+   // cursor point the preview line tracks). All ephemeral editor state, never touches the document.
    const [hoveredId, setHoveredId] = useState<string | null>(null)
    const hoveredIdRef = useRef<string | null>(null)
    const [connectFromId, setConnectFromId] = useState<string | null>(null)
@@ -185,14 +185,14 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    )
 
    // Ephemeral view transform (zoom + pan), applied ON TOP of the fixed frame. Never persisted or
-   // serialized — reset on window open. Alignment guides show only while a node is dragged.
+   // serialized, reset on window open. Alignment guides show only while a node is dragged.
    const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW_TRANSFORM)
    const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([])
 
    // The user-resizable canvas height (screen px) + the measured on-screen container size. Both are
    // ephemeral editor state (never serialized). The frame's aspect is derived from the measured
-   // container (see `currentFrame`), so a taller canvas gives a taller frame/viewport — more room to
-   // work — while keeping the pointer mapping + the unbounded-canvas clip correct.
+   // container (see `currentFrame`), so a taller canvas gives a taller frame/viewport, more room to
+   // work, while keeping the pointer mapping + the unbounded-canvas clip correct.
    const [canvasHeight, setCanvasHeight] = useState<number>(CANVAS_DEFAULT_HEIGHT)
    const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
    const resizeStartRef = useRef<{ pointerY: number; height: number } | null>(null)
@@ -225,7 +225,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    /**
     * Persist any pending inspector-field edit (a label typed into the node/edge field drafts into
     * `working` on each keystroke but is not written to the document until here). Called on the field's
-    * blur AND — critically — at the top of a canvas pointer-down and on window close, so a click that
+    * blur AND, critically, at the top of a canvas pointer-down and on window close, so a click that
     * changes the selection (which unmounts the field, suppressing its blur) can never discard the
     * in-flight draft. `editing.current` is true exactly when such a draft is pending (a drag always
     * ends by committing on pointer-up), so this is a no-op otherwise.
@@ -335,7 +335,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       const current = workingRef.current
       const cascade = (current.nodes.length % ADD_CASCADE_WRAP) * ADD_CASCADE_STEP
       // Place the new node at the center of what's CURRENTLY visible (the viewport), so it lands in view
-      // regardless of the zoom/pan or the resized canvas height — not off in a fixed frame corner.
+      // regardless of the zoom/pan or the resized canvas height, not off in a fixed frame corner.
       const visible = viewportViewBox(currentFrame(), view)
       const center: Point = {
          x: visible.minX + visible.width / 2 + cascade,
@@ -433,7 +433,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       }
 
       // (4) Off every node: an edge close enough to the click selects it (a plain click-select, no
-      // drag this pass — waypoint drag is deferred). Waypoints/routing are honored by hitTestEdge.
+      // drag this pass, waypoint drag is deferred). Waypoints/routing are honored by hitTestEdge.
       const edgeHit = hitTestEdge(current, point, EDGE_HIT_THRESHOLD_PX / info.pixelsPerDiagramUnit)
       if (edgeHit) {
          selectEdge(edgeHit.id)
@@ -495,7 +495,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          draft(setNode(current, snapped))
       } else {
          // Resize: compute the raw resized box, then snap the MOVING edge(s) (per the active handle) to
-         // neighbor edges/centers + show guides — the move-drag snap's sibling, holding the pinned edge.
+         // neighbor edges/centers + show guides, the move-drag snap's sibling, holding the pinned edge.
          const resized = resizeNode(current, interaction.id, interaction.handle, info.diagramPoint)
          const resizedNode = findNode(resized, interaction.id)
          if (!resizedNode) return

@@ -19,6 +19,7 @@
 
 import type { Block, Section } from '../types'
 import type { PageBreak } from './format'
+import { cloneBlock } from './document'
 
 // #############
 // # CONSTANTS #
@@ -85,7 +86,7 @@ export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Pag
    const result: Page[] = []
    let currentPage: Page = { id: FIRST_PAGE_ID, slices: [] }
    result.push(currentPage)
-   // Whether the current page holds any block yet — the guard that stops a break from opening an
+   // Whether the current page holds any block yet, the guard that stops a break from opening an
    // empty page (leading break, or two breaks on adjacent blocks).
    let currentPageHasBlocks = false
 
@@ -178,7 +179,7 @@ function successorAnchor(sections: Section[], afterBlockId: string): { sectionId
    return { sectionId: next.sectionId, blockId: next.block.id }
 }
 
-/** Whether a page break can be placed after `afterBlockId` — true unless it is the last block of the
+/** Whether a page break can be placed after `afterBlockId`, true unless it is the last block of the
  *  document (nothing to push to the next page). */
 export function canBreakAfter(sections: Section[], afterBlockId: string): boolean {
    return successorAnchor(sections, afterBlockId) !== null
@@ -217,4 +218,171 @@ export function removePageBreakAfter(pages: PageBreak[], sections: Section[], af
  *  which for pages 2..N is the starting break's id). */
 export function removePageBreak(pages: PageBreak[], pageBreakId: string): PageBreak[] {
    return pages.filter(pageBreak => pageBreak.id !== pageBreakId)
+}
+
+// ###################
+// # PAGE OPERATIONS #
+// ###################
+
+/**
+ * The page-sorter's three content-touching operations (PHASE 4): reorder, duplicate, delete a page.
+ *
+ * These are the ONE place the paged format mutates the real Section/Block flow (everything else only
+ * touches the break markers). The doctrine still holds: pages remain DERIVED from break markers, so
+ * these operations work by (a) partitioning the flow into pages, (b) rearranging the pages' slice
+ * groups (an arrayMove / clone / filter over `PageSlice[][]`), then (c) reconstructing the flat
+ * Section[] from the new slice order AND recomputing the break list so a re-partition yields exactly
+ * the intended page order. No new "page container" enters the model.
+ *
+ * SECTION SPLITTING: because a page can be a mid-section slice, moving/duplicating/deleting pages can
+ * leave a section's blocks non-contiguous, a genuine split. The reconstruction coalesces consecutive
+ * slices of the same section back into one section (a section that merely SPANS a page break stays one
+ * section, the break handles the page cut), and mints a FRESH section id only for a later, genuinely
+ * disconnected fragment of an already-emitted section id (so section ids stay unique). Title/collapsed
+ * are carried onto every fragment.
+ */
+
+/** Move an item within an array, matching dnd-kit's `arrayMove` (remove at `from`, insert at `to`).
+ *  Kept local so pageModel stays dependency-free (no @dnd-kit import in the pure layer). */
+function moveInArray<ItemType>(items: ItemType[], from: number, to: number): ItemType[] {
+   const next = items.slice()
+   const [moved] = next.splice(from, 1)
+   next.splice(to, 0, moved)
+   return next
+}
+
+/** The first actual block across a page's slices, or null when the page carries only empty-section
+ *  slices (which can only happen for the document's first page, never a page a break anchors). */
+function firstBlockOfSlices(slices: PageSlice[]): Block | null {
+   for (const slice of slices) if (slice.blocks.length > 0) return slice.blocks[0]
+   return null
+}
+
+/**
+ * Rebuild a flat Section[] from an ordered slice sequence (the concatenation of the pages' slice
+ * groups). Consecutive slices of the same original section merge into one section (keeping the first
+ * occurrence's id); a same-id section that reappears after a different section intervened is a split
+ * fragment and gets a fresh id. Empty-section slices survive as empty sections.
+ */
+function reconstructSections(slices: PageSlice[]): Section[] {
+   const result: Section[] = []
+   const usedSectionIds = new Set<string>()
+   let currentOriginalId: string | null = null
+   let currentTemplate: Section | null = null
+   let currentBlocks: Block[] = []
+
+   function flush(): void {
+      if (currentTemplate === null) return
+      let id = currentTemplate.id
+      if (usedSectionIds.has(id)) id = crypto.randomUUID()   // a genuinely split fragment → fresh id
+      usedSectionIds.add(id)
+      result.push({ ...currentTemplate, id, blocks: currentBlocks })
+   }
+
+   for (const slice of slices) {
+      if (currentTemplate !== null && currentOriginalId === slice.section.id) {
+         // Same section as the open run (a section spanning a page break, or contiguous slices).
+         currentBlocks = [...currentBlocks, ...slice.blocks]
+      } else {
+         flush()
+         currentOriginalId = slice.section.id
+         currentTemplate   = slice.section
+         currentBlocks     = [...slice.blocks]
+      }
+   }
+   flush()
+   return result
+}
+
+/** Recompute the break list for an ordered sequence of page slice-groups over the reconstructed
+ *  sections: page k (k ≥ 1) begins with a break BEFORE that page's first block, addressed with the
+ *  block's id + its NEW (post-reconstruction) section id. Page 0 needs no marker. Fresh break ids. */
+function breaksForPageGroups(pageGroups: PageSlice[][], sections: Section[]): PageBreak[] {
+   const sectionIdByBlockId = new Map<string, string>()
+   for (const section of sections)
+      for (const block of section.blocks) sectionIdByBlockId.set(block.id, section.id)
+
+   const breaks: PageBreak[] = []
+   for (let pageIndex = 1; pageIndex < pageGroups.length; pageIndex++) {
+      const firstBlock = firstBlockOfSlices(pageGroups[pageIndex])
+      if (firstBlock === null) continue   // defensive: a block-less page merges into its predecessor
+      const sectionId = sectionIdByBlockId.get(firstBlock.id)
+      if (sectionId === undefined) continue
+      breaks.push({ id: crypto.randomUUID(), before: { sectionId, blockId: firstBlock.id } })
+   }
+   return breaks
+}
+
+/** Turn a rearranged sequence of page slice-groups into the committed `{ sections, pages }` pair. */
+function buildFromPageGroups(pageGroups: PageSlice[][]): { sections: Section[]; pages: PageBreak[] } {
+   const sections = reconstructSections(pageGroups.flat())
+   const pages    = breaksForPageGroups(pageGroups, sections)
+   return { sections, pages }
+}
+
+/** Deep-clone a page's slice group for duplication: fresh block ids (via `cloneBlock`) and one fresh
+ *  section id per distinct source section (so the clone never collides / merges with the original). */
+function cloneSliceGroup(slices: PageSlice[]): PageSlice[] {
+   const cloneSectionIdByOriginalId = new Map<string, string>()
+   return slices.map(slice => {
+      let cloneSectionId = cloneSectionIdByOriginalId.get(slice.section.id)
+      if (cloneSectionId === undefined) {
+         cloneSectionId = crypto.randomUUID()
+         cloneSectionIdByOriginalId.set(slice.section.id, cloneSectionId)
+      }
+      return {
+         section:        { ...slice.section, id: cloneSectionId, blocks: [] },
+         blocks:         slice.blocks.map(cloneBlock),
+         isSectionStart: slice.isSectionStart,
+         isSectionEnd:   slice.isSectionEnd,
+      }
+   })
+}
+
+/**
+ * Reorder pages: move the page at `fromPageIndex` to `toPageIndex` (dnd-kit `arrayMove` semantics),
+ * which moves that page's block range within the flat flow and re-derives the break markers so the
+ * pages come out in the new order. Pure; returns the SAME `sections`/`pages` references on a no-op
+ * (equal or out-of-range indices, or fewer than two pages).
+ */
+export function reorderPages(
+   sections: Section[], pages: PageBreak[], fromPageIndex: number, toPageIndex: number,
+): { sections: Section[]; pages: PageBreak[] } {
+   const derived = partitionIntoPages(sections, pages)
+   if (fromPageIndex === toPageIndex) return { sections, pages }
+   if (fromPageIndex < 0 || fromPageIndex >= derived.length) return { sections, pages }
+   if (toPageIndex   < 0 || toPageIndex   >= derived.length) return { sections, pages }
+   const pageGroups = moveInArray(derived.map(page => page.slices), fromPageIndex, toPageIndex)
+   return buildFromPageGroups(pageGroups)
+}
+
+/**
+ * Duplicate the page at `pageIndex`: insert a clone (fresh block + section ids) as a new page directly
+ * after it, re-deriving the break markers. Pure; no-op (same references) on an out-of-range index.
+ */
+export function duplicatePage(
+   sections: Section[], pages: PageBreak[], pageIndex: number,
+): { sections: Section[]; pages: PageBreak[] } {
+   const derived = partitionIntoPages(sections, pages)
+   if (pageIndex < 0 || pageIndex >= derived.length) return { sections, pages }
+   const groups     = derived.map(page => page.slices)
+   const cloneGroup = cloneSliceGroup(derived[pageIndex].slices)
+   const pageGroups = [...groups.slice(0, pageIndex + 1), cloneGroup, ...groups.slice(pageIndex + 1)]
+   return buildFromPageGroups(pageGroups)
+}
+
+/**
+ * Delete the page at `pageIndex`: drop that page's blocks from the flow (whole sections wholly on the
+ * page vanish; a section split across it keeps its other slices, which re-coalesce) and re-derive the
+ * break markers. Pure; no-op (same references) on an out-of-range index or when only one page exists
+ * (deleting the sole page would empty the document, the sorter guards this too).
+ */
+export function deletePage(
+   sections: Section[], pages: PageBreak[], pageIndex: number,
+): { sections: Section[]; pages: PageBreak[] } {
+   const derived = partitionIntoPages(sections, pages)
+   if (derived.length <= 1) return { sections, pages }
+   if (pageIndex < 0 || pageIndex >= derived.length) return { sections, pages }
+   const pageGroups = derived.map(page => page.slices).filter((_group, index) => index !== pageIndex)
+   return buildFromPageGroups(pageGroups)
 }

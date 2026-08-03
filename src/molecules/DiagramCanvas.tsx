@@ -56,7 +56,7 @@ interface DiagramCanvasProps {
    /** The rendered diagram SVG (from `renderDiagramToSvg` on the working spec, its viewBox overridden
     *  to the current viewport by the editor), or '' when the diagram has no nodes (a blank surface). */
    svgMarkup: string
-   /** The current render VIEWPORT (diagram units) derived from the zoom/pan — the shared viewBox of the
+   /** The current render VIEWPORT (diagram units) derived from the zoom/pan, the shared viewBox of the
     *  visual layer + the chrome overlay, and the space every pointer maps into. */
    viewport: DiagramViewBox
    /** The FIXED reference frame (0 0 W H): the container aspect ratio + the transform-independent space
@@ -109,15 +109,15 @@ interface DiagramCanvasProps {
  * with a user-resizable HEIGHT (dragged via the handle the editor renders below it); a ResizeObserver
  * reports the measured size so the editor keeps the frame aspect matched to the container. Three
  * stacked layers inside (all sharing the current viewport viewBox, so they stay aligned + undistorted):
- *   (1) the VISUAL layer — the same `renderDiagramToSvg` output the read-only block + export use, with
+ *   (1) the VISUAL layer, the same `renderDiagramToSvg` output the read-only block + export use, with
  *       its viewBox OVERRIDDEN to the current viewport. Nodes are drawn at their absolute diagram
  *       coordinates; the viewBox windows them, so zoom/pan is pure viewBox math and NOTHING is clipped
- *       to a fixed frame — any node is reachable by panning the viewport to it.
- *   (2) the INTERACTION overlay — a transparent surface capturing pointer events, drawing the selection
+ *       to a fixed frame, any node is reachable by panning the viewport to it.
+ *   (2) the INTERACTION overlay, a transparent surface capturing pointer events, drawing the selection
  *       chrome + alignment guides at absolute coords through the SAME viewport viewBox (non-scaling
  *       strokes keep them crisp at any zoom). Its rect maps 1:1 with the container, so the pure mapping
  *       against the viewport is exact.
- *   (3) the LABEL overlay — an HTML textarea positioned over a node (through the viewport) while its
+ *   (3) the LABEL overlay, an HTML textarea positioned over a node (through the viewport) while its
  *       label is typed, committed on blur / Enter.
  *
  * All hit-testing + geometry is pure (`lib/diagram/edit.ts`); this component is thin pointer glue.

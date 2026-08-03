@@ -899,6 +899,7 @@ export default function App() {
                               onDocAccentChange={setActiveDocAccent}
                               onPresentationChange={setActivePresentation}
                               onFormatChange={setActiveFormat}
+                              onReplaceSections={setActiveSections}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}

@@ -141,7 +141,7 @@ export function ContextMenu({ position, entries, onClose, width, className }: Co
       <div
          ref={ref}
          className={[
-            'fixed z-[9999] rounded-xl border border-border bg-raised shadow-2xl overflow-hidden',
+            'fixed z-[9999] rounded-xl border border-border bg-raised shadow-xl overflow-hidden',
             className ?? 'min-w-[172px]',
          ].join(' ')}
          style={{ top, left, width, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}

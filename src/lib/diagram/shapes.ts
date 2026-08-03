@@ -21,7 +21,7 @@ export const NODE_STROKE_WIDTH = 1.5
 /** Corner radius for the 'rounded' shape, in diagram units. */
 const ROUNDED_CORNER_RADIUS = 8
 
-/** Corner radius for the 'banner' heading shape, in diagram units — lighter than 'rounded'. */
+/** Corner radius for the 'banner' heading shape, in diagram units, lighter than 'rounded'. */
 const BANNER_CORNER_RADIUS = 4
 
 /** Height of the 'banner' shape's bottom accent bar, in diagram units (the "underline" that reads
@@ -118,7 +118,7 @@ function diamondPoints(node: DiagramNode): string {
 // # HEADING SHAPES    #
 // #####################
 // 'banner' (a flat heading bar) and 'chevron' (a right-pointing arrow/process heading) are ordinary
-// node shapes for labeling steps/phases in a process chart — same place/label/style/move/resize/
+// node shapes for labeling steps/phases in a process chart, same place/label/style/move/resize/
 // serialize/color as every other shape, just a distinct silhouette. See types.ts's NodeShape doc.
 
 /**

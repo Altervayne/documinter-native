@@ -25,7 +25,9 @@ interface ClampedResult<ElementType extends HTMLElement> {
 // # CONSTANTS #
 // #############
 
-const DEFAULT_MARGIN = 8
+// A small but visible gap kept between a clamped popover's box and every viewport edge, enough
+// that the menu (and its softened drop-shadow) never reads as flush-with / spilling-off the edge.
+const DEFAULT_MARGIN = 12
 
 // ############
 // # INTERNAL #

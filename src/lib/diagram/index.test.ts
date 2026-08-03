@@ -11,7 +11,7 @@ function spec(partial: Partial<DiagramSpec> = {}): DiagramSpec {
 // # SELF-CONTAINED   #
 // ####################
 
-describe('renderDiagramToSvg — envelope', () => {
+describe('renderDiagramToSvg, envelope', () => {
    it('emits one self-contained, responsive <svg> with no script or external asset', () => {
       const svg = renderDiagramToSvg(spec({
          nodes: [{ id: 'a', x: 0, y: 0, width: 100, height: 60, shape: 'rectangle', label: 'A' }],
@@ -58,7 +58,7 @@ describe('renderDiagramToSvg — envelope', () => {
 // # NODE SHAPES      #
 // ####################
 
-describe('renderDiagramToSvg — node shapes', () => {
+describe('renderDiagramToSvg, node shapes', () => {
    function shapeSvg(shape: DiagramSpec['nodes'][number]['shape']): string {
       return renderDiagramToSvg(spec({
          nodes: [{ id: 'a', x: 0, y: 0, width: 100, height: 60, shape, label: '' }],
@@ -143,7 +143,7 @@ describe('renderDiagramToSvg — node shapes', () => {
 // # LABELS (ESCAPE)  #
 // ####################
 
-describe('renderDiagramToSvg — labels', () => {
+describe('renderDiagramToSvg, labels', () => {
    it('escapes a node label with XML-significant characters', () => {
       const svg = renderDiagramToSvg(spec({
          nodes: [{ id: 'a', x: 0, y: 0, width: 400, height: 40, shape: 'rectangle', label: 'A & <B>' }],
@@ -174,7 +174,7 @@ describe('renderDiagramToSvg — labels', () => {
 // # EDGES            #
 // ####################
 
-describe('renderDiagramToSvg — edges', () => {
+describe('renderDiagramToSvg, edges', () => {
    const twoNodes = [
       { id: 'a', x: 0, y: 0, width: 100, height: 60, shape: 'rectangle' as const, label: 'A' },
       { id: 'b', x: 0, y: 200, width: 100, height: 60, shape: 'rectangle' as const, label: 'B' },

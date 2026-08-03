@@ -27,14 +27,14 @@ interface SegmentedIconToggleProps<Value extends string> {
 // #############
 
 /**
- * A horizontal row of icon + label buttons acting as a single-select toggle — a visual alternative
+ * A horizontal row of icon + label buttons acting as a single-select toggle, a visual alternative
  * to a native `<select>` for a small, fixed set of options where the choice reads more clearly as a
  * glyph than as text (line style, arrowhead shape, and similar). Generic over the option value type
  * so it type-checks against any string-literal union without a cast at the call site.
  *
  * Built as a proper ARIA `radiogroup`/`radio` pair rather than a plain button row: the checked
  * option is the only one in the tab order (roving tabindex) and Left/Right/Up/Down arrow keys move
- * the checked option and focus together, wrapping at the ends — the standard radiogroup keyboard
+ * the checked option and focus together, wrapping at the ends, the standard radiogroup keyboard
  * contract. Styling is app-chrome only (`--color-*` tokens via the `.segmented-icon-toggle*` rules
  * in doc.css), so it reads correctly in both the light and dark app theme.
  */

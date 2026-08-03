@@ -13,7 +13,7 @@
 import { createContext, useContext } from 'react'
 
 export interface PageBreaksApi {
-   /** Whether the document is in a paged (A4) format — the only mode the break actions apply in. */
+   /** Whether the document is in a paged (A4) format, the only mode the break actions apply in. */
    paged: boolean
    /** Whether a break can be placed after this block (false for the document's last block). */
    canBreakAfter: (blockId: string) => boolean

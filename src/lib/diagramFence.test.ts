@@ -111,7 +111,7 @@ describe('fence round-trip', () => {
 // # TOLERANT PARSE #
 // ##################
 
-describe('fenceToDiagramSpec — tolerant', () => {
+describe('fenceToDiagramSpec, tolerant', () => {
    it('never throws on empty / garbage input and yields empty nodes/edges', () => {
       expect(fenceToDiagramSpec('diagram', '')).toEqual({ nodes: [], edges: [], options: {} })
       expect(fenceToDiagramSpec('diagram', 'not a table at all')).toEqual({ nodes: [], edges: [], options: {} })

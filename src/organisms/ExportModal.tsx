@@ -1,24 +1,25 @@
 import { useState } from 'react'
-import { X, Download, Copy, Image } from 'lucide-react'
+import { X, Download, Copy, Image, Sun, Moon } from 'lucide-react'
 import { Button } from '../atoms/Button'
-import { ColorPicker } from 'react-piqua-color'
+import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOption } from '../molecules/AccentSwatchGrid'
 import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
+import { downloadJSON } from '../lib/documentBackupFile'
 import { ensureTemmlReady } from '../lib/math'
 import type { Lang } from '../lib/i18n'
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
-import { ACCENT_PRESETS } from '../lib/constants'
+import { ACCENT_PRESETS, accentPresetName } from '../lib/constants'
 
 // #########
 // # TYPES #
 // #########
 
-type ExportFormat = 'html' | 'mintdown' | 'markdown'
+type ExportFormat = 'html' | 'mintdown' | 'markdown' | 'json'
 
 interface ExportModalProps {
    meta: DocMeta
@@ -54,6 +55,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
+   // Whether the accent grid's "Custom accent…" tile is the selected choice, a genuine selection
+   // on par with a preset swatch (see molecules/AccentSwatchGrid), not a disclosure toggle. Mirrors
+   // the same local-flag pattern the document-background context menu uses (WysiwygArea's own
+   // customAccentSelected) since this modal owns its own draft accent, independent of the document's.
+   const [customAccentSelected, setCustomAccentSelected] = useState(false)
    const { t } = useLang()
    const { showToast } = useToast()
 
@@ -99,15 +105,56 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       onClose()
    }
 
+   // Documinter JSON: the LOSSLESS, reopenable archive, the document's exact state (content +
+   // theme/accent + presentation + page format), the counterpart to `parseDocumentBackup`/Open. It
+   // uses the DOCUMENT's real theme/accent (`defaultTheme`/`defaultAccent`) + presentation + format,
+   // NOT the HTML-export overrides above, since it snapshots the document itself, not a styled export.
+   function handleJsonDownload() {
+      downloadJSON(meta, sections, {
+         docTheme:  defaultTheme,
+         docAccent: defaultAccent,
+         presentation,
+         format:    docFormat,
+      })
+      showToast(t.downloaded, { type: 'success' })
+      onClose()
+   }
+
    // =======
    //  Render
    // =======
 
-   const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-      { value: 'html',     label: t.exportFormatHtml },
-      { value: 'mintdown', label: t.exportFormatMintdown },
-      { value: 'markdown', label: t.exportFormatMarkdown },
+   // Extension-only labels (see i18n exportFormat*), the explanation moves to the hover tooltip
+   // instead so the buttons stay short enough for four of them to breathe at once.
+   const FORMAT_OPTIONS: { value: ExportFormat; label: string; tooltip: string }[] = [
+      { value: 'html',     label: t.exportFormatHtml,     tooltip: t.exportFormatHtmlTooltip },
+      { value: 'mintdown', label: t.exportFormatMintdown, tooltip: t.exportFormatMintdownTooltip },
+      { value: 'markdown', label: t.exportFormatMarkdown, tooltip: t.exportFormatMarkdownTooltip },
+      { value: 'json',     label: t.exportFormatJson,     tooltip: t.exportFormatJsonTooltip },
    ]
+
+   // Accent grid data, built locally the same way buildDocumentMenuEntries does for the document
+   // menu/context menu, but against this modal's own draft `accent` state rather than the live
+   // document accent (a modal-scoped override the actual document never sees until re-applied).
+   const isPresetAccentHex = (hex: string) => hex.toLowerCase() === accent.toLowerCase()
+
+   const accentPresetOptions: AccentSwatchOption[] = ACCENT_PRESETS.map(hex => ({
+      hex,
+      name:   accentPresetName(hex, t),
+      active: isPresetAccentHex(hex) && !customAccentSelected,
+      onSelect: () => {
+         setAccent(hex)
+         setCustomAccentSelected(false)
+      },
+   }))
+
+   const accentCustomOption: AccentCustomSwatchOption = {
+      name:     t.bgMenuCustomAccentTitle,
+      active:   customAccentSelected || !ACCENT_PRESETS.some(isPresetAccentHex),
+      value:    accent,
+      onSelect: () => setCustomAccentSelected(true),
+      onChange: setAccent,
+   }
 
    return (
       <div
@@ -119,7 +166,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
 
          {/* Modal */}
          <div
-            className="relative z-10 bg-raised border border-border rounded-xl shadow-2xl p-5 w-80 flex flex-col gap-4"
+            className="relative z-10 bg-raised border border-border rounded-xl shadow-2xl p-5 w-96 flex flex-col gap-4"
             onClick={event => event.stopPropagation()}
          >
             {/* Header */}
@@ -136,10 +183,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
             {/* Format selector */}
             <div className="flex flex-col gap-2">
                <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.exportFormat}</span>
-               <div className="flex gap-2">
+               <div className="flex flex-wrap gap-2">
                   {FORMAT_OPTIONS.map(formatOption => (
                      <button
                         key={formatOption.value}
+                        title={formatOption.tooltip}
                         onClick={() => setFormat(formatOption.value)}
                         className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors
                            ${format === formatOption.value
@@ -164,41 +212,29 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                            <button
                               key={themeOption}
                               onClick={() => setTheme(themeOption)}
-                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors capitalize
+                              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg border text-xs font-medium transition-colors capitalize
                                  ${theme === themeOption
                                     ? 'bg-accent/10 border-accent/50 text-accent'
                                     : 'border-border text-muted hover:text-text'
                                  }`}
                            >
+                              {themeOption === 'light' ? <Sun size={13} /> : <Moon size={13} />}
                               {themeOption === 'light' ? t.light : t.dark}
                            </button>
                         ))}
                      </div>
                   </div>
 
-                  {/* Accent color */}
-                  <div className="flex flex-col gap-3">
-                     <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs text-muted uppercase tracking-wider">Accent</span>
-                        {/* Preset swatches */}
-                        <div className="flex items-center gap-1.5">
-                           {ACCENT_PRESETS.map(color => (
-                              <button
-                                 key={color}
-                                 title={color}
-                                 onClick={() => setAccent(color)}
-                                 style={{ background: color }}
-                                 className={`w-4 h-4 rounded-full border-2 transition-all
-                                    ${accent === color
-                                       ? 'border-text/70 scale-110'
-                                       : 'border-transparent opacity-50 hover:opacity-90 hover:scale-105'
-                                    }`}
-                              />
-                           ))}
-                        </div>
+                  {/* Accent color, the app's shared square swatch grid (molecules/AccentSwatchGrid),
+                      the same one the Document-menu accent picker uses, rather than this dialog's
+                      own bespoke circular swatches + always-shown ColorPicker. The grid ships its
+                      own px-3/py-2 padding (sized for a dropdown-menu row); the negative-margin
+                      wrapper cancels that back out so it sits flush with this modal's other rows. */}
+                  <div className="flex flex-col gap-2">
+                     <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.accent}</span>
+                     <div className="-mx-3 -my-2">
+                        <AccentSwatchGrid presets={accentPresetOptions} custom={accentCustomOption} />
                      </div>
-
-                     <ColorPicker value={accent} onChange={setAccent} />
                   </div>
 
                   {/* Presentation launcher, opens the non-modal Presentation window (watermark now;
@@ -214,6 +250,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      </button>
                   )}
                </>
+            )}
+
+            {/* JSON: the lossless, reopenable archive, no styling options (it snapshots the doc as-is). */}
+            {format === 'json' && (
+               <p className="text-xs text-muted leading-relaxed">{t.exportJsonDescription}</p>
             )}
 
             {/* Actions */}
@@ -235,6 +276,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                )}
                {format === 'markdown' && (
                   <Button variant="primary" className="flex-1" onClick={handleMarkdownDownload}>
+                     <Download size={13} />{t.download}
+                  </Button>
+               )}
+               {format === 'json' && (
+                  <Button variant="primary" className="flex-1" onClick={handleJsonDownload}>
                      <Download size={13} />{t.download}
                   </Button>
                )}

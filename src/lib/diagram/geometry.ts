@@ -62,7 +62,7 @@ export function nodeCenter(node: DiagramNode): Point {
  * touches the shape's edge, not its center. Shape-specific:
  *   - rectangle / rounded / pill / banner / chevron: a ray-box intersection (rounded corners, the
  *     banner's accent bar, and the chevron's point/notch are all approximated as the bounding
- *     rectangle, an accepted v1 simplification — headings rarely carry edges, and the error is a
+ *     rectangle, an accepted v1 simplification, headings rarely carry edges, and the error is a
  *     few px at most).
  *   - ellipse: the parametric ellipse intersection.
  *   - diamond: the rhombus (|dx|/rx + |dy|/ry = 1) intersection.

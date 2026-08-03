@@ -180,7 +180,7 @@ export function pointerToNormalized(clientX: number, clientY: number, rect: Canv
  * The normalized axis-aligned bounding box of any element (used by hit-test + move clamping + the
  * selection chrome). For a `text` element the box has no intrinsic size in the model (only an anchor
  * point), so its extent is ESTIMATED from `fontSize` + glyph count when a `viewBox` is supplied
- * ({@link textBoundingBox}) — this is what makes a text label reliably selectable / double-clickable
+ * ({@link textBoundingBox}), this is what makes a text label reliably selectable / double-clickable
  * (Bug 1). Without a `viewBox` a text element falls back to its zero-size anchor point (the legacy
  * behavior, kept for move-clamping and back-compat).
  */
@@ -642,7 +642,7 @@ export function hitTestHandle(element: MarkupElement, point: NormalizedPoint, to
 
 /**
  * Apply a style patch to an element, returning a new element. A field set to `undefined` in the
- * patch CLEARS that field (e.g. `{ fill: undefined }` turns a filled shape back into an outline) —
+ * patch CLEARS that field (e.g. `{ fill: undefined }` turns a filled shape back into an outline),
  * the spread copies explicit-undefined keys, so the renderer's default kicks back in.
  */
 export function updateElementStyle(element: MarkupElement, patch: MarkupDrawStyle): MarkupElement {

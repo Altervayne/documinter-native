@@ -155,7 +155,7 @@ describe('moveNode', () => {
 describe('translateNode + setNode (origin-based drag primitives)', () => {
    it('translateNode moves a single node from its origin without drift', () => {
       const origin = node('a', { x: 40, y: 40 })
-      // applying the same origin repeatedly is idempotent (no accumulation) — the drag contract
+      // applying the same origin repeatedly is idempotent (no accumulation), the drag contract
       const first  = translateNode(origin, 12.5, -3.5)
       const second = translateNode(origin, 12.5, -3.5)
       expect(first).toEqual(second)
@@ -502,7 +502,7 @@ describe('viewportViewBox', () => {
 
    it('mapping through the derived viewport equals mapping through frame + view transform', () => {
       // The unbounded-canvas invariant: pointer→diagram via the viewport (a plain frame map) is exactly
-      // the same as composing the view transform against the fixed frame — so pointer mapping stays
+      // the same as composing the view transform against the fixed frame, so pointer mapping stays
       // pixel-accurate under the new model.
       const rect = { left: 0, top: 0, width: 600, height: 400 }
       const frameBox = { minX: 0, minY: 0, width: 300, height: 200 }
@@ -519,10 +519,10 @@ describe('viewportViewBox', () => {
    it('makes a node placed far OUTSIDE the initial frame reachable by panning (never clipped)', () => {
       const frameBox = { minX: 0, minY: 0, width: 320, height: 220 }
       const far = node('far', { x: 1000, y: 800, width: 120, height: 56 })
-      // At the identity view the far node is outside the viewport (that's fine — it's just off-screen).
+      // At the identity view the far node is outside the viewport (that's fine, it's just off-screen).
       const initial = viewportViewBox(frameBox, IDENTITY_VIEW_TRANSFORM)
       expect(far.x).toBeGreaterThan(initial.minX + initial.width)
-      // Panning the view (translate) brings a viewport over the far node — it is drawn, not lost.
+      // Panning the view (translate) brings a viewport over the far node, it is drawn, not lost.
       const panned = viewportViewBox(frameBox, { scale: 1, translateX: -940, translateY: -740 })
       expect(far.x).toBeGreaterThanOrEqual(panned.minX)
       expect(far.x + far.width).toBeLessThanOrEqual(panned.minX + panned.width)
@@ -581,7 +581,7 @@ describe('frameFromContainer', () => {
       expect(frameFromContainer(320, 0, 0)).toEqual({ minX: 0, minY: 0, width: 320, height: 320 })
    })
 
-   it('keeps pointer mapping pixel-accurate at the new (taller) frame — mapping equivalence holds', () => {
+   it('keeps pointer mapping pixel-accurate at the new (taller) frame, mapping equivalence holds', () => {
       // A taller container yields a taller frame; the viewport-vs-compose invariant must still hold, so
       // node placement/drag/resize/selection stay exact after the user grows the canvas height.
       const frame = frameFromContainer(320, 800, 600) // 4:3 → 320×240
@@ -637,7 +637,7 @@ describe('computeAlignmentSnaps', () => {
       const dragged = box({ x: 201, y: 121, width: 100, height: 60 }) // centerX 251, centerY 151
       const other = box({ x: 200, y: 120, width: 100, height: 60 })    // centerX 250, centerY 150
       const result = computeAlignmentSnaps(dragged, [other], 6)
-      // nearest x pair: left 201↔200 (dist1) vs centerX 251↔250 (dist1) — first (left) wins the tie
+      // nearest x pair: left 201↔200 (dist1) vs centerX 251↔250 (dist1), first (left) wins the tie
       expect(result.snapX).toBe(200)
       expect(result.snapY).toBe(120)
    })

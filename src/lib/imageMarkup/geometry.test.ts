@@ -150,7 +150,7 @@ describe('calloutTailPolygonPoints', () => {
       expect(calloutTailPolygonPoints(box, tip)).toEqual(calloutTailPolygonPoints(box, tip, undefined, 0))
    })
 
-   it('insets the tail base onto the straight edge span (never over a rounded corner) — Bug 2', () => {
+   it('insets the tail base onto the straight edge span (never over a rounded corner), Bug 2', () => {
       // Tip aimed toward the bottom-left corner; with a corner radius the base must stay within
       // [x + radius, x + w - radius] on the bottom edge, not run out to the rounded corner at x = 0.
       const box = { x: 0, y: 0, w: 100, h: 100 }

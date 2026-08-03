@@ -373,7 +373,7 @@ describe('hitTestHandle', () => {
 })
 
 // ####################################
-// # PASS 2 — TEXT / CALLOUT / FREEHAND #
+// # PASS 2, TEXT / CALLOUT / FREEHAND #
 // ####################################
 
 describe('createTextElement', () => {

@@ -126,7 +126,7 @@ function NodePanel({ node, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Colors (wrapping horizontal row — the swatches are compact, the panel is wide) ===== */}
+         {/* ===== Colors (wrapping horizontal row, the swatches are compact, the panel is wide) ===== */}
          <div className="diagram-color-group">
             <ColorRow
                label={t.diagramNodeFill}

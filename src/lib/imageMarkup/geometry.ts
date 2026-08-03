@@ -76,7 +76,7 @@ export function arrowheadPolygonPoints(
 
 /**
  * The point on the shaft axis at the BASE of the arrowhead, i.e. the tip retracted toward
- * `(fromX, fromY)` by the arrowhead's axial depth (`length · cos(halfAngle)` — how far the two wings
+ * `(fromX, fromY)` by the arrowhead's axial depth (`length · cos(halfAngle)`, how far the two wings
  * sit behind the tip along the line). Used by {@link renderArrow} to STOP the shaft short of the tip
  * so the line's own stroke width never thickens/blunts the sharp point (Bug 3). Clamped so a shaft
  * shorter than the arrowhead collapses to `(fromX, fromY)` rather than reversing past the tail.

@@ -112,6 +112,214 @@
   color: #8b949e;
 }
 
+/* ============================================================
+   Overflow assist ribbon (Document Formats Phase 3). Editor-only, ephemeral, never exported: it is
+   pinned (inline top/left/right from WysiwygArea) to a paged sheet's bottom-margin line, the A4
+   boundary the spilling content crosses. A dashed rule draws the boundary; a pill straddling it
+   carries the message + the one-click "Split here" (or a too-tall note when no split can help).
+   Absolutely positioned, so it never alters the sheet's flow height (no measurement feedback loop).
+   Amber signals the overflow without reading as an error.
+   ============================================================ */
+.doc-page-overflow {
+  --doc-overflow-accent: #d97706;
+  position: absolute;
+  z-index: 3;
+  height: 0;
+  border-top: 2px dashed color-mix(in srgb, var(--doc-overflow-accent) 70%, transparent);
+  pointer-events: none;
+}
+/* The pill sits centered on the dashed line, straddling it (translateY -50%). */
+.doc-page-overflow-pill {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.3rem 0.35rem 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: #fffdf7;
+  border: 1px solid color-mix(in srgb, var(--doc-overflow-accent) 45%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* The too-tall note has no button, so it needs no trailing padding asymmetry. */
+.doc-page-overflow-pill-note {
+  padding: 0.3rem 0.6rem;
+  color: color-mix(in srgb, var(--doc-overflow-accent) 85%, #000);
+  font-weight: 600;
+}
+.doc-page-overflow-msg {
+  color: color-mix(in srgb, var(--doc-overflow-accent) 85%, #000);
+  font-weight: 600;
+}
+/* "Split here" button, the app-chrome pill grammar, tinted with the overflow amber. */
+.doc-page-overflow-split {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.26rem 0.55rem;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--doc-overflow-accent);
+  border: 1px solid var(--doc-overflow-accent);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.doc-page-overflow-split:hover {
+  background: color-mix(in srgb, var(--doc-overflow-accent) 85%, #000);
+  border-color: color-mix(in srgb, var(--doc-overflow-accent) 85%, #000);
+}
+.doc-page-overflow-split:focus-visible {
+  outline: 2px solid var(--doc-overflow-accent);
+  outline-offset: 2px;
+}
+.doc-dark .doc-page-overflow {
+  --doc-overflow-accent: #f59e0b;
+}
+.doc-dark .doc-page-overflow-pill {
+  background: #1c2128;
+  border-color: color-mix(in srgb, var(--doc-overflow-accent) 45%, transparent);
+}
+.doc-dark .doc-page-overflow-pill-note,
+.doc-dark .doc-page-overflow-msg {
+  color: color-mix(in srgb, var(--doc-overflow-accent) 80%, #fff);
+}
+.doc-dark .doc-page-overflow-split {
+  color: #161b22;
+}
+
+/* ############################################################
+   Page-sorter pane thumbnails (Document Formats Phase 4). The pane shell itself is APP CHROME (Tailwind
+   utility classes on the <aside>, like the sidebar Panel), but each thumbnail's INNER content is a
+   scaled-down render of the page's real A4 sheet, it reuses `renderBlocksToDocHtml` inside a
+   `.doc-render` at full sheet px, then CSS-scales the wrapper. So the thumb content is DOCUMENT
+   content (doc-themed via `.doc-render` / `.doc-dark`), while the frame + bar chrome around it is app
+   chrome. Editor-only, never exported.
+   ############################################################ */
+.page-thumb {
+  width: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  touch-action: none;   /* let a touch-drag reorder beat the scroll gesture */
+}
+/* The clickable/draggable thumbnail: a bordered mini-sheet. Click = jump-to-page; drag = reorder
+   (a 5px PointerSensor threshold keeps a plain click from starting a drag). */
+.page-thumb-frame {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.page-thumb-frame:hover {
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, var(--color-border));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+.page-thumb-frame:focus-visible {
+  outline: 2px solid var(--doc-accent, var(--color-accent));
+  outline-offset: 2px;
+}
+/* The full-size sheet render, scaled down from its top-left corner into the frame. Inert to pointers
+   so the frame button owns click + drag. */
+.page-thumb-scaler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  pointer-events: none;
+}
+.page-thumb-render {
+  /* Overrides `.doc-render`'s default padding via inline margins (WysiwygArea), so only box sizing
+     is set here; typography/colors come from the shared `.doc-render` rules for full fidelity. */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+/* Bar beneath the thumbnail: page number + hover-revealed duplicate / delete actions. */
+.page-thumb-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+.page-thumb-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  color: var(--color-muted);
+  user-select: none;
+}
+.page-thumb-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.page-thumb:hover .page-thumb-actions,
+.page-thumb:focus-within .page-thumb-actions { opacity: 1; }
+.page-thumb-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.page-thumb-action:hover {
+  background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent);
+  color: var(--doc-accent, var(--color-accent));
+}
+.page-thumb-action-danger:hover {
+  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  color: var(--color-red);
+}
+.page-thumb-action:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--color-muted); }
+/* The dnd DragOverlay clone: a simple accent-tinted placeholder carrying the dragged page number, so
+   the drag reads clearly without re-rendering a full (heavy) thumbnail. */
+.page-thumb-frame-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 2px solid var(--doc-accent, var(--color-accent));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 14%, var(--color-raised));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+.page-thumb-overlay-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--doc-accent, var(--color-accent));
+}
+
 /* Background watermark layer (presentation). Absolutely fills the sheet behind .doc-render; the
    sheet is position:relative (set in WysiwygArea) and rounds its corners, which this inherits.
    Fit / tile / position / opacity come from inline style (resolveWatermarkLayout + the doc-theme
@@ -825,7 +1033,7 @@
 .block-editor-window-body {
   /* `scrollbar-gutter: stable both-edges` reserves the scrollbar's horizontal space even when no
      scrollbar is shown, so a scrollbar appearing (e.g. selecting a node grows the inspector past the
-     window height) never shrinks the content width — no more wrap-jitter of the shape palette.
+     window height) never shrinks the content width, no more wrap-jitter of the shape palette.
      `both-edges` mirrors that reserved gutter onto the opposite edge too, so the content stays
      symmetric / centered whether or not the scrollbar is present (plain `stable` reserves only the
      scrollbar side, leaving content looking pushed off-centre when it's absent). No-op for the graph /
@@ -1084,7 +1292,7 @@
 .image-markup-field-label { font-size: 0.74rem; color: var(--color-muted); font-weight: 500; }
 
 /* Shared color-swatch trigger button (opens the app ColorPicker in an anchored popover via
-   `ColorSwatchField`) — replaces the native `<input type="color">` formerly used here AND in the
+   `ColorSwatchField`), replaces the native `<input type="color">` formerly used here AND in the
    diagram inspector (`.diagram-color`, now gone). One rule, reused by both callers. */
 .color-swatch-btn {
   width: 2.6rem; height: 1.8rem; padding: 0; box-sizing: border-box;
@@ -1193,7 +1401,7 @@
 }
 /* The visual layer's SVG carries the current viewport as its viewBox (set by the editor), so zoom/pan
    is pure viewBox math over absolute node coordinates; the diagram-canvas `overflow:hidden` + the SVG's
-   own viewport clip whatever is outside the visible window (reachable by panning — never lost). */
+   own viewport clip whatever is outside the visible window (reachable by panning, never lost). */
 .diagram-canvas-visual { position: absolute; inset: 0; line-height: 0; }
 .diagram-canvas-visual svg { display: block; width: 100%; height: 100%; }
 .diagram-canvas-blank { background: var(--color-bg); }

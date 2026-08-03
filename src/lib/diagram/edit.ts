@@ -202,7 +202,7 @@ export const GUIDE_MATCH_EPSILON = 0.5
 /**
  * The user-resizable editor-canvas HEIGHT in SCREEN pixels: a sensible default plus a clamp range so
  * the editing surface can be grown for room to work but never gets uselessly tiny or absurdly tall.
- * Ephemeral editor state — never persisted; the stored spec is unaffected.
+ * Ephemeral editor state, never persisted; the stored spec is unaffected.
  */
 export const CANVAS_MIN_HEIGHT = 200
 export const CANVAS_MAX_HEIGHT = 900
@@ -258,7 +258,7 @@ export function invertViewTransform(point: Point, view: ViewTransform): Point {
 /**
  * Produce a new view transform that zooms to `nextScale` (clamped) while keeping the diagram point
  * currently under `viewCursor` (a VIEW-SPACE point, e.g. from {@link screenToFramePoint}) pinned in
- * place — the "zoom toward the cursor" behavior. Derives the diagram point under the cursor from the
+ * place, the "zoom toward the cursor" behavior. Derives the diagram point under the cursor from the
  * OLD transform, then chooses the translation that lands it back under the cursor at the new scale.
  */
 export function zoomViewToward(view: ViewTransform, viewCursor: Point, nextScale: number): ViewTransform {
@@ -338,7 +338,7 @@ export function clampCanvasHeight(height: number): number {
  * container's. This is the correctness keystone for a user-resizable-height canvas: the container is
  * no longer aspect-locked to a fixed frame, so instead the frame FOLLOWS the container aspect. That
  * keeps the per-axis screen→diagram map ({@link screenToFramePoint} / {@link pointerToDiagramPoint})
- * and the meet/none SVG viewBox mutually consistent + undistorted at any height — the pointer mapping
+ * and the meet/none SVG viewBox mutually consistent + undistorted at any height, the pointer mapping
  * stays pixel-accurate, and (since {@link viewportViewBox} preserves the frame aspect) so does the
  * unbounded-canvas viewport clip. A taller container ⇒ a taller frame ⇒ a taller viewport ⇒ more
  * vertical diagram visible at the same zoom. Height = referenceWidth ÷ (containerWidth ÷ containerHeight);
@@ -376,7 +376,7 @@ export function screenToFramePoint(clientX: number, clientY: number, rect: Canva
  * → diagram units (via {@link invertViewTransform}). With the identity transform (the default) this is
  * the plain proportional frame map, so callers that pass no `view` are unaffected. The editor canvas
  * fills a container whose aspect ratio equals the frame's, so the screen→view map is a straight scale
- * on each axis (no letterbox math). The result is NOT rounded — model writes round at mutation time.
+ * on each axis (no letterbox math). The result is NOT rounded, model writes round at mutation time.
  */
 export function pointerToDiagramPoint(
    clientX: number, clientY: number, rect: CanvasRect, frame: DiagramViewBox,
@@ -452,7 +452,7 @@ export function addNode(spec: DiagramSpec, node: DiagramNode): DiagramSpec {
 /**
  * Clone `node` into a fresh node with a NEW id (from `idFactory`) and its top-left nudged by `offset`
  * diagram units on BOTH axes, so the copy sits visibly clear of the original rather than exactly on
- * top. Every other field — shape, label, size, and the optional fill/stroke/textColor overrides — is
+ * top. Every other field, shape, label, size, and the optional fill/stroke/textColor overrides, is
  * carried through unchanged by the spread. Position is rounded to whole units like every model write.
  * PURE: the caller inserts the result with {@link addNode}. Backs both the Ctrl+C→Ctrl+V paste and the
  * right-click "Duplicate node" action.
@@ -595,7 +595,7 @@ function applyOverride(node: DiagramNode, key: 'fill' | 'stroke' | 'textColor', 
 /**
  * Return the TOPMOST node under `point` (last in the array = drawn on top = hit first), or null. Every
  * shape hit-tests against its bounding box grown by `tolerance` (a diamond/ellipse click in the box's
- * corner still selects it — deliberately forgiving, matching the study's "hit-test node" scope). No
+ * corner still selects it, deliberately forgiving, matching the study's "hit-test node" scope). No
  * shape-exact hit this pass.
  */
 export function hitTestNode(spec: DiagramSpec, point: Point, tolerance = 0): DiagramNode | null {
@@ -736,7 +736,7 @@ function axisGuides(orientation: 'vertical' | 'horizontal', shifted: NodeBox, ot
  * Probe the dragged node against every other node for edge/center alignment and return the snap it
  * should take plus the guide lines to draw. Compares the dragged box's left/center/right (x) and
  * top/center/bottom (y) against every other box's corresponding lines; within `threshold` (diagram
- * units — the caller converts a constant screen-pixel threshold through the current zoom), the axis
+ * units, the caller converts a constant screen-pixel threshold through the current zoom), the axis
  * snaps to the nearest matching line, INDEPENDENTLY on x and y (either, both, or neither). Guides span
  * the involved boxes. PURE: no distribution/equal-spacing guides this pass; the caller applies the
  * returned `snapX`/`snapY` as a normal node move (so serialization stays byte-identical).
@@ -802,8 +802,8 @@ export interface ResizeSnapResult {
 /**
  * Snap the MOVING edge(s) of an in-progress resized `rect` (already computed by {@link resizeNode} /
  * {@link resizeNodeBox} for the current handle) to nearby other-node edge/center lines, and report the
- * guide lines to draw. Unlike {@link computeAlignmentSnaps} — which slides the WHOLE box by one offset
- * (a move) — this snaps ONLY the edges the `handle` drags (see {@link resizeHandleEdges}), leaving the
+ * guide lines to draw. Unlike {@link computeAlignmentSnaps}, which slides the WHOLE box by one offset
+ * (a move), this snaps ONLY the edges the `handle` drags (see {@link resizeHandleEdges}), leaving the
  * opposite edge pinned, so the box's SIZE changes to meet the neighbor. Each moving vertical edge
  * (left/right) snaps to the nearest other left/center/right within `threshold`; each moving horizontal
  * edge (top/bottom) to the nearest other top/center/bottom. The result is re-floored to

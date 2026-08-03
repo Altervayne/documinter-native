@@ -9,6 +9,9 @@ import {
    removePageBreak,
    hasPageBreakAfter,
    canBreakAfter,
+   reorderPages,
+   duplicatePage,
+   deletePage,
    FIRST_PAGE_ID,
 } from './pageModel'
 
@@ -228,5 +231,157 @@ describe('removePageBreakAfter / removePageBreak', () => {
    it('removePageBreak drops the break with the given id', () => {
       const pages = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
       expect(removePageBreak(pages, 'brk1')).toEqual([breakBefore('brk2', 's2', 'e')])
+   })
+})
+
+// ###################
+// # PAGE OPERATIONS #
+// ###################
+
+/** Re-derive the page shape from a committed { sections, pages } result, the round-trip that proves
+ *  a reorder/duplicate/delete really produces the intended page order over the new flat flow. */
+function resultShape(result: { sections: Section[]; pages: PageBreak[] }) {
+   return shape(partitionIntoPages(result.sections, result.pages))
+}
+
+/** Flat list of every section id in order (to inspect section splitting / id uniqueness). */
+function sectionIds(result: { sections: Section[]; pages: PageBreak[] }) {
+   return result.sections.map(section => section.id)
+}
+
+describe('reorderPages', () => {
+   // Three-page fixture: break before c (s1) and before e (s2).
+   //   P0 = [a, b] · P1 = [c, d] · P2 = [e]
+   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
+
+   it('is a no-op for equal indices (same references)', () => {
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 1)
+      expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toBe(THREE_PAGE_BREAKS)
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 9)
+      expect(result.sections).toBe(SECTIONS)
+   })
+
+   it('swaps two adjacent pages', () => {
+      // Move P1 above P0: [c, d] · [a, b] · [e].
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 0)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['a', 'b'], ['e']])
+   })
+
+   it('moves a page to the front', () => {
+      // Move P2 (the last page) to the front: [e] · [a, b] · [c, d].
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
+   })
+
+   it('moves a page to the end', () => {
+      // Move P0 to the end: [c, d] · [e] · [a, b].
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 2)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e'], ['a', 'b']])
+   })
+
+   it('reorders multi-block pages at a clean section boundary', () => {
+      // Break at the section boundary → P0 = [a, b, c] (s1), P1 = [d, e] (s2).
+      const result = reorderPages(SECTIONS, [breakBefore('brk', 's2', 'd')], 1, 0)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['d', 'e'], ['a', 'b', 'c']])
+      // Section identity is preserved (no split): s2 then s1, both ids intact.
+      expect(sectionIds(result)).toEqual(['s2', 's1'])
+   })
+
+   it('splits a section when a mid-section slice is torn away (fresh id, unique)', () => {
+      // s2 = [d, e] spans P1 (d) and P2 (e). Moving P2 (e) to the front tears e off d.
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
+      const ids = sectionIds(result)
+      // s2 fragment carrying 'e' keeps the id (first occurrence); the fragment carrying 'd' is a
+      // genuine split → a fresh id. All ids stay unique.
+      expect(new Set(ids).size).toBe(ids.length)
+      const sectionOfBlock = (blockId: string) =>
+         result.sections.find(section => section.blocks.some(block => block.id === blockId))!.id
+      expect(sectionOfBlock('e')).not.toBe(sectionOfBlock('d'))
+      // The un-torn section s1 stays a single section.
+      expect(result.sections.filter(section => section.id === 's1')).toHaveLength(1)
+   })
+
+   it('re-merges a break-spanning section that stays contiguous after the move', () => {
+      // s1 = [a, b, c] spans P0 (a, b) and P1 (c). Move P2 (e) between them? No, keep P0,P1 adjacent
+      // by moving P2 to the front: s1's a,b and c remain adjacent in the flow → ONE s1 section.
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
+      const s1Sections = result.sections.filter(section => section.id === 's1')
+      expect(s1Sections).toHaveLength(1)
+      expect(s1Sections[0].blocks.map(block => block.id)).toEqual(['a', 'b', 'c'])
+   })
+
+   it('preserves every block exactly once', () => {
+      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
+      const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
+      expect(allBlockIds.sort()).toEqual(['a', 'b', 'c', 'd', 'e'])
+   })
+})
+
+describe('duplicatePage', () => {
+   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
+
+   it('inserts a clone directly after the source page', () => {
+      // Duplicate P0 = [a, b] → a fresh page of two cloned blocks sits at index 1.
+      const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
+      const pageBlockCounts = resultShape(result).map(page => page.blocks.length)
+      expect(pageBlockCounts).toEqual([2, 2, 2, 1])   // P0, clone(P0), P1, P2
+   })
+
+   it('gives the clone fresh block ids (no id collision)', () => {
+      const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
+      const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
+      expect(new Set(allBlockIds).size).toBe(allBlockIds.length)
+      expect(allBlockIds).toHaveLength(7)   // 5 originals + 2 clones
+   })
+
+   it('gives the clone fresh, unique section ids', () => {
+      const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
+      const ids = sectionIds(result)
+      expect(new Set(ids).size).toBe(ids.length)
+   })
+
+   it('is a no-op for an out-of-range index (same references)', () => {
+      const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 9)
+      expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toBe(THREE_PAGE_BREAKS)
+   })
+})
+
+describe('deletePage', () => {
+   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
+
+   it('drops a page and its content, leaving the rest in order', () => {
+      // Delete P1 = [c, d] → [a, b] · [e].
+      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 1)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['a', 'b'], ['e']])
+   })
+
+   it('re-coalesces a section left split by the deletion', () => {
+      // s1 = [a, b, c]. Delete P0 = [a, b] → s1 keeps only [c], still ONE section.
+      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 0)
+      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e']])
+      expect(result.sections.filter(section => section.id === 's1')).toHaveLength(1)
+   })
+
+   it('removes exactly the deleted page\'s blocks', () => {
+      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 2)   // delete [e]
+      const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
+      expect(allBlockIds.sort()).toEqual(['a', 'b', 'c', 'd'])
+   })
+
+   it('is a no-op when only one page exists (same references)', () => {
+      const result = deletePage(SECTIONS, [], 0)
+      expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toEqual([])
+   })
+
+   it('is a no-op for an out-of-range index', () => {
+      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 9)
+      expect(result.sections).toBe(SECTIONS)
    })
 })

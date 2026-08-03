@@ -72,9 +72,10 @@ export interface DocumentMenuOptions {
  * pure function, is what enforces the two surfaces can never drift in label or order: they render
  * the identical `ContextMenuEntry[]`, each through its own thin renderer.
  *
- * Order: Add section · Doc theme · Accent (header + swatch grid) · Presentation… · Navigation…
- * · Page setup… · Export… · Save · Save As… · Preview toggle. Icon size 13 matches both surfaces'
- * existing rows.
+ * Order: Add section · Doc theme · Accent (header + swatch grid) · | Presentation… · Navigation…
+ * · Page setup… | Save · Save As… · Export… | Preview toggle. The bottom actions are split into
+ * three separator-divided groups (document windows, file actions, preview) so the long run is
+ * scannable at a glance. Icon size 13 matches both surfaces' existing rows.
  */
 export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextMenuEntry[] {
    const {
@@ -137,14 +138,27 @@ export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextM
       entries.push({ type: 'accent-grid', presets, custom })
    }
 
-   const hasActions = !!onOpenPresentation || !!onOpenNavigation || !!onOpenFormat || !!onOpenExport || !!onManualSave || !!onSaveAs || !!onTogglePreview
+   // The bottom of the menu is three separator-divided groups so the run of actions stays scannable:
+   //   windows (Presentation / Navigation / Page setup) | file (Save / Save As / Export) | Preview.
+   // Each group is guarded on its own handlers so a surface wiring only a subset never emits a
+   // leading, trailing, or doubled separator (a divider rides only between two non-empty groups).
+   const hasWindowsGroup = !!onOpenPresentation || !!onOpenNavigation || !!onOpenFormat
+   const hasFileGroup    = !!onManualSave || !!onSaveAs || !!onOpenExport
+   const hasPreviewGroup = !!onTogglePreview
+   const hasActions = hasWindowsGroup || hasFileGroup || hasPreviewGroup
+
    if (hasActions && entries.length > 0) entries.push({ type: 'separator' })
+
    if (onOpenPresentation) entries.push({ label: t.presentationMenu,  icon: <Image size={13} />,    onSelect: onOpenPresentation })
    if (onOpenNavigation)   entries.push({ label: t.menuNavigation,    icon: <PanelLeft size={13} />, onSelect: onOpenNavigation })
    if (onOpenFormat)       entries.push({ label: t.formatMenuPageSetup, icon: <Ruler size={13} />,   onSelect: onOpenFormat })
-   if (onOpenExport)       entries.push({ label: t.menuExport,        icon: <Download size={13} />,  onSelect: onOpenExport })
+
+   if (hasFileGroup && hasWindowsGroup) entries.push({ type: 'separator' })
    if (onManualSave)       entries.push({ label: t.fileSave,          icon: <Save size={13} />,      onSelect: onManualSave })
    if (onSaveAs)           entries.push({ label: t.fileSaveAs,        icon: <FileDown size={13} />,  onSelect: onSaveAs })
+   if (onOpenExport)       entries.push({ label: t.menuExport,        icon: <Download size={13} />,  onSelect: onOpenExport })
+
+   if (hasPreviewGroup && (hasWindowsGroup || hasFileGroup)) entries.push({ type: 'separator' })
    if (onTogglePreview) {
       entries.push({
          label:    t.previewMode,

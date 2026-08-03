@@ -22,7 +22,7 @@ interface ColorSwatchFieldProps {
    /** Apply a picked hex; fires live while the user drags/types inside the picker. */
    onChange: (hex: string) => void
    /**
-    * Clear an override back to its fallback default. Omit entirely to hide the reset row —
+    * Clear an override back to its fallback default. Omit entirely to hide the reset row,
     * fields that always carry a literal color with no theme/palette fallback to revert to
     * (e.g. the image-markup stroke/fill/text colors) simply don't pass it.
     */
@@ -39,12 +39,12 @@ interface ColorSwatchFieldProps {
 
 /**
  * A swatch button that opens the app's `react-piqua-color` `ColorPicker` in a floating,
- * portaled, viewport-clamped popover — built 2026-08-02 as the shared replacement for the
+ * portaled, viewport-clamped popover, built 2026-08-02 as the shared replacement for the
  * native `<input type="color">` previously used by the diagram inspector (`DiagramInspector`'s
  * `ColorRow`) and the image-markup editor (`ImageMarkupEditor`'s stroke/fill/text controls).
  *
- * Mirrors the shell of `GraphSeriesColorPopover` / `MetaFieldColorPopover` — same portal-to-
- * `document.body` + `useViewportClampedPosition({ type: 'rect' })` anchoring — so it renders
+ * Mirrors the shell of `GraphSeriesColorPopover` / `MetaFieldColorPopover`, same portal-to-
+ * `document.body` + `useViewportClampedPosition({ type: 'rect' })` anchoring, so it renders
  * correctly above the floating Block Editor Window these two editors are hosted in. Unlike
  * those two (whose reset action is always present), the reset row here is optional: pass
  * `onReset` only when the field can fall back to something (a theme default, a palette slot).
