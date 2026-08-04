@@ -3,21 +3,26 @@ import { DndContext, DragOverlay, pointerWithin, useDndMonitor } from '@dnd-kit/
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { Folder, ArrowDown, ArrowUp, FilePlus, FileJson } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
-import { backfillSearchText } from '../../lib/binderDocuments'
+import { backfillSearchText, loadDocument } from '../../lib/binderDocuments'
 import type { DocumentSortBy } from '../../lib/binderSearch'
+import type { DocumentTemplate } from '../../lib/documentTemplate'
 import { useBinderDocuments } from '../../hooks/useBinderDocuments'
 import { useBinderNav } from '../../hooks/useBinderNav'
 import { useBinderSearch } from '../../hooks/useBinderSearch'
 import { useBinderDragAndDrop, SPRING_HOLD_MS } from '../../hooks/useBinderDragAndDrop'
+import { useTemplates } from '../../hooks/useTemplates'
 import { useLang } from '../../contexts/LangContext'
+import { useToast } from '../../contexts/ToastContext'
 import { BinderNav } from './BinderNav'
 import { BinderBreadcrumb } from './BinderBreadcrumb'
 import { BinderControls } from './BinderControls'
 import { DocumentCard } from './DocumentCard'
 import { DocumentCardPreview } from './DocumentCardPreview'
 import { DocumentCardMeta } from './DocumentCardMeta'
+import { TemplatesPane } from './TemplatesPane'
 import { BinderFolderMenu } from '../../molecules/BinderFolderMenu'
 import { ConfirmDialog } from '../../molecules/ConfirmDialog'
+import { PromptDialog } from '../../molecules/PromptDialog'
 import { BinderFolderDeleteDialog } from '../../molecules/BinderFolderDeleteDialog'
 import './binderDragOverlay.css'
 
@@ -38,10 +43,14 @@ export interface BinderProps {
    activeDocumentId:  string | null
    /** Folder to open into (the current document's folder); null = root. Seeds the initial view. */
    initialFolder:     BinderFolderRecord | null
+   /** Which top-level view to open into (Documents by default; Templates from "New from template"). */
+   initialView?:      'documents' | 'templates'
    /** Open a stored document in the editor (adds or focuses its tab). */
    onOpenDocument:    (id: string) => void
    /** Create a blank document and open it. With a folderId, the new document is filed there. */
    onNewDocument:     (folderId?: string) => void
+   /** Create a new document pre-styled from a template and open it (filed into folderId when given). */
+   onNewFromTemplate: (template: DocumentTemplate, folderId?: string) => void
    /** Notify the editor that a document was deleted (so it can close its tab if open). */
    onDocumentDeleted: (id: string) => void
 }
@@ -52,8 +61,9 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpenDocument, onNewDocument, onDocumentDeleted }: BinderProps) {
+export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', onOpenDocument, onNewDocument, onNewFromTemplate, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
+   const { showToast } = useToast()
 
    // ============================
    //  Navigation + shared refresh
@@ -61,6 +71,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
    // Seeded from initialFolder so the binder opens directly into the current document's folder.
    const [currentFolderId, setCurrentFolderId] = useState(initialFolder?.id ?? ROOT_FOLDER_ID)
    const [currentFolder, setCurrentFolder]     = useState<BinderFolderRecord | null>(initialFolder)
+   const [view, setView]                       = useState<'documents' | 'templates'>(initialView)
    const [dataVersion, setDataVersion]         = useState(0)
    const bumpData = useCallback(() => setDataVersion(version => version + 1), [])
 
@@ -83,6 +94,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
       return () => { active = false }
    }, [bumpData])
 
+   const templates = useTemplates(dataVersion, bumpData)
    const nav  = useBinderNav(currentFolderId, dataVersion, bumpData)
    const docs = useBinderDocuments(
       {
@@ -105,14 +117,54 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
    const [folderMenu, setFolderMenu]                 = useState<{ folder: BinderFolderRecord; x: number; y: number } | null>(null)
    const [folderPendingDelete, setFolderPendingDelete]     = useState<BinderFolderRecord | null>(null)
    const [documentPendingDelete, setDocumentPendingDelete] = useState<BinderDocumentRecord | null>(null)
+   // Text-input dialog shared by "save document as template" (mode 'save', keyed by the source
+   // document id) and "rename template" (mode 'rename', keyed by the template id).
+   const [templateNameDialog, setTemplateNameDialog]       = useState<
+      | { mode: 'save'; documentId: string; initialName: string }
+      | { mode: 'rename'; templateId: string; initialName: string }
+      | null
+   >(null)
+   const [templatePendingDelete, setTemplatePendingDelete] = useState<DocumentTemplate | null>(null)
 
    const navigateTo = useCallback((folder: BinderFolderRecord | null) => {
+      setView('documents')        // entering a folder is a Documents-view action
       setCurrentFolder(folder)
       setCurrentFolderId(folder?.id ?? ROOT_FOLDER_ID)
       setSelectedFolderId(null)
       setSelectedDocumentId(null)
       resetSearch()               // navigating exits a global search + clears advanced filters
    }, [resetSearch])
+
+   // ==================
+   //  Template actions
+   // ==================
+   // "Save as template" from a document card: name it, then capture that stored document's chrome.
+   const openSaveAsTemplate = useCallback((record: BinderDocumentRecord) => {
+      setTemplateNameDialog({ mode: 'save', documentId: record.id, initialName: record.meta.title ?? '' })
+   }, [])
+
+   const handleConfirmTemplateName = useCallback(async (name: string) => {
+      const dialog = templateNameDialog
+      setTemplateNameDialog(null)
+      if (!dialog) return
+      if (dialog.mode === 'rename') { void templates.handleRename(dialog.templateId, name); return }
+      // Save mode: load the document's chrome (no content is captured) and store the template.
+      const loaded = await loadDocument(dialog.documentId, { touch: false })
+      if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
+      await templates.handleSave(name, {
+         meta:         loaded.meta,
+         docTheme:     loaded.docTheme,
+         docAccent:    loaded.docAccent,
+         presentation: loaded.presentation,
+         format:       loaded.format,
+      })
+   }, [templateNameDialog, templates, showToast, t])
+
+   const handleConfirmDeleteTemplate = useCallback(() => {
+      const template = templatePendingDelete
+      setTemplatePendingDelete(null)
+      if (template) void templates.handleDelete(template.id)
+   }, [templatePendingDelete, templates])
 
    // ===============
    //  Folder actions
@@ -194,6 +246,9 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
          <FolderOverWatcher onChange={setIsOverFolder} />
          <div className="flex flex-1 min-h-0">
             <BinderNav
+               view={view}
+               onSelectDocuments={() => setView('documents')}
+               onSelectTemplates={() => setView('templates')}
                currentFolder={currentFolder}
                subfolders={nav.subfolders}
                folderDocumentCounts={nav.folderDocumentCounts}
@@ -217,6 +272,16 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
                onCancelRename={() => setEditingFolderId(null)}
             />
 
+            {view === 'templates' ? (
+               <TemplatesPane
+                  templates={templates.templates}
+                  isLoading={templates.isLoading}
+                  onUse={template => onNewFromTemplate(template, currentFolderId)}
+                  onDuplicate={template => void templates.handleDuplicate(template)}
+                  onRename={template => setTemplateNameDialog({ mode: 'rename', templateId: template.id, initialName: template.name })}
+                  onDelete={template => setTemplatePendingDelete(template)}
+               />
+            ) : (
             <div className="flex flex-1 flex-col min-h-0">
                <div className="px-6 pt-4 pb-3 border-b border-border flex flex-col gap-3">
                   <BinderBreadcrumb ancestors={nav.ancestors} currentFolder={currentFolder} onNavigate={navigateTo} />
@@ -287,6 +352,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
                                  onExportHtml={() => docs.handleExportHtml(record.id)}
                                  onExportMarkdown={() => docs.handleExportMarkdown(record.id)}
                                  onExportMintdown={() => docs.handleExportMintdown(record.id)}
+                                 onSaveAsTemplate={() => openSaveAsTemplate(record)}
                               />
                            ))}
                         </div>
@@ -294,6 +360,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
                   )}
                </div>
             </div>
+            )}
          </div>
 
          <DragOverlay>
@@ -392,6 +459,30 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, onOpe
                danger
                onConfirm={handleConfirmDeleteDocument}
                onCancel={() => setDocumentPendingDelete(null)}
+            />
+         )}
+
+         {templateNameDialog && (
+            <PromptDialog
+               title={templateNameDialog.mode === 'rename' ? t.templateRenameTitle : t.saveAsTemplateTitle}
+               label={t.saveAsTemplateLabel}
+               initialValue={templateNameDialog.initialName}
+               confirmLabel={templateNameDialog.mode === 'rename' ? t.templateRenameConfirm : t.saveAsTemplateConfirm}
+               cancelLabel={t.binderUnsavedCancel}
+               onConfirm={name => void handleConfirmTemplateName(name)}
+               onCancel={() => setTemplateNameDialog(null)}
+            />
+         )}
+
+         {templatePendingDelete && (
+            <ConfirmDialog
+               title={t.templateDeleteTitle}
+               message={t.templateDeleteWarning}
+               confirmLabel={t.templateDelete}
+               cancelLabel={t.binderUnsavedCancel}
+               danger
+               onConfirm={handleConfirmDeleteTemplate}
+               onCancel={() => setTemplatePendingDelete(null)}
             />
          )}
       </div>

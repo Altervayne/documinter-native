@@ -1,0 +1,54 @@
+import { LayoutTemplate } from 'lucide-react'
+import type { DocumentTemplate } from '../../lib/documentTemplate'
+import { useLang } from '../../contexts/LangContext'
+import { TemplateCard } from './TemplateCard'
+
+interface TemplatesPaneProps {
+   templates:   DocumentTemplate[]
+   isLoading:   boolean
+   onUse:       (template: DocumentTemplate) => void
+   onDuplicate: (template: DocumentTemplate) => void
+   onRename:    (template: DocumentTemplate) => void
+   onDelete:    (template: DocumentTemplate) => void
+}
+
+/**
+ * The binder's Templates view: a header explaining what templates are over a grid of TemplateCards
+ * (built-ins first, then user templates). Replaces the folder breadcrumb + document grid when the
+ * nav's Templates entry is active. There is always at least the one built-in, so there is no empty
+ * state; the header's hint tells the user how to add their own.
+ */
+export function TemplatesPane({ templates, isLoading, onUse, onDuplicate, onRename, onDelete }: TemplatesPaneProps) {
+   const { t } = useLang()
+
+   return (
+      <div className="flex flex-1 flex-col min-h-0">
+         <div className="px-6 pt-4 pb-3 border-b border-border">
+            <div className="flex items-center gap-2 text-sm font-semibold text-text">
+               <LayoutTemplate size={15} className="text-accent" />
+               {t.binderTemplates}
+            </div>
+            <div className="mt-1 text-xs text-muted">{t.templatesHint}</div>
+         </div>
+
+         <div className="flex-1 overflow-y-auto p-6">
+            {isLoading ? (
+               <div className="text-muted text-sm">…</div>
+            ) : (
+               <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                  {templates.map(template => (
+                     <TemplateCard
+                        key={template.id}
+                        template={template}
+                        onUse={() => onUse(template)}
+                        onDuplicate={() => onDuplicate(template)}
+                        onRename={() => onRename(template)}
+                        onDelete={() => onDelete(template)}
+                     />
+                  ))}
+               </div>
+            )}
+         </div>
+      </div>
+   )
+}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, File, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload } from 'lucide-react'
+import { ChevronDown, File, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload, LayoutTemplate } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #############
@@ -27,6 +27,8 @@ interface FileMenuProps {
    // Document mode only:
    onSave:           () => void
    onSaveAs:         () => void
+   /** Save the active document's chrome as a reusable template, document mode only. */
+   onSaveAsTemplate: () => void
    /** Single, format-aware Export dialog (HTML / Mintdown / Markdown), document mode only. */
    onExport:         () => void
    // Binder mode only:
@@ -43,7 +45,7 @@ interface FileMenuProps {
 export function FileMenu({
    mode,
    onNewDocument, onOpenTin, onOpen,
-   onSave, onSaveAs, onExport,
+   onSave, onSaveAs, onSaveAsTemplate, onExport,
    onImportDocumint, onImportMarkdown, onImportMintdown,
    t,
 }: FileMenuProps) {
@@ -102,7 +104,7 @@ export function FileMenu({
          {/* Dropdown */}
          {open && (
             <div className={`absolute top-full mt-1.5 min-w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
-               {/* New + Tin (both modes) */}
+               {/* New (opens the New Document dialog) + Tin (both modes) */}
                <MenuItem icon={<FilePlus size={13} />} label={t.fileNewDocument} onClick={() => handleItemClick(onNewDocument)} />
                <MenuItem icon={<Archive size={13} />}  label={t.fileOpenTin}     onClick={() => handleItemClick(onOpenTin)} />
                <MenuSeparator />
@@ -114,8 +116,9 @@ export function FileMenu({
                {isDocumentMode && (
                   <>
                      <MenuSeparator />
-                     <MenuItem icon={<Save size={13} />}    label={t.fileSave}   onClick={() => handleItemClick(onSave)} />
-                     <MenuItem icon={<SaveAll size={13} />} label={t.fileSaveAs} onClick={() => handleItemClick(onSaveAs)} />
+                     <MenuItem icon={<Save size={13} />}          label={t.fileSave}         onClick={() => handleItemClick(onSave)} />
+                     <MenuItem icon={<SaveAll size={13} />}       label={t.fileSaveAs}       onClick={() => handleItemClick(onSaveAs)} />
+                     <MenuItem icon={<LayoutTemplate size={13} />} label={t.saveAsTemplate}  onClick={() => handleItemClick(onSaveAsTemplate)} />
                      <MenuSeparator />
                      {/* One format-aware Export dialog (HTML / Mintdown / Markdown) */}
                      <MenuItem icon={<Download size={13} />} label={t.menuExport} onClick={() => handleItemClick(onExport)} />

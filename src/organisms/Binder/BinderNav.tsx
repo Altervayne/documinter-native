@@ -1,4 +1,4 @@
-import { FolderPlus, ChevronLeft, X } from 'lucide-react'
+import { FolderPlus, ChevronLeft, X, Files, LayoutTemplate } from 'lucide-react'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 import type { BinderFolderRecord } from '../../types'
 import { useLang } from '../../contexts/LangContext'
@@ -11,6 +11,9 @@ export type FolderDropZone = 'before' | 'after' | 'nest'
 export interface FolderDropTarget { id: string; zone: FolderDropZone }
 
 interface BinderNavProps {
+   view:                 'documents' | 'templates'   // which top-level view is active
+   onSelectDocuments:    () => void                  // switch to the Documents view (folder tree)
+   onSelectTemplates:    () => void                  // switch to the Templates view
    currentFolder:        BinderFolderRecord | null   // null = root ("All Documents")
    subfolders:           BinderFolderRecord[]
    folderDocumentCounts: Record<string, number>
@@ -40,16 +43,19 @@ interface BinderNavProps {
  * a subfolder of the current folder and enters inline rename.
  */
 export function BinderNav({
+   view, onSelectDocuments, onSelectTemplates,
    currentFolder, subfolders, folderDocumentCounts, selectedFolderId, editingFolderId, isDocumentDragging,
    draggingDocFolderId, folderDropTarget, rootRef, backRef, isUpTarget, isDragging, cancelRef, isCancelTarget,
    onNavigateUp, onSelectFolder, onEnterFolder, onNewFolder, onFolderMenu, onCommitRename, onCancelRename,
 }: BinderNavProps) {
    const { t } = useLang()
+   const isTemplates = view === 'templates'
 
    return (
       <div ref={rootRef} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-border bg-raised/40">
-         {/* Header: at root, a static label; inside a folder, a Back button (also an up-drop target). */}
-         {currentFolder ? (
+         {/* Documents anchor: a Back button when drilled into a folder (also an up-drop target),
+             otherwise the "All Documents" root label, which doubles as the Documents-view toggle. */}
+         {!isTemplates && currentFolder ? (
             <button
                ref={backRef}
                type="button"
@@ -62,11 +68,32 @@ export function BinderNav({
                <span className="truncate">{currentFolder.name}</span>
             </button>
          ) : (
-            <div className="px-3 py-2.5 border-b border-border text-xs font-semibold text-muted truncate">
-               {t.binderAllDocuments}
-            </div>
+            <button
+               type="button"
+               onClick={onSelectDocuments}
+               className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
+                  !isTemplates ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
+               }`}
+            >
+               <Files size={14} className="shrink-0" />
+               <span className="truncate">{t.binderAllDocuments}</span>
+            </button>
          )}
 
+         {/* Templates-view toggle: a sibling top-level destination to the documents folder tree. */}
+         <button
+            type="button"
+            onClick={onSelectTemplates}
+            className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
+               isTemplates ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
+            }`}
+         >
+            <LayoutTemplate size={14} className="shrink-0" />
+            <span className="truncate">{t.binderTemplates}</span>
+         </button>
+
+         {/* Folder tree belongs to the Documents view; hidden while browsing templates. */}
+         {!isTemplates && (
          <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-0.5">
             <SortableContext items={subfolders.map(folder => `folder:${folder.id}`)} strategy={noopStrategy}>
                {subfolders.map(folder => {
@@ -121,6 +148,10 @@ export function BinderNav({
                </div>
             )}
          </div>
+         )}
+
+         {/* Templates view fills the remaining nav height so the panel keeps its shape. */}
+         {isTemplates && <div className="flex-1" />}
 
          {/* Cancel-move dropzone, appears at the foot of the nav during any drag; dropping here
              aborts the move (detected by cursor geometry in the binder, like the Back button). */}

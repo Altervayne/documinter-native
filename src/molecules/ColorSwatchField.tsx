@@ -123,9 +123,11 @@ function ColorSwatchPopover({ anchorRect, value, title, resetLabel, onPick, onRe
    }, [onClose, ref])
 
    return createPortal(
+      // z above the modal layer (dialogs are z-[10000]): the swatch is used inside modals like the
+      // New Document dialog, and an open color picker is always the topmost transient interaction.
       <div
          ref={ref}
-         className="fixed z-[9999] w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
+         className="fixed z-[10001] w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"
          style={{ top, left, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
          onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
       >

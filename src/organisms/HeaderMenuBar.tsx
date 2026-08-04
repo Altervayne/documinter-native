@@ -118,6 +118,8 @@ interface HeaderMenuBarProps {
    dockPanels:       DockPanelToggle[]
    onManualSave:     () => void
    onSaveAs:         () => void
+   /** Save the active document's chrome as a reusable template (File -> Save as template). */
+   onSaveAsTemplate: () => void
    onNew:            () => void
    /** Add a section to the active document, the Document menu's "Add section" entry. */
    onAddSection:     () => void
@@ -152,7 +154,7 @@ interface HeaderMenuBarProps {
 
 export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onNew, onAddSection, onToggleBinder,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
    format, onOpenFormat,
@@ -247,6 +249,7 @@ export function HeaderMenuBar({
                onOpen={handleOpen}
                onSave={onManualSave}
                onSaveAs={onSaveAs}
+               onSaveAsTemplate={onSaveAsTemplate}
                onExport={onOpenExport}
                onImportDocumint={comingSoon}
                onImportMarkdown={comingSoon}

@@ -21,6 +21,7 @@ interface DocumentCardProps {
    onExportHtml:     () => void
    onExportMarkdown: () => void
    onExportMintdown: () => void
+   onSaveAsTemplate: () => void
 }
 
 /**
@@ -30,7 +31,7 @@ interface DocumentCardProps {
  * button and right-click open the context menu.
  */
 export function DocumentCard({
-   record, isActive, isOpen, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
+   record, isActive, isOpen, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown, onSaveAsTemplate,
 }: DocumentCardProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
@@ -111,6 +112,7 @@ export function DocumentCard({
                onExportHtml={onExportHtml}
                onExportMarkdown={onExportMarkdown}
                onExportMintdown={onExportMintdown}
+               onSaveAsTemplate={onSaveAsTemplate}
             />
          )}
       </>

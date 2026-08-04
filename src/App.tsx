@@ -10,6 +10,8 @@ import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
 import { getFolder } from './lib/binderFolders'
+import { instantiateTemplate, captureTemplate, type DocumentTemplate } from './lib/documentTemplate'
+import { saveTemplate } from './lib/templateStore'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -40,6 +42,8 @@ import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
 import { SaveAsDialog } from './molecules/SaveAsDialog'
+import { PromptDialog } from './molecules/PromptDialog'
+import { NewDocumentDialog, type NewDocumentChoice } from './molecules/NewDocumentDialog'
 import { ToastContainer } from './atoms/ToastContainer'
 import { UpdatePrompt } from './atoms/UpdatePrompt'
 
@@ -95,6 +99,27 @@ function createBlankDocument(sectionTitle: string, pendingFolderId: string | nul
       sections:  [mkSection(sectionTitle)],
       docTheme:  'light',
       docAccent: DEFAULT_DOC_ACCENT,
+      documentId:            null,
+      saveStatus:            'clean',
+      pendingNewDocFolderId: pendingFolderId,
+   }
+}
+
+// A fresh tab pre-styled from a template: a blank body (one empty section) wearing the template's
+// chrome (meta scaffold with fresh field ids, theme, accent, presentation, page format). Like
+// createBlankDocument, it has no binder record yet and is clean; it saves on first edit into the
+// folder it was created in.
+function createDocumentFromTemplate(template: DocumentTemplate, sectionTitle: string, pendingFolderId: string | null = null): OpenDocument {
+   // Wrap randomUUID so it keeps its `crypto` receiver (an unbound reference throws Illegal invocation).
+   const chrome = instantiateTemplate(template, () => crypto.randomUUID())
+   return {
+      tabKey:    crypto.randomUUID(),
+      meta:      chrome.meta,
+      sections:  [mkSection(sectionTitle)],
+      docTheme:  chrome.docTheme,
+      docAccent: chrome.docAccent,
+      presentation: chrome.presentation,
+      format:       chrome.format,
       documentId:            null,
       saveStatus:            'clean',
       pendingNewDocFolderId: pendingFolderId,
@@ -430,14 +455,6 @@ export default function App() {
       setActiveTabKey(tabKey)
    }, [persistNow])
 
-   // New = add a tab. Appends a fresh blank document and activates it (no longer replaces the active
-   // tab, so nothing is discarded and no confirm is needed).
-   const addNewTab = useCallback(() => {
-      const newDocument = createBlankDocument(t.defaultSectionTitle)
-      setOpenDocuments(documents => [...documents, newDocument])
-      void activateTab(newDocument.tabKey)
-   }, [t, activateTab])
-
    // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
    // neighbor (right, else left). If it was the last tab, respawn a blank, openDocuments is never
    // empty (the always-have-a-document invariant now lives on the tab list).
@@ -544,10 +561,34 @@ export default function App() {
       }
    }, [activateTab, showToast, t])
 
-   // New from the binder: add a fresh blank tab (carrying the folder it should land in on first
-   // save), activate it, and close the binder. No replace, no discard.
-   const handleNewDocumentFromBinder = useCallback((folderId?: string) => {
-      const newDocument = createBlankDocument(t.defaultSectionTitle, folderId ?? null)
+   // The one New-document entry point: a dialog (New Document dialog) where you pick Blank or a
+   // template and tweak accent / theme / format, then Create. Opened from the header New button, the
+   // File menu, and the binder's empty-state CTA (which seeds the folder it was opened from). The
+   // stored folder is applied as the new tab's pending-save folder. null = root.
+   const [newDocumentDialog, setNewDocumentDialog] = useState<{ folderId: string | null } | null>(null)
+   const handleOpenNewDocument   = useCallback((folderId: string | null = null) => setNewDocumentDialog({ folderId }), [])
+   const handleCancelNewDocument = useCallback(() => setNewDocumentDialog(null), [])
+
+   // Create the document the dialog composed: a blank body wearing either the blank defaults or the
+   // chosen template's chrome, with the dialog's (possibly overridden) accent / theme / format on
+   // top. Adds it as a tab, activates it, and closes the binder. No replace, no discard.
+   const handleCreateNewDocument = useCallback((template: DocumentTemplate | null, choice: NewDocumentChoice) => {
+      const folderId = newDocumentDialog?.folderId ?? null
+      setNewDocumentDialog(null)
+      const base = template
+         ? createDocumentFromTemplate(template, t.defaultSectionTitle, folderId)
+         : createBlankDocument(t.defaultSectionTitle, folderId)
+      const newDocument: OpenDocument = { ...base, docAccent: choice.accent, docTheme: choice.theme, format: choice.format }
+      setOpenDocuments(documents => [...documents, newDocument])
+      void activateTab(newDocument.tabKey)
+      setBinderOpen(false)
+      showToast(t.binderDocumentCreated, { type: 'success' })
+   }, [newDocumentDialog, t, activateTab, showToast])
+
+   // New from template, direct: the binder Templates view's per-card "Use" button. Skips the dialog
+   // (you already picked) and creates straight from the template, filed into the current folder.
+   const handleNewFromTemplate = useCallback((template: DocumentTemplate, folderId?: string) => {
+      const newDocument = createDocumentFromTemplate(template, t.defaultSectionTitle, folderId ?? null)
       setOpenDocuments(documents => [...documents, newDocument])
       void activateTab(newDocument.tabKey)
       setBinderOpen(false)
@@ -616,6 +657,32 @@ export default function App() {
    }, [saveAsDialog, persistNow, showToast, t])
 
    const handleCancelSaveAs = useCallback(() => setSaveAsDialog(null), [])
+
+   // Save the active document's chrome as a reusable template (File -> Save as template). A name
+   // dialog opens here; on confirm the capture reads the active tab's live chrome (meta scaffold,
+   // theme, accent, presentation, page format) directly, no content is captured. This path doesn't
+   // open the binder, so there is no list to refresh, the toast is the only feedback.
+   const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false)
+   const handleOpenSaveAsTemplate = useCallback(() => setSaveAsTemplateOpen(true), [])
+   const handleCancelSaveAsTemplate = useCallback(() => setSaveAsTemplateOpen(false), [])
+   const handleConfirmSaveAsTemplate = useCallback(async (name: string) => {
+      setSaveAsTemplateOpen(false)
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      if (!activeTab) return
+      try {
+         const template = captureTemplate(name, {
+            meta:         activeTab.meta,
+            docTheme:     activeTab.docTheme,
+            docAccent:    activeTab.docAccent,
+            presentation: activeTab.presentation,
+            format:       activeTab.format,
+         }, crypto.randomUUID(), Date.now())
+         await saveTemplate(template)
+         showToast(t.templateSaved, { type: 'success' })
+      } catch {
+         showToast(t.binderActionFailed, { type: 'error' })
+      }
+   }, [showToast, t])
 
    // Confirm the pending action (discard-and-close the dirty tab).
    const handleConfirmNavigation = useCallback(() => {
@@ -737,12 +804,9 @@ export default function App() {
    //  Header: New + standalone binder toggle
    // ===================================
 
-   // New from the header: in binder mode create a doc and exit the binder; in document mode add a
-   // new tab (nothing is discarded, so no confirm).
-   const handleHeaderNew = useCallback(() => {
-      if (binderOpen) handleNewDocumentFromBinder()
-      else addNewTab()
-   }, [binderOpen, handleNewDocumentFromBinder, addNewTab])
+   // New from the header (and the File menu): open the New Document dialog. Same in both modes; on
+   // Create the dialog's handler closes the binder if it was open.
+   const handleHeaderNew = useCallback(() => handleOpenNewDocument(null), [handleOpenNewDocument])
 
    // Close the binder back to the editor. The always-have-a-document invariant now lives on the tab
    // list (openDocuments is never empty), so there is always a tab to return to, just close.
@@ -832,6 +896,7 @@ export default function App() {
             dockPanels={dockPanels}
             onManualSave={handleManualSave}
             onSaveAs={handleSaveAs}
+            onSaveAsTemplate={handleOpenSaveAsTemplate}
             onNew={handleHeaderNew}
             onAddSection={sectionMutations.addSection}
             onToggleBinder={handleToggleBinder}
@@ -855,7 +920,8 @@ export default function App() {
                activeDocumentId={documentId}
                initialFolder={binderInitialFolder}
                onOpenDocument={handleOpenDocument}
-               onNewDocument={handleNewDocumentFromBinder}
+               onNewDocument={folderId => handleOpenNewDocument(folderId ?? null)}
+               onNewFromTemplate={handleNewFromTemplate}
                onDocumentDeleted={handleDocumentDeleted}
             />
          ) : (
@@ -982,6 +1048,25 @@ export default function App() {
                   initialFolder={saveAsDialog.initialFolder}
                   onConfirm={handleConfirmSaveAs}
                   onCancel={handleCancelSaveAs}
+               />
+            )}
+
+            {saveAsTemplateOpen && (
+               <PromptDialog
+                  title={t.saveAsTemplateTitle}
+                  label={t.saveAsTemplateLabel}
+                  initialValue={meta.title}
+                  confirmLabel={t.saveAsTemplateConfirm}
+                  cancelLabel={t.binderUnsavedCancel}
+                  onConfirm={name => void handleConfirmSaveAsTemplate(name)}
+                  onCancel={handleCancelSaveAsTemplate}
+               />
+            )}
+
+            {newDocumentDialog && (
+               <NewDocumentDialog
+                  onCreate={handleCreateNewDocument}
+                  onCancel={handleCancelNewDocument}
                />
             )}
 

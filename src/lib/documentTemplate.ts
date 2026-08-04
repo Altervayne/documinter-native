@@ -112,8 +112,9 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
 // # BUILT-IN TEMPLATES #
 // ######################
 
-// The app's default document accent (App.tsx DEFAULT_DOC_ACCENT). Kept in sync there.
-const DEFAULT_DOC_ACCENT = '#2dcea8'
+// The app's default document accent (App.tsx keeps its own copy for createBlankDocument). Exported
+// so the New Document dialog's "Blank" base and this built-in agree on one value.
+export const DEFAULT_DOC_ACCENT = '#2dcea8'
 
 /**
  * The one built-in template: the classic "default layout" the app used to seed new documents with, an

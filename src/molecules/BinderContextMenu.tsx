@@ -1,4 +1,4 @@
-import { FolderOpen, Copy, Download, FileDown, Trash2 } from 'lucide-react'
+import { FolderOpen, Copy, Download, FileDown, Trash2, LayoutTemplate } from 'lucide-react'
 import { useLang } from '../contexts/LangContext'
 import { ContextMenu } from './ContextMenu'
 import type { ContextMenuEntry } from './ContextMenu'
@@ -13,6 +13,7 @@ interface BinderContextMenuProps {
    onExportHtml:     () => void
    onExportMarkdown: () => void
    onExportMintdown: () => void
+   onSaveAsTemplate: () => void
 }
 
 /**
@@ -20,13 +21,14 @@ interface BinderContextMenuProps {
  * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
  */
 export function BinderContextMenu({
-   x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown,
+   x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown, onSaveAsTemplate,
 }: BinderContextMenuProps) {
    const { t } = useLang()
 
    const entries: ContextMenuEntry[] = [
       { label: t.binderOpenAction, icon: <FolderOpen size={13} />, onSelect: onOpen },
       { label: t.binderDuplicate,  icon: <Copy size={13} />,       onSelect: onDuplicate },
+      { label: t.saveAsTemplate,   icon: <LayoutTemplate size={13} />, onSelect: onSaveAsTemplate },
       { type: 'separator' },
       { label: t.exportHtml,     icon: <Download size={13} />, onSelect: onExportHtml },
       { label: t.exportMarkdown, icon: <FileDown size={13} />, onSelect: onExportMarkdown },
