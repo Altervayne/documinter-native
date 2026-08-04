@@ -24,6 +24,8 @@ export const FOLDER_ID_INDEX        = 'by_folderId'
 const SORT_ORDER_INDEX       = 'by_sortOrder'
 export const PARENT_ID_INDEX        = 'by_parentId'
 export const ROOT_FOLDER_ID         = '0'
+export const TEMPLATES_STORE           = 'templates'
+const TEMPLATES_UPDATED_AT_INDEX       = 'by_templateUpdatedAt'
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
@@ -41,6 +43,10 @@ function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void 
    if (!database.objectStoreNames.contains(FOLDERS_STORE)) {
       database.createObjectStore(FOLDERS_STORE, { keyPath: 'id' })
    }
+   // Templates store (savable document chrome, keyed by id) — self-heals in like the others.
+   if (!database.objectStoreNames.contains(TEMPLATES_STORE)) {
+      database.createObjectStore(TEMPLATES_STORE, { keyPath: 'id' })
+   }
 
    const documentsStore = transaction.objectStore(DOCUMENTS_STORE)
    if (!documentsStore.indexNames.contains(UPDATED_AT_INDEX)) documentsStore.createIndex(UPDATED_AT_INDEX, 'updatedAt', { unique: false })
@@ -49,6 +55,9 @@ function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void 
 
    const foldersStore = transaction.objectStore(FOLDERS_STORE)
    if (!foldersStore.indexNames.contains(PARENT_ID_INDEX)) foldersStore.createIndex(PARENT_ID_INDEX, 'parentId', { unique: false })
+
+   const templatesStore = transaction.objectStore(TEMPLATES_STORE)
+   if (!templatesStore.indexNames.contains(TEMPLATES_UPDATED_AT_INDEX)) templatesStore.createIndex(TEMPLATES_UPDATED_AT_INDEX, 'updatedAt', { unique: false })
 
    // Backfill folderId / sortOrder / lastOpenedAt on any documents that predate them.
    const cursorRequest = documentsStore.openCursor()
@@ -70,14 +79,17 @@ function hasCompleteSchema(database: IDBDatabase): boolean {
    if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) return false
    if (!database.objectStoreNames.contains(DOCUMENT_CONTENT_STORE)) return false
    if (!database.objectStoreNames.contains(FOLDERS_STORE)) return false
+   if (!database.objectStoreNames.contains(TEMPLATES_STORE)) return false
    try {
-      const transaction     = database.transaction([DOCUMENTS_STORE, FOLDERS_STORE], 'readonly')
+      const transaction     = database.transaction([DOCUMENTS_STORE, FOLDERS_STORE, TEMPLATES_STORE], 'readonly')
       const documentIndexes = transaction.objectStore(DOCUMENTS_STORE).indexNames
       const folderIndexes   = transaction.objectStore(FOLDERS_STORE).indexNames
+      const templateIndexes = transaction.objectStore(TEMPLATES_STORE).indexNames
       return documentIndexes.contains(UPDATED_AT_INDEX)
           && documentIndexes.contains(FOLDER_ID_INDEX)
           && documentIndexes.contains(SORT_ORDER_INDEX)
           && folderIndexes.contains(PARENT_ID_INDEX)
+          && templateIndexes.contains(TEMPLATES_UPDATED_AT_INDEX)
    } catch {
       return false
    }
