@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BUILT_IN_TEMPLATES, captureTemplate } from '../lib/documentTemplate'
 import type { DocumentTemplate, TemplateChrome } from '../lib/documentTemplate'
 import { listTemplates, saveTemplate, deleteTemplate, renameTemplate } from '../lib/templateStore'
+import { downloadTemplate, loadTemplateFile } from '../lib/templateBackupFile'
 import { useToast } from '../contexts/ToastContext'
 import { useLang } from '../contexts/LangContext'
 
@@ -86,7 +87,26 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
       }
    }, [onChanged, showToast, t])
 
+   // Download a template as a portable `.documinter-template.json` file.
+   const handleExport = useCallback((template: DocumentTemplate) => {
+      downloadTemplate(template)
+      showToast(t.templateExported, { type: 'success' })
+   }, [showToast, t])
+
+   // Import a template file: pick it, capture it as a fresh stored template (new id + timestamps).
+   const handleImport = useCallback(() => {
+      loadTemplateFile(
+         parsed => {
+            const template = captureTemplate(parsed.name, parsed.chrome, crypto.randomUUID(), Date.now())
+            saveTemplate(template)
+               .then(() => { onChanged(); showToast(t.templateImported, { type: 'success' }) })
+               .catch(() => showToast(t.binderActionFailed, { type: 'error' }))
+         },
+         () => showToast(t.templateImportInvalid, { type: 'error' }),
+      )
+   }, [onChanged, showToast, t])
+
    const templates = [...BUILT_IN_TEMPLATES, ...stored]
 
-   return { templates, isLoading, handleSave, handleRename, handleDelete, handleDuplicate }
+   return { templates, isLoading, handleSave, handleRename, handleDelete, handleDuplicate, handleExport, handleImport }
 }

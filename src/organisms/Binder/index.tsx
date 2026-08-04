@@ -278,8 +278,10 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
                   isLoading={templates.isLoading}
                   onUse={template => onNewFromTemplate(template, currentFolderId)}
                   onDuplicate={template => void templates.handleDuplicate(template)}
+                  onExport={template => templates.handleExport(template)}
                   onRename={template => setTemplateNameDialog({ mode: 'rename', templateId: template.id, initialName: template.name })}
                   onDelete={template => setTemplatePendingDelete(template)}
+                  onImport={() => templates.handleImport()}
                />
             ) : (
             <div className="flex flex-1 flex-col min-h-0">

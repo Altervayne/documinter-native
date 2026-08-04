@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutTemplate, MoreHorizontal, Copy, Pencil, Trash2, Wand2 } from 'lucide-react'
+import { LayoutTemplate, MoreHorizontal, Copy, Pencil, Trash2, Wand2, Download } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { DocumentTemplate } from '../../lib/documentTemplate'
 import { useLang } from '../../contexts/LangContext'
@@ -10,6 +10,7 @@ interface TemplateCardProps {
    template:    DocumentTemplate
    onUse:       () => void
    onDuplicate: () => void
+   onExport:    () => void
    onRename:    () => void
    onDelete:    () => void
 }
@@ -20,7 +21,7 @@ interface TemplateCardProps {
  * (Duplicate always; Rename / Delete only for user templates, since built-ins are code-defined).
  * Templates carry no content, so there is no live document preview like DocumentCard has.
  */
-export function TemplateCard({ template, onUse, onDuplicate, onRename, onDelete }: TemplateCardProps) {
+export function TemplateCard({ template, onUse, onDuplicate, onExport, onRename, onDelete }: TemplateCardProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
 
@@ -43,8 +44,9 @@ export function TemplateCard({ template, onUse, onDuplicate, onRename, onDelete 
    }
 
    const entries: ContextMenuEntry[] = [
-      { label: t.templateUse,       icon: <Wand2 size={13} />, onSelect: onUse },
-      { label: t.binderDuplicate,   icon: <Copy size={13} />,  onSelect: onDuplicate },
+      { label: t.templateUse,       icon: <Wand2 size={13} />,     onSelect: onUse },
+      { label: t.binderDuplicate,   icon: <Copy size={13} />,      onSelect: onDuplicate },
+      { label: t.templateExport,    icon: <Download size={13} />,  onSelect: onExport },
       ...(template.builtIn ? [] : [
          { type: 'separator' } as ContextMenuEntry,
          { label: t.templateRename, icon: <Pencil size={13} />, onSelect: onRename },
