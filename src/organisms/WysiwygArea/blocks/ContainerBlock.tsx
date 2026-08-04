@@ -12,10 +12,12 @@ export interface ContainerBlockProps {
    patch:              (partial: Partial<Block>) => void
    containerMutations: ContainerMutations
    secId:              string
+   /** Id of the block being dragged on the canvas (threaded to the columns for their drop zones). */
+   activeBlockId?:     string | null
    readOnly?:          boolean
 }
 
-export function ContainerBlock({ block, patch, containerMutations, secId, readOnly }: ContainerBlockProps) {
+export function ContainerBlock({ block, patch, containerMutations, secId, activeBlockId, readOnly }: ContainerBlockProps) {
    const ratio = block.ratio ?? 0.5
 
    function handleDividerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -40,7 +42,7 @@ export function ContainerBlock({ block, patch, containerMutations, secId, readOn
             <div style={{ flex: ratio, minWidth: 0 }}>
                <ContainerColumn
                   secId={secId} blkId={block.id} side="left"
-                  blocks={block.left ?? []} cm={containerMutations} readOnly={readOnly}
+                  blocks={block.left ?? []} cm={containerMutations} activeBlockId={activeBlockId} readOnly={readOnly}
                />
             </div>
             <div
@@ -55,7 +57,7 @@ export function ContainerBlock({ block, patch, containerMutations, secId, readOn
             <div style={{ flex: 1 - ratio, minWidth: 0 }}>
                <ContainerColumn
                   secId={secId} blkId={block.id} side="right"
-                  blocks={block.right ?? []} cm={containerMutations} readOnly={readOnly}
+                  blocks={block.right ?? []} cm={containerMutations} activeBlockId={activeBlockId} readOnly={readOnly}
                />
             </div>
          </div>

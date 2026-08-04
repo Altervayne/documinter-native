@@ -1,12 +1,4 @@
-// -- React Imports --
-import { useRef, useState } from 'react'
-
 // -- Library Imports --
-import {
-   DndContext, DragOverlay, closestCenter,
-   type DragEndEvent, type DragStartEvent,
-   useSensor, useSensors, PointerSensor,
-} from '@dnd-kit/core'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 
 // -- Context / Hook Imports --
@@ -38,6 +30,9 @@ interface ContainerColumnProps {
    side:      Side
    blocks:    Block[]
    cm:        ContainerMutations
+   /** Id of the block being dragged anywhere on the canvas (the shared block DnD context lives in
+    *  index.tsx). Drives this column's inner insertion lines + its bottom drop zone. */
+   activeBlockId?: string | null
    readOnly?: boolean
 }
 
@@ -45,42 +40,12 @@ interface ContainerColumnProps {
 // # COMPONENT #
 // #############
 
-export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: ContainerColumnProps) {
+export function ContainerColumn({ secId, blkId, side, blocks, cm, activeBlockId, readOnly }: ContainerColumnProps) {
    const { t } = useLang()
 
-   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
-   const [dragWidth, setDragWidth] = useState<number | null>(null)
-   const containerRef = useRef<HTMLDivElement>(null)
-
-   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
-   function handleDragStart(event: DragStartEvent) {
-      setActiveBlockId(String(event.active.id))
-      setDragWidth(containerRef.current?.offsetWidth ?? null)
-   }
-
-   function handleDragEnd(event: DragEndEvent) {
-      setActiveBlockId(null)
-      setDragWidth(null)
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const oldIdx = blocks.findIndex(block => block.id === active.id)
-      if (oldIdx === -1) return
-      const newIdx = blocks.findIndex(block => block.id === over.id)
-      if (newIdx === -1) {
-         // Dropped on the bottom zone, move item to the last position
-         const lastIdx = blocks.length - 1
-         if (oldIdx !== lastIdx) cm.moveBlock(secId, blkId, side, oldIdx, lastIdx)
-         return
-      }
-      const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
-      cm.moveBlock(secId, blkId, side, oldIdx, adjustedIdx)
-   }
-
-   function handleDragCancel() {
-      setActiveBlockId(null)
-      setDragWidth(null)
-   }
+   // This column's block-array location, attached to inner blocks + the bottom zone as drag data so the
+   // shared block DnD handler can move a block into / out of this container.
+   const columnLoc = { kind: 'column' as const, sectionId: secId, blockId: blkId, side }
 
    // ===========================
    //  Build inner-block prop set
@@ -90,6 +55,7 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
       return {
          secId,
          block:    innerBlock,
+         blockLoc: columnLoc,
          inner:    true as const,
          draggable: true,
          gripSide:  side === 'right' ? 'right' as const : 'left' as const,
@@ -136,38 +102,16 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, readOnly }: Co
                <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly />
             ))
          ) : (
-            <DndContext
-               sensors={sensors}
-               collisionDetection={closestCenter}
-               onDragStart={handleDragStart}
-               onDragEnd={handleDragEnd}
-               onDragCancel={handleDragCancel}
-            >
-               <div ref={containerRef}>
-                  <SortableContext items={blocks.map(block => block.id)} strategy={noopStrategy}>
-                     {blocks.map((block, idx) => (
-                        <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
-                     ))}
-                  </SortableContext>
-                  {activeBlockId !== null && <BottomDropZone id={`${blkId}-${side}-bottom`} />}
-               </div>
-               <DragOverlay>
-                  {activeBlockId && (() => {
-                     const activeBlock = blocks.find(block => block.id === activeBlockId)
-                     return activeBlock ? (
-                        <div style={{ width: dragWidth ?? undefined, pointerEvents: 'none', opacity: 0.9 }}>
-                           <WysiwygBlock
-                              secId={secId}
-                              block={activeBlock}
-                              inner
-                              onUpdate={() => {}}
-                              onRemove={() => {}}
-                           />
-                        </div>
-                     ) : null
-                  })()}
-               </DragOverlay>
-            </DndContext>
+            // The column's block SortableContext lives under the ONE shared DnD context (index.tsx),
+            // so a block can be dragged into / out of this container (the drag ghost is shared too).
+            <div>
+               <SortableContext items={blocks.map(block => block.id)} strategy={noopStrategy}>
+                  {blocks.map((block, idx) => (
+                     <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} />
+                  ))}
+               </SortableContext>
+               {activeBlockId != null && <BottomDropZone id={`${blkId}-${side}-bottom`} data={{ type: 'block-zone', loc: columnLoc }} />}
+            </div>
          )}
 
          {!readOnly && <AddBlockRow insideContainer onAdd={(type: BlockType) => cm.addBlock(secId, blkId, side, type)} />}

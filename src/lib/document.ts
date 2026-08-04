@@ -245,6 +245,22 @@ export function mutateSec(
 // # CROSS-ARRAY BLOCK MOVE (block DnD: cross-section, and into / out of container columns)      #
 // ##############################################################################################
 
+/** Find a block anywhere on the canvas (a section body, or a container column) together with its
+ *  owning section. The shared drag ghost uses this so it can render inner container blocks too, which
+ *  are not in `section.blocks`. Returns null when the id isn't found. */
+export function findBlockOnCanvas(sections: Section[], blockId: string): { section: Section; block: Block } | null {
+   for (const section of sections) {
+      for (const block of section.blocks) {
+         if (block.id === blockId) return { section, block }
+         if (block.type === 'container') {
+            const inner = [...(block.left ?? []), ...(block.right ?? [])].find(child => child.id === blockId)
+            if (inner) return { section, block: inner }
+         }
+      }
+   }
+   return null
+}
+
 /** Where a block lives: a section's body, or one column of a container block inside a section. */
 export type BlockLoc =
    | { kind: 'section'; sectionId: string }

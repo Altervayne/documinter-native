@@ -128,7 +128,7 @@ export function WysiwygBlock({
    // ====
    // isDraggable: outer blocks always participate; inner blocks only when draggable=true
    const isDraggable = !!draggable || !inner
-   const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly, data: { type: 'block', loc: blockLoc, blockId: block.id } })
+   const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly, data: { type: 'block', loc: blockLoc, blockId: block.id, blockType: block.type } })
    const dndStyle    = !isDraggable || readOnly
       ? {}
       : {
@@ -259,7 +259,7 @@ export function WysiwygBlock({
       if (block.type === 'image')
          return <ImageBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'container' && (containerMutations || readOnly))
-         return <ContainerBlock block={block} patch={patch} containerMutations={containerMutations!} secId={secId} readOnly={readOnly} />
+         return <ContainerBlock block={block} patch={patch} containerMutations={containerMutations!} secId={secId} activeBlockId={activeBlockId} readOnly={readOnly} />
       if (block.type === 'hr')
          return <HrBlock block={block} patch={patch} readOnly={readOnly} />
       return null

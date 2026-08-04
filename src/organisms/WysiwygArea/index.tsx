@@ -30,7 +30,7 @@ import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
 import { WysiwygSection } from './WysiwygSection'
 import { WysiwygBlock } from './WysiwygBlock'
-import type { BlockLoc } from '../../lib/document'
+import { findBlockOnCanvas, type BlockLoc } from '../../lib/document'
 
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
@@ -565,6 +565,8 @@ export function WysiwygArea({
       const overType = over.data.current?.type
       const to = over.data.current?.loc as BlockLoc | undefined
       if (!to) return
+      // Containers are one level deep: never drop a container block into a container column.
+      if (active.data.current?.blockType === 'container' && to.kind === 'column') return
       const beforeBlockId = overType === 'block' ? String(over.id) : null
       moveBlockAcross(from, String(active.id), to, beforeBlockId)
    }
@@ -952,8 +954,11 @@ export function WysiwygArea({
                          otherwise the ghost text would render in the app theme, unreadable on a dark doc. */}
                      <DragOverlay>
                         {activeBlockId && (() => {
-                           const sourceSection = sections.find(section => section.blocks.some(block => block.id === activeBlockId))
-                           const activeBlock   = sourceSection?.blocks.find(block => block.id === activeBlockId)
+                           // Find the dragged block across section bodies AND container columns (an inner
+                           // block isn't in section.blocks) so the ghost renders for both.
+                           const found = findBlockOnCanvas(sections, activeBlockId)
+                           const sourceSection = found?.section
+                           const activeBlock   = found?.block
                            return sourceSection && activeBlock ? (
                               <div
                                  className={docTheme === 'dark' ? 'doc-dark' : ''}
