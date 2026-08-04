@@ -46,6 +46,24 @@ export interface PageBreak {
    orientationOverride?: 'a4-portrait' | 'a4-landscape'
 }
 
+/** Horizontal placement of a printed page number within its margin band. */
+export type PageNumberAlign = 'left' | 'center' | 'right'
+
+/** How the page number reads. `plain` = `1`; `page` = `Page 1`; `slash` = `1 / N`;
+ *  `pageOf` = `Page 1 of N`; `dashes` = `- 1 -` (N = total page count). */
+export type PageNumberStyle = 'plain' | 'page' | 'slash' | 'pageOf' | 'dashes'
+
+/** One page-number placement. Presence of the slot = that edge shows a number; `align` positions it. */
+export interface PageNumberSlot { align: PageNumberAlign }
+
+/** Paged-only page numbering. `top` and `bottom` are independent (either, both, or neither present);
+ *  `style` is shared. Absent ⇒ no page numbers (today's behavior). */
+export interface PageNumbering {
+   top?:    PageNumberSlot
+   bottom?: PageNumberSlot
+   style:   PageNumberStyle
+}
+
 export interface DocFormat {
    kind: PageKind
    /** infinite only; ignored for a4-*. Absent ⇒ 'normal'. */
@@ -54,6 +72,8 @@ export interface DocFormat {
    margins?: PageMargins
    /** paged only: the ordered discrete pages (break-marker model). Not consumed yet. */
    pages?: PageBreak[]
+   /** paged only: where + how the page number prints. Absent ⇒ none. */
+   pageNumbering?: PageNumbering
 }
 
 // #############
@@ -77,6 +97,8 @@ export const INFINITE_WIDTH_CUSTOM_MAX_PX = 1600
 
 const PAGE_KINDS: ReadonlySet<PageKind> = new Set(['infinite', 'a4-portrait', 'a4-landscape'])
 const INFINITE_WIDTH_KEYWORDS: ReadonlySet<string> = new Set(['narrow', 'normal', 'wide'])
+const PAGE_NUMBER_ALIGNS: ReadonlySet<string> = new Set(['left', 'center', 'right'])
+const PAGE_NUMBER_STYLES_SET: ReadonlySet<string> = new Set(['plain', 'page', 'slash', 'pageOf', 'dashes'])
 
 // ###########
 // # HELPERS #
@@ -137,6 +159,30 @@ function normalizePageBreak(raw: unknown): PageBreak | undefined {
    return result
 }
 
+/** A single page-number slot, or undefined when its align is missing/invalid (⇒ that edge is off). */
+function normalizePageNumberSlot(raw: unknown): PageNumberSlot | undefined {
+   if (!raw || typeof raw !== 'object') return undefined
+   const align = (raw as Record<string, unknown>).align
+   return typeof align === 'string' && PAGE_NUMBER_ALIGNS.has(align) ? { align: align as PageNumberAlign } : undefined
+}
+
+/** Defensive read-time normalization of stored PageNumbering, or undefined when neither edge is on
+ *  (⇒ no page numbers). Style falls back to 'plain' when missing/invalid. */
+function normalizePageNumbering(raw: unknown): PageNumbering | undefined {
+   if (!raw || typeof raw !== 'object') return undefined
+   const source = raw as Record<string, unknown>
+   const top    = normalizePageNumberSlot(source.top)
+   const bottom = normalizePageNumberSlot(source.bottom)
+   if (!top && !bottom) return undefined
+   const style: PageNumberStyle = typeof source.style === 'string' && PAGE_NUMBER_STYLES_SET.has(source.style)
+      ? source.style as PageNumberStyle
+      : 'plain'
+   const result: PageNumbering = { style }
+   if (top)    result.top = top
+   if (bottom) result.bottom = bottom
+   return result
+}
+
 // ################
 // # NORMALIZATION #
 // ################
@@ -157,10 +203,13 @@ export function normalizeFormat(raw: unknown): DocFormat {
       ? source.pages.map(normalizePageBreak).filter((page): page is PageBreak => page !== undefined)
       : undefined
 
+   const pageNumbering = normalizePageNumbering(source.pageNumbering)
+
    const result: DocFormat = { kind }
    if (width !== undefined) result.width = width
    if (margins !== undefined) result.margins = margins
    if (pages !== undefined && pages.length > 0) result.pages = pages
+   if (pageNumbering !== undefined) result.pageNumbering = pageNumbering
    return result
 }
 
@@ -175,6 +224,7 @@ export function isDefaultFormat(format: DocFormat): boolean {
       && (format.width === undefined || format.width === 'normal')
       && format.margins === undefined
       && (format.pages === undefined || format.pages.length === 0)
+      && format.pageNumbering === undefined
 }
 
 // ############

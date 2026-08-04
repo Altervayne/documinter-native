@@ -72,6 +72,18 @@
   user-select: none;
 }
 .doc-dark .doc-page-label { color: #6b7280; }
+/* Configured printed page number (Page setup), positioned inline in the sheet's margin band.
+   Mirrors the paged HTML export's .doc-page-number; muted chrome, non-interactive. */
+.doc-page-number {
+  z-index: 2;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+  pointer-events: none;
+  user-select: none;
+}
+.doc-dark .doc-page-number { color: #9ca3af; }
 /* Remove-break affordance (pages 2..N), pinned top-left just inside the sheet; reveals on sheet
    hover so it doesn't clutter the reading view. App-chrome-ish, tinted with the doc accent. */
 .doc-page-break-remove {

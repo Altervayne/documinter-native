@@ -34,7 +34,8 @@ import { WysiwygSection } from './WysiwygSection'
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
 import { buildDocumentMenuEntries } from '../../lib/documentMenuEntries'
 import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
-import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak } from '../../lib/format'
+import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins, type PageNumberAlign } from '../../lib/format'
+import { formatPageNumber } from '../../lib/pageNumbering'
 import {
    partitionIntoPages, reconcilePages, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
@@ -693,6 +694,31 @@ export function WysiwygArea({
       )
    }
 
+   // The printed page number(s) for one sheet: an absolutely-positioned element per enabled edge,
+   // centered in that edge's margin band and aligned to the content column (left/right margin) or
+   // centered. Matches the paged HTML export's `.doc-page-number` element, so editor and export read
+   // the same. Absent pageNumbering ⇒ nothing rendered.
+   function renderPageNumbers(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
+      const numbering = format?.pageNumbering
+      if (!numbering) return null
+      const text = formatPageNumber(numbering.style, pageIndex + 1, total, { page: t.pageNumberWordPage, of: t.pageNumberWordOf })
+      const slotStyle = (vertical: 'top' | 'bottom', align: PageNumberAlign): React.CSSProperties => {
+         const style: React.CSSProperties = { position: 'absolute' }
+         if (vertical === 'top') { style.top = millimetresToPx(margins.top) / 2; style.transform = 'translateY(-50%)' }
+         else { style.bottom = millimetresToPx(margins.bottom) / 2; style.transform = 'translateY(50%)' }
+         if (align === 'left')       style.left  = millimetresToPx(margins.left)
+         else if (align === 'right') style.right = millimetresToPx(margins.right)
+         else { style.left = millimetresToPx(margins.left); style.right = millimetresToPx(margins.right); style.textAlign = 'center' }
+         return style
+      }
+      return (
+         <>
+            {numbering.top    && <div className="doc-page-number" style={slotStyle('top',    numbering.top.align)}>{text}</div>}
+            {numbering.bottom && <div className="doc-page-number" style={slotStyle('bottom', numbering.bottom.align)}>{text}</div>}
+         </>
+      )
+   }
+
    // One paged A4 sheet: sized to the kind's portrait/landscape px, inset by the margins, with a page
    // label and (for pages 2..N) a remove-break affordance. Page 1 carries the document header; the
    // last page carries the empty-state / tail add-section.
@@ -720,6 +746,7 @@ export function WysiwygArea({
          >
             {renderWatermarkLayer(`${watermarkPatternId}-${pageIndex}`)}
             <div className="doc-page-label">{t.formatPageLabel} {pageIndex + 1} / {total}</div>
+            {renderPageNumbers(pageIndex, total, margins)}
             {pageIndex > 0 && !readOnly && onFormatChange && (
                <button
                   type="button"

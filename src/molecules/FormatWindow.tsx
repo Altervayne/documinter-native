@@ -17,7 +17,11 @@ import {
    type DocFormat,
    type InfiniteWidth,
    type PageKind,
+   type PageNumberAlign,
+   type PageNumberStyle,
+   type PageNumbering,
 } from '../lib/format'
+import { PAGE_NUMBER_STYLES } from '../lib/pageNumbering'
 
 // #########
 // # TYPES #
@@ -89,6 +93,47 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
    function handleMarginChange(nextMm: number): void {
       onChange({ ...resolved, margins: { top: nextMm, right: nextMm, bottom: nextMm, left: nextMm } })
    }
+
+   // ==========================
+   //  Page numbering (A4 only)
+   // ==========================
+   const pageNumbering = resolved.pageNumbering
+   type EdgeChoice = 'off' | PageNumberAlign
+
+   // Commit a whole pageNumbering object, or clear it (both edges off ⇒ remove the field entirely).
+   function applyPageNumbering(next: PageNumbering | undefined): void {
+      const withoutNumbering = { ...resolved }
+      delete withoutNumbering.pageNumbering
+      onChange(next ? { ...withoutNumbering, pageNumbering: next } : withoutNumbering)
+   }
+
+   function setEdge(edge: 'top' | 'bottom', choice: EdgeChoice): void {
+      const nextSlot = choice === 'off' ? undefined : { align: choice }
+      const top    = edge === 'top'    ? nextSlot : pageNumbering?.top
+      const bottom = edge === 'bottom' ? nextSlot : pageNumbering?.bottom
+      if (!top && !bottom) { applyPageNumbering(undefined); return }
+      applyPageNumbering({ style: pageNumbering?.style ?? 'plain', ...(top ? { top } : {}), ...(bottom ? { bottom } : {}) })
+   }
+
+   function setStyle(style: PageNumberStyle): void {
+      if (pageNumbering) applyPageNumbering({ ...pageNumbering, style })
+   }
+
+   const edgeChoiceLabels: Record<EdgeChoice, string> = {
+      off:    t.formatPageNumberOff,
+      left:   t.formatPageNumberAlignLeft,
+      center: t.formatPageNumberAlignCenter,
+      right:  t.formatPageNumberAlignRight,
+   }
+   const styleLabels: Record<PageNumberStyle, string> = {
+      plain:  t.pageNumberStylePlain,
+      page:   t.pageNumberStylePage,
+      slash:  t.pageNumberStyleSlash,
+      pageOf: t.pageNumberStylePageOf,
+      dashes: t.pageNumberStyleDashes,
+   }
+   const topChoice:    EdgeChoice = pageNumbering?.top?.align    ?? 'off'
+   const bottomChoice: EdgeChoice = pageNumbering?.bottom?.align ?? 'off'
 
    const widthLabels: Record<WidthChoice, string> = {
       narrow: t.formatWidthNarrow,
@@ -169,6 +214,56 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
                      unit="mm"
                      onChange={handleMarginChange}
                   />
+               </section>
+            )}
+
+            {/* Page numbering (A4 only). Top + bottom are independent edges; each is Off or L/C/R.
+                The number style is offered once at least one edge is on. */}
+            {!isInfinite && (
+               <section className="presentation-section">
+                  <span className="presentation-section-label">{t.formatPageNumberLabel}</span>
+                  <p className="presentation-hint">{t.formatPageNumberHint}</p>
+
+                  <label className="presentation-field">
+                     <span className="presentation-field-label">{t.formatPageNumberTop}</span>
+                     <select
+                        className="presentation-select"
+                        value={topChoice}
+                        onChange={event => setEdge('top', event.target.value as EdgeChoice)}
+                     >
+                        {(['off', 'left', 'center', 'right'] as const).map(choice => (
+                           <option key={choice} value={choice}>{edgeChoiceLabels[choice]}</option>
+                        ))}
+                     </select>
+                  </label>
+
+                  <label className="presentation-field">
+                     <span className="presentation-field-label">{t.formatPageNumberBottom}</span>
+                     <select
+                        className="presentation-select"
+                        value={bottomChoice}
+                        onChange={event => setEdge('bottom', event.target.value as EdgeChoice)}
+                     >
+                        {(['off', 'left', 'center', 'right'] as const).map(choice => (
+                           <option key={choice} value={choice}>{edgeChoiceLabels[choice]}</option>
+                        ))}
+                     </select>
+                  </label>
+
+                  {pageNumbering && (
+                     <label className="presentation-field">
+                        <span className="presentation-field-label">{t.formatPageNumberStyle}</span>
+                        <select
+                           className="presentation-select"
+                           value={pageNumbering.style}
+                           onChange={event => setStyle(event.target.value as PageNumberStyle)}
+                        >
+                           {PAGE_NUMBER_STYLES.map(style => (
+                              <option key={style} value={style}>{styleLabels[style]}</option>
+                           ))}
+                        </select>
+                     </label>
+                  )}
                </section>
             )}
          </div>

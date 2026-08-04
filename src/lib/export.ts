@@ -17,6 +17,7 @@ import {
    type DocPresentationExtras, type Watermark, type Header,
 } from './presentation'
 import { resolveDocumentSheetWidthPx, DEFAULT_A4_MARGINS, type DocFormat, type PageMargins } from './format'
+import { formatPageNumber } from './pageNumbering'
 import {
    partitionIntoPages, millimetresToPx,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
@@ -552,6 +553,7 @@ function buildPagedStyles(
             .doc-pages { display: flex; flex-direction: column; align-items: center; gap: 2rem; }
             .doc-page {
                   box-sizing: border-box;
+                  position: relative;
                   width: ${sheetWidthPx}px;
                   min-height: ${sheetHeightPx}px;
                   background: ${colors.cardBg};
@@ -560,6 +562,23 @@ function buildPagedStyles(
                   box-shadow: ${colors.cardShadow};
             }
             .doc-page > .doc-render { padding: ${millimetresToPx(margins.top)}px ${millimetresToPx(margins.right)}px ${millimetresToPx(margins.bottom)}px ${millimetresToPx(margins.left)}px; }
+            /* Configured page number(s), sitting in the sheet's margin band (matches the editor). Only
+               emitted for a paged export; the per-sheet element opts into top/bottom + left/center/right. */
+            .doc-page-number {
+                  position: absolute;
+                  font-family: 'JetBrains Mono', monospace;
+                  font-size: 0.7rem;
+                  letter-spacing: 0.03em;
+                  color: ${colors.textMuted};
+                  opacity: 0.75;
+            }
+            .doc-page-number-top    { top: ${millimetresToPx(margins.top) / 2}px; transform: translateY(-50%); }
+            .doc-page-number-bottom { bottom: ${millimetresToPx(margins.bottom) / 2}px; transform: translateY(50%); }
+            .doc-page-number-left   { left: ${millimetresToPx(margins.left)}px; }
+            .doc-page-number-right  { right: ${millimetresToPx(margins.right)}px; }
+            .doc-page-number-center { left: ${millimetresToPx(margins.left)}px; right: ${millimetresToPx(margins.right)}px; text-align: center; }
+            /* Collision: when a bottom-right page number is on, the last sheet's credit flips to the left. */
+            .doc-page > .doc-footer.doc-footer-left { justify-content: flex-start; }
             .doc-render .doc-figure, .doc-render .doc-image-markup, .doc-render .doc-graph,
             .doc-render .doc-diagram, .doc-render .table-wrap, .doc-render .doc-math,
             .doc-render .callout, .doc-render pre { page-break-inside: avoid; break-inside: avoid; }
@@ -578,8 +597,8 @@ function buildPagedStyles(
 }
 
 const STRINGS = {
-   en: { fallback: 'Documentation', madeWith: 'Made with Documinter' },
-   fr: { fallback: 'Documentation', madeWith: 'Fait avec Documinter' },
+   en: { fallback: 'Documentation', madeWith: 'Made with Documinter', pageWord: 'Page', ofWord: 'of' },
+   fr: { fallback: 'Documentation', madeWith: 'Fait avec Documinter', pageWord: 'Page', ofWord: 'sur' },
 }
 
 /**
@@ -776,6 +795,9 @@ ${blocksHTML}
    // Paged pages: each derived page is one A4 `.doc-page` sheet holding its slices. A slice renders its
    // section heading only when it STARTS the section (continuation slices flow headingless); the page
    // header rides page 1 and the footer rides the last page. Empty for an infinite export.
+   // Page numbering (paged only): an absolutely-positioned element per enabled edge, on every sheet.
+   // When a bottom-right number is on, the last sheet's "made with" credit flips left to avoid it.
+   const numbering = opts.format?.pageNumbering
    const pagesHTML = paged
       ? partitionIntoPages(sections, opts.format?.pages ?? []).map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
@@ -790,11 +812,20 @@ ${blocksHTML}
               const blocksHTML   = slice.blocks.map(block => exportBlock(block, { theme, tables })).join('\n')
               return `<div class="doc-section"${idAttr}>${headingHTML}${blocksHTML}</div>`
            }).join('\n')
+           const numberText = numbering
+              ? esc(formatPageNumber(numbering.style, pageIndex + 1, allPages.length, { page: strings.pageWord, of: strings.ofWord }))
+              : ''
+           const pageNumberHTML = !numbering ? '' :
+                (numbering.top    ? `<div class="doc-page-number doc-page-number-top doc-page-number-${numbering.top.align}">${numberText}</div>` : '')
+              + (numbering.bottom ? `<div class="doc-page-number doc-page-number-bottom doc-page-number-${numbering.bottom.align}">${numberText}</div>` : '')
            const headerHTML = pageIndex === 0
               ? `<div class="page-header">${renderMetaZone(meta, 'above', accent)}${renderPageTitle(meta, strings.fallback, header)}${renderMetaZone(meta, 'below', accent)}</div>`
               : ''
-           const footerHTML = pageIndex === allPages.length - 1 ? docFooterHTML : ''
-           return `<div class="doc-page" data-page-id="${esc(page.id)}">${pageWatermarkHTML}<div class="doc-render">${headerHTML}${slicesHTML}</div>${footerHTML}</div>`
+           const footerLeft = numbering?.bottom?.align === 'right' ? ' doc-footer-left' : ''
+           const footerHTML = pageIndex === allPages.length - 1
+              ? docFooterHTML.replace('class="doc-footer"', `class="doc-footer${footerLeft}"`)
+              : ''
+           return `<div class="doc-page" data-page-id="${esc(page.id)}">${pageWatermarkHTML}${pageNumberHTML}<div class="doc-render">${headerHTML}${slicesHTML}</div>${footerHTML}</div>`
         }).join('\n')
       : ''
 
