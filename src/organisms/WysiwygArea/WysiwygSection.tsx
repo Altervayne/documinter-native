@@ -3,7 +3,6 @@ import { useRef, useState } from 'react'
 import type React from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { DndContext, DragOverlay, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 
 const noopStrategy: SortingStrategy = () => null
@@ -39,6 +38,9 @@ interface WysiwygSectionProps {
    /** Whether this is the last section in the document, disables the section menu's Move down. */
    isLastSection?:  boolean
    activeSectionId: string | null
+   /** Id of the block being dragged anywhere on the canvas (the shared block DnD context lives in
+    *  index.tsx). Drives this section's block insertion lines + its bottom drop zone. */
+   activeBlockId?:  string | null
    readOnly?:       boolean
    // ==========================================================
    //  Paged-format slice rendering (Document Formats Phase 2). When a section spans a page break it
@@ -61,56 +63,30 @@ interface WysiwygSectionProps {
 }
 
 export function WysiwygSection({
-   section, index, isLastSection, activeSectionId, readOnly,
+   section, index, isLastSection, activeSectionId, activeBlockId, readOnly,
    renderBlocks, showTitle = true, showAddRow = true, sortableId, sectionDragDisabled,
 }: WysiwygSectionProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
-   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
-   const [dragWidth, setDragWidth] = useState<number | null>(null)
    const [emptyPickerOpen, setEmptyPickerOpen] = useState(false)
    const [emptyPickerRect, setEmptyPickerRect] = useState<DOMRect | null>(null)
    const [sectionMenu, setSectionMenu] = useState<{ x: number; y: number } | null>(null)
    const emptyCardRef = useRef<HTMLDivElement>(null)
-   const containerRef = useRef<HTMLDivElement>(null)
    const {
       addBlock, insertBlockAt, removeSection, reorderBlocks, updateTitle, containerMutations,
       insertSectionAt, moveSecUp, moveSecDown, duplicateSec,
    } = useDocumentMutations()
 
    const sectionDragOff = !!readOnly || !!sectionDragDisabled
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: sortableId ?? section.id, disabled: sectionDragOff })
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: sortableId ?? section.id, disabled: sectionDragOff, data: { type: 'section' } })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
    // The blocks this instance renders: a page slice's subset in paged mode, else the whole section.
    // Absolute indices are always resolved against section.blocks so mutations address the right block.
    const blocksToRender = renderBlocks ?? section.blocks
    const bottomZoneId   = `${sortableId ?? section.id}-bottom`
-
-   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
-   function handleBlockDragStart(event: DragStartEvent) {
-      setActiveBlockId(String(event.active.id))
-      setDragWidth(containerRef.current?.offsetWidth ?? null)
-   }
-
-   function handleDragEnd(event: DragEndEvent) {
-      setActiveBlockId(null)
-      setDragWidth(null)
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const oldIdx = section.blocks.findIndex(block => block.id === active.id)
-      if (oldIdx === -1) return
-      const newIdx = section.blocks.findIndex(block => block.id === over.id)
-      if (newIdx === -1) {
-         // Dropped on the bottom zone, move item to the last position
-         const lastIdx = section.blocks.length - 1
-         if (oldIdx !== lastIdx) reorderBlocks(section.id, oldIdx, lastIdx)
-         return
-      }
-      const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
-      reorderBlocks(section.id, oldIdx, adjustedIdx)
-   }
+   // This section body's block-array location (drag data for the shared block DnD handler).
+   const sectionLoc = { kind: 'section' as const, sectionId: section.id }
 
    function handleTitleBlur(raw: string) {
       const stripped = raw.replace(/^\d+\.\s*/, '').trim()
@@ -232,7 +208,7 @@ export function WysiwygSection({
             )}
 
             {readOnly ? (
-               <div ref={containerRef}>
+               <div>
                   {blocksToRender.map((block: Block) => (
                      <WysiwygBlock
                         key={block.id}
@@ -243,47 +219,32 @@ export function WysiwygSection({
                   ))}
                </div>
             ) : (
-               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleBlockDragStart} onDragEnd={handleDragEnd} onDragCancel={() => { setActiveBlockId(null); setDragWidth(null) }}>
-                  <div ref={containerRef}>
-                     <SortableContext items={blocksToRender.map(block => block.id)} strategy={noopStrategy}>
-                        {blocksToRender.map((block: Block) => {
-                           // Absolute index in section.blocks (blocksToRender may be a page-slice subset),
-                           // so insert / move / reorder always address the right position in the section.
-                           const blockIndex = section.blocks.findIndex(candidate => candidate.id === block.id)
-                           return (
-                           <WysiwygBlock
-                              key={block.id}
-                              secId={section.id}
-                              block={block}
-                              containerMutations={containerMutations}
-                              activeBlockId={activeBlockId}
-                              onInsertBefore={type => insertBlockAt(section.id, blockIndex, type)}
-                              onInsertAfter={type => insertBlockAt(section.id, blockIndex + 1, type)}
-                              onMoveUp={blockIndex > 0 ? () => reorderBlocks(section.id, blockIndex, blockIndex - 1) : undefined}
-                              onMoveDown={blockIndex < section.blocks.length - 1 ? () => reorderBlocks(section.id, blockIndex, blockIndex + 1) : undefined}
-                           />
-                           )
-                        })}
-                     </SortableContext>
-                     {activeBlockId !== null && showAddRow && <BottomDropZone id={bottomZoneId} />}
-                  </div>
-                  <DragOverlay>
-                     {activeBlockId && (() => {
-                        const activeBlock = section.blocks.find(block => block.id === activeBlockId)
-                        return activeBlock ? (
-                           <div style={{ width: dragWidth ?? undefined, pointerEvents: 'none', opacity: 0.9 }}>
-                              <WysiwygBlock
-                                 secId={section.id}
-                                 block={activeBlock}
-                                 inner
-                                 onUpdate={() => {}}
-                                 onRemove={() => {}}
-                              />
-                           </div>
-                        ) : null
-                     })()}
-                  </DragOverlay>
-               </DndContext>
+               // The block SortableContext lives under the ONE shared DnD context (index.tsx); this
+               // section owns no DndContext, so a drag can cross into other sections / sheets.
+               <div>
+                  <SortableContext items={blocksToRender.map(block => block.id)} strategy={noopStrategy}>
+                     {blocksToRender.map((block: Block) => {
+                        // Absolute index in section.blocks (blocksToRender may be a page-slice subset),
+                        // so insert / move / reorder always address the right position in the section.
+                        const blockIndex = section.blocks.findIndex(candidate => candidate.id === block.id)
+                        return (
+                        <WysiwygBlock
+                           key={block.id}
+                           secId={section.id}
+                           block={block}
+                           blockLoc={sectionLoc}
+                           containerMutations={containerMutations}
+                           activeBlockId={activeBlockId}
+                           onInsertBefore={type => insertBlockAt(section.id, blockIndex, type)}
+                           onInsertAfter={type => insertBlockAt(section.id, blockIndex + 1, type)}
+                           onMoveUp={blockIndex > 0 ? () => reorderBlocks(section.id, blockIndex, blockIndex - 1) : undefined}
+                           onMoveDown={blockIndex < section.blocks.length - 1 ? () => reorderBlocks(section.id, blockIndex, blockIndex + 1) : undefined}
+                        />
+                        )
+                     })}
+                  </SortableContext>
+                  {activeBlockId != null && showAddRow && <BottomDropZone id={bottomZoneId} data={{ type: 'block-zone', loc: sectionLoc }} />}
+               </div>
             )}
 
             {!readOnly && showAddRow && section.blocks.length > 0 && (

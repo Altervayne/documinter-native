@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 
 // -- Lib / Util Imports --
-import { cloneBlock, mkBlock, moveItem, mutateSec } from '../lib/document'
+import { cloneBlock, mkBlock, moveItem, mutateSec, relocateBlock, type BlockLoc } from '../lib/document'
 import * as listItemTree from '../lib/listItemTree'
 
 // -- Context Imports --
@@ -86,6 +86,13 @@ export function useBlockMutations(
 
    const reorderBlocks = useCallback((secId: string, oldIdx: number, newIdx: number) => {
       mutateSec(setSections, secId, sec => ({ ...sec, blocks: arrayMove(sec.blocks, oldIdx, newIdx) }))
+   }, [setSections])
+
+   // Cross-array block move (block DnD): relocate a block from one location (section body or container
+   // column) to another, inserting it before `beforeBlockId` (or appending when null). Powers
+   // cross-section, into/out-of-container, and cross-page drags in one immutable pass.
+   const moveBlockAcross = useCallback((from: BlockLoc, blockId: string, to: BlockLoc, beforeBlockId: string | null) => {
+      setSections(sections => relocateBlock(sections, from, blockId, to, beforeBlockId))
    }, [setSections])
 
    const duplicateBlock = useCallback((secId: string, blkId: string) => {
@@ -342,7 +349,7 @@ export function useBlockMutations(
 
    return {
       addBlock, insertBlockAt, insertBlockAfter, updateBlock, removeBlk,
-      moveBlkUp, moveBlkDown, reorderBlocks, duplicateBlock,
+      moveBlkUp, moveBlkDown, reorderBlocks, moveBlockAcross, duplicateBlock,
       addListItem, removeLastItem,
       addTableRow, removeLastRow, addTableCol,
       insertTableRowAt, deleteTableRowAt, insertTableColAt, deleteTableColAt,

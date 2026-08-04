@@ -3,7 +3,7 @@ import { useState, useMemo, useId, useEffect } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
-import { DndContext, closestCenter, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
+import { DndContext, DragOverlay, closestCenter, type CollisionDetection, type DragEndEvent, type DragStartEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core'
 import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 
 const noopStrategy: SortingStrategy = () => null
@@ -29,6 +29,8 @@ import { PresentationWindow } from '../../molecules/PresentationWindow'
 import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
 import { WysiwygSection } from './WysiwygSection'
+import { WysiwygBlock } from './WysiwygBlock'
+import type { BlockLoc } from '../../lib/document'
 
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
@@ -112,7 +114,7 @@ export function WysiwygArea({
    previewMode, onSetMode,
 }: WysiwygAreaProps) {
    const { t } = useLang()
-   const { reorderSections } = useDocumentMutations()
+   const { reorderSections, moveBlockAcross } = useDocumentMutations()
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
    // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
@@ -399,7 +401,12 @@ export function WysiwygArea({
    const linkableTables = useMemo(() => collectLinkableTables(sections), [sections])
 
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+   // One shared block+section DnD context lives on the canvas (see the render). `activeSectionId`
+   // drives the section drop-indicator; `activeBlockId` + width drive the block drag ghost and the
+   // per-section bottom drop zones. Both are set from the merged handlers below, keyed by drag type.
    const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+   const [activeBlockId, setActiveBlockId]     = useState<string | null>(null)
+   const [activeBlockWidth, setActiveBlockWidth] = useState<number | null>(null)
 
    // Document Formats Phase 1: the infinite-canvas sheet width. Absent format / bare infinite / an
    // explicit 'normal' width all resolve to the SAME 860px this sheet already rendered at before the
@@ -506,20 +513,60 @@ export function WysiwygArea({
       />
    )
 
+   // Scope collisions to the active drag's kind: a section drag only sees section targets; a block
+   // drag only sees block targets + the per-section bottom zones. Without this, closestCenter would
+   // let a section drop resolve onto a block (and vice versa), producing a no-op or a wrong move.
+   const collisionDetection: CollisionDetection = args => {
+      const activeType = args.active.data.current?.type
+      const droppableContainers = args.droppableContainers.filter(container => {
+         const targetType = container.data.current?.type
+         return activeType === 'section'
+            ? targetType === 'section'
+            : targetType === 'block' || targetType === 'block-zone'
+      })
+      return closestCenter({ ...args, droppableContainers })
+   }
+
    function handleDragStart(event: DragStartEvent) {
-      setActiveSectionId(String(event.active.id))
+      if (event.active.data.current?.type === 'block') {
+         setActiveBlockId(String(event.active.id))
+         setActiveBlockWidth(event.active.rect.current.initial?.width ?? null)
+      } else {
+         setActiveSectionId(String(event.active.id))
+      }
+   }
+
+   function resetDrag() {
+      setActiveSectionId(null)
+      setActiveBlockId(null)
+      setActiveBlockWidth(null)
    }
 
    function handleDragEnd(event: DragEndEvent) {
-      setActiveSectionId(null)
       const { active, over } = event
+      resetDrag()
       if (!over || active.id === over.id) return
-      const oldIdx = sections.findIndex(section => section.id === active.id)
-      const newIdx = sections.findIndex(section => section.id === over.id)
-      if (oldIdx !== -1 && newIdx !== -1) {
-         const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
-         reorderSections(oldIdx, adjustedIdx)
+
+      // Section reorder (unchanged behavior): the collision filter guarantees `over` is a section.
+      if (active.data.current?.type === 'section') {
+         const oldIdx = sections.findIndex(section => section.id === active.id)
+         const newIdx = sections.findIndex(section => section.id === over.id)
+         if (oldIdx !== -1 && newIdx !== -1) {
+            const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
+            reorderSections(oldIdx, adjustedIdx)
+         }
+         return
       }
+
+      // Block move: read the source location off the dragged block, and the destination off whatever
+      // it was dropped on (a block ⇒ insert before it; a bottom zone ⇒ append to that array).
+      const from = active.data.current?.loc as BlockLoc | undefined
+      if (!from) return
+      const overType = over.data.current?.type
+      const to = over.data.current?.loc as BlockLoc | undefined
+      if (!to) return
+      const beforeBlockId = overType === 'block' ? String(over.id) : null
+      moveBlockAcross(from, String(active.id), to, beforeBlockId)
    }
 
    // ==========================================================
@@ -646,8 +693,8 @@ export function WysiwygArea({
       )
    }
 
-   // Infinite mode: the whole section flow (readOnly plain map, else the section-reorder DndContext),
-   // exactly as before this phase.
+   // Infinite mode: the whole section flow. The DnD context is the shared one on the canvas (see the
+   // render), so this only owns the section SortableContext; readOnly renders a plain map (no DnD).
    function renderInfiniteSections(): React.ReactNode {
       if (readOnly) {
          return (
@@ -661,15 +708,13 @@ export function WysiwygArea({
          )
       }
       return (
-         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveSectionId(null)}>
-            <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
-               {sections.map((sec, index) => (
-                  <div key={sec.id}>
-                     <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={activeSectionId} />
-                  </div>
-               ))}
-            </SortableContext>
-         </DndContext>
+         <SortableContext items={sections.map(section => section.id)} strategy={noopStrategy}>
+            {sections.map((sec, index) => (
+               <div key={sec.id}>
+                  <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={activeSectionId} activeBlockId={activeBlockId} />
+               </div>
+            ))}
+         </SortableContext>
       )
    }
 
@@ -684,6 +729,7 @@ export function WysiwygArea({
             index={sectionIndex}
             isLastSection={sectionIndex === sections.length - 1}
             activeSectionId={null}
+            activeBlockId={activeBlockId}
             readOnly={readOnly}
             renderBlocks={slice.blocks}
             showTitle={slice.isSectionStart}
@@ -866,33 +912,63 @@ export function WysiwygArea({
             style={{ background: 'var(--color-canvas)' }}
             onContextMenu={handleBackgroundContextMenu}
          >
-            {paged && derivedPages ? (
-               // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets. Infinite mode
-               // (below) is untouched, byte-identical to Phase 1.
-               <div className="doc-pages" ref={pagesContainerRef}>
-                  {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
-               </div>
-            ) : (
-               // Infinite mode: one centered sheet at the chosen width. The watermark rides behind
-               // .doc-render (z-index in doc.css); an absent watermark changes nothing.
-               <div
-                  className={`relative mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
-                  style={{
-                     background: 'var(--doc-canvas-bg)',
-                     borderTopColor: docAccent,
-                     maxWidth: `${sheetWidthPx}px`,
-                     '--doc-accent': docAccent,
-                  } as React.CSSProperties}
-               >
-                  {renderWatermarkLayer(watermarkPatternId)}
-                  <div className="doc-render">
-                     {renderPageHeader()}
-                     {renderEmptyDocState()}
-                     {renderInfiniteSections()}
-                     {renderTailAddSection()}
+            {(() => {
+               // The canvas body: paged sheets or the single infinite sheet. Both modes render blocks
+               // through WysiwygSection, whose block SortableContexts all live under the ONE shared DnD
+               // context below (so a drag can cross sections and, in paged mode, sheets).
+               const canvasBody = paged && derivedPages ? (
+                  // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets.
+                  <div className="doc-pages" ref={pagesContainerRef}>
+                     {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
                   </div>
-               </div>
-            )}
+               ) : (
+                  // Infinite mode: one centered sheet at the chosen width. The watermark rides behind
+                  // .doc-render (z-index in doc.css); an absent watermark changes nothing.
+                  <div
+                     className={`relative mx-auto min-h-[92%] my-8 shadow-lg rounded-sm border-t-4 ${docTheme === 'dark' ? 'doc-dark' : ''}`}
+                     style={{
+                        background: 'var(--doc-canvas-bg)',
+                        borderTopColor: docAccent,
+                        maxWidth: `${sheetWidthPx}px`,
+                        '--doc-accent': docAccent,
+                     } as React.CSSProperties}
+                  >
+                     {renderWatermarkLayer(watermarkPatternId)}
+                     <div className="doc-render">
+                        {renderPageHeader()}
+                        {renderEmptyDocState()}
+                        {renderInfiniteSections()}
+                        {renderTailAddSection()}
+                     </div>
+                  </div>
+               )
+               if (readOnly) return canvasBody
+               return (
+                  <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={resetDrag}>
+                     {canvasBody}
+                     {/* Shared block drag ghost (sections use an opacity dim + insertion bar, no ghost).
+                         The overlay is hoisted out of the .doc-render sheet, so it re-establishes the
+                         doc theme scope (.doc-dark + --doc-accent + a padding-less .doc-render) itself;
+                         otherwise the ghost text would render in the app theme, unreadable on a dark doc. */}
+                     <DragOverlay>
+                        {activeBlockId && (() => {
+                           const sourceSection = sections.find(section => section.blocks.some(block => block.id === activeBlockId))
+                           const activeBlock   = sourceSection?.blocks.find(block => block.id === activeBlockId)
+                           return sourceSection && activeBlock ? (
+                              <div
+                                 className={docTheme === 'dark' ? 'doc-dark' : ''}
+                                 style={{ width: activeBlockWidth ?? undefined, pointerEvents: 'none', opacity: 0.9, '--doc-accent': docAccent } as React.CSSProperties}
+                              >
+                                 <div className="doc-render" style={{ padding: 0 }}>
+                                    <WysiwygBlock secId={sourceSection.id} block={activeBlock} inner onUpdate={() => {}} onRemove={() => {}} />
+                                 </div>
+                              </div>
+                           ) : null
+                        })()}
+                     </DragOverlay>
+                  </DndContext>
+               )
+            })()}
             {renderDocWindowsAndMenus()}
          </div>
          </div>

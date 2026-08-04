@@ -12,10 +12,12 @@ import { useDroppable } from '@dnd-kit/core'
 
 interface BottomDropZoneProps {
    id: string
+   /** Drag data for the shared block DnD handler: which array an end-drop appends to. */
+   data?: Record<string, unknown>
 }
 
-export function BottomDropZone({ id }: BottomDropZoneProps) {
-   const { setNodeRef, isOver } = useDroppable({ id })
+export function BottomDropZone({ id, data }: BottomDropZoneProps) {
+   const { setNodeRef, isOver } = useDroppable({ id, data })
    return (
       <div ref={setNodeRef} className="h-3 relative">
          {isOver && (

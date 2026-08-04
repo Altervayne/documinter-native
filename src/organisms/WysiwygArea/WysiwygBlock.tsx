@@ -34,6 +34,7 @@ import { BlockTypePicker }  from '../../molecules/BlockTypePicker'
 
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, InlineContent, ListItem } from '../../types'
+import type { BlockLoc } from '../../lib/document'
 
 
 
@@ -41,6 +42,9 @@ interface WysiwygBlockProps {
    secId:  string
    block:  Block
    containerMutations?: ContainerMutations
+   /** This block's location (section body or container column), attached to the sortable as drag
+    *  data so the shared block DnD handler knows the source array on drop. Absent for readOnly. */
+   blockLoc?: BlockLoc
    /** Inner block inside a container, routes mutations through passed props */
    inner?:    boolean
    /** When inner=true, also enables DnD drag-to-reorder for this block */
@@ -87,7 +91,7 @@ interface WysiwygBlockProps {
 
 
 export function WysiwygBlock({
-   secId, block, containerMutations, activeBlockId,
+   secId, block, containerMutations, activeBlockId, blockLoc,
    inner, draggable, gripSide = 'left', readOnly,
    onInsertBefore, onInsertAfter,
    onMoveUp, onMoveDown,
@@ -124,7 +128,7 @@ export function WysiwygBlock({
    // ====
    // isDraggable: outer blocks always participate; inner blocks only when draggable=true
    const isDraggable = !!draggable || !inner
-   const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly })
+   const sortable    = useSortable({ id: block.id, disabled: !isDraggable || !!readOnly, data: { type: 'block', loc: blockLoc, blockId: block.id } })
    const dndStyle    = !isDraggable || readOnly
       ? {}
       : {

@@ -12,6 +12,7 @@
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext } from 'react'
 import type { Block, BlockType, ContainerMutations, InlineContent, ListItem, Section } from '../types'
+import type { BlockLoc } from '../lib/document'
 
 export interface DocumentMutations {
    updateBlock:       (secId: string, blkId: string, patch: Partial<Block>) => void
@@ -23,6 +24,9 @@ export interface DocumentMutations {
    removeBlock:       (secId: string, blkId: string) => void
    duplicateBlock:    (secId: string, blkId: string) => void
    reorderBlocks:     (secId: string, oldIdx: number, newIdx: number) => void
+   /** Cross-array block move (block DnD): relocate a block between section bodies and/or container
+    *  columns, inserting before `beforeBlockId` (append when null). */
+   moveBlockAcross:   (from: BlockLoc, blockId: string, to: BlockLoc, beforeBlockId: string | null) => void
    addListItem:       (secId: string, blkId: string) => void
    removeLastItem:    (secId: string, blkId: string) => void
    addTableRow:       (secId: string, blkId: string) => void

@@ -944,6 +944,7 @@ export default function App() {
                removeBlock:       blockMutations.removeBlk,
                duplicateBlock:    blockMutations.duplicateBlock,
                reorderBlocks:     blockMutations.reorderBlocks,
+               moveBlockAcross:   blockMutations.moveBlockAcross,
                addListItem:       blockMutations.addListItem,
                removeLastItem:    blockMutations.removeLastItem,
                addTableRow:       blockMutations.addTableRow,

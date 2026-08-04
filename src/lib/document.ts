@@ -13,7 +13,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import type { Block, BlockType, ListItem, Section } from '../types'
+import type { Block, BlockType, ListItem, Section, Side } from '../types'
 import type { T } from './i18n'
 
 
@@ -239,4 +239,79 @@ export function mutateSec(
    fn: (sec: Section) => Section,
 ): void {
    setSections(sections => sections.map(sec => sec.id === secId ? fn(sec) : sec))
+}
+
+// ##############################################################################################
+// # CROSS-ARRAY BLOCK MOVE (block DnD: cross-section, and into / out of container columns)      #
+// ##############################################################################################
+
+/** Where a block lives: a section's body, or one column of a container block inside a section. */
+export type BlockLoc =
+   | { kind: 'section'; sectionId: string }
+   | { kind: 'column';  sectionId: string; blockId: string; side: Side }
+
+/** Read one column of a container block (absent side ⇒ empty). */
+function readColumn(container: Block, side: Side): Block[] {
+   return (side === 'left' ? container.left : container.right) ?? []
+}
+
+/** Immutably set one column of a container block. */
+function withColumn(container: Block, side: Side, blocks: Block[]): Block {
+   return side === 'left' ? { ...container, left: blocks } : { ...container, right: blocks }
+}
+
+/** Insert `moving` into `arr` immediately before `beforeBlockId` (appended when null / not found). */
+function insertBefore(arr: Block[], moving: Block, beforeBlockId: string | null): Block[] {
+   const found = beforeBlockId === null ? -1 : arr.findIndex(block => block.id === beforeBlockId)
+   const index = found === -1 ? arr.length : found
+   return [...arr.slice(0, index), moving, ...arr.slice(index)]
+}
+
+/**
+ * Move a block out of `from` and into `to`, positioned immediately before `beforeBlockId` (appended
+ * when null). Supports moves between section bodies, between a section body and a container column,
+ * and between columns, in one immutable pass (only the affected section objects are rebuilt).
+ * Same-location moves reorder in place. No-op-safe: an unknown block / location returns `sections`
+ * unchanged. Pure; the block DnD handler + the moveBlockAcross mutation drive it.
+ */
+export function relocateBlock(
+   sections: Section[],
+   from: BlockLoc,
+   blockId: string,
+   to: BlockLoc,
+   beforeBlockId: string | null,
+): Section[] {
+   // Find the moving block object in its source location so the SAME reference is re-inserted.
+   const fromSection = sections.find(section => section.id === from.sectionId)
+   if (!fromSection) return sections
+   const sourceArray = from.kind === 'section'
+      ? fromSection.blocks
+      : readColumn(fromSection.blocks.find(block => block.id === from.blockId) ?? ({} as Block), from.side)
+   const moving = sourceArray.find(block => block.id === blockId)
+   if (!moving) return sections
+
+   // `from` and `to` may target the same section (even the same array), so a section applies its
+   // removal AND its insertion together, removal first, on the same working `blocks`.
+   return sections.map(section => {
+      const isFrom = section.id === from.sectionId
+      const isTo   = section.id === to.sectionId
+      if (!isFrom && !isTo) return section
+
+      let blocks = section.blocks
+      if (isFrom) {
+         blocks = from.kind === 'section'
+            ? blocks.filter(block => block.id !== blockId)
+            : blocks.map(block => block.id === from.blockId
+               ? withColumn(block, from.side, readColumn(block, from.side).filter(inner => inner.id !== blockId))
+               : block)
+      }
+      if (isTo) {
+         blocks = to.kind === 'section'
+            ? insertBefore(blocks, moving, beforeBlockId)
+            : blocks.map(block => block.id === to.blockId
+               ? withColumn(block, to.side, insertBefore(readColumn(block, to.side), moving, beforeBlockId))
+               : block)
+      }
+      return { ...section, blocks }
+   })
 }
