@@ -102,9 +102,19 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
    const rail = <DockRail side={side} column={column} actions={actions} drag={drag} />
    const content = (
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-         {column.groups.map((group, groupIndex) => (
-            <div key={group.id} className="flex flex-col overflow-hidden" style={groupFlexStyle(group)}>
-               {groupIndex > 0 && (
+         {column.groups.map((group, groupIndex) => {
+            // The resize handle only exists between two EXPANDED neighbours — the only case where
+            // dragging changes anything (a collapsed group is a fixed-height header, a lone expanded
+            // group already fills). When it is hidden, a static top border keeps the between-groups
+            // separator the divider used to provide (its 4px bg-border line).
+            const showDivider = groupIndex > 0 && !group.collapsed && !column.groups[groupIndex - 1].collapsed
+            return (
+            <div
+               key={group.id}
+               className={`flex flex-col overflow-hidden${groupIndex > 0 && !showDivider ? ' border-t border-border' : ''}`}
+               style={groupFlexStyle(group)}
+            >
+               {showDivider && (
                   <GroupDivider
                      onResize={(upperFraction) => {
                         actions.setGroupFlex(column.groups[groupIndex - 1].id, upperFraction)
@@ -122,7 +132,8 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
                   drag={drag}
                />
             </div>
-         ))}
+            )
+         })}
       </div>
    )
 
@@ -216,8 +227,16 @@ function DockRail({ side, column, actions, drag }: { side: DockSide; column: Doc
 }
 
 function groupFlexStyle(group: DockGroup): CSSProperties {
-   // A collapsed group shrinks to just its header; an expanded one shares the column by its flex weight.
-   return group.collapsed ? { flex: '0 0 auto' } : { flex: `${group.flex} 1 0`, minHeight: 0 }
+   // A collapsed group shrinks to just its header.
+   if (group.collapsed) return { flex: '0 0 auto' }
+   // Expanded groups share the column by flex weight. Two subtleties:
+   //  - Guard a missing `flex` (legacy/partial layout) → default 1, else `flex: undefined 1 0` is invalid.
+   //  - Scale the grow factor ×100 so it is always ≥ 1. A divider stores fractional weights (e.g.
+   //    0.47 / 0.53) that sum to 1 only while BOTH groups are expanded; once a sibling collapses (grow
+   //    0), a lone 0.47 grow is < 1, and CSS flexbox distributes only 47% of the free space, leaving
+   //    a large blank below. Scaling keeps the ratio between expanded groups but the sum ≥ 1 (fills).
+   const weight = group.flex && group.flex > 0 ? group.flex : 1
+   return { flex: `${weight * 100} 1 0`, minHeight: 0 }
 }
 
 // #################

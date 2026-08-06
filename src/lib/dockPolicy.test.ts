@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { createDefaultDockLayout, isPanelDocked, locatePanel, type DockLayout, type PanelId, type DockSide } from './dockLayout'
+import { createDefaultDockLayout, isPanelDocked, locatePanel, toggleGroupCollapsed, type DockLayout, type DockGroup, type PanelId, type DockSide } from './dockLayout'
 import { togglePanelVisibility, isPanelVisible, reconcileDock, reconcileFloating, type ClosedPanels } from './dockPolicy'
 import type { FloatingPanels } from './dockLayout'
 
@@ -94,6 +94,25 @@ describe('reconcileDock', () => {
       // pages is floating (not docked); reconcileDock should leave the dock alone for it
       const { layout } = reconcileDock(base(), {}, ['structure'], DEFAULT_SIDES, makeIdFactory())
       expect(isPanelDocked(layout, 'pages')).toBe(false)
+   })
+
+   it('restores a collapsed group across an undock→redock applicability cycle', () => {
+      const idFactory = makeIdFactory()
+      const groupOf = (layout: DockLayout, panelId: PanelId): DockGroup | undefined => {
+         const location = locatePanel(layout, panelId)
+         return location ? layout[location.side]?.groups[location.groupIndex] : undefined
+      }
+      // Paged: Pages auto-docks as its own group; the user collapses it.
+      let layout = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, idFactory).layout
+      layout = toggleGroupCollapsed(layout, locatePanel(layout, 'pages')!.groupId)
+      expect(groupOf(layout, 'pages')?.collapsed).toBe(true)
+      // Switch to infinite (Pages undocks, remembering it was collapsed)...
+      const undocked = reconcileDock(layout, {}, ['structure'], DEFAULT_SIDES, idFactory)
+      expect(undocked.closed.pages).toEqual({ side: 'right', auto: true, collapsed: true })
+      // ...then back to paged: Pages re-docks AND is collapsed again (not silently re-expanded).
+      const redocked = reconcileDock(undocked.layout, undocked.closed, ['structure', 'pages'], DEFAULT_SIDES, idFactory)
+      expect(isPanelDocked(redocked.layout, 'pages')).toBe(true)
+      expect(groupOf(redocked.layout, 'pages')?.collapsed).toBe(true)
    })
 
    it('round-trips: user hides Pages in paged mode, and it stays hidden across a format switch', () => {

@@ -172,7 +172,7 @@ export default function App() {
       .map(document => document.documentId)
       .filter((id): id is string => id !== null)
 
-   // The setter lever (TABS_STUDY §3.2): hand the mutation hooks a Section[] setter that updates only
+   // The setter lever : hand the mutation hooks a Section[] setter that updates only
    // the active tab. The hooks are unchanged, they still receive a Dispatch<SetStateAction<Section[]>>.
    const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
       setOpenDocuments(documents => documents.map(document =>
@@ -202,9 +202,9 @@ export default function App() {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
    }, [])
-   // Per-tab save-status setter. Status lives on each OpenDocument (phase 2), so the autosave cycle,
+   // Per-tab save-status setter. Status lives on each OpenDocument, so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
-   // the captured originating tab for an async save's resolution (TABS_STUDY §4.2).
+   // the captured originating tab for an async save's resolution.
    const setTabSaveStatus = useCallback((tabKey: string, status: SaveStatus) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === tabKey && document.saveStatus !== status
@@ -330,7 +330,7 @@ export default function App() {
          return
       }
       // Capture the tab that originated this edit. The resolved save promotes/marks THIS tab by key,
-      // never whatever happens to be active when the promise settles (TABS_STUDY §4.2).
+      // never whatever happens to be active when the promise settles.
       const originatingTabKey = activeTabKeyRef.current
       setTabSaveStatus(originatingTabKey, 'dirty')
       autosaveTimerRef.current = setTimeout(() => {
@@ -367,7 +367,7 @@ export default function App() {
 
    // Browser tab title, asterisk while dirty
    useEffect(() => {
-      const baseTitle = meta.title ? `${meta.title}, Documinter` : 'Documinter'
+      const baseTitle = meta.title ? `${meta.title} - Documinter` : 'Documinter'
       document.title  = saveStatus !== 'clean' ? `* ${baseTitle}` : baseTitle
    }, [saveStatus, meta.title])
 

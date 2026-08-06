@@ -17,7 +17,6 @@ interface PickerItem {
 
 const PICKER_WIDTH     = 320
 const PANEL_MAX_HEIGHT = 480
-const ITEM_HEIGHT      = 44
 
 // Category order the grouped list is rendered in. Headers for empty groups (all their
 // items filtered out) are simply skipped further down.
@@ -166,20 +165,20 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
                         <button
                            key={item.type}
                            className={[
-                              'w-full flex items-center gap-3 px-3 rounded-lg transition-colors cursor-pointer text-left',
+                              'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer text-left',
                               'border-0',
                               focused === index
                                  ? 'bg-accent/10 text-text'
                                  : 'text-text/75 hover:text-text hover:bg-accent/10',
                            ].join(' ')}
-                           style={{ height: ITEM_HEIGHT }}
                            onPointerEnter={() => setFocused(index)}
                            onClick={() => onSelect(item.type)}
                         >
-                           <item.Icon size={16} className="shrink-0 text-muted" />
+                           {/* icon self-aligns to the top so it lines up with the label on a wrapped, multi-line row */}
+                           <item.Icon size={16} className="shrink-0 mt-0.5 self-start text-muted" />
                            <div className="min-w-0">
                               <span className="block text-xs font-semibold leading-tight">{item.label}</span>
-                              <span className="block text-[10px] text-muted leading-tight truncate">{item.description}</span>
+                              <span className="block text-[10px] text-muted leading-snug">{item.description}</span>
                            </div>
                         </button>
                      )

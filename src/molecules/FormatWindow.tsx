@@ -1,10 +1,10 @@
 // -- Library Imports --
-import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal } from 'lucide-react'
+import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal, Ban, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
 
 // -- Component / Hook Imports --
 import { BlockEditorWindow } from './BlockEditorWindow'
 import { SliderWithNumberInput } from '../atoms/SliderWithNumberInput'
-import { SegmentedIconToggle } from '../atoms/SegmentedIconToggle'
+import { SegmentedIconToggle, type SegmentedIconToggleOption } from '../atoms/SegmentedIconToggle'
 import { useLang } from '../contexts/LangContext'
 
 // -- Lib Imports --
@@ -119,12 +119,13 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
       if (pageNumbering) applyPageNumbering({ ...pageNumbering, style })
    }
 
-   const edgeChoiceLabels: Record<EdgeChoice, string> = {
-      off:    t.formatPageNumberOff,
-      left:   t.formatPageNumberAlignLeft,
-      center: t.formatPageNumberAlignCenter,
-      right:  t.formatPageNumberAlignRight,
-   }
+   // Off / Left / Center / Right as icon buttons (parity with the format-kind toggle).
+   const edgeOptions: SegmentedIconToggleOption<EdgeChoice>[] = [
+      { value: 'off',    label: t.formatPageNumberOff,         icon: <Ban size={15} /> },
+      { value: 'left',   label: t.formatPageNumberAlignLeft,   icon: <AlignLeft size={15} /> },
+      { value: 'center', label: t.formatPageNumberAlignCenter, icon: <AlignCenter size={15} /> },
+      { value: 'right',  label: t.formatPageNumberAlignRight,  icon: <AlignRight size={15} /> },
+   ]
    const styleLabels: Record<PageNumberStyle, string> = {
       plain:  t.pageNumberStylePlain,
       page:   t.pageNumberStylePage,
@@ -224,31 +225,25 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
                   <span className="presentation-section-label">{t.formatPageNumberLabel}</span>
                   <p className="presentation-hint">{t.formatPageNumberHint}</p>
 
-                  <label className="presentation-field">
+                  <div className="flex flex-col gap-1.5 mt-1">
                      <span className="presentation-field-label">{t.formatPageNumberTop}</span>
-                     <select
-                        className="presentation-select"
+                     <SegmentedIconToggle<EdgeChoice>
+                        ariaLabel={t.formatPageNumberTop}
                         value={topChoice}
-                        onChange={event => setEdge('top', event.target.value as EdgeChoice)}
-                     >
-                        {(['off', 'left', 'center', 'right'] as const).map(choice => (
-                           <option key={choice} value={choice}>{edgeChoiceLabels[choice]}</option>
-                        ))}
-                     </select>
-                  </label>
+                        onChange={choice => setEdge('top', choice)}
+                        options={edgeOptions}
+                     />
+                  </div>
 
-                  <label className="presentation-field">
+                  <div className="flex flex-col gap-1.5 mt-1">
                      <span className="presentation-field-label">{t.formatPageNumberBottom}</span>
-                     <select
-                        className="presentation-select"
+                     <SegmentedIconToggle<EdgeChoice>
+                        ariaLabel={t.formatPageNumberBottom}
                         value={bottomChoice}
-                        onChange={event => setEdge('bottom', event.target.value as EdgeChoice)}
-                     >
-                        {(['off', 'left', 'center', 'right'] as const).map(choice => (
-                           <option key={choice} value={choice}>{edgeChoiceLabels[choice]}</option>
-                        ))}
-                     </select>
-                  </label>
+                        onChange={choice => setEdge('bottom', choice)}
+                        options={edgeOptions}
+                     />
+                  </div>
 
                   {pageNumbering && (
                      <label className="presentation-field">

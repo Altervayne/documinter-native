@@ -87,7 +87,7 @@ describe('Markdown targeted parse', () => {
    })
 })
 
-// Containers have no Markdown representation, so they flatten by design (TESTING_STUDY §2.5): the
+// Containers have no Markdown representation, so they flatten by design : the
 // wrapper is dropped, inner blocks are promoted to top level, and the ratio is lost. This is a
 // stable contract, not a bug, Mintdown remains the format that preserves containers.
 describe('Markdown container flattening (by design)', () => {

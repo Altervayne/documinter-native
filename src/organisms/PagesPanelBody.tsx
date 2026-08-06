@@ -85,7 +85,7 @@ function PageThumbnail({
       >
          <button
             type="button"
-            className="page-thumb-frame"
+            className={`page-thumb-frame ${docTheme === 'dark' ? 'doc-dark' : ''}`}
             style={{ width: `${THUMBNAIL_WIDTH_PX}px`, height: `${frameHeight}px`, '--doc-accent': docAccent } as React.CSSProperties}
             title={t.pageSorterJump}
             aria-label={`${t.pageSorterJump} ${pageIndex + 1}`}
@@ -97,8 +97,10 @@ function PageThumbnail({
                className="page-thumb-scaler"
                style={{ width: `${sheetWidthPx}px`, height: `${sheetHeightPx}px`, transform: `scale(${scale})` }}
             >
+               {/* .doc-dark rides the frame (an ANCESTOR), so the `.doc-dark .doc-render …` descendant
+                   rules match AND the frame's own dark canvas background fills below short content. */}
                <div
-                  className={`doc-render page-thumb-render ${docTheme === 'dark' ? 'doc-dark' : ''}`}
+                  className="doc-render page-thumb-render"
                   style={{
                      background:    'var(--doc-canvas-bg)',
                      paddingTop:    `${millimetresToPx(margins.top)}px`,

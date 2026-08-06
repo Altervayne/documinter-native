@@ -17,7 +17,7 @@
 import type { DockLayout, DockSide, PanelId, FloatingPanels, WindowPlacement } from './dockLayout'
 
 // -- Lib Imports --
-import { addPanel, removePanel, isPanelDocked, locatePanel, dockedPanels } from './dockLayout'
+import { addPanel, removePanel, isPanelDocked, locatePanel, dockedPanels, toggleGroupCollapsed } from './dockLayout'
 
 // #########
 // # TYPES #
@@ -35,6 +35,10 @@ export interface PanelMemory {
    /** Present only when the panel was floating when it was hidden: showing it restores it as a floating
     *  window at this geometry rather than docking it. Set by a deliberate hide of a floating panel. */
    placement?: WindowPlacement
+   /** The panel's group was collapsed when it was undocked; restore that on re-dock so a collapsed
+    *  panel that cycles out and back (e.g. Pages across an infinite↔A4 switch, or the brief
+    *  infinite-default window before a document hydrates on load) returns collapsed, not expanded. */
+   collapsed?: boolean
 }
 
 export type ClosedPanels = Partial<Record<PanelId, PanelMemory>>
@@ -127,7 +131,9 @@ export function reconcileDock(
       if (applicable.includes(panelId)) continue
       const location = locatePanel(nextLayout, panelId)
       if (!location) continue
-      nextClosed[panelId] = { side: location.side, auto: true }
+      // Remember the group's collapsed state so re-docking restores it (see PanelMemory.collapsed).
+      const wasCollapsed = !!nextLayout[location.side]?.groups[location.groupIndex]?.collapsed
+      nextClosed[panelId] = { side: location.side, auto: true, ...(wasCollapsed ? { collapsed: true } : {}) }
       nextLayout = removePanel(nextLayout, panelId)
    }
 
@@ -141,7 +147,10 @@ export function reconcileDock(
       if (memory && !memory.auto) continue   // user closed it deliberately, respect that
 
       const side = memory?.side ?? defaultSides[panelId]
-      nextLayout = addPanel(nextLayout, panelId, side, nextGroupId())
+      const newId = nextGroupId()
+      nextLayout = addPanel(nextLayout, panelId, side, newId)
+      // A freshly added group is expanded; restore the remembered collapsed state (one toggle).
+      if (memory?.collapsed) nextLayout = toggleGroupCollapsed(nextLayout, newId)
       delete nextClosed[panelId]
    }
 
