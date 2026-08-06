@@ -1,9 +1,8 @@
 /**
  * listItemTree.ts, Pure recursive algorithms over the ListItem tree.
  *
- * Relocated verbatim from document.ts. Used by ListBlock (keyboard + drag edits) and
- * WysiwygBlock (context-menu list actions). No React, no DOM, no side effects, every
- * function returns a new tree.
+ * Used by ListBlock (keyboard + drag edits) and WysiwygBlock (context-menu list actions).
+ * No React, no DOM, no side effects, every function returns a new tree.
  *
  * Exports:
  *   mutateListItem              , walk + transform a matching item (null transform removes it)
@@ -53,7 +52,6 @@ export function moveListItemUp(items: ListItem[], itemId: string): ListItem[] {
       ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
       return next
    }
-   // Not at this level, recurse
    return items.map(item => ({ ...item, children: moveListItemUp(item.children, itemId) }))
 }
 
@@ -116,7 +114,6 @@ function unindentByPath(items: ListItem[], path: number[], depth: number): ListI
          ...items.slice(parentIndex + 1),
       ]
    }
-   // Recurse deeper
    const idx = path[depth]
    return items.map((item, index) => {
       if (index !== idx) return item

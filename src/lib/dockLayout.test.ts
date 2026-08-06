@@ -24,9 +24,9 @@ import {
 } from './dockLayout'
 
 // ==========================================================
-//  Shared invariant checks. Every transform must leave these true, they encode the ratified rules:
-//  no empty groups, no empty columns stored (the side is null instead), a valid active tab per group,
-//  and a panel present in exactly one place (no duplicates).
+//  Shared invariant checks. Every transform must leave these true: no empty groups, no empty
+//  columns stored (the side is null instead), a valid active tab per group, and a panel present in
+//  exactly one place (no duplicates).
 // ==========================================================
 function assertInvariants(layout: DockLayout): void {
    const seen = new Set<string>()

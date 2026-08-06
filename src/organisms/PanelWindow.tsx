@@ -42,11 +42,11 @@ interface PanelWindowProps {
 // #############
 
 /**
- * A floating window hosting a popped-out panel (Phase 3 window-pinning). The panel body is the same
- * host-agnostic component the dock renders, so a panel is identical docked or floating. Drag / resize
- * come from the shared `useDraggableWindow` primitive (the same one the Block Editor Window uses); the
- * title bar carries the panel identity plus dock (return to the dock) and close controls. Geometry is
- * committed back to the dock state when a move or resize gesture ends, so it survives a reload.
+ * A floating window hosting a popped-out panel. The panel body is the same host-agnostic component the
+ * dock renders, so a panel is identical docked or floating. Drag / resize come from the shared
+ * `useDraggableWindow` primitive (the same one the Block Editor Window uses); the title bar carries the
+ * panel identity plus dock (return to the dock) and close controls. Geometry is committed back to the
+ * dock state when a move or resize gesture ends, so it survives a reload.
  */
 export function PanelWindow({ panelId, placement, body, onPinPointerDown, dragging, onClose, onCommitPlacement }: PanelWindowProps) {
    const { t } = useLang()

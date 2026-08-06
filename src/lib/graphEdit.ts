@@ -1,5 +1,5 @@
 /**
- * graphEdit.ts, pure structural transforms for the graph block's interactive editor.
+ * Pure structural transforms for the graph block's interactive editor.
  *
  * PURE DATA / PURE FUNCTIONS, side-effect free, imports ONLY the graph types + the series cap.
  * Each function takes a GraphSpec and returns a BRAND-NEW GraphSpec with one structural or cell
@@ -60,8 +60,8 @@ function cloneData(spec: GraphSpec): GraphData {
  * Reassemble a fresh spec from freshly-cloned data, carrying type + options + (when present)
  * functionPlot through unchanged. Spreading `spec` first (rather than listing `type`/`data`/
  * `options` by hand) is what keeps a spec's `functionPlot` payload alive across every data-editing
- * transform below,ropping it here would silently wipe an author's equations the next time they,
- * say, add a category on an unrelated bar chart's spec object reached via a shared helper.
+ * transform below; dropping it here would silently wipe an author's equations the next time they
+ * add a category on an unrelated bar chart's spec object reached via a shared helper.
  */
 function withData(spec: GraphSpec, data: GraphData): GraphSpec {
    return { ...spec, data }
@@ -70,7 +70,7 @@ function withData(spec: GraphSpec, data: GraphData): GraphSpec {
 /**
  * Move the item at `fromIndex` to `toIndex` IN PLACE (the array is already a fresh clone by the
  * time this is called). Splice-out then splice-in, so every item between the two positions shifts
- * by one,the standard drag-reorder semantics dnd-kit's sortable produces.
+ * by one, the standard drag-reorder semantics dnd-kit's sortable produces.
  */
 function moveArrayItem<Item>(array: Item[], fromIndex: number, toIndex: number): void {
    const [moved] = array.splice(fromIndex, 1)
@@ -183,7 +183,7 @@ export function setLabel(spec: GraphSpec, rowIndex: number, text: string): Graph
 }
 
 /**
- * Set (or clear) the per-category (per-slice) color override at `categoryIndex`,the radial
+ * Set (or clear) the per-category (per-slice) color override at `categoryIndex`, the radial
  * counterpart to {@link setSeriesColor}. Passing `undefined` clears the slot back to the palette
  * color; if that leaves every slot cleared, the whole `categoryColors` array is dropped so the
  * spec stays lean. The array is padded with `undefined` up to the label count so it stays aligned
@@ -376,19 +376,16 @@ export function setOption<Key extends keyof GraphOptions>(
 
 /**
  * Whether a chart requesting `options.yScale === 'log'` would actually render on a log axis, or
- * silently fall back to linear because its own data touches zero or goes negative, log is
- * undefined at <= 0 (see `graph/cartesian.ts`'s per-type axis-mode resolution, which this MIRRORS
- * for an editor-only in-editor fallback notice; it is not itself consulted by the renderer). Used
- * by GraphBlock.tsx to show a small "showing linear instead" hint rather than leaving an author
- * wondering why a toggled-on log axis looks unchanged (previously this was the ONLY log-enabled
- * type with no fallback notice at all, which read as "log scale doesn't do anything" for a
- * function whose sampled curve dips to/through zero, see docs/reports/
- * 2026-08-02-graph-log-scale-function-fix.md).
+ * silently fall back to linear because its own data touches zero or goes negative (log is
+ * undefined at <= 0; see `graph/cartesian.ts`'s per-type axis-mode resolution, which this mirrors
+ * for an editor-only fallback notice, it is not itself consulted by the renderer). Used by
+ * GraphBlock.tsx to show a small "showing linear instead" hint rather than leaving an author
+ * wondering why a toggled-on log axis looks unchanged.
  *
  * Returns `false` (nothing to warn about) whenever log isn't even requested, or the type doesn't
  * support it at all (see {@link supportsLogScale}, the toggle is hidden in that case anyway).
  *
- * `function` charts reuse {@link computeFunctionYDomain}, the EXACT same expression-sampling +
+ * `function` charts reuse {@link computeFunctionYDomain}, the exact same expression-sampling and
  * domain pipeline `renderFunctionPlot` resolves its own axis-mode decision from, rather than
  * re-implementing (and risking drifting from) that logic here.
  */
@@ -473,7 +470,7 @@ export function updateOverlay(spec: GraphSpec, overlayIndex: number, partial: Pa
 // author can never be looking at an editor with nothing to edit.
 
 /** Default equation names for freshly added equations: f, g, h, ... wrapping through the alphabet
- *  (starting at "f" to echo the fence-grammar example in the stage-2 report / study). */
+ *  (starting at "f" to echo the fence-grammar example). */
 const EQUATION_NAME_LETTERS = 'fghijklmnopqrstuvwxyzabcde'
 
 function defaultEquationName(equationIndex: number): string {
@@ -628,7 +625,7 @@ export function moveEquation(spec: GraphSpec, fromIndex: number, toIndex: number
 // default whenever one is absent, and preserves two invariants:
 //   - NON-EMPTY SERIES LIST: the last remaining series is never removed (keep >= 1).
 //   - NON-EMPTY POINT LIST: the last remaining point in a series is never removed (keep >= 1).
-// v1 is points-only (no per-series trendline, a deferred fast-follow, not built here).
+// Points-only: there is no per-series trendline.
 
 /** The sane out-of-the-box scatterPlot: one blank-named series with a single point at the origin,
  *  so a freshly switched-to scatter chart is never rendered totally empty. */
@@ -700,7 +697,7 @@ export function setScatterSeriesColor(spec: GraphSpec, seriesIndex: number, colo
 
 /**
  * Append a new point to the series at `seriesIndex`. The default is a BLANK point (non-finite x/y):
- * the editor renders it as an empty "–" gap to type over, and both the renderer and the fence
+ * the editor renders it as an empty "-" gap to type over, and both the renderer and the fence
  * serializer skip a non-finite point, so an unfilled seed never draws a stray mark at the origin
  * nor persists as a real datum. Out-of-range returns the spec with `scatterPlot` merely seeded.
  */
@@ -797,7 +794,7 @@ export function moveScatterSeries(spec: GraphSpec, fromIndex: number, toIndex: n
 /**
  * Insert a fresh point AT `index` in the series at `seriesIndex`, shifting every later point down.
  * The default is a BLANK point (non-finite x/y), matching {@link addScatterPoint}: the editor
- * renders it as an empty "–" gap to type over, and both the renderer and the fence serializer skip
+ * renders it as an empty "-" gap to type over, and both the renderer and the fence serializer skip
  * a non-finite point. `index` may run from 0 to the series' current point count inclusive (an end
  * insert equals {@link addScatterPoint}); out of that range, or an out-of-range `seriesIndex`,
  * returns the spec with `scatterPlot` merely seeded. Drives the point row context menu's
@@ -924,16 +921,16 @@ export function setHistogramColor(spec: GraphSpec, color: string | undefined): G
 }
 
 // ##############################
-// # TABLE LINK (STAGE 2b EDITOR) #
+// # TABLE LINK EDITOR            #
 // ##############################
 //
 // The graph<->table LIVE LINK's editing surface: link/re-link to a table, adjust the label-column /
 // orientation mapping, and unlink. Unlike every family above, these three helpers do NOT touch
 // `data`/`options`/`functionPlot` shape invariants, they only ever read/write `spec.source`.
 // `data` itself is left for the caller: on link/re-link it stays as-is (GraphBlock's existing
-// debounced snapshot write-back, see docs/reports/2026-08-01-graph-table-link-arch.md, refreshes
-// it from the newly linked table on the next resolve); on unlink the caller supplies the just-
-// resolved snapshot to materialize (this module has no document/table access to resolve one itself).
+// debounced snapshot write-back refreshes it from the newly linked table on the next resolve); on
+// unlink the caller supplies the just-resolved snapshot to materialize (this module has no
+// document/table access to resolve one itself).
 
 /**
  * Link the spec to a table by `handle`, with the default mapping (label column 0, orient

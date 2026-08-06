@@ -1,10 +1,9 @@
 /**
  * binderDocuments.ts, Document CRUD + move/order for the binder (IndexedDB).
  *
- * Relocated verbatim from storage.ts. Reads/writes the `documents` (light record) and
- * `documentContent` (heavy sections) stores via the shared connection in binderDatabase.
- * nextDocumentSortOrder is exported because binderFolders.deleteFolder reflows orphaned
- * documents to root.
+ * Reads/writes the `documents` (light record) and `documentContent` (heavy sections) stores
+ * via the shared connection in binderDatabase. nextDocumentSortOrder is exported because
+ * binderFolders.deleteFolder reflows orphaned documents to root.
  */
 
 import {
@@ -27,7 +26,7 @@ const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to f
                                   //  v2 added contentText, the flattened block text for full-text search)
 
 /** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
- *  image-bearing export/editor extras (watermark, …); it stores on the HEAVY content record, not
+ *  image-bearing export/editor extras (watermark, ...); it stores on the HEAVY content record, not
  *  the light card record, see saveDocument. `format` (infinite width, later paged A4) rides the same
  *  bundle, absent = today's infinite/normal behavior. */
 export interface DocPresentation {
@@ -143,7 +142,7 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
       // (clamp opacity, drop an empty-src watermark), the mirror of migrateMeta for metadata.
       presentation: normalizePresentation(content.presentation),
       // format normalizes to a concrete DocFormat even when absent (unlike presentation, which
-      // collapses to undefined), see normalizeFormat: absent ⇒ DEFAULT_FORMAT (infinite/normal).
+      // collapses to undefined), see normalizeFormat: absent -> DEFAULT_FORMAT (infinite/normal).
       format: normalizeFormat(content.format),
    }
 }

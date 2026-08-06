@@ -1,16 +1,16 @@
 /**
  * DocumentTablesContext, Provides the document-wide `handle -> table cells` catalog that a linked
- * graph resolves its data from, PLUS the full linkable-tables listing the "Link to a table…" editor
+ * graph resolves its data from, plus the full linkable-tables listing the "Link to a table..." editor
  * picker draws from.
  *
  * Exports: DocumentTablesProvider, useDocumentTables, LinkableTablesProvider, useLinkableTables
  *
- * This is the cross-block read seam for the graph<->table LIVE LINK (stage 2 of
- * docs/reference/graph_table_linking_study.md), the exact analogue of DocumentHandlesContext, one
- * axis over: where that context lists every anchor handle, `DocumentTablesContext` maps every
- * HANDLED table block's handle to its cells (the resolver's lookup), and `LinkableTablesContext`
- * (stage 2b, the editor UX) lists EVERY table, handled or not, with enough identity to route a
- * mutation back at a pick (see `LinkableTable` in `lib/graphTableData.ts`). Both are built once with
+ * This is the cross-block read seam for the graph<->table live link, the exact analogue of
+ * DocumentHandlesContext one axis over: where that context lists every anchor handle,
+ * `DocumentTablesContext` maps every handled table block's handle to its cells (the resolver's
+ * lookup), and `LinkableTablesContext` (the editor UX) lists every table, handled or not, with
+ * enough identity to route a mutation back at a pick (see `LinkableTable` in
+ * `lib/graphTableData.ts`). Both are built once with
  * a `useMemo` over the active document's `sections` (in WysiwygArea/index.tsx, right beside
  * DocumentHandlesProvider) via the pure `collectTableSources` / `collectLinkableTables`.
  *
@@ -40,7 +40,7 @@ export function useDocumentTables(): GraphTableCatalog {
 }
 
 // A frozen empty list as the default, so `useLinkableTables()` outside a provider (e.g. a stray
-// render path, or a test) renders the "Link to a table…" picker as empty rather than throwing.
+// render path, or a test) renders the "Link to a table..." picker as empty rather than throwing.
 const EMPTY_LINKABLE_TABLES: LinkableTable[] = []
 
 const LinkableTablesContext = createContext<LinkableTable[]>(EMPTY_LINKABLE_TABLES)

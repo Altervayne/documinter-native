@@ -40,9 +40,9 @@ export interface PanelDescriptor {
    /** Whether the panel can be shown for the current document. An inapplicable panel is force-undocked
     *  (and remembered) by the dock policy, and hidden from the panel toggles. */
    isApplicable: (context: PanelContext) => boolean
-   /** Side the panel first docks to when it has never been placed (ratified: Structure left, Pages right). */
+   /** Side the panel first docks to when it has never been placed (Structure left, Pages right). */
    defaultSide: DockSide
-   /** Whether the panel may be popped out into a floating window (Phase 3 window-pinning). */
+   /** Whether the panel may be popped out into a floating window. */
    canFloat: boolean
 }
 

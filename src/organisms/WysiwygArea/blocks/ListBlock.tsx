@@ -89,9 +89,9 @@ function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay,
    function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
       const element = event.currentTarget
 
-      // Tab / Shift+Tab, indent / unindent
-      // preventDefault is critical: stops browser focus-change behaviour.
-      // After the state update the item moves in the DOM; we restore focus explicitly.
+      // Tab / Shift+Tab: indent / unindent.
+      // preventDefault is critical: it stops the browser's focus-change behavior.
+      // After the state update the item moves in the DOM, so focus is restored explicitly below.
       if (event.key === 'Tab') {
          event.preventDefault()
          const currentItemId = item.id

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { matchesCriteria, documentComparator } from './binderSearch'
 import type { BinderDocumentRecord } from '../types'
 
-// Binder records carry ~13 mandatory fields; this factory supplies sane defaults so each test only
+// Binder records carry 13 mandatory fields; this factory supplies sane defaults so each test only
 // states the fields it cares about. These are binder records, NOT the DocState round-trip fixture.
 function makeRecord(overrides: Partial<BinderDocumentRecord> = {}): BinderDocumentRecord {
    return {

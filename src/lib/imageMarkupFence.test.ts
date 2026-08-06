@@ -50,7 +50,7 @@ describe('imageMarkupSpecToFence <-> fenceToImageMarkupSpec, round trip', () => 
       expect(reparsed.height).toBe(1080)
       expect(reparsed.alt).toBe('Dashboard')
       expect(reparsed.caption).toBe('Fig 2')
-      // The ratified rule: src NEVER comes back from a fence, regardless of what went in.
+      // src never comes back from a fence, regardless of what went in.
       expect(reparsed.src).toBe('')
    })
 

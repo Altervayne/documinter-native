@@ -2,16 +2,15 @@
  * imageMarkupBlock.ts, the adapter between an `image` Block and the pure image-markup layer.
  *
  * The markup renderer (`lib/imageMarkup/index.ts`) and the fence serializer (`imageMarkupFence.ts`)
- * both speak `ImageMarkupSpec` ({ src, width, height, elements, alt?, caption? }), the shape the
- * standalone image-markup block used before markup was folded into the `image` block. Now the base
- * image (src/alt/caption) lives on the image Block's own fields and only the overlay-specific dims +
- * element stack live in `block.imageMarkup` (an {@link ImageMarkupOverlay}). These two total,
+ * both speak `ImageMarkupSpec` ({ src, width, height, elements, alt?, caption? }). On the image Block
+ * itself, the base image (src/alt/caption) lives on the block's own fields and only the overlay-specific
+ * dims + element stack live in `block.imageMarkup` (an {@link ImageMarkupOverlay}). These two total,
  * pure helpers bridge the two representations so the renderer/fence stay untouched:
  *
  *   - {@link imageBlockToMarkupSpec} builds the spec the renderer/fence consume, pulling src/alt/
  *     caption off the block and dims/elements off its overlay.
- *   - {@link markupSpecToImageBlock} rebuilds an image Block from a spec (the fence parser + the
- *     legacy `image-markup`→`image` load migration both land here); `src` is always '' from a fence
+ *   - {@link markupSpecToImageBlock} rebuilds an image Block from a spec (the fence parser and the
+ *     legacy `image-markup`->`image` load migration both land here); `src` is always '' from a fence
  *     (no base64 in text formats), non-empty only from the JSON/migration path.
  */
 
@@ -43,7 +42,7 @@ export function imageBlockToMarkupSpec(block: Block): ImageMarkupSpec {
 
 /**
  * Build an image Block (markup mode on) from an {@link ImageMarkupSpec}. Used by the Mintdown /
- * Markdown `imagemarkup` fence parsers and by the legacy `image-markup`→`image` load migration.
+ * Markdown `imagemarkup` fence parsers and by the legacy `image-markup`->`image` load migration.
  * The overlay stores only the viewBox dims + element stack; src/alt/caption land on the block.
  */
 export function markupSpecToImageBlock(id: string, spec: ImageMarkupSpec): Block {

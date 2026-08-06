@@ -6,11 +6,11 @@ import type { Language } from '../types'
 //
 // Token mapping:
 //   kw   (blue)  , property names (word before : that isn't ::pseudo)
-//   type (teal)  , at-rules (@media, @keyframes…), pseudo-classes/elements
-//   fn   (purple), class/ID selectors (.foo #bar), CSS variables (--x), functions (calc()…)
+//   type (teal)  , at-rules (@media, @keyframes, etc.), pseudo-classes/elements
+//   fn   (purple), class/ID selectors (.foo #bar), CSS variables (--x), functions (calc(), etc.)
 //   num  (green) , numbers with units, hex colours (#fff, #rrggbb)
 //   str  (red)   , quoted strings
-//   cmt  (green) , /* … */ comments
+//   cmt  (green) , /* ... */ comments
 //   op   (muted) , braces, semicolons, colons, punctuation
 
 export const css: Language = {

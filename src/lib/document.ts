@@ -7,9 +7,9 @@
  *   Display:    blockAnchor, generateHandle, generateUniqueHandle, blkPreview
  *   Utilities:  moveItem, mutateSec
  *
- * moveItem and mutateSec were previously duplicated across useBlockMutations,
- * useSectionMutations, and useContainerMutations. They live here so each hook
- * imports a single authoritative copy.
+ * moveItem and mutateSec live here so useBlockMutations, useSectionMutations, and
+ * useContainerMutations all work from a single authoritative copy instead of each
+ * duplicating the logic.
  */
 
 import type { Dispatch, SetStateAction } from 'react'
@@ -149,12 +149,11 @@ export function generateHandle(block: Block): string {
 }
 
 /**
- * Generate a handle for `block` GUARANTEED not to collide with `existingHandles` (the document-wide
+ * Generate a handle for `block` guaranteed not to collide with `existingHandles` (the document-wide
  * handle list, e.g. from `useDocumentHandles()`). Starts from {@link generateHandle}; on a collision,
- * appends `-2`, `-3`, … until a free slug is found. Used when auto-assigning a durable handle to a
- * handle-less table on the graph<->table live link (see
- * docs/reference/graph_table_linking_study.md, stage 2b), the anchor editor's own confirm flow does
- * NOT dedupe (it only warns), but an auto-assignment happening behind the scenes must never silently
+ * appends `-2`, `-3`, ... until a free slug is found. Used when auto-assigning a durable handle to a
+ * handle-less table on the graph<->table live link: the anchor editor's own confirm flow does not
+ * dedupe (it only warns), but an auto-assignment happening behind the scenes must never silently
  * collide with an existing anchor.
  */
 export function generateUniqueHandle(block: Block, existingHandles: string[]): string {
@@ -279,7 +278,7 @@ export type BlockLoc =
    | { kind: 'section'; sectionId: string }
    | { kind: 'column';  sectionId: string; blockId: string; side: Side }
 
-/** Read one column of a container block (absent side ⇒ empty). */
+/** Reads one column of a container block; an absent side reads as empty. */
 function readColumn(container: Block, side: Side): Block[] {
    return (side === 'left' ? container.left : container.right) ?? []
 }

@@ -59,7 +59,7 @@ export interface NiceScale {
  * Round a positive interval to a "nice" number. When `round` is true the nearest nice value
  * is chosen (used for the step); otherwise the ceiling nice value is chosen (used for the
  * range). "Nice" fractions are 1, 2, 5, 10 x 10^exponent, the values that read cleanly on
- * an axis (0, 100, 200… or 0, 250, 500…). This is the Heckbert "nice numbers" routine.
+ * an axis (0, 100, 200... or 0, 250, 500...). This is the Heckbert "nice numbers" routine.
  */
 function niceNumber(interval: number, round: boolean): number {
    const exponent = Math.floor(Math.log10(interval))
@@ -193,7 +193,7 @@ export interface NiceLogScale {
     *  {@link LOG_MAX_LABELED_DECADES}), but always including both `niceMin` and `niceMax`. */
    ticks: number[]
    /** Intra-decade minor tick values, 2x and 5x each decade's power of 10, the classic "1-2-5"
-    *  log-scale pattern (1, 2, 5, 10, 20, 50, 100, …), empty once the domain spans too many
+    *  log-scale pattern (1, 2, 5, 10, 20, 50, 100, ...), empty once the domain spans too many
     *  decades for them to add anything but visual noise (see {@link LOG_MAX_MINOR_DECADES}). */
    minorTicks: number[]
 }

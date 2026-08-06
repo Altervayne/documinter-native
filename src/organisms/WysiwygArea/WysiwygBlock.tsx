@@ -108,7 +108,7 @@ export function WysiwygBlock({
    const editorWindow = useBlockEditorWindow()
    const pageBreaks   = usePageBreaks()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
-   // The block's editor window is open → highlight it and drop its inline controls (block-owned).
+   // The block's editor window is open: highlight it and drop its inline controls (block-owned).
    const isWindowOpen = !readOnly && editorWindow.isEditing(block.id)
 
    // Unmount safety: a deleted / undone-away block clears its own open id so the context never
@@ -184,8 +184,8 @@ export function WysiwygBlock({
    // =======================
    const anchor = useAnchorEditor({ block, blockDivRef, patch })
    // Paged-format page-break action: only for an OUTER, editable block in paged mode. A break already
-   // after this block → "remove"; a place to break after it → "insert"; otherwise (the document's
-   // last block) no entry. Container inner blocks are never page-break targets.
+   // after this block gives "remove"; a place to break after it gives "insert"; otherwise (the
+   // document's last block) no entry. Container inner blocks are never page-break targets.
    const pageBreakOption: { mode: 'insert' | 'remove'; onSelect: () => void } | undefined =
       (!inner && !readOnly && pageBreaks.paged)
          ? (pageBreaks.hasBreakAfter(block.id)

@@ -9,8 +9,9 @@ import {
 } from './inline'
 import type { InlineContent } from '../types'
 
-// The pure inline-content model the wave-3 typing assistant writes into. The DOM-walk functions
-// (parseInlineContent, domToInlineContent, computeCursorPosition) are a later jsdom phase.
+// Tests for the pure, DOM-free inline-content model. The DOM-walk functions
+// (parseInlineContent, domToInlineContent, computeCursorPosition) need jsdom and are covered in
+// inline.dom.test.ts.
 
 describe('inlineContentToMintdown', () => {
    it('wraps bold+italic as ***text*** (italic inside bold)', () => {

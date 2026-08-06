@@ -28,20 +28,19 @@ export interface ExportOptions {
    theme: 'light' | 'dark'
    accent: string
    lang?: 'en' | 'fr'
-   /** Document-level presentation extras (watermark, header logo, …). Absent ⇒ byte-identical to
-    *  pre-feature output: every emission below is guarded on the optional field, including the
-    *  added CSS. */
+   /** Document-level presentation extras (watermark, header logo, and so on). Absent means the
+    *  output matches the plain export exactly: every emission below is guarded on this field. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite width, later paged A4). Absent, or `{ kind: 'infinite' }` with
-    *  no width / a 'normal' width, all resolve to the SAME 860px `.doc-card` max-width as before this
-    *  feature existed, byte-identical output (see resolveDocumentSheetWidthPx). */
+   /** Document page format (infinite width or paged A4). Absent, or `{ kind: 'infinite' }` with no
+    *  width or a 'normal' width, all resolve to the same 860px `.doc-card` max-width, so output stays
+    *  byte-identical (see resolveDocumentSheetWidthPx). */
    format?: DocFormat
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
 
-// A shared empty catalog for the no-tables fallback (an unlinked graph never touches it; a linked
-// one resolves as dangling → its snapshot). Avoids allocating a fresh Map per graph block.
+// Shared empty catalog for the no-tables fallback: an unlinked graph never touches it, and a linked
+// one that can't resolve falls back to its snapshot. Avoids allocating a fresh Map per graph block.
 const EMPTY_TABLE_CATALOG: GraphTableCatalog = new Map()
 
 /** Render an InlineContent array to export-safe HTML. */
@@ -84,7 +83,7 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
          ? rendered.mathml
          : `<code class="doc-math-error">${esc(latex)}</code>`
       // The MathML scales with the wrapper's font-size. Emit the inline size only for a
-      // non-default scale, so the default export stays byte-identical to before this feature.
+      // non-default scale, so a default scale emits no extra style.
       const scale     = block.mathScale
       const styleAttr = scale !== undefined && scale !== 1 ? ` style="font-size:${scale}em"` : ''
       return withHandle(block, `<div class="doc-math"${styleAttr}>${inner}</div>`)
@@ -192,15 +191,15 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
  */
 export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
    // Build the table catalog from THIS block slice so a linked graph resolves against any table
-   // present in the same preview (a table outside the slice simply dangles → its snapshot).
+   // present in the same preview; a table outside the slice simply falls back to its snapshot.
    const tables = collectTableSources(blocks)
    return blocks.map(block => exportBlock(block, { ...options, tables })).join('\n')
 }
 
 /**
- * Render ONE page's HTML the way the paged export does — the document header (`<h1>` + meta zones) on
- * the first page, then each section slice as `<div class="doc-section"><h2>N. Title</h2>…blocks…</div>`
- * — so the Pages-panel thumbnail reflects the actual page (titles + headings), not a bare block list.
+ * Render ONE page's HTML the way the paged export does: the document header (`<h1>` + meta zones) on
+ * the first page, then each section slice as `<div class="doc-section"><h2>N. Title</h2>...blocks...</div>`,
+ * so the Pages-panel thumbnail reflects the actual page (titles + headings), not a bare block list.
  * `sections` is the full document flow, used only to number a slice's section (matches the export).
  */
 export function renderPagePreviewHtml(
@@ -282,9 +281,9 @@ function getColors(theme: 'light' | 'dark'): Colors {
 
 function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean, sheetWidthPx: number, pagedStyles: string): string {
    // Watermark CSS is appended ONLY when a watermark is present, so an absent watermark leaves the
-   // style block byte-identical to pre-feature output. The rules layer a static image behind the
-   // card content: .doc-card becomes the positioning context (overflow clips to its radius), the
-   // .doc-watermark layer sits at z-index 0, and the content (.doc-render / .doc-footer) rides above.
+   // style block unchanged. The rules layer a static image behind the card content: .doc-card
+   // becomes the positioning context (overflow clips to its radius), the .doc-watermark layer sits
+   // at z-index 0, and the content (.doc-render / .doc-footer) rides above.
    const watermarkStyles = hasWatermark ? `
             /* Background watermark (presentation) */
             .doc-card { position: relative; overflow: hidden; }
@@ -307,9 +306,9 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-render .page-logo                   { display: block; width: auto; max-width: 100%; height: auto; }
    ` : ''
    // Nav CSS (external-link marker + divider separator) is appended ONLY for a customized nav, so an
-   // absent nav model leaves the style block byte-identical to pre-feature output, same additive/
-   // guarded convention as the watermark and header above. A section-only nav never emits either
-   // element, so gating on the model's presence (not on which entry kinds it holds) is sufficient.
+   // absent nav model leaves the style block unchanged, same guard convention as the watermark and
+   // header above. A section-only nav never emits either element, so gating on the model's presence
+   // (not on which entry kinds it holds) is sufficient.
    const navStyles = hasCustomNav ? `
             /* Custom sidebar nav (presentation) */
             .nav-external::after { content: " \\2197"; opacity: 0.55; font-size: 0.9em; }
@@ -545,7 +544,7 @@ ${watermarkStyles}${headerStyles}${navStyles}${pagedStyles}   `
 }
 
 // #############################################################
-// # PAGED (A4) EXPORT STYLES — Document Formats Phase 5       #
+// # PAGED (A4) EXPORT STYLES                                  #
 // #############################################################
 
 /**
@@ -670,7 +669,7 @@ function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: stri
  * into one CSS transform via the shared watermarkTransform (the div is full-bleed via
  * .doc-watermark's `inset:0`, so the default center transform origin already lands on the sheet's
  * center), and opacity is dimmed for the dark theme exactly as the editor dims it (shared
- * effectiveWatermarkOpacity). Only ever called when the watermark has a src, so absent ⇒ this emits
+ * effectiveWatermarkOpacity). Only ever called when the watermark has a src, so an absent one emits
  * nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts), shared verbatim with the
  * editor render, see the branch in generateExportHTML below.
  */
@@ -690,7 +689,7 @@ function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): st
 
 /**
  * Render the page title, optionally wrapped with a header logo. Absent header (or empty src)
- * emits exactly `<h1>…</h1>`, byte-identical to pre-feature output. A present header inlines its
+ * emits exactly `<h1>...</h1>`, nothing extra. A present header inlines its
  * base64 image as `.page-logo`: 'above' places it on its own row before the title, 'beside' wraps
  * logo + title together in one flex row; both honor `align` via `justify-content` (the shared
  * headerJustifyContent, same helper the editor's inline style uses) and `maxHeight` via an inline
@@ -721,16 +720,16 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // the .page-logo* CSS below.
    const header = opts.presentation?.header
    const hasHeader = !!header?.src
-   // Custom nav: present ⇒ the sidebar is built from the reconciled model (below) and the nav CSS +
-   // the external-link scroll-spy guard are emitted; absent ⇒ today's derivation, byte-identical.
+   // Custom nav: when present, the sidebar is built from the reconciled model (below) and the nav
+   // CSS plus the external-link scroll-spy guard are emitted; when absent, it falls back to the
+   // default per-section derivation.
    const hasCustomNav = !!opts.presentation?.nav
-   // Document sheet width: absent format / infinite+normal all resolve to the SAME 860px as before
-   // this feature existed (byte-identical guard); only a non-normal infinite width (or later, a paged
-   // A4 sheet) changes it.
+   // Document sheet width: absent format or infinite+normal both resolve to the same 860px as the
+   // plain export; only a non-normal infinite width (or a paged A4 sheet) changes it.
    const sheetWidthPx = resolveDocumentSheetWidthPx(opts.format)
 
-   // Paged (A4) export (Document Formats Phase 5): guarded on a paged format, so an infinite / absent
-   // format leaves both the CSS (pagedStyles empty) and the <main> markup byte-identical to before.
+   // Paged (A4) export: guarded on a paged format, so an infinite or absent format leaves both the
+   // CSS (pagedStyles empty) and the <main> markup unchanged.
    const paged = !!opts.format && opts.format.kind !== 'infinite'
    const pagedIsLandscape   = opts.format?.kind === 'a4-landscape'
    const pagedMargins       = opts.format?.margins ?? DEFAULT_A4_MARGINS
@@ -741,9 +740,9 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
       : ''
 
    const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx, pagedStyles)
-   // Tiled ⇒ the shared SVG <pattern> builder (identical to the editor's render, see WysiwygArea/
-   // index.tsx); single ⇒ the positioned/fit CSS layer. The pattern id only needs to be unique
-   // within this one exported document, so a short random suffix is enough.
+   // Tiled uses the shared SVG <pattern> builder (identical to the editor's render, see
+   // WysiwygArea/index.tsx); single uses the positioned/fit CSS layer. The pattern id only needs to
+   // be unique within this one exported document, so a short random suffix is enough.
    const watermarkHTML = hasWatermark
       ? (watermark!.tile
          ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-${Math.random().toString(36).slice(2, 10)}`)
@@ -756,11 +755,11 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // back to the graph's materialized snapshot.
    const tables = collectTableSources(sections.flatMap(section => section.blocks))
 
-   // The sidebar nav is built from the reconciled model (absent nav ⇒ one numbered link per section,
-   // in order, byte-identical to the previous `sections.map(...)`). A section-target link keeps its
-   // `#anchor` href so the scroll-spy below still tracks it; an external link opens in a new tab and
-   // is not observed; a divider renders as a static separator. Numbering (from reconcileNav) prefixes
-   // only section-target links, so dividers / external links never carry a nonsensical number.
+   // The sidebar nav is built from the reconciled model: an absent nav yields one numbered link per
+   // section, in document order. A section-target link keeps its `#anchor` href so the scroll-spy
+   // below still tracks it; an external link opens in a new tab and is not observed; a divider
+   // renders as a static separator. Numbering (from reconcileNav) prefixes only section-target
+   // links, so dividers and external links never carry a nonsensical number.
    const navLinks = reconcileNav(opts.presentation?.nav, sections).map(entry => {
       if (entry.kind === 'divider') {
          return `        <div class="nav-divider">${esc(entry.label)}</div>`
@@ -784,7 +783,7 @@ ${blocksHTML}
    // The nav-link click handler smooth-scrolls to a section anchor. With a customized nav the sidebar
    // can hold external links (non-`#` hrefs), so guard on `href.charAt(0) === '#'` and let the browser
    // navigate offsite links normally; the observer above only ever matched `#`-anchors, so it needs no
-   // change. Absent nav ⇒ the original (unguarded) handler verbatim, so the script stays byte-identical.
+   // change. Absent nav uses the plain unguarded handler.
    const navClickBody = hasCustomNav
       ? `const href = l.getAttribute('href');
                   if (!href || href.charAt(0) !== '#') return;
@@ -799,9 +798,9 @@ ${blocksHTML}
    // the `.active` highlight as its section scrolls into the band. A custom nav can also link to an
    // anchored block (`#handle`); those block elements aren't `.doc-section`, so collect the handles
    // the nav actually references (live anchors only) and observe them too, so anchor links highlight
-   // like section links. Absent anchor links ⇒ navAnchorIds is empty ⇒ no extra script is emitted,
-   // keeping the export byte-identical to the pre-feature output. The `en.target.id`-keyed matcher in
-   // the observer callback is already generic (a block div's id IS its handle), so it needs no change.
+   // like section links. Absent anchor links leave navAnchorIds empty, so no extra script is
+   // emitted. The `en.target.id`-keyed matcher in the observer callback is already generic (a block
+   // div's id IS its handle), so it needs no change.
    const anchoredHandles = collectAnchoredHandles(sections)
    const navAnchorIds: string[] = []
    for (const entry of reconcileNavEntries(opts.presentation?.nav, sections)) {

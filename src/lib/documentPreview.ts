@@ -1,9 +1,9 @@
 /**
  * documentPreview.ts, Pure snapshot + full-text builders for binder records.
  *
- * Relocated verbatim from storage.ts. buildPreviewSections produces the card-preview snapshot
- * (first N blocks, image src stripped); extractDocumentText flattens every block to searchable
- * plain text. Both are pure and used by binderDocuments when writing a record.
+ * buildPreviewSections produces the card-preview snapshot (first N blocks, image src stripped);
+ * extractDocumentText flattens every block to searchable plain text. Both are pure and used by
+ * binderDocuments when writing a record.
  */
 
 import type { Block, InlineContent, ListItem, PreviewSection, Section } from '../types'

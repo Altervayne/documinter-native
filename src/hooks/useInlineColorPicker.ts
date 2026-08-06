@@ -77,13 +77,12 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
     *   2. Find the [data-rich] contenteditable element that owns the selection.
     *   3. Read its current InlineContent via domToInlineContent.
     *   4. Compute flat char offsets for the selection start and end.
-    *   5. Call applyColorToRange → produces a new InlineContent.
+    *   5. Call applyColorToRange, which produces a new InlineContent.
     *   6. Rewrite element.innerHTML via renderInlineContent.
     *   7. Restore the selection range in the new DOM.
     *   8. The next blur event on RichEditable will commit the new content normally.
     */
    function applyInlineColor(field: 'color' | 'highlight', colorValue: string | undefined) {
-      // Restore selection
       const sel = window.getSelection()
       if (savedRangeRef.current) {
          sel?.removeAllRanges()
@@ -108,28 +107,23 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
 
       const updatedContent = applyColorToRange(currentContent, startChar, endChar, field, colorValue)
 
-      // Rewrite the element's innerHTML
       richElement.innerHTML = renderInlineContent(updatedContent)
-
-      // Restore selection
       restoreSelectionRange(richElement, startChar, endChar)
 
-      // Re-capture the now-current selection. The innerHTML rewrite above destroyed the
-      // nodes savedRangeRef pointed at; refreshing it lets repeated applies (the ColorPicker
-      // emits onChange continuously while dragging) restore a valid range each time
-      // instead of a detached one. Closing the picker is left to the discrete callers
-      // (quick-pick swatch / remove) so a live drag stays open.
+      // The innerHTML rewrite above destroyed the nodes savedRangeRef pointed at. Refreshing it
+      // here lets repeated applies (the ColorPicker emits onChange continuously while dragging)
+      // restore a valid range each time instead of a detached one. Closing the picker is left to
+      // the discrete callers (quick-pick swatch / remove), so a live drag stays open.
       const restoredSelection = window.getSelection()
       if (restoredSelection && restoredSelection.rangeCount > 0) {
          savedRangeRef.current = restoredSelection.getRangeAt(0).cloneRange()
       }
 
-      // Re-derive the active colors from the settled selection so the button indicators
-      // reflect the committed model. Deferred to the next frame so the innerHTML rewrite
-      // and selection restore have committed, reading colorValue directly would be
-      // clobbered by the debounced selectionchange re-read that follows. Re-derives both
-      // fields so font and highlight indicators stay consistent regardless of which one
-      // was just picked.
+      // Re-derive the active colors from the settled selection so the button indicators reflect
+      // the committed model. Deferred to the next frame so the innerHTML rewrite and selection
+      // restore have committed; reading colorValue directly would be clobbered by the debounced
+      // selectionchange re-read that follows. Both fields are re-derived so font and highlight
+      // indicators stay consistent regardless of which one was just picked.
       requestAnimationFrame(() => {
          const settledSelection = window.getSelection()
          if (!settledSelection || settledSelection.rangeCount === 0) return
@@ -143,8 +137,8 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
       })
 
       // Record settled custom colors (those not in the curated palette) into the recents
-      // backlog. Debounced so dragging the ColorPicker, which emits onChange continuously
-      //, records only the final value the user lands on, not every intermediate hue.
+      // backlog. Debounced so dragging the ColorPicker, which emits onChange continuously,
+      // records only the final value the user lands on, not every intermediate hue.
       const palette: readonly string[] = field === 'color' ? FONT_COLOR_PALETTE : HIGHLIGHT_COLOR_PALETTE
       if (colorValue !== undefined && !palette.includes(colorValue)) {
          if (recentColorTimerRef.current) clearTimeout(recentColorTimerRef.current)

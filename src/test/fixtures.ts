@@ -4,11 +4,9 @@ import type { DocState, Block, ListItem, InlineContent } from '../types'
 // # SHARED ROUND-TRIP FIXTURE                                               #
 // ###########################################################################
 //
-// A document that exercises every construct the serializers must preserve
-// (TESTING_STUDY §2.3): all block types, nested lists/checklists, all four
-// callout styles, every code lang, a non-default and a default container
-// ratio, a heading handle and a non-heading handle, and rich inline runs
-// covering every formatting flag.
+// A document that exercises every construct the serializers must preserve: all block types, nested
+// lists/checklists, all four callout styles, every code lang, a non-default and a default container
+// ratio, a heading handle and a non-heading handle, and rich inline runs covering every formatting flag.
 //
 // Built by hand with constant ids so the fixture is deterministic. Ids never
 // appear in the serialized text (they survive only as opaque comments that the
@@ -140,8 +138,8 @@ export function buildFixtureDocument(): DocState {
          title:  'Round-Trip Fixture',
          // A mix of simple fields plus custom ones exercising label spaces and a value with a
          // colon (which forces YAML value-quoting in Mintdown), so the round-trip covers quoting.
-         // `Module` is an above-title, accent-colored field (the old fixed-layout look) so the
-         // round-trip also exercises the position + color inline-mapping encoding.
+         // `Module` is an above-title, accent-colored field, so the round-trip also exercises the
+         // position + color inline-mapping encoding.
          fields: [
             { id: 'field-module',      label: 'Module',      value: 'Testing',    position: 'above', color: 'accent' },
             { id: 'field-environment', label: 'Environment', value: 'Production', position: 'below' },
@@ -160,8 +158,8 @@ export function buildFixtureDocument(): DocState {
 }
 
 /**
- * The same fixture minus container blocks, used by the Markdown round-trip,
- * since Markdown flattens containers by design (TESTING_STUDY §2.4/§2.5).
+ * The same fixture minus container blocks, used by the Markdown round-trip, since Markdown flattens
+ * containers by design.
  */
 export function buildFixtureWithoutContainers(): DocState {
    const document = buildFixtureDocument()

@@ -25,9 +25,9 @@ export function useSectionMutations(
       setSections(sections => [...sections, mkSection(t.defaultSectionTitle)])
    }, [setSections, t])
 
-   /** Insert an already-built section at a specific index (the section-menu "insert above/below"
-    *  actions). Mirrors useBlockMutations' insertBlockAfter,the caller supplies the full
-    *  section (mkSection default), no implicit factory call here. */
+   /** Inserts an already-built section at a given index (the section-menu insert-above/insert-below
+    *  actions). Mirrors insertBlockAfter's contract: the caller supplies the full section, this
+    *  never calls mkSection itself. */
    const insertSectionAt = useCallback((index: number, section: Section) => {
       setSections(sections => {
          const next = [...sections]

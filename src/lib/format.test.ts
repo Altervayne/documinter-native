@@ -61,9 +61,9 @@ describe('normalizeFormat', () => {
          kind: 'a4-portrait',
          pages: [
             { id: 'p1', before: { sectionId: 's1', blockId: 'b1' } },
-            { id: '', before: { sectionId: 's1', blockId: 'b1' } },   // missing id → dropped
-            { before: { sectionId: 's1', blockId: 'b1' } },           // missing id → dropped
-            { id: 'p2', before: { sectionId: 's2' } },                // missing blockId → dropped
+            { id: '', before: { sectionId: 's1', blockId: 'b1' } },   // missing id -> dropped
+            { before: { sectionId: 's1', blockId: 'b1' } },           // missing id -> dropped
+            { id: 'p2', before: { sectionId: 's2' } },                // missing blockId -> dropped
             'nonsense',
          ],
       })

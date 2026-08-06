@@ -159,7 +159,7 @@ export const translations = {
       blockMathPlaceholder: 'Write a LaTeX formula, e.g. e^{i\\pi} + 1 = 0',
       blockMathEmpty:       'Your equation will preview here.',
       blockMathLoading:     'Rendering…',
-      // Graph block editor (stage 3)
+      // Graph block editor
       graphChartType:       'Chart type',
       graphTypeBar:         'Bar',
       graphTypeBarGrouped:  'Grouped bar',
@@ -231,11 +231,11 @@ export const translations = {
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Add overlay',
       graphRemoveOverlay:   'Remove overlay',
-      // Graph <-> table one-shot extract (stage 1 of graph/table linking)
+      // Graph <-> table one-shot extract (graph/table linking)
       graphExtractTable:    'Extract data to a table',
-      // Graph <-> table live link (stage 2), dangling-source notice (falls back to last data)
+      // Graph <-> table live link, dangling-source notice (falls back to last data)
       graphSourceMissing:   'Linked table not found, showing last saved data',
-      // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
+      // Graph <-> table live link editor: link picker, linked-state panel, mapping, unlink
       graphLinkSection:       'Table link',
       graphLinkPickTable:     'Link to a table…',
       graphLinkChangeTable:   'Change source table…',
@@ -375,7 +375,7 @@ export const translations = {
       diagramEdgeLineDashed:       'Dashed',
       diagramEdgeColor:            'Line color',
       diagramDeleteEdge:           'Delete link',
-      // Presentation window (watermark now; header/nav later)
+      // Presentation window (background watermark, header logo, sidebar navigation)
       presentationMenu:            'Presentation…',
       presentationOpen:            'Presentation…',
       presentationWindowTitle:     'Presentation',
@@ -441,7 +441,7 @@ export const translations = {
       presentationNavTargetUrl:       'External URL',
       presentationNavUntitledSection: 'Untitled section',
       presentationNavRemove:          'Remove entry',
-      // Page setup window (Phase 1: infinite-canvas width only; kind/margins arrive with paged A4)
+      // Page setup window (document width, page kind, and margins)
       formatMenuPageSetup:  'Page setup…',
       formatWindowTitle:    'Page setup',
       formatWidthLabel:     'Document width',
@@ -451,7 +451,7 @@ export const translations = {
       formatWidthWide:      'Wide',
       formatWidthCustom:    'Custom',
       formatWidthCustomValue: 'Width',
-      // Page format kind (Phase 2: paged A4)
+      // Page format kind (paged A4)
       formatKindLabel:       'Page format',
       formatKindHint:        'Infinite is a single continuous sheet; A4 renders discrete printable pages.',
       formatKindInfinite:    'Infinite',
@@ -537,7 +537,7 @@ export const translations = {
       addRow:            '+ Row',
       addCol:            '+ Col',
       removeRow:         '− Row',
-      // Table -> graph one-shot extract (stage 1 of graph/table linking)
+      // Table -> graph one-shot extract (graph/table linking)
       tableCreateChart:  'Create chart from this table',
       // Export modal
       exportOptions: 'Export options',
@@ -640,7 +640,7 @@ export const translations = {
       importMintdown:      'Import Mintdown',
       exportMintdown:      'Export Mintdown',
       exportHtml:          'Export HTML',
-      // File submenu (reworked), "Documint" is the user-facing name for the .json format
+      // File submenu; "Documint" is the user-facing name for the .json format
       fileNewDocument:     'New document...',
       menuOpen:            'Open...',
       fileSave:            'Save',
@@ -945,7 +945,7 @@ export const translations = {
       blockMathPlaceholder: 'Saisir une formule LaTeX, ex. e^{i\\pi} + 1 = 0',
       blockMathEmpty:       'Votre équation s\'affichera ici.',
       blockMathLoading:     'Rendu…',
-      // Graph block editor (stage 3)
+      // Graph block editor
       graphChartType:       'Type de graphique',
       graphTypeBar:         'Barres',
       graphTypeBarGrouped:  'Barres groupées',
@@ -1017,11 +1017,11 @@ export const translations = {
       graphOverlayEquationPlaceholder: 'sin(x)',
       graphAddOverlay:      'Ajouter une superposition',
       graphRemoveOverlay:   'Supprimer la superposition',
-      // Graph <-> table one-shot extract (stage 1 of graph/table linking)
+      // Graph <-> table one-shot extract (graph/table linking)
       graphExtractTable:    'Extraire les données vers un tableau',
-      // Graph <-> table live link (stage 2), dangling-source notice (falls back to last data)
+      // Graph <-> table live link, dangling-source notice (falls back to last data)
       graphSourceMissing:   'Tableau lié introuvable, affichage des dernières données',
-      // Graph <-> table live link editor (stage 2b): link picker, linked-state panel, mapping, unlink
+      // Graph <-> table live link editor: link picker, linked-state panel, mapping, unlink
       graphLinkSection:       'Liaison au tableau',
       graphLinkPickTable:     'Lier à un tableau…',
       graphLinkChangeTable:   'Changer de tableau source…',
@@ -1161,7 +1161,7 @@ export const translations = {
       diagramEdgeLineDashed:       'Tirets',
       diagramEdgeColor:            'Couleur de ligne',
       diagramDeleteEdge:           'Supprimer le lien',
-      // Fenêtre de présentation (filigrane maintenant ; en-tête/nav plus tard)
+      // Fenêtre de présentation (filigrane d'arrière-plan, logo d'en-tête, navigation latérale)
       presentationMenu:            'Présentation…',
       presentationOpen:            'Présentation…',
       presentationWindowTitle:     'Présentation',
@@ -1227,7 +1227,7 @@ export const translations = {
       presentationNavTargetUrl:       'URL externe',
       presentationNavUntitledSection: 'Section sans titre',
       presentationNavRemove:          'Supprimer l\'entrée',
-      // Page setup window (Phase 1 : largeur du canevas infini seulement)
+      // Page setup window (largeur du document, format de page, marges)
       formatMenuPageSetup:  'Mise en page…',
       formatWindowTitle:    'Mise en page',
       formatWidthLabel:     'Largeur du document',
@@ -1237,7 +1237,7 @@ export const translations = {
       formatWidthWide:      'Large',
       formatWidthCustom:    'Personnalisée',
       formatWidthCustomValue: 'Largeur',
-      // Format de page (Phase 2 : A4 paginé)
+      // Format de page (A4 paginé)
       formatKindLabel:       'Format de page',
       formatKindHint:        'Infini : une feuille continue unique ; A4 : des pages imprimables distinctes.',
       formatKindInfinite:    'Infini',
@@ -1323,7 +1323,7 @@ export const translations = {
       addRow:            '+ Ligne',
       addCol:            '+ Col.',
       removeRow:         '− Ligne',
-      // Table -> graph one-shot extract (stage 1 of graph/table linking)
+      // Table -> graph one-shot extract (graph/table linking)
       tableCreateChart:  'Créer un graphique à partir de ce tableau',
       // Export modal
       exportOptions: 'Options d\'export',
@@ -1426,7 +1426,7 @@ export const translations = {
       importMintdown:      'Importer Mintdown',
       exportMintdown:      'Exporter Mintdown',
       exportHtml:          'Exporter HTML',
-      // Sous-menu Fichier (refait), « Documint » est le nom visible du format .json
+      // Sous-menu Fichier ; "Documint" est le nom visible du format .json
       fileNewDocument:     'Nouveau document...',
       menuOpen:            'Ouvrir...',
       fileSave:            'Enregistrer',

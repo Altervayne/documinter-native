@@ -58,7 +58,6 @@ export function BlockItem({ block, secId }: BlockItemProps) {
             onClick={handleClick}
             onContextMenu={handleContextMenu}
          >
-            {/* Drag handle */}
             <span
                {...listeners}
                className="text-muted/50 group-hover:text-muted/90 cursor-grab shrink-0 transition-colors"
@@ -68,12 +67,10 @@ export function BlockItem({ block, secId }: BlockItemProps) {
                <GripVertical size={16} />
             </span>
 
-            {/* Type icon */}
             <span className="text-muted/40 group-hover:text-muted/70 shrink-0 transition-colors">
                {TypeIcon && <TypeIcon size={12} />}
             </span>
 
-            {/* Preview text */}
             <span className="flex-1 min-w-0 truncate text-xs leading-none">
                {blkPreview(block)}
             </span>

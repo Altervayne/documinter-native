@@ -9,9 +9,9 @@
  * the editor component (`blocks/DiagramBlock.tsx` + the `molecules/Diagram*` panels) is thin glue
  * over these helpers, so the interaction math is all unit-tested here rather than in the UI.
  *
- * NODE PASS (phase 2): this module covers NODES only. Edges are preserved untouched by every
- * transform (a `removeNode` additionally drops the edges incident to the deleted node, so the model
- * never keeps a dangling reference), but drawing / editing edges is the NEXT pass.
+ * Covers both nodes and edges. Every node transform leaves edges untouched except `removeNode`,
+ * which also drops every edge incident to the deleted node, so the model never keeps a dangling
+ * reference.
  *
  * Coordinate convention (see types.ts): every geometric field is in ABSTRACT DIAGRAM UNITS, not
  * screen pixels. Pointer coordinates are mapped into this space via {@link pointerToDiagramPoint}
@@ -326,7 +326,7 @@ export function viewportViewBox(frame: { width: number; height: number }, view: 
    }
 }
 
-/** Clamp a requested editor-canvas height (screen px) into the allowed range (non-finite → default). */
+/** Clamp a requested editor-canvas height (screen px) into the allowed range (non-finite falls back to default). */
 export function clampCanvasHeight(height: number): number {
    if (!Number.isFinite(height)) return CANVAS_DEFAULT_HEIGHT
    return Math.min(CANVAS_MAX_HEIGHT, Math.max(CANVAS_MIN_HEIGHT, height))
@@ -337,11 +337,11 @@ export function clampCanvasHeight(height: number): number {
  * measured on-screen container size (screen px), so the frame's aspect ratio EXACTLY matches the
  * container's. This is the correctness keystone for a user-resizable-height canvas: the container is
  * no longer aspect-locked to a fixed frame, so instead the frame FOLLOWS the container aspect. That
- * keeps the per-axis screen→diagram map ({@link screenToFramePoint} / {@link pointerToDiagramPoint})
+ * keeps the per-axis screen-to-diagram map ({@link screenToFramePoint} / {@link pointerToDiagramPoint})
  * and the meet/none SVG viewBox mutually consistent + undistorted at any height, the pointer mapping
  * stays pixel-accurate, and (since {@link viewportViewBox} preserves the frame aspect) so does the
- * unbounded-canvas viewport clip. A taller container ⇒ a taller frame ⇒ a taller viewport ⇒ more
- * vertical diagram visible at the same zoom. Height = referenceWidth ÷ (containerWidth ÷ containerHeight);
+ * unbounded-canvas viewport clip. A taller container makes a taller frame, which makes a taller
+ * viewport, so more vertical diagram is visible at the same zoom. Height = referenceWidth / (containerWidth / containerHeight);
  * a degenerate container (unmeasured / zero) falls back to a square-ish frame. Origin is (0, 0).
  */
 export function frameFromContainer(
@@ -372,10 +372,10 @@ export function screenToFramePoint(clientX: number, clientY: number, rect: Canva
 
 /**
  * Map a pointer's viewport coordinates to a point in DIAGRAM units, composing the editor `view`
- * transform (zoom/pan) on top of the fixed `frame`: screen → view space (via {@link screenToFramePoint})
- * → diagram units (via {@link invertViewTransform}). With the identity transform (the default) this is
+ * transform (zoom/pan) on top of the fixed `frame`: screen -> view space (via {@link screenToFramePoint})
+ * -> diagram units (via {@link invertViewTransform}). With the identity transform (the default) this is
  * the plain proportional frame map, so callers that pass no `view` are unaffected. The editor canvas
- * fills a container whose aspect ratio equals the frame's, so the screen→view map is a straight scale
+ * fills a container whose aspect ratio equals the frame's, so the screen-to-view map is a straight scale
  * on each axis (no letterbox math). The result is NOT rounded, model writes round at mutation time.
  */
 export function pointerToDiagramPoint(
@@ -454,7 +454,7 @@ export function addNode(spec: DiagramSpec, node: DiagramNode): DiagramSpec {
  * diagram units on BOTH axes, so the copy sits visibly clear of the original rather than exactly on
  * top. Every other field, shape, label, size, and the optional fill/stroke/textColor overrides, is
  * carried through unchanged by the spread. Position is rounded to whole units like every model write.
- * PURE: the caller inserts the result with {@link addNode}. Backs both the Ctrl+C→Ctrl+V paste and the
+ * PURE: the caller inserts the result with {@link addNode}. Backs both the Ctrl+C -> Ctrl+V paste and the
  * right-click "Duplicate node" action.
  */
 export function duplicateNode(node: DiagramNode, idFactory: () => string, offset: number): DiagramNode {
@@ -594,9 +594,8 @@ function applyOverride(node: DiagramNode, key: 'fill' | 'stroke' | 'textColor', 
 
 /**
  * Return the TOPMOST node under `point` (last in the array = drawn on top = hit first), or null. Every
- * shape hit-tests against its bounding box grown by `tolerance` (a diamond/ellipse click in the box's
- * corner still selects it, deliberately forgiving, matching the study's "hit-test node" scope). No
- * shape-exact hit this pass.
+ * shape hit-tests against its bounding box grown by `tolerance`, so a diamond/ellipse click near the
+ * box's corner still selects it (deliberately forgiving). No shape-exact hit-testing.
  */
 export function hitTestNode(spec: DiagramSpec, point: Point, tolerance = 0): DiagramNode | null {
    for (let index = spec.nodes.length - 1; index >= 0; index -= 1) {
@@ -780,8 +779,8 @@ export interface MovingEdges {
 }
 
 /**
- * The box edges a resize `handle` drags. A side handle moves one edge (e → right, w → left, n → top,
- * s → bottom); a corner moves the two edges meeting at it (se → right + bottom, nw → left + top, …).
+ * The box edges a resize `handle` drags. A side handle moves one edge (e -> right, w -> left, n -> top,
+ * s -> bottom); a corner moves the two edges meeting at it (se -> right + bottom, nw -> left + top, and so on).
  * The opposite edge(s) stay fixed, exactly matching {@link resizeNode}'s geometry.
  */
 export function resizeHandleEdges(handle: NodeResizeHandle): MovingEdges {
@@ -983,7 +982,7 @@ export function hitTestPort(
 // # EDGE HIT TEST  #
 // #################
 
-/** The perpendicular distance from `point` to the segment a→b (clamped to the segment's extent). */
+/** The perpendicular distance from `point` to the segment a-b (clamped to the segment's extent). */
 export function distancePointToSegment(point: Point, a: Point, b: Point): number {
    const deltaX = b.x - a.x
    const deltaY = b.y - a.y

@@ -99,7 +99,7 @@ const typeSource = TYPES.map(escRe).join('|')
 export const windev: Language = {
    name: 'windev',
    rules: [
-      // Line comments  ( // … )
+      // Line comments, // through end of line
       { type: 'cmt',  pattern: /\/\/[^\n]*/  },
 
       // Strings, double-quoted (primary) and single-quoted

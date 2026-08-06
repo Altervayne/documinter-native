@@ -1,5 +1,5 @@
 /**
- * imageDownscale.ts, Shared image import → downscaled base64 utility.
+ * imageDownscale.ts, Shared image import -> downscaled base64 utility.
  *
  * A reusable pick-to-base64 helper for the presentation features (watermark now; header/logo next)
  * and, eventually, the image block. Unlike compressImage (image.ts), which is tuned for inline

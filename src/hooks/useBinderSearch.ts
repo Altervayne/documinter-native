@@ -21,7 +21,7 @@ interface UseBinderSearchResult {
    setScope:          Dispatch<SetStateAction<SearchScope>>
    /** The assembled multi-criteria query (debounced text + fields, date constraints, never-opened). */
    criteria:          SearchCriteria
-   /** True when any criterion is active,drives global-scope listing and the empty-state copy. */
+   /** True when any criterion is active, drives global-scope listing and the empty-state copy. */
    hasActiveCriteria: boolean
    /** Reset the advanced filters (fields, dates, never-opened, scope), NOT the search text. */
    clearFilters:      () => void
@@ -82,7 +82,7 @@ export function useBinderSearch(): UseBinderSearchResult {
    const resetSearch = useCallback(() => {
       setSearchInput('')          // navigating exits a global search
       setDebouncedSearch('')
-      clearFilters()              // …and clears any advanced filters
+      clearFilters()              // ...and clears any advanced filters
    }, [clearFilters])
 
    return {

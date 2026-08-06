@@ -42,7 +42,7 @@ describe('intersectNodeBoundary', () => {
 
    it('clips an ellipse along a 45° ray to the circle radius', () => {
       const point = intersectNodeBoundary(node({ x: 0, y: 0, width: 100, height: 100, shape: 'ellipse' }), { x: 100, y: 100 })
-      // 45° on a radius-50 circle: offset = 50/√2 ≈ 35.355 from center (50,50).
+      // 45 degrees on a radius-50 circle: offset = 50/sqrt(2), about 35.355 from center (50,50).
       expect(point.x).toBeCloseTo(50 + 50 / Math.SQRT2, 3)
       expect(point.y).toBeCloseTo(50 + 50 / Math.SQRT2, 3)
    })
@@ -66,8 +66,8 @@ describe('intersectNodeBoundary', () => {
    })
 
    it('clips a chevron (arrow heading) to its bounding rect approximation, not its point/notch', () => {
-      // The chevron's point/notch is NOT modeled for edge clipping (v1 simplification, per the study);
-      // it falls through to the same bounding-rect rule as rectangle/rounded/pill/banner.
+      // The chevron's point/notch is NOT modeled for edge clipping; it falls through to the same
+      // bounding-rect rule as rectangle/rounded/pill/banner.
       const point = intersectNodeBoundary(node({ x: 0, y: 0, width: 100, height: 60, shape: 'chevron' }), { x: 500, y: 30 })
       expect(point.x).toBeCloseTo(100)
       expect(point.y).toBeCloseTo(30)
@@ -159,7 +159,7 @@ describe('wrapLabel', () => {
    })
 
    it('word-wraps a long line to fit the width', () => {
-      // At fontSize 10, ratio 0.6 → each char ~6px. maxWidth 40 → ~6 chars per line.
+      // At fontSize 10, ratio 0.6 means each char is ~6px. maxWidth 40 gives ~6 chars per line.
       const lines = wrapLabel('aaa bbb ccc', 40, 10, 10)
       expect(lines.length).toBeGreaterThan(1)
       expect(lines.join(' ')).toBe('aaa bbb ccc')
@@ -183,7 +183,7 @@ describe('maxLabelLines', () => {
    })
 
    it('scales with the box height and line-height', () => {
-      // lineHeight = 14 * 1.25 = 17.5; height 60 → floor(60/17.5) = 3.
+      // lineHeight = 14 * 1.25 = 17.5; height 60 gives floor(60/17.5) = 3.
       expect(maxLabelLines(60, 14)).toBe(3)
    })
 })

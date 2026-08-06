@@ -58,10 +58,10 @@ function baseChoiceFor(template: DocumentTemplate | null): NewDocumentChoice {
 
 /**
  * The single "New document" entry point: pick a starting template (or Blank) on the left, then
- * speed through or tweak the accent / theme / page format on the right before creating. Replaces the
- * former split "New document" + "New from template" menu items. Document-level, so a modal (per the
- * app's design language: document dialogs are modals, per-block editing is windows). Rendered inside
- * App's LangProvider, so it can load the templates list itself via useTemplates.
+ * speed through or tweak the accent / theme / page format on the right before creating.
+ * Document-level, so it renders as a modal (document dialogs are modals; per-block editing uses
+ * windows). Rendered inside App's LangProvider, so it can load the templates list itself via
+ * useTemplates.
  */
 export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps) {
    const { t } = useLang()

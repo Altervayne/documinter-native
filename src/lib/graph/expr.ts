@@ -14,7 +14,7 @@
  * honors). Compile once with `compileExpression`, then call `evaluate` many times (once per
  * sample point) without re-parsing.
  *
- * Grammar (v1, ratified in docs/reference/graph_equation_study.md, section "Evaluator"):
+ * Grammar:
  *   - Numbers: decimal literals with an optional exponent (`1`, `2.5`, `1e-5`, `2.5E3`).
  *   - Variable: `x` only.
  *   - Constants: `pi`, `e`.
@@ -307,8 +307,8 @@ class Parser {
       if (token.kind === 'ident') {
          const name = token.name
 
-         // A function call always requires an explicit '(', "sinx" is a parse error, never an
-         // implicit "sin(x)" (per the ratified grammar's explicit exclusion).
+         // A function call always requires an explicit '(': "sinx" is a parse error, never an
+         // implicit "sin(x)".
          if (isKnownFunctionName(name)) {
             const openParen = this.peek()
             if (openParen?.kind !== 'leftParen') return null

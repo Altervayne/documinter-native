@@ -34,7 +34,7 @@ import {
 // #############
 
 // The system sans stack labels render in, so the export ships no font asset. Font names use
-// SINGLE quotes because this string sits inside a double-quoted `style="…"` attribute on the
+// SINGLE quotes because this string sits inside a double-quoted `style="..."` attribute on the
 // root <svg>; double quotes here would prematurely close the attribute.
 const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
@@ -74,7 +74,7 @@ export function renderDiagramToSvg(spec: DiagramSpec, theme: DiagramTheme): stri
       return renderEmptyState(spec, theme)
    }
 
-   // A node id → node lookup so edges resolve their endpoints (and can skip a dangling reference).
+   // A node id -> node lookup so edges resolve their endpoints (and can skip a dangling reference).
    const nodesById = new Map<string, DiagramNode>()
    for (const node of spec.nodes) nodesById.set(node.id, node)
 
@@ -113,7 +113,7 @@ function renderNode(node: DiagramNode, theme: DiagramTheme): string {
 /** Render a node's label as one or more centered <tspan> lines, wrapped/clipped to the box. */
 function renderNodeLabel(node: DiagramNode, color: string): string {
    // A chevron's point/notch eats into the box on both sides; reserve that depth on top of the usual
-   // padding so the label stays clear of the point, per the spec.
+   // padding so the label stays clear of the point.
    const horizontalInset = LABEL_PADDING + (node.shape === 'chevron' ? chevronPointDepth(node) : 0)
    const maxWidth = Math.max(0, node.width - horizontalInset * 2)
    const lines = wrapLabel(node.label, maxWidth, LABEL_FONT_SIZE, maxLabelLines(node.height, LABEL_FONT_SIZE))
@@ -235,7 +235,7 @@ function polylineMidpoint(points: Point[]): Point {
    return { x: (lower.x + upper.x) / 2, y: (lower.y + upper.y) / 2 }
 }
 
-/** A one-line tooltip for an edge: its label, else "from → to" using the node labels/ids. */
+/** A one-line tooltip for an edge: its label, else "from -> to" using the node labels/ids. */
 function edgeTooltip(edge: DiagramEdge, fromNode: DiagramNode, toNode: DiagramNode): string {
    const fromLabel = fromNode.label.trim() || fromNode.id
    const toLabel = toNode.label.trim() || toNode.id

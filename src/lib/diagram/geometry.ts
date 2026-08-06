@@ -2,8 +2,7 @@
  * geometry.ts, the DOM-free geometry helpers for the diagram renderer.
  *
  * PURE FUNCTIONS. An SVG string has no DOM, so text cannot be measured and every coordinate must
- * be computed by hand. This module holds the genuinely non-trivial home-grown pieces flagged by
- * the study (docs/reference/diagrams_study.md, Q2):
+ * be computed by hand. This module holds the non-trivial home-grown pieces:
  *   - node anchor / center geometry,
  *   - edge endpoint clipping to a shape's border (a ray-shape intersection per shape),
  *   - the DOM-free label wrap/clip estimate.
@@ -62,7 +61,7 @@ export function nodeCenter(node: DiagramNode): Point {
  * touches the shape's edge, not its center. Shape-specific:
  *   - rectangle / rounded / pill / banner / chevron: a ray-box intersection (rounded corners, the
  *     banner's accent bar, and the chevron's point/notch are all approximated as the bounding
- *     rectangle, an accepted v1 simplification, headings rarely carry edges, and the error is a
+ *     rectangle, an accepted simplification, headings rarely carry edges, and the error is a
  *     few px at most).
  *   - ellipse: the parametric ellipse intersection.
  *   - diamond: the rhombus (|dx|/rx + |dy|/ry = 1) intersection.
@@ -94,14 +93,14 @@ function boundaryScale(
    shape: NodeShape, directionX: number, directionY: number, radiusX: number, radiusY: number,
 ): number {
    if (shape === 'ellipse') {
-      // (t*dx/rx)^2 + (t*dy/ry)^2 = 1  →  t = 1 / sqrt((dx/rx)^2 + (dy/ry)^2)
+      // (t*dx/rx)^2 + (t*dy/ry)^2 = 1  ->  t = 1 / sqrt((dx/rx)^2 + (dy/ry)^2)
       const normalizedX = directionX / radiusX
       const normalizedY = directionY / radiusY
       const denominator = Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY)
       return denominator === 0 ? Infinity : 1 / denominator
    }
    if (shape === 'diamond') {
-      // |t*dx|/rx + |t*dy|/ry = 1  →  t = 1 / (|dx|/rx + |dy|/ry)
+      // |t*dx|/rx + |t*dy|/ry = 1  ->  t = 1 / (|dx|/rx + |dy|/ry)
       const denominator = Math.abs(directionX) / radiusX + Math.abs(directionY) / radiusY
       return denominator === 0 ? Infinity : 1 / denominator
    }
@@ -125,7 +124,7 @@ function boundaryScale(
  *     waypoint (the author's bends define the shape).
  *   - orthogonal, no waypoints: a perpendicular-exit single-mid elbow.
  *   - straight, no waypoints: a direct center-to-center segment clipped to both borders.
- * Never obstacle-avoiding (deferred per the study, Q4).
+ * Never obstacle-avoiding (deferred).
  */
 export function edgePolyline(edge: DiagramEdge, fromNode: DiagramNode, toNode: DiagramNode): Point[] {
    const waypoints = (edge.waypoints ?? []).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
@@ -155,7 +154,7 @@ function isValidRouting(routing: string): routing is EdgeRouting {
  * A perpendicular-exit orthogonal (elbow) path between two node borders. The dominant separation
  * axis (horizontal vs vertical, by center delta) decides which sides the edge exits/enters, so the
  * first and last segments leave each node at a right angle to its border; a single mid-line bend
- * joins them. Not obstacle-avoiding (deferred per the study, Q4) but clean and bounded.
+ * joins them. Not obstacle-avoiding (deferred) but clean and bounded.
  */
 function orthogonalElbow(fromNode: DiagramNode, toNode: DiagramNode): Point[] {
    const fromCenter = nodeCenter(fromNode)
@@ -239,7 +238,7 @@ export function nodeCornerPoints(node: DiagramNode): Point[] {
 
 /**
  * Estimate the rendered width of `text` at `fontSize`, with no DOM to measure against:
- * `characters × fontSize × AVERAGE_CHAR_WIDTH_RATIO`. Tuned to over-reserve. Empty text is zero.
+ * `characters x fontSize x AVERAGE_CHAR_WIDTH_RATIO`. Tuned to over-reserve. Empty text is zero.
  */
 export function estimateTextWidth(text: string, fontSize: number): number {
    if (text.length === 0) return 0
@@ -249,10 +248,10 @@ export function estimateTextWidth(text: string, fontSize: number): number {
 /**
  * Wrap `label` into lines that fit within `maxWidth` at `fontSize`, honoring explicit '\n' breaks
  * first, then greedily word-wrapping each authored line. If the wrapped result exceeds `maxLines`,
- * it is truncated and the last kept line is ellipsized ("…"), so a label can never overflow its
+ * it is truncated and the last kept line is ellipsized ("..."), so a label can never overflow its
  * box unboundedly, the DOM-free analog of CSS line-clamp. A single word wider than `maxWidth`
  * is kept whole on its own line (never chopped mid-word); it may visually overflow, which the
- * author fixes by widening the node (author-sized boxes are the source of truth, per the study).
+ * author fixes by widening the node (author-sized boxes are the source of truth).
  *
  * Returns [] for an empty label (the renderer then draws no <text>).
  */

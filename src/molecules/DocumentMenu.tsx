@@ -44,13 +44,13 @@ interface DocumentMenuProps {
 
 /**
  * The top-bar "Document" dropdown: the per-document customization set. It renders the SAME ordered
- * entry list as the document-background context menu, both derive from buildDocumentMenuEntries, the
- * single source of truth, so the two surfaces can never drift in label or order. The accent section
- * (a nameless swatch grid + a "Custom accent…" tile) is rendered by the shared AccentSwatchGrid
- * component; this surface only owns its own `customAccentSelected` flag, exactly like the
- * background context menu does, the Custom tile is a selectable choice, not a disclosure toggle,
- * so both surfaces reveal the same inline ColorPicker directly under the grid only while Custom is
- * the active choice.
+ * entry list as the document-background context menu; both derive from buildDocumentMenuEntries,
+ * the single source of truth, so the two surfaces can never drift in label or order. The accent
+ * section (a nameless swatch grid + a "Custom accent..." tile) is rendered by the shared
+ * AccentSwatchGrid component; this surface only owns its own `customAccentSelected` flag, exactly
+ * like the background context menu does. The Custom tile is a selectable choice, not a disclosure
+ * toggle, so both surfaces reveal the same inline ColorPicker directly under the grid only while
+ * Custom is the active choice.
  *
  * The document theme + accent edited here are PER-DOCUMENT; the app/chrome theme + language live in
  * the Preferences menu. The two are deliberately separate.
@@ -114,10 +114,10 @@ export function DocumentMenu({
    })
 
    // The accent-grid entry renders its own swatches/picker (see below) and never runs through
-   // this, every remaining item closes the dropdown on select, same as before. Custom's selected
-   // state is NOT reset here: it is a persistent choice now (see the class doc comment above), only
-   // cleared by picking a preset (onDeselectCustomAccent, wired into the accent grid) or by the
-   // dropdown's outside-click close. An unrelated item like Save or Export must leave it untouched.
+   // this; every remaining item closes the dropdown on select. Custom's selected state is not
+   // reset here: it is a persistent choice, only cleared by picking a preset
+   // (onDeselectCustomAccent, wired into the accent grid) or by the dropdown's outside-click
+   // close. An unrelated item like Save or Export must leave it untouched.
    function handleItemSelect(item: ContextMenuItem) {
       if (item.disabled) return
       item.onSelect()

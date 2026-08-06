@@ -60,7 +60,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
 
    // Temml loads as a raw asset (see lib/math.ts), so on first paint it may not be
    // ready yet. Track readiness and re-render once the one-time load completes; until
-   // then the preview/read view show a "rendering…" placeholder instead of calling
+   // then the preview/read view show a "rendering..." placeholder instead of calling
    // the (synchronous) renderer, which would otherwise report a transient load error.
    const [temmlReady, setTemmlReady] = useState(isTemmlReady())
    useEffect(() => onTemmlReady(() => setTemmlReady(true)), [])
@@ -88,14 +88,9 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    // ==========================
    //  Palette snippet insertion
    // ==========================
-   // Owns the caret contract because the textarea + `draft` live here. Reads the live selection,
-   // resolves the snippet (marker stripped; a non-empty selection wraps into the marker slot),
-   // splices it into `draft`, and schedules the caret restore. Marks `editing` so the external
-   // sync does not clobber the edit, but does NOT commit `latex`, the commit-on-blur model is
-   // preserved, an insert only mutates the live draft.
    // Core splice, shared by the palette insert (live selection) and the builder insert (a caret
    // captured at open time). Resolves the snippet against the selected text, splices it in, and
-   // schedules the caret restore. Marks `editing` but does NOT commit, commit stays on blur.
+   // schedules the caret restore. Marks `editing` but does not commit; commit stays on blur.
    function spliceInsertAt(insert: string, selectionStart: number, selectionEnd: number): void {
       const selectedText = draft.slice(selectionStart, selectionEnd)
       const { text, caretOffset } = buildSnippetInsertion(insert, selectedText)
@@ -124,7 +119,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       setPaletteOpen(false)
    }
 
-   // Builder Insert: splice the emitted LaTeX at the captured selection (no marker → plain
+   // Builder Insert: splice the emitted LaTeX at the captured selection (no marker, so a plain
    // replace-at-selection, caret after), then close the modal. The pending-caret layout effect
    // hands focus back to the textarea.
    function insertFromBuilder(latex: string): void {
@@ -137,7 +132,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    function togglePalette(): void {
       if (paletteOpen) { setPaletteOpen(false); return }
       // Anchor the window offset from the whole math block, so it sits beside the source/preview
-      // rather than crowding the tiny ƒ(x) button.
+      // rather than crowding the tiny f(x) button.
       setPaletteAnchor(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
       setPaletteOpen(true)
    }
@@ -172,7 +167,7 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const trimmed  = draft.trim()
    const rendered = trimmed === '' || !temmlReady ? null : renderLatexToMathML(trimmed, true)
 
-   // Discrete A− / A+ stepper: walk the allowed size steps, clamped, committing immediately.
+   // Discrete size stepper (A- / A+): walk the allowed size steps, clamped, committing immediately.
    const atMinScale = scale <= MATH_SCALE_STEPS[0]
    const atMaxScale = scale >= MATH_SCALE_STEPS[MATH_SCALE_STEPS.length - 1]
    function changeScale(direction: 1 | -1): void {

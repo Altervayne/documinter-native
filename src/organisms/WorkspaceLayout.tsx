@@ -307,7 +307,6 @@ export function WorkspaceLayout({
                overflow:      'hidden',
             }}
          >
-            {/* children[0] */}
             <div
                className="flex flex-col"
                style={{ flex: `0 0 ${node.ratio * 100}%`, minWidth: 0, minHeight: 0, overflow: 'hidden' }}
@@ -327,7 +326,6 @@ export function WorkspaceLayout({
                onPointerUp={handleDividerPointerUp}
             />
 
-            {/* children[1] */}
             <div
                className="flex flex-col"
                style={{ flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' }}

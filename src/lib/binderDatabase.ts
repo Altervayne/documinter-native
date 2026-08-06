@@ -1,10 +1,10 @@
 /**
  * binderDatabase.ts, IndexedDB connection singleton + schema for the binder library.
  *
- * Relocated verbatim from storage.ts. Owns the single cached connection (`databasePromise`),
- * schema creation/repair, and the request/transaction promise wrappers. The document, folder,
- * and search modules import openDatabase + the wrappers + the shared store/index constants from
- * here, so the connection is opened exactly once across the whole binder layer.
+ * Owns the single cached connection (`databasePromise`), schema creation/repair, and the
+ * request/transaction promise wrappers. The document, folder, and search modules import
+ * openDatabase + the wrappers + the shared store/index constants from here, so the connection
+ * is opened exactly once across the whole binder layer.
  *
  * Two stores keyed by the same id:
  *   documents       , lightweight BinderDocumentRecord (meta, timestamps, preview)
@@ -43,7 +43,7 @@ function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void 
    if (!database.objectStoreNames.contains(FOLDERS_STORE)) {
       database.createObjectStore(FOLDERS_STORE, { keyPath: 'id' })
    }
-   // Templates store (savable document chrome, keyed by id) — self-heals in like the others.
+   // Templates store (savable document chrome, keyed by id) - self-heals in like the others.
    if (!database.objectStoreNames.contains(TEMPLATES_STORE)) {
       database.createObjectStore(TEMPLATES_STORE, { keyPath: 'id' })
    }

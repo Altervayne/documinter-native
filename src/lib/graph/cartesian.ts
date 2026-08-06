@@ -7,9 +7,9 @@
  * the band x-axis, every mark loop, and the legend. It delegates numeric scaling to scale.ts
  * and all margin/text math to layout.ts, and never measures the DOM.
  *
- * Mark specs follow the dataviz skill: bars capped at 24px with a 2px surface gap between
- * neighbours, 2px round-capped lines, >=8px markers with a 2px surface ring, area fills at
- * ~10% opacity, recessive hairline gridlines, and a legend whenever there is >1 series.
+ * Mark specs: bars capped at 24px with a 2px surface gap between neighbours, 2px round-capped
+ * lines, >=8px markers with a 2px surface ring, area fills at ~10% opacity, recessive hairline
+ * gridlines, and a legend whenever there is >1 series.
  */
 
 import type { GraphSpec, GraphTheme, GraphSeries, Overlay, FunctionDomain, ScatterSeries, EquationSeries } from './types'
@@ -99,7 +99,7 @@ const TEXTBOOK_TICK_LABEL_GAP = 4
 // plot edge), no tick lands this close, so nothing is dropped, exactly the graceful behavior wanted.
 const AXIS_CROSSING_LABEL_SKIP_PX = 1
 
-// ====== value (y) axis mode, linear vs. log (2026-08-02) ======
+// ====== value (y) axis mode, linear vs. log ======
 // One shared type alias for the value axis's resolved mode, threaded through every drawing helper
 // below that needs to know "is a value <= 0 actually plottable here" (log is undefined at <= 0).
 // See the VALUE DOMAIN section further down for the full per-type eligibility policy.
@@ -113,7 +113,7 @@ const MINOR_GRIDLINE_OPACITY = 0.5
 // Two adjacent finite samples with OPPOSITE sign, where at least one's magnitude is this many
 // times the resolved y-domain's half-range, are treated as straddling an asymptote (tan(x), 1/x)
 // rather than a genuine crossing, a pragmatic sign-change + magnitude heuristic (not symbolic
-// limit analysis), per docs/reference/graph_equation_study.md Q4.
+// limit analysis).
 const ASYMPTOTE_MAGNITUDE_MULTIPLIER = 4
 
 // ====== equation overlay (f(x) drawn over an existing cartesian chart) ======
@@ -138,7 +138,7 @@ const EQUATION_OVERLAY_PALETTE_SLOT = 6
 export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    const { type, data, options } = spec
    const labels = data.labels
-   // v1 caps the number of drawn series at the palette size.
+   // Drawn series are capped at the palette size.
    const cappedSeries = data.series.slice(0, MAX_SERIES)
 
    // A plain `bar` renders the first series only; grouped/stacked read every capped series.
@@ -149,15 +149,14 @@ export function renderCartesian(spec: GraphSpec, theme: GraphTheme): string {
    // range is always visible, the data rescales to fit it. Mean/trend are data-derived (already
    // inside the domain), so they need no extension.
    //
-   // LOG SCALE POLICY (see docs/reports/2026-08-02-graph-log-scale.md): `bar-stacked` never gets a
-   // log axis (zero-baseline stacking has no analog where zero doesn't exist), the UNFOLDED domain
-   // probe below is skipped entirely for it, so it takes the exact ORIGINAL single-call path,
-   // byte-identical to before this feature. Every other type here is log-ELIGIBLE, but only when the
+   // LOG SCALE POLICY: `bar-stacked` never gets a log axis (zero-baseline stacking has no analog
+   // where zero doesn't exist), so the UNFOLDED domain probe below is skipped entirely for it and it
+   // takes the plain single-call path. Every other type here is log-ELIGIBLE, but only when the
    // data's own raw domain (BEFORE the usual zero-baseline fold, BEFORE yMin/yMax overrides) is
    // strictly positive; log is undefined at <= 0, so a domain that touches zero or goes negative
-   // silently, safely falls back to the ordinary zero-folded linear domain, never a clamp-to-floor,
-   // never NaN geometry. When `options.yScale` is absent or `'linear'`, this resolves to the exact
-   // same single `computeValueDomain(…, true)` call this renderer has always made.
+   // falls back to the ordinary zero-folded linear domain, never a clamp-to-floor, never NaN
+   // geometry. When `options.yScale` is absent or `'linear'`, this resolves to a single
+   // `computeValueDomain(..., true)` call.
    let axisMode: AxisMode = 'linear'
    let domainMin: number
    let domainMax: number
@@ -291,7 +290,7 @@ export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== y-domain: autoscale to the finite sampled range, NO forced zero baseline ======
    // (an arbitrary f(x), e.g. "100 + 0.001*x", should not be crushed against a forced-zero domain
-   // the way bar/line-over-real-data charts are, see docs/reference/graph_equation_study.md Q4/6).
+   // the way bar/line-over-real-data charts are).
    const [domainMin, domainMax] = computeFunctionValueDomain(rawValueLists, options)
 
    // ====== axis mode (linear vs. log) ======
@@ -355,9 +354,9 @@ export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
    const { plot } = layout
 
    // ====== scales ======
-   // linearScale is the SAME generic affine map the y-axis already uses; reused as-is for x, per
-   // the study's Q2 finding (no new scale primitive needed for a continuous x-axis). The x-axis
-   // ALWAYS stays linear here, only the value (y) axis switches to log, per the feature's scope.
+   // linearScale is the SAME generic affine map the y-axis already uses, reused as-is for x (no new
+   // scale primitive needed for a continuous x-axis). The x-axis ALWAYS stays linear here; only the
+   // value (y) axis switches to log.
    const yScale = axisMode === 'log'
       ? logScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
       : linearScale([niceMin, niceMax], [plot.y + plot.height, plot.y])
@@ -380,7 +379,7 @@ export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
 
    // ====== assemble ======
    // A custom {@link GraphOptions.axisOrigin} draws crossing "textbook" axes instead of edge axes,
-   // but only on a LINEAR value axis (ignored under a log scale, see the feature's log policy).
+   // but only on a LINEAR value axis (ignored under a log scale; see the log-scale policy above).
    const axisOrigin = options.axisOrigin
    const pieces: string[] = []
    if (axisOrigin !== undefined && axisMode !== 'log') {
@@ -393,7 +392,7 @@ export function renderFunctionPlot(spec: GraphSpec, theme: GraphTheme): string {
    pieces.push(renderLineSeries(sampleLabels, drawnSeries, xAdapter, yScale, theme, lineStrokeWidth, showPoints, axisMode))
    // Reference overlays (both orientations) draw over the curve. Other overlay kinds do not apply to
    // a function chart (no discrete series to average/fit; an f(x) overlay would duplicate the plot),
-   // so renderFunctionReferenceOverlays skips them. Absent/empty ⇒ nothing drawn, byte-identical.
+   // so renderFunctionReferenceOverlays skips them. Absent/empty -> nothing drawn, byte-identical.
    if (options.overlays && options.overlays.length > 0) {
       pieces.push(renderFunctionReferenceOverlays(
          options.overlays, plot, xScale, yScale, axisXMin, axisXMax, niceMin, niceMax, theme))
@@ -456,8 +455,8 @@ function sampleFunctionEquations(spec: GraphSpec): {
    sampleXPositions: number[]
    rawValueLists: (number | null)[][]
 } {
-   // v1 caps the number of drawn equations at the palette size, same cap every other series-based
-   // chart type already uses.
+   // Drawn equations are capped at the palette size, same cap every other series-based chart type
+   // already uses.
    const equations = (spec.functionPlot?.equations ?? []).slice(0, MAX_SERIES)
    const { xMin, xMax, samples } = resolveFunctionDomain(spec.functionPlot?.domain)
    const sampleXPositions = sampleXValuesAcrossDomain(xMin, xMax, samples)
@@ -484,8 +483,8 @@ export function computeFunctionYDomain(spec: GraphSpec): [number, number] {
 
 /**
  * The raw (pre-nice-tick) y-domain for a function chart: the min/max across every FINITE sampled
- * value of every equation, with NO folded-in zero baseline (decision 6, bars/lines-over-real-data
- * fold in zero via {@link computeValueDomain}; an arbitrary f(x) should not be). Falls back to
+ * value of every equation, with NO folded-in zero baseline (bars/lines-over-real-data fold in
+ * zero via {@link computeValueDomain}; an arbitrary f(x) should not be). Falls back to
  * [0, 1] when nothing finite was sampled (every equation invalid/empty). `yMin`/`yMax` overrides
  * still win, identical to every other cartesian type.
  */
@@ -521,9 +520,8 @@ function computeFunctionValueDomain(
  * opposite sign AND at least one magnitude >= {@link ASYMPTOTE_MAGNITUDE_MULTIPLIER} x the
  * resolved y-domain's half-range, by nulling the second of the pair. This is deliberately a
  * pragmatic threshold, not an exact discontinuity detector (a pathological function could still
- * fool it), see docs/reference/graph_equation_study.md Q4 for the documented rationale. A `null`
- * sample from a true domain error (sqrt(-1), 1/0, ...) already breaks the run via the existing
- * {@link buildPointRuns} gap logic and needs no help from this function.
+ * fool it). A `null` sample from a true domain error (sqrt(-1), 1/0, ...) already breaks the run
+ * via the existing {@link buildPointRuns} gap logic and needs no help from this function.
  */
 function applyAsymptoteGaps(
    values: (number | null)[],
@@ -560,15 +558,15 @@ function applyAsymptoteGaps(
  * at the extreme edges of the data some visual breathing room instead of drawing flush against the
  * plot boundary. Points are drawn directly at `xScale(point.x)`/`yScale(point.y)`, no
  * `buildPointRuns`/`{center(index)}` adapter needed, since scatter points have no shared sample/
- * category index to align across series (v1 is points-only; a per-series trendline is a deferred
+ * category index to align across series (points-only; a per-series trendline is a deferred
  * fast-follow). Never throws on bad/empty input, an empty series list, a series with no points,
  * or non-finite point coordinates all degrade to a graceful chart with nothing drawn for the
  * affected point(s), never an exception.
  */
 export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
    const options = spec.options ?? {}
-   // v1 caps the number of drawn series at the palette size, same cap every other series-based
-   // chart type already uses.
+   // Drawn series are capped at the palette size, same cap every other series-based chart type
+   // already uses.
    const series = (spec.scatterPlot?.series ?? []).slice(0, MAX_SERIES)
 
    // ====== domain: autoscale x AND y across every finite point, no forced zero baseline ======
@@ -638,9 +636,9 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
    const { plot } = layout
 
    // ====== scales ======
-   // linearScale/niceTicks are the SAME generic primitives the y-axis already uses; reused as-is
-   // for x, per the study's Q2 finding (no new scale primitive needed for a continuous x-axis). The
-   // x-axis is NEVER log here, only the value (y) axis switches, per the feature's scope.
+   // linearScale/niceTicks are the SAME generic primitives the y-axis already uses, reused as-is
+   // for x (no new scale primitive needed for a continuous x-axis). The x-axis is NEVER log here;
+   // only the value (y) axis switches.
    const yScale = axisMode === 'log'
       ? logScale([yNiceMin, yNiceMax], [plot.y + plot.height, plot.y])
       : linearScale([yNiceMin, yNiceMax], [plot.y + plot.height, plot.y])
@@ -651,7 +649,7 @@ export function renderScatterPlot(spec: GraphSpec, theme: GraphTheme): string {
    // ====== assemble ======
    // A custom {@link GraphOptions.axisOrigin} draws crossing "textbook" axes instead of the edge
    // axes, but only on a LINEAR value axis (a custom origin is a linear concept; under a log scale
-   // it is ignored and the standard log axis is drawn, per the feature's log policy).
+   // it is ignored and the standard log axis is drawn instead).
    const axisOrigin = options.axisOrigin
    const pieces: string[] = []
    if (axisOrigin !== undefined && axisMode !== 'log') {
@@ -761,7 +759,7 @@ function renderScatterPoints(
  * `niceMin`/`niceMax`, none of which differ for scatter). `series: 'all'` fans out to one mark per
  * drawn series; an index not among the drawn series is skipped. `equation` is chart-level but tied
  * to the categorical index axis scatter doesn't have, so it draws nothing here (a natural
- * fast-follow, not built in v1, see docs). Never throws, a series with too few points for a
+ * fast-follow, not currently implemented). Never throws, a series with too few points for a
  * requested statistic simply draws nothing.
  */
 function renderScatterOverlays(
@@ -782,7 +780,7 @@ function renderScatterOverlays(
    for (const overlay of overlays) {
       if (overlay.kind === 'reference') {
          // Continuous-x scatter supports BOTH a horizontal (y = value) and a vertical (x = value)
-         // reference; the oriented dispatcher picks the right one (default/absent ⇒ horizontal).
+         // reference; the oriented dispatcher picks the right one (default/absent -> horizontal).
          parts.push(renderReferenceOverlayOriented(
             overlay, plot, xScale, yScale, xNiceMin, xNiceMax, yNiceMin, yNiceMax, theme))
          continue
@@ -1035,7 +1033,7 @@ function renderHistogramBars(
       const rectY = Math.min(baselineY, valueY)
       const rectHeight = Math.abs(valueY - baselineY)
       const rectWidth = Math.max(0, rightX - leftX)
-      const tooltip = `${formatNumber(edges[binIndex])}–${formatNumber(edges[binIndex + 1])}: ${formatNumber(count)}`
+      const tooltip = `${formatNumber(edges[binIndex])}-${formatNumber(edges[binIndex + 1])}: ${formatNumber(count)}`
       parts.push(element('rect', {
          x: leftX,
          y: rectY,
@@ -1639,7 +1637,7 @@ function computeValueDomain(
 
    // An unfolded pass that found no finite value at all (should not normally happen, a chart with
    // truly nothing to plot never reaches this renderer, see index.ts's hasRenderableData) still needs
-   // a finite fallback rather than leaving ±Infinity to leak into the overlay-fold/override math below.
+   // a finite fallback rather than leaving +/-Infinity to leak into the overlay-fold/override math below.
    if (!Number.isFinite(dataMin) || !Number.isFinite(dataMax)) {
       dataMin = 0
       dataMax = 0
@@ -1720,8 +1718,8 @@ function foldReferenceOverlaysIntoDomain(
 
 /**
  * Horizontal hairline gridlines at each nice tick, with the tick value labelled at the left, plus
- * optional unlabeled MINOR gridlines (log scale's intra-decade 2x/5x ticks, empty for a linear
- * axis, so this is a no-op loop and the output stays byte-identical to before this parameter existed).
+ * optional unlabeled MINOR gridlines (log scale's intra-decade 2x/5x ticks; empty on a linear
+ * axis, so the loop below draws nothing extra there).
  */
 function renderGridlines(
    ticks: number[],
@@ -1956,8 +1954,8 @@ function barRect(
 /**
  * Single-series bars: one rect per category, capped at 24px and centered in its band.
  *
- * Coloring is UNIFORM by default (every bar wears the one series' resolved base color, so a plain
- * simple-bar chart is byte-identical to before per-bar color existed). A per-category override in
+ * Coloring is UNIFORM by default (every bar wears the one series' resolved base color). A
+ * per-category override in
  * `categoryColors[categoryIndex]` recolors just that one bar, the same `categoryColors` array the
  * radial families use for per-slice color, here defaulting to the uniform base instead of a palette
  * slot per index.
@@ -1975,9 +1973,9 @@ function renderSingleBars(
    axisMode: AxisMode = 'linear',
 ): string {
    const baseColor = resolveSeriesColor(0, series.color, theme)
-   // The band-capped base thickness is what the bar draws at full width today; the fraction then
-   // scales it down (at 1, the default, the bar is unchanged), so the control always has an effect
-   // even for wide bands where the 24px cap already governs.
+   // The band-capped base thickness is the bar's full-width value; the fraction then scales it
+   // down (at 1, the default, the bar is unchanged), so the control always has an effect even for
+   // wide bands where the 24px cap already governs.
    const cappedBase = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
    const barWidth = cappedBase * barWidthFraction
    const parts: string[] = []
@@ -2013,8 +2011,8 @@ function renderGroupedBars(
 ): string {
    const seriesCount = series.length
    const subStep = xBand.bandwidth / seriesCount
-   // Base sub-bar thickness (full sub-slot minus the 2px surface gap, capped) is today's width; the
-   // fraction scales it down (at 1, the default, it is unchanged), floored at 1px so it stays drawn.
+   // Base sub-bar thickness (full sub-slot minus the 2px surface gap, capped) is the sub-bar's own
+   // width; the fraction scales it down (at 1, the default, it is unchanged), floored at 1px so it stays drawn.
    const cappedBase = Math.min(subStep - SURFACE_GAP, MAX_BAR_THICKNESS)
    const barWidth = Math.max(1, cappedBase * barWidthFraction)
    const parts: string[] = []
@@ -2048,7 +2046,7 @@ function renderStackedBars(
    theme: GraphTheme,
    barWidthFraction: number,
 ): string {
-   // Band-capped base thickness (today's width) scaled by the fraction (unchanged at 1, the default).
+   // Band-capped base thickness scaled by the fraction (unchanged at 1, the default).
    const cappedBase = Math.min(xBand.bandwidth, MAX_BAR_THICKNESS)
    const barWidth = cappedBase * barWidthFraction
    const parts: string[] = []

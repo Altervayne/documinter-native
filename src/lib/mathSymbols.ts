@@ -11,8 +11,8 @@
  * model or serialization change: inserting a snippet only edits the LaTeX source text,
  * exactly as if the user had typed it. The ```math fence is untouched.
  *
- * Every display `latex` in this catalog has been render-verified against Temml
- * (renderToString with throwOnError), see docs/reports/2026-07-31-math-palette-catalog-expansion.md.
+ * Every display `latex` in this catalog renders cleanly through Temml's `renderToString`
+ * with `throwOnError` set, so a button never shows broken markup.
  */
 
 // #############

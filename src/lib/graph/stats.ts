@@ -36,7 +36,8 @@ export function mean(values: readonly (number | null)[]): number | null {
 /**
  * The median of the finite values (a sorted copy; the two middle values are averaged for an even
  * count). Skips null / undefined / non-finite cells. Returns null when no finite value survives.
- * Reserved for a fast-follow overlay kind, computed and tested now so the render path is ready.
+ * TODO: not yet exposed as an overlay kind in the editor; the render and serialization paths
+ * already handle it.
  */
 export function median(values: readonly (number | null)[]): number | null {
    const finite: number[] = []
@@ -77,8 +78,8 @@ export interface Point {
  * Ordinary-least-squares fit of a value series on its CATEGORY INDEX: each finite cell at position
  * `index` contributes the point `(index, value)`, and a null / non-finite cell contributes NOTHING
  * (a gap at index 3 leaves no (3, y) pair, so the fit is not pulled toward a phantom zero). This is
- * the v1 trendline over categorical x; the continuous-x scatter form reuses {@link linearRegressionXY}
- * verbatim later. Returns null when fewer than 2 finite points survive.
+ * the trendline over categorical x; the continuous-x scatter form reuses {@link linearRegressionXY}
+ * directly. Returns null when fewer than 2 finite points survive.
  */
 export function linearRegression(values: readonly (number | null)[]): LinearFit | null {
    const points: Point[] = []
@@ -91,8 +92,9 @@ export function linearRegression(values: readonly (number | null)[]): LinearFit 
 }
 
 /**
- * The general ordinary-least-squares fit over explicit `(x, y)` points (the scatter v1.1 reuse
- * point). Assumes the caller has already dropped non-finite samples; it still guards defensively.
+ * The general ordinary-least-squares fit over explicit `(x, y)` points, the form the scatter
+ * chart's trendline reuses. Assumes the caller has already dropped non-finite samples; it still
+ * guards defensively.
  *
  * Formulae over the surviving points:
  *   slope     = SUM((x - meanX)(y - meanY)) / SUM((x - meanX)^2)

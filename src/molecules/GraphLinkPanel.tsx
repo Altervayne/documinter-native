@@ -1,11 +1,10 @@
 /**
- * GraphLinkPanel.tsx, the graph<->table LIVE LINK's editor surface (stage 2b of
- * docs/reference/graph_table_linking_study.md, the architecture, stage 2a, is already built; this
- * is the UI to CREATE and MANAGE a link). Lives in the graph editor's Data tab, tabular chart types
- * only (bar family / line / area / pie / donut, the continuous-x types never carry a `source`).
+ * GraphLinkPanel.tsx, the graph<->table LIVE LINK's editor surface: the UI to CREATE and MANAGE
+ * a link. Lives in the graph editor's Data tab, tabular chart types only (bar family / line / area
+ * / pie / donut, the continuous-x types never carry a `source`).
  *
  * Two render modes, switched on `spec.source`:
- *   - UNLINKED: a compact "Link to a table…" picker row above the ordinary editable GraphDataGrid
+ *   - UNLINKED: a compact "Link to a table..." picker row above the ordinary editable GraphDataGrid
  *     (rendered by the caller, not here, see GraphBlock.tsx's dataTab). Picking a table calls
  *     `onLinkTable`; nothing else in this panel is shown.
  *   - LINKED: REPLACES the editable grid entirely (the caller hides GraphDataGrid while linked) with
@@ -164,7 +163,7 @@ export function GraphLinkPanel({
                         <th className="graph-lead-cell" scope="row">{label}</th>
                         {resolvedData.series.map((oneSeries, seriesIndex) => (
                            <td key={seriesIndex} className="graph-cell graph-link-preview-cell">
-                              {oneSeries.values[rowIndex] ?? '–'}
+                              {oneSeries.values[rowIndex] ?? '-'}
                            </td>
                         ))}
                      </tr>

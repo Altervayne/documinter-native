@@ -47,7 +47,7 @@ import type { T } from '../../../lib/i18n'
 // # CONSTANTS #
 // #############
 
-/** The base image is capped tighter than the 2048 default to bound the JSON/export weight (study Q7). */
+/** The base image is capped tighter than the 2048 default to bound the JSON/export weight. */
 const IMAGE_MAX_EDGE = 1600
 
 /** Selection-handle square size, in viewBox units (viewBox long edge = 1000, so ~1.4%). */
@@ -78,12 +78,12 @@ const FILLABLE_KINDS = new Set<string>(['rect', 'ellipse', 'callout'])
 // # STYLE GLYPHS #
 // ################
 //
-// Small inline-SVG glyphs for the three former `<select>` controls (line style, arrowhead shape,
-// arrowhead position), each drawn to READ AS the option rather than as a generic icon, the shapes
-// mirror the actual renderer's look (dash/dot pattern, filled triangle vs open chevron, head at the
-// tip vs mid-line) so the segmented toggle doubles as a tiny live legend. All glyphs share one
-// viewBox/stroke width so the three rows line up visually; `currentColor` follows the button's own
-// text color (muted when idle, accent when selected, set by the CSS, not the glyph).
+// Small inline-SVG glyphs for the line style, arrowhead shape, and arrowhead position controls,
+// each drawn to read as the option rather than as a generic icon: the shapes mirror the actual
+// renderer's look (dash/dot pattern, filled triangle vs open chevron, head at the tip vs
+// mid-line) so the segmented toggle doubles as a tiny live legend. All glyphs share one
+// viewBox/stroke width so the three rows line up visually; `currentColor` follows the button's
+// own text color (muted when idle, accent when selected, set by the CSS, not the glyph).
 
 const STYLE_GLYPH_VIEW_BOX = '0 0 28 16'
 
@@ -178,33 +178,32 @@ interface ImageMarkupEditorProps {
 }
 
 /**
- * Image-markup (annotation) editor for an `image` block in MARKUP MODE, re-homed verbatim from the
- * former standalone `image-markup` block's pass-1 editor (see docs/reference/image_markup_study.md
- * and docs/reports/2026-08-02-image-markup-editor-pass1.md). Rendered by `ImageBlock` only when
- * `block.imageMarkup` is present; the plain-image path stays byte-identical.
+ * Image-markup (annotation) editor for an `image` block in markup mode. Rendered by `ImageBlock`
+ * only when `block.imageMarkup` is present; the plain-image path stays byte-identical.
  *
- * The one difference from the standalone version is the data seam: the base image lives on the
- * block's own `src`/`alt`/`caption`, the overlay dims + element stack on `block.imageMarkup`. The
- * editor reconstructs an `ImageMarkupSpec` from the block (`imageBlockToMarkupSpec`) for the pure
- * renderer + edit helpers, then commits back as `patch({ src, imageMarkup: { width, height,
- * elements } })`. alt/caption are edited by their own inline fields, NOT clobbered on commit.
+ * The base image lives on the block's own `src`/`alt`/`caption`; the overlay dims + element stack
+ * live on `block.imageMarkup`. The editor reconstructs an `ImageMarkupSpec` from the block
+ * (`imageBlockToMarkupSpec`) for the pure renderer + edit helpers, then commits back as
+ * `patch({ src, imageMarkup: { width, height, elements } })`. alt/caption are edited by their own
+ * inline fields, not touched on commit.
  *
- * READ-ONLY / EXPORT PATH: the reconstructed spec is turned into a self-contained inline SVG by the
- * pure `renderImageMarkupToSvg` and injected via `dangerouslySetInnerHTML`, no runtime, byte-identical
- * to the HTML export.
+ * Read-only / export path: the reconstructed spec is turned into a self-contained inline SVG by
+ * the pure `renderImageMarkupToSvg` and injected via `dangerouslySetInnerHTML`, no runtime,
+ * byte-identical to the HTML export.
  *
- * INTERACTIVE EDITOR (block-editor-window adopter): the annotation canvas edits INLINE at the block's
- * full width, while the tool palette + property controls live in a floating, non-modal
- * `BlockEditorWindow`. The draft/commit model mirrors the graph block: a local `working` spec (also
- * mirrored in `workingRef` so pointer handlers read the latest value mid-drag) keeps a drag smooth,
- * committed to the document on pointer-up / discrete change.
+ * Interactive editor: the annotation canvas edits inline at the block's full width, while the
+ * tool palette + property controls live in a floating, non-modal `BlockEditorWindow`. The
+ * draft/commit model mirrors the graph block: a local `working` spec (also mirrored in
+ * `workingRef` so pointer handlers read the latest value mid-drag) keeps a drag smooth, committed
+ * to the document on pointer-up / discrete change.
  *
- * INTERACTIVE-CANVAS ARCHITECTURE. While editing, the canvas is three stacked layers inside one
- * relative container: (1) a plain `<img>` of the base image (stable, so a live drag never re-decodes
- * the heavy base64) or a neutral placeholder box; (2) an ELEMENT overlay (`renderMarkupOverlayToSvg`,
- * base64-free) re-parsed cheaply per draft; (3) a transparent INTERACTION layer capturing pointer
- * events + drawing only the selection chrome. Every interaction's geometry is pure + unit-tested in
- * `lib/imageMarkup/edit.ts`; this component is thin pointer glue over those helpers.
+ * Interactive-canvas architecture: while editing, the canvas is three stacked layers inside one
+ * relative container: (1) a plain `<img>` of the base image (stable, so a live drag never
+ * re-decodes the heavy base64) or a neutral placeholder box; (2) an element overlay
+ * (`renderMarkupOverlayToSvg`, base64-free) re-parsed cheaply per draft; (3) a transparent
+ * interaction layer capturing pointer events + drawing only the selection chrome. Every
+ * interaction's geometry is pure and unit-tested in `lib/imageMarkup/edit.ts`; this component is
+ * thin pointer glue over those helpers.
  */
 export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorProps) {
    const { t }        = useLang()
@@ -317,7 +316,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    }
 
    // ============
-   //  Pointer → normalized, via the interaction layer's on-screen rect
+   //  Pointer -> normalized, via the interaction layer's on-screen rect
    // ============
    function canvasPoint(event: React.PointerEvent): NormalizedPoint {
       const rect = overlayRef.current?.getBoundingClientRect()
@@ -326,7 +325,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    }
 
    // The current render viewBox, needed by hitTest to give a text label its estimated glyph box
-   // (so a click near the text selects it, Bug 1) rather than its zero-size anchor point.
+   // (so a click near the text selects it) rather than its zero-size anchor point.
    function currentViewBox(): { vbWidth: number; vbHeight: number } {
       return computeViewBox(workingRef.current.width, workingRef.current.height)
    }
@@ -429,7 +428,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       }
    }
 
-   /** Revert to the last committed spec (no document mutation → no stray undo entry). */
+   /** Revert to the last committed spec (no document mutation, so no stray undo entry). */
    function discardInteraction(): void {
       selectElement(null)
       editing.current = false
@@ -550,8 +549,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    }
 
    // Set the selected text / callout element's label from the property-panel text field, a reliable
-   // edit path independent of the in-canvas edit-in-place overlay (Bug 1). No-op unless a text /
-   // callout element is selected.
+   // edit path independent of the in-canvas edit-in-place overlay. No-op unless a text / callout
+   // element is selected.
    function applyTextContent(value: string): void {
       const id = selectedIdRef.current
       if (!id) return
@@ -1036,7 +1035,7 @@ interface SelectionChromeProps {
  */
 function SelectionChrome({ element, vbWidth, vbHeight }: SelectionChromeProps) {
    // Pass the viewBox so a text element's estimated glyph box (not its zero-size anchor) is outlined,
-   // giving the user a visible selection rectangle around the label (Bug 1).
+   // giving the user a visible selection rectangle around the label.
    const box = getBoundingBox(element, { vbWidth, vbHeight })
    const handles = getElementHandles(element)
    return (

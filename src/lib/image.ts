@@ -22,7 +22,7 @@ function hasTransparency(ctx: CanvasRenderingContext2D, width: number, height: n
 
 /**
  * Compress an image File to a base64 data URL.
- * Scales down to max 1200×900, preserving aspect ratio.
+ * Scales down to max 1200x900, preserving aspect ratio.
  * Uses JPEG unless the image has transparent pixels (then PNG).
  */
 export function compressImage(file: File): Promise<string> {

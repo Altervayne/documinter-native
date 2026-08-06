@@ -36,7 +36,7 @@ export interface PanelMemory {
     *  window at this geometry rather than docking it. Set by a deliberate hide of a floating panel. */
    placement?: WindowPlacement
    /** The panel's group was collapsed when it was undocked; restore that on re-dock so a collapsed
-    *  panel that cycles out and back (e.g. Pages across an infinite↔A4 switch, or the brief
+    *  panel that cycles out and back (e.g. Pages across an infinite <-> A4 switch, or the brief
     *  infinite-default window before a document hydrates on load) returns collapsed, not expanded. */
    collapsed?: boolean
 }
@@ -165,8 +165,8 @@ export function reconcileDock(
  * Closes any floating panel that is no longer applicable to the current document (for example a
  * floated Pages window when the document turns infinite), remembering it as auto-closed so the normal
  * dock reconcile can bring it back later. Floating position is not preserved across an applicability
- * cycle (it returns docked); that is the accepted v1 simplification. Returns the trimmed floating map
- * plus the updated close-memory. Applicable floating panels are left exactly as they are.
+ * cycle; the panel returns docked instead. Returns the trimmed floating map plus the updated
+ * close-memory. Applicable floating panels are left exactly as they are.
  */
 export function reconcileFloating(
    floating:     FloatingPanels,

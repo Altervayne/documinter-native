@@ -83,7 +83,7 @@ function readPersistedOpenDocuments(): PersistedOpenDocuments {
             }
          }
       }
-   } catch { /* malformed → fall through to migration / empty */ }
+   } catch { /* malformed, fall through to migration / empty */ }
    const legacyPointer = localStorage.getItem(CURRENT_DOCUMENT_ID_KEY)
    if (legacyPointer) return { documentIds: [legacyPointer], activeDocumentId: legacyPointer }
    return { documentIds: [], activeDocumentId: null }
@@ -144,10 +144,9 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
 }
 
 export default function App() {
-   // Document state starts blank; the real document is hydrated asynchronously from
-   // IndexedDB on mount (see the hydration effect below). Documents live as a list with one active
-   // tab. This phase keeps exactly one entry, so the app behaves identically to the single-document
-   // era; the tab strip + multi-tab opening arrive in later phases.
+   // Document state starts blank; the real document set is hydrated asynchronously from
+   // IndexedDB on mount (see the hydration effect below). Documents live as a list of open tabs,
+   // with exactly one tab active at a time; its content and identity drive the rest of the app.
    const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>(() => {
       const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
       return [createBlankDocument(translations[initialLang].defaultSectionTitle)]
@@ -163,7 +162,7 @@ export default function App() {
    useEffect(() => { openDocumentsRef.current = openDocuments }, [openDocuments])
 
    // The active document and the content + identity the render + effects below read, derived from the
-   // list. documentId / saveStatus are per-tab (phase 2); the active tab's values drive the UI.
+   // list. documentId / saveStatus are per-tab; the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
    const { meta, sections, docTheme, docAccent, presentation, format, documentId, saveStatus } = activeDocument
 
@@ -172,8 +171,8 @@ export default function App() {
       .map(document => document.documentId)
       .filter((id): id is string => id !== null)
 
-   // The setter lever : hand the mutation hooks a Section[] setter that updates only
-   // the active tab. The hooks are unchanged, they still receive a Dispatch<SetStateAction<Section[]>>.
+   // The setter lever: hands the mutation hooks a Section[] setter that updates only
+   // the active tab. The hooks stay oblivious to tabs, they still receive a plain Dispatch<SetStateAction<Section[]>>.
    const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current
@@ -188,16 +187,16 @@ export default function App() {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, docAccent: nextAccent } : document))
    }, [])
-   // Patch the active tab's presentation extras (watermark, …). Mirrors setActiveDocTheme; a real
+   // Patch the active tab's presentation extras (watermark, ...). Mirrors setActiveDocTheme; a real
    // document change, so it flows through autosave + persist like any other edit. `undefined` clears
-   // the extras entirely (back to today's behavior).
+   // the extras entirely.
    const setActivePresentation = useCallback((next: DocPresentationExtras | undefined) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, presentation: next } : document))
    }, [])
    // Patch the active tab's page format (infinite width, later paged A4). Mirrors setActivePresentation;
    // a real document change, so it flows through autosave + persist like any other edit. `undefined`
-   // clears it entirely (back to today's infinite/normal behavior).
+   // clears it entirely, reverting to the infinite/normal default.
    const setActiveFormat = useCallback((next: DocFormat | undefined) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
@@ -235,10 +234,10 @@ export default function App() {
 
    const { showToast } = useToast()
 
-   // saveStatus, the document id, and the pending-new-doc folder are per-tab now (on OpenDocument).
-   // skipNextAutosaveRef + autosaveTimerRef stay single refs this phase: only the active tab is
-   // editable and only it debounces a save, so one skip flag + one timer suffice until phase 3 adds
-   // tab switching (which will need flush-on-switch).
+   // saveStatus, the document id, and the pending-new-doc folder live per tab, on OpenDocument.
+   // skipNextAutosaveRef + autosaveTimerRef stay single refs: only the active tab is editable and
+   // only it debounces a save, so one skip flag + one timer suffice; switching tabs flushes the
+   // outgoing tab's pending save first (see activateTab's flush-on-switch).
    const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
    const hasHydratedRef       = useRef(false)
    const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -273,7 +272,7 @@ export default function App() {
          const legacy  = readAutosave()
          try {
             if (restore.documentIds.length === 0 && legacy) {
-               // Migrate legacy autosave → IndexedDB. Keep the old key until the write confirms.
+               // Migrate legacy autosave to IndexedDB. Keep the old key until the write confirms.
                const migratedId = await saveDocument(
                   { meta: legacy.meta, sections: legacy.sections },
                   { docTheme: legacy.docTheme, docAccent: legacy.docAccent },
@@ -291,10 +290,10 @@ export default function App() {
                if (loaded) restoredTabs.push(buildTabFromLoaded(loaded, persistedId))
             }
             if (restoredTabs.length > 0) applyRestoredTabs(restoredTabs, restore.activeDocumentId)
-            // else: no surviving tabs → keep the initial blank.
+            // else: no surviving tabs, keep the initial blank.
          } catch {
-            // IndexedDB unavailable / read failed. If we have legacy data, keep showing it in-memory
-            // as an unsaved document (legacy key left intact for a future retry).
+            // IndexedDB unavailable / read failed. If legacy data exists, keep showing it in memory
+            // as an unsaved document (the legacy key stays intact for a future retry).
             if (!cancelled && legacy && restore.documentIds.length === 0) {
                applyRestoredTabs([buildTabFromLoaded({ ...legacy }, null)], null)
             }
@@ -402,7 +401,6 @@ export default function App() {
       }
    }, [showToast, t, setTabSaveStatus])
 
-   // Manual save
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
 
    // ###############
@@ -427,7 +425,7 @@ export default function App() {
 
    // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
    // neighbor (right, else left). If it was the last tab, respawn a blank, openDocuments is never
-   // empty (the always-have-a-document invariant now lives on the tab list).
+   // empty (the always-have-a-document invariant lives on the tab list).
    const performCloseTab = useCallback((tabKey: string) => {
       const documentsBefore = openDocumentsRef.current
       const index = documentsBefore.findIndex(document => document.tabKey === tabKey)
@@ -491,7 +489,7 @@ export default function App() {
    }, [saveStatus, persistNow])
 
    // Pending action awaiting unsaved-changes confirmation: a dirty tab close (discard-and-close).
-   // Opening a doc / creating one now add-or-focus a tab, discarding nothing, so they need no guard.
+   // Opening a doc / creating one adds or focuses a tab, discarding nothing, so neither needs a guard.
    const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'close-tab'; tabKey: string; reason: 'dirty' | 'unsaved-open' } | null>(null)
 
    // Close a tab, guarding two ways data could be lost:
@@ -538,9 +536,9 @@ export default function App() {
       }
    }, [activateTab, showToast, t])
 
-   // The one New-document entry point: a dialog (New Document dialog) where you pick Blank or a
-   // template and tweak accent / theme / format, then Create. Opened from the header New button, the
-   // File menu, and the binder's empty-state CTA (which seeds the folder it was opened from). The
+   // The one New-document entry point: a dialog (New Document dialog) offering Blank or a
+   // template with accent / theme / format overrides, then Create. Opened from the header New button,
+   // the File menu, and the binder's empty-state CTA (which seeds the folder it was opened from). The
    // stored folder is applied as the new tab's pending-save folder. null = root.
    const [newDocumentDialog, setNewDocumentDialog] = useState<{ folderId: string | null } | null>(null)
    const handleOpenNewDocument   = useCallback((folderId: string | null = null) => setNewDocumentDialog({ folderId }), [])
@@ -563,7 +561,8 @@ export default function App() {
    }, [newDocumentDialog, t, activateTab, showToast])
 
    // New from template, direct: the binder Templates view's per-card "Use" button. Skips the dialog
-   // (you already picked) and creates straight from the template, filed into the current folder.
+   // since the template choice is already made, creates straight from the template, filed into the
+   // current folder.
    const handleNewFromTemplate = useCallback((template: DocumentTemplate, folderId?: string) => {
       const newDocument = createDocumentFromTemplate(template, t.defaultSectionTitle, folderId ?? null)
       setOpenDocuments(documents => [...documents, newDocument])
@@ -700,17 +699,17 @@ export default function App() {
    const handleOpenPresentation  = useCallback(() => { setExportOpen(false); setPresentationOpen(true) }, [])
    const handleClosePresentation = useCallback(() => setPresentationOpen(false), [])
 
-   // Navigation editor window: split out of the Presentation window into its own document-level,
-   // non-modal draggable window (open-state lifted here like the presentation window's). Opened from
+   // Navigation editor window: its own document-level, non-modal draggable window, separate from
+   // the Presentation window (open-state lifted here like the presentation window's). Opened from
    // the Document top-bar menu and the document background context menu; it renders inside WysiwygArea
    // and its controls mutate the document's presentation.nav (a real doc change).
    const [navOpen, setNavOpen] = useState(false)
    const handleOpenNav  = useCallback(() => setNavOpen(true), [])
    const handleCloseNav = useCallback(() => setNavOpen(false), [])
 
-   // Page setup window: split out on its own launcher (Document → Page setup…), a document-level,
-   // non-modal draggable window (open-state lifted here like the presentation/nav windows'). Phase 1:
-   // infinite-width control only; its controls mutate the document's format (a real doc change).
+   // Page setup window: a document-level, non-modal draggable window with its own launcher
+   // (Document -> Page setup...), like the presentation/nav windows. Its infinite-width toggle
+   // mutates the document's format (a real doc change).
    const [formatOpen, setFormatOpen] = useState(false)
    const handleOpenFormat  = useCallback(() => setFormatOpen(true), [])
    const handleCloseFormat = useCallback(() => setFormatOpen(false), [])
@@ -786,7 +785,6 @@ export default function App() {
       })
    }, [openLoadedInNewTab])
 
-   // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current
@@ -809,7 +807,7 @@ export default function App() {
    // Create the dialog's handler closes the binder if it was open.
    const handleHeaderNew = useCallback(() => handleOpenNewDocument(null), [handleOpenNewDocument])
 
-   // Close the binder back to the editor. The always-have-a-document invariant now lives on the tab
+   // Close the binder back to the editor. The always-have-a-document invariant lives on the tab
    // list (openDocuments is never empty), so there is always a tab to return to, just close.
    const handleCloseBinder = useCallback(() => {
       setBinderOpen(false)
@@ -832,7 +830,7 @@ export default function App() {
 
    // The dock owns the side panels' layout; applicability is driven by the active document's format
    // (Pages needs a paged doc) and mode (Pages needs edit mode). The Pages data + handlers are derived
-   // here so the body can be hosted by the App-level dock instead of buried in WysiwygArea.
+   // here so the App-level dock can host the body directly, without WysiwygArea owning it.
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
    const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t)

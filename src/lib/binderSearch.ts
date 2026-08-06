@@ -1,8 +1,8 @@
 /**
  * binderSearch.ts, In-memory filtering + sorting for the binder document list.
  *
- * Relocated verbatim from storage.ts. Owns the search/filter/sort types and the pure matching
- * + comparison functions that listDocuments (binderDocuments) applies after reading records.
+ * Owns the search/filter/sort types and the pure matching + comparison functions that
+ * listDocuments (binderDocuments) applies after reading records.
  */
 
 import type { BinderDocumentRecord } from '../types'

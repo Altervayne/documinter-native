@@ -26,9 +26,9 @@ interface ExportModalProps {
    sections: Section[]
    defaultTheme:  'light' | 'dark'
    defaultAccent: string
-   /** Active document's presentation extras, baked into the exported HTML (watermark, …). */
+   /** Active document's presentation extras, baked into the exported HTML (watermark, and so on). */
    presentation?: DocPresentationExtras
-   /** Active document's page format (infinite width, later paged A4), baked into the exported HTML's
+   /** Active document's page format (infinite width or paged A4), baked into the exported HTML's
     *  `.doc-card` width. */
    format?: DocFormat
    lang: Lang
@@ -42,20 +42,21 @@ interface ExportModalProps {
 // #############
 
 /**
- * Format-aware Export dialog. A format selector (HTML / Mintdown / Markdown) drives which options
- * and actions are shown. All three reuse the EXISTING serializers:
- *   - HTML    , the presentation options (theme + accent) + generate → downloadHTML / copy. Math
- *                is rendered by Temml, which loads asynchronously, so this path (and ONLY this path)
+ * Format-aware Export dialog. A format selector (HTML / Mintdown / Markdown / JSON) drives which
+ * options and actions are shown. Each format reuses the document's own serializers:
+ *   - HTML    , the presentation options (theme + accent) + generate -> downloadHTML / copy. Math
+ *                is rendered by Temml, which loads asynchronously, so this path (and only this path)
  *                awaits ensureTemmlReady() before generating. Mintdown/Markdown serialize the LaTeX
  *                source verbatim and need no await.
- *   - Mintdown, documentToMintdown → download (via exportMintdownFile). Lean, no options.
- *   - Markdown, documentToMarkdown → download (via exportMarkdownFile). Lean, no options.
+ *   - Mintdown, documentToMintdown -> download (via exportMintdownFile). Lean, no options.
+ *   - Markdown, documentToMarkdown -> download (via exportMarkdownFile). Lean, no options.
+ *   - JSON    , downloadJSON, a lossless snapshot of the document's own state. Lean, no options.
  */
 export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
-   // Whether the accent grid's "Custom accent…" tile is the selected choice, a genuine selection
+   // Whether the accent grid's "Custom accent..." tile is the selected choice, a genuine selection
    // on par with a preset swatch (see molecules/AccentSwatchGrid), not a disclosure toggle. Mirrors
    // the same local-flag pattern the document-background context menu uses (WysiwygArea's own
    // customAccentSelected) since this modal owns its own draft accent, independent of the document's.
@@ -64,9 +65,9 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    const { showToast } = useToast()
 
    // Presentation extras + document format ride into the HTML export via ExportOptions; the .mint /
-   // .md paths never see them (they serialize content only). Renamed to docFormat above to avoid
+   // .md paths never see them (they serialize content only). Aliased to docFormat above to avoid
    // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
-   // markdown, an unrelated concept that predates the document page format).
+   // markdown, a separate concept from the document's page format).
    const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
    // =========
@@ -124,8 +125,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    //  Render
    // =======
 
-   // Extension-only labels (see i18n exportFormat*), the explanation moves to the hover tooltip
-   // instead so the buttons stay short enough for four of them to breathe at once.
+   // Extension-only labels (see i18n exportFormat*); the explanation lives in the hover tooltip
+   // instead, so the buttons stay short enough for four of them to breathe at once.
    const FORMAT_OPTIONS: { value: ExportFormat; label: string; tooltip: string }[] = [
       { value: 'html',     label: t.exportFormatHtml,     tooltip: t.exportFormatHtmlTooltip },
       { value: 'mintdown', label: t.exportFormatMintdown, tooltip: t.exportFormatMintdownTooltip },
@@ -161,15 +162,12 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
          className="fixed inset-0 z-50 flex items-center justify-center"
          onClick={onClose}
       >
-         {/* Backdrop */}
          <div className="absolute inset-0 bg-black/50" />
 
-         {/* Modal */}
          <div
             className="relative z-10 bg-raised border border-border rounded-xl shadow-2xl p-5 w-96 flex flex-col gap-4"
             onClick={event => event.stopPropagation()}
          >
-            {/* Header */}
             <div className="flex items-center justify-between">
                <span className="text-sm font-semibold text-text">{t.exportOptions}</span>
                <button
@@ -180,7 +178,6 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                </button>
             </div>
 
-            {/* Format selector */}
             <div className="flex flex-col gap-2">
                <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.exportFormat}</span>
                <div className="flex flex-wrap gap-2">
@@ -201,10 +198,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                </div>
             </div>
 
-            {/* HTML-only presentation options */}
             {format === 'html' && (
                <>
-                  {/* Theme */}
                   <div className="flex flex-col gap-2">
                      <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.theme}</span>
                      <div className="flex gap-2">
@@ -237,9 +232,9 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      </div>
                   </div>
 
-                  {/* Presentation launcher, opens the non-modal Presentation window (watermark now;
-                      header / nav in later passes). The Export dialog stays the discovery hub; the
-                      live editing happens in the window, over the visible document. */}
+                  {/* Opens the non-modal Presentation window (watermark, header, nav editing). The
+                      Export dialog stays the discovery hub; the live editing happens in the window,
+                      over the visible document. */}
                   {onOpenPresentation && (
                      <button
                         type="button"
@@ -257,7 +252,6 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                <p className="text-xs text-muted leading-relaxed">{t.exportJsonDescription}</p>
             )}
 
-            {/* Actions */}
             <div className="flex gap-2 pt-1">
                {format === 'html' && (
                   <>

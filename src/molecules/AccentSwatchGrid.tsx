@@ -21,7 +21,7 @@ export interface AccentSwatchOption {
    onSelect: () => void
 }
 
-/** The "Custom accent…" tile: a genuine selectable choice, on par with the preset swatches, NOT
+/** The "Custom accent..." tile: a genuine selectable choice, on par with the preset swatches, NOT
  *  a disclosure toggle. Clicking it selects Custom (moving the active ring onto it and applying the
  *  picker's current value as the accent); the inline react-piqua-color ColorPicker then renders
  *  directly beneath the grid for as long as Custom stays the active choice. */
@@ -63,7 +63,7 @@ const CUSTOM_GRADIENT = 'conic-gradient(from 180deg, #f97316, #2563eb, #16a34a, 
 
 /**
  * The accent picker's shared visual: a compact, nameless grid of filled color-swatch tiles (the
- * name lives only in `title` / `aria-label`) plus a multicolor "Custom accent…" tile that is a
+ * name lives only in `title` / `aria-label`) plus a multicolor "Custom accent..." tile that is a
  * selectable choice exactly like the preset tiles beside it (NOT a disclosure toggle), selecting
  * it reveals an inline ColorPicker directly beneath the grid. Consumed identically by both the
  * top-bar Document dropdown (molecules/DocumentMenu) and the document-background context menu
@@ -103,9 +103,9 @@ export function AccentSwatchGrid({ presets, custom }: AccentSwatchGridProps) {
             )}
          </div>
 
-         {/* Inline custom-color picker, rendered directly under the grid (rather than at the foot
-             of the menu or in a detached floating popover, see fix #2 in the 2026-08-02 report)
-             whenever Custom is the active choice, never as a manually toggled disclosure. */}
+         {/* Inline custom-color picker, rendered directly under the grid rather than at the foot
+             of the menu or in a detached floating popover, whenever Custom is the active choice,
+             never as a manually toggled disclosure. */}
          {custom?.active && (
             <div className="pt-2">
                <ColorPicker value={custom.value} onChange={custom.onChange} />

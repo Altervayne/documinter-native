@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { esc, stripTags, slugify } from './text'
 
-// sanitizeRichText uses DOMParser and belongs to the jsdom phase, so it is not tested here.
+// sanitizeRichText needs DOMParser, so it is tested in text.dom.test.ts instead.
 
 describe('esc', () => {
    it('escapes &, <, >, and "', () => {

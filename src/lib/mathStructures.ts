@@ -20,14 +20,14 @@ export type MathBuilderKind = 'matrix' | 'cases' | 'aligned'
 /**
  * The named bracket styles a matrix can wear. Each maps to a LaTeX matrix environment
  * (see MATRIX_ENVIRONMENTS): the delimiters are baked into the environment, so the emitter
- * never hand-writes `\left…\right…`.
+ * never hand-writes `\left...\right...`.
  */
 export type MatrixBracket =
    | 'paren'      // ( )   pmatrix
    | 'square'     // [ ]   bmatrix
    | 'brace'      // { }   Bmatrix
    | 'bar'        // | |   vmatrix   (determinant)
-   | 'doublebar'  // ‖ ‖   Vmatrix   (norm)
+   | 'doublebar'  // || ||  Vmatrix   (norm)
    | 'none'       //       matrix    (no delimiters)
 
 /** One row of a piecewise / cases construct: a value and the condition it holds under. */
@@ -65,7 +65,7 @@ export interface MatrixBracketDescriptor {
 
 /**
  * Bracket -> LaTeX matrix environment. The environment carries its own delimiters, so a
- * matrix is emitted as `\begin{<env>} … \end{<env>}` with nothing else wrapping it.
+ * matrix is emitted as `\begin{<env>} ... \end{<env>}` with nothing else wrapping it.
  */
 const MATRIX_ENVIRONMENTS: Record<MatrixBracket, string> = {
    paren:     'pmatrix',
@@ -86,7 +86,7 @@ export const MATRIX_BRACKETS: MatrixBracketDescriptor[] = [
    { key: 'brace',     glyph: '{ }' },
    { key: 'bar',       glyph: '| |' },
    { key: 'doublebar', glyph: '‖ ‖' },
-   { key: 'none',      glyph: '–' },
+   { key: 'none',      glyph: '-' },
 ]
 
 // A literal LaTeX row break: the two-character sequence `\\`. Rows of every construct are
@@ -145,7 +145,7 @@ export function buildCasesLatex(rows: CasesRow[]): string {
  *     y &= 2
  *   \end{aligned}
  *
- * With `systemBrace` the same body is wrapped as `\left\{\begin{aligned} … \end{aligned}\right.`.
+ * With `systemBrace` the same body is wrapped as `\left\{\begin{aligned} ... \end{aligned}\right.`.
  */
 export function buildAlignedLatex(rows: AlignedRow[], options: AlignedOptions = {}): string {
    const body = rows

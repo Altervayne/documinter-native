@@ -31,7 +31,7 @@ function breakBefore(id: string, sectionId: string, blockId: string): PageBreak 
    return { id, before: { sectionId, blockId } }
 }
 
-// A two-section document: s1[a,b,c] · s2[d,e].
+// A two-section document: s1[a,b,c], s2[d,e].
 const SECTIONS: Section[] = [
    mkSection('s1', ['a', 'b', 'c']),
    mkSection('s2', ['d', 'e']),
@@ -63,7 +63,7 @@ describe('partitionIntoPages', () => {
    })
 
    it('splits mid-section at a break anchoring a block inside the section', () => {
-      // break before 'c' → page 1 ends after b, page 2 begins at c.
+      // break before 'c': page 1 ends after b, page 2 begins at c.
       const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's1', 'c')])
       expect(shape(pages)).toEqual([
          { id: FIRST_PAGE_ID, blocks: ['a', 'b'] },
@@ -194,7 +194,7 @@ describe('canBreakAfter / hasPageBreakAfter', () => {
 
 describe('addPageBreakAfter', () => {
    it('adds a break before the successor of the target block', () => {
-      const next = addPageBreakAfter([], SECTIONS, 'b')   // after b → before c
+      const next = addPageBreakAfter([], SECTIONS, 'b')   // after b -> before c
       expect(next).toHaveLength(1)
       expect(next[0].before).toEqual({ sectionId: 's1', blockId: 'c' })
       expect(typeof next[0].id).toBe('string')
@@ -202,7 +202,7 @@ describe('addPageBreakAfter', () => {
    })
 
    it('crosses a section boundary (after the last block of a section)', () => {
-      const next = addPageBreakAfter([], SECTIONS, 'c')   // after c → before d (s2)
+      const next = addPageBreakAfter([], SECTIONS, 'c')   // after c -> before d (s2)
       expect(next[0].before).toEqual({ sectionId: 's2', blockId: 'd' })
    })
 
@@ -251,7 +251,7 @@ function sectionIds(result: { sections: Section[]; pages: PageBreak[] }) {
 
 describe('reorderPages', () => {
    // Three-page fixture: break before c (s1) and before e (s2).
-   //   P0 = [a, b] · P1 = [c, d] · P2 = [e]
+   //   P0 = [a, b], P1 = [c, d], P2 = [e]
    const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
 
    it('is a no-op for equal indices (same references)', () => {
@@ -266,25 +266,25 @@ describe('reorderPages', () => {
    })
 
    it('swaps two adjacent pages', () => {
-      // Move P1 above P0: [c, d] · [a, b] · [e].
+      // Move P1 above P0: [c, d], [a, b], [e].
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 0)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['a', 'b'], ['e']])
    })
 
    it('moves a page to the front', () => {
-      // Move P2 (the last page) to the front: [e] · [a, b] · [c, d].
+      // Move P2 (the last page) to the front: [e], [a, b], [c, d].
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
    })
 
    it('moves a page to the end', () => {
-      // Move P0 to the end: [c, d] · [e] · [a, b].
+      // Move P0 to the end: [c, d], [e], [a, b].
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 2)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e'], ['a', 'b']])
    })
 
    it('reorders multi-block pages at a clean section boundary', () => {
-      // Break at the section boundary → P0 = [a, b, c] (s1), P1 = [d, e] (s2).
+      // Break at the section boundary: P0 = [a, b, c] (s1), P1 = [d, e] (s2).
       const result = reorderPages(SECTIONS, [breakBefore('brk', 's2', 'd')], 1, 0)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['d', 'e'], ['a', 'b', 'c']])
       // Section identity is preserved (no split): s2 then s1, both ids intact.
@@ -297,7 +297,7 @@ describe('reorderPages', () => {
       expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
       const ids = sectionIds(result)
       // s2 fragment carrying 'e' keeps the id (first occurrence); the fragment carrying 'd' is a
-      // genuine split → a fresh id. All ids stay unique.
+      // genuine split, so it gets a fresh id. All ids stay unique.
       expect(new Set(ids).size).toBe(ids.length)
       const sectionOfBlock = (blockId: string) =>
          result.sections.find(section => section.blocks.some(block => block.id === blockId))!.id
@@ -308,7 +308,7 @@ describe('reorderPages', () => {
 
    it('re-merges a break-spanning section that stays contiguous after the move', () => {
       // s1 = [a, b, c] spans P0 (a, b) and P1 (c). Move P2 (e) between them? No, keep P0,P1 adjacent
-      // by moving P2 to the front: s1's a,b and c remain adjacent in the flow → ONE s1 section.
+      // by moving P2 to the front: s1's a,b and c remain adjacent in the flow, staying ONE s1 section.
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
       const s1Sections = result.sections.filter(section => section.id === 's1')
       expect(s1Sections).toHaveLength(1)
@@ -326,7 +326,7 @@ describe('duplicatePage', () => {
    const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
 
    it('inserts a clone directly after the source page', () => {
-      // Duplicate P0 = [a, b] → a fresh page of two cloned blocks sits at index 1.
+      // Duplicate P0 = [a, b]: a fresh page of two cloned blocks sits at index 1.
       const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
       const pageBlockCounts = resultShape(result).map(page => page.blocks.length)
       expect(pageBlockCounts).toEqual([2, 2, 2, 1])   // P0, clone(P0), P1, P2
@@ -356,13 +356,13 @@ describe('deletePage', () => {
    const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
 
    it('drops a page and its content, leaving the rest in order', () => {
-      // Delete P1 = [c, d] → [a, b] · [e].
+      // Delete P1 = [c, d]: leaves [a, b], [e].
       const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 1)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['a', 'b'], ['e']])
    })
 
    it('re-coalesces a section left split by the deletion', () => {
-      // s1 = [a, b, c]. Delete P0 = [a, b] → s1 keeps only [c], still ONE section.
+      // s1 = [a, b, c]. Delete P0 = [a, b]: s1 keeps only [c], still ONE section.
       const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 0)
       expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e']])
       expect(result.sections.filter(section => section.id === 's1')).toHaveLength(1)

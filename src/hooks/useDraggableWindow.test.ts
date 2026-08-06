@@ -14,7 +14,7 @@ describe('clampWindowPosition', () => {
    })
 
    it('pushes back from the far edge so the window stays fully on-screen', () => {
-      // left 900 + width 400 = 1300 > 1000 → clamp to viewport - width - margin = 588
+      // left 900 + width 400 = 1300 > 1000, so clamp to viewport - width - margin = 588
       const result = clampWindowPosition({ left: 900, top: 700 }, { width: 400, height: 300 }, VIEWPORT, MARGIN)
       expect(result.left).toBe(VIEWPORT.width  - 400 - MARGIN)
       expect(result.top).toBe(VIEWPORT.height - 300 - MARGIN)
@@ -48,23 +48,23 @@ describe('clampWindowSize', () => {
 
    it('clamps down to the maximum size, viewport permitting', () => {
       const result = clampWindowSize({ width: 5000, height: 5000 }, { left: 10, top: 10 }, MIN, MAX, VIEWPORT, MARGIN)
-      // Width: 1000 - 10 - 12 = 978 available > MAX 920 → the max binds.
+      // Width: 1000 - 10 - 12 = 978 available > MAX 920, so the max binds.
       expect(result.width).toBe(MAX.width)
-      // Height: MAX 860 would fit, but 800 - 10 - 12 = 778 of viewport remains → viewport binds first.
+      // Height: MAX 860 would fit, but 800 - 10 - 12 = 778 of viewport remains, so viewport binds first.
       expect(result.height).toBe(VIEWPORT.height - 10 - MARGIN)
    })
 
    it('caps growth at the remaining viewport from the current position', () => {
       // From left 700, only 1000 - 700 - 12 = 288 px remain; but MIN.width 320 floors it.
       const result = clampWindowSize({ width: 900, height: 900 }, { left: 700, top: 600 }, MIN, MAX, VIEWPORT, MARGIN)
-      // available width 288 < MIN 320 → min wins (never inverts below the floor)
+      // available width 288 < MIN 320, so min wins (never inverts below the floor)
       expect(result.width).toBe(MIN.width)
-      // available height 800 - 600 - 12 = 188 < MIN 240 → min wins
+      // available height 800 - 600 - 12 = 188 < MIN 240, so min wins
       expect(result.height).toBe(MIN.height)
    })
 
    it('uses the remaining viewport when it sits between min and max', () => {
-      // From left 300: available = 1000 - 300 - 12 = 688, between MIN 320 and MAX 920 → 688 wins.
+      // From left 300: available = 1000 - 300 - 12 = 688, between MIN 320 and MAX 920, so 688 wins.
       const result = clampWindowSize({ width: 900, height: 400 }, { left: 300, top: 100 }, MIN, MAX, VIEWPORT, MARGIN)
       expect(result.width).toBe(688)
       expect(result.height).toBe(400)

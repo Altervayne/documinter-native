@@ -11,7 +11,7 @@ import type {
    MarkupArrow, MarkupCallout, MarkupEllipse, MarkupLine, MarkupRect, MarkupText,
 } from './types'
 
-/** A square viewBox for text hit-box tests (1000×1000, so viewBox units ≡ per-mille of the edge). */
+/** A square viewBox for text hit-box tests (1000x1000, so viewBox units equal per-mille of the edge). */
 const SQUARE_VIEWBOX: ViewBoxDimensions = { vbWidth: 1000, vbHeight: 1000 }
 
 // A landscape canvas rect (1000x500 on-screen) for pointer-mapping tests.
@@ -44,7 +44,7 @@ describe('pointerToNormalized', () => {
    })
 
    it('rounds to the model coordinate precision (4 dp)', () => {
-      // 350/1000 = 0.35 exactly; 133/1000 offset → clean fraction. Use an awkward pixel to force rounding.
+      // 350/1000 = 0.35 exactly; 133/1000 offset gives a clean fraction. Use an awkward pixel to force rounding.
       const point = pointerToNormalized(100 + 333, 50, RECT)
       expect(point.x).toBe(0.333)
    })
@@ -174,14 +174,14 @@ describe('hitTest', () => {
       expect(hitTest([bottom, top], { x: 0.4, y: 0.35 })?.id).toBe('top')
    })
    it('hits a line by proximity to its segment', () => {
-      // The line runs (0.1,0.1)→(0.5,0.5); a point just off the midpoint is within tolerance.
+      // The line runs (0.1,0.1) to (0.5,0.5); a point just off the midpoint is within tolerance.
       expect(hitTest([line()], { x: 0.305, y: 0.3 })?.id).toBe('l1')
       expect(hitTest([line()], { x: 0.3, y: 0.8 })).toBeNull()
    })
 })
 
 // #####################
-// # TEXT HIT BOX (Bug 1) #
+// # TEXT HIT BOX #
 // #####################
 
 function text(overrides: Partial<MarkupText> = {}): MarkupText {
@@ -194,7 +194,7 @@ describe('textBoundingBox', () => {
       // Anchor is the left baseline: the box starts a little left of x and ABOVE y (smaller y).
       expect(box.x).toBeLessThan(0.3)
       expect(box.y).toBeLessThan(0.3)
-      expect(box.w).toBeGreaterThan(0.1) // "Hello" at 40u ≈ 120u wide + pad → >0.1 of a 1000u edge
+      expect(box.w).toBeGreaterThan(0.1) // "Hello" at 40u is roughly 120u wide plus padding, over 0.1 of a 1000u edge
       expect(box.h).toBeGreaterThan(0.03)
       // The baseline anchor sits inside the vertical span.
       expect(0.3).toBeGreaterThanOrEqual(box.y)
@@ -372,9 +372,9 @@ describe('hitTestHandle', () => {
    })
 })
 
-// ####################################
-// # PASS 2, TEXT / CALLOUT / FREEHAND #
-// ####################################
+// #############################
+// # TEXT / CALLOUT / FREEHAND #
+// #############################
 
 describe('createTextElement', () => {
    it('places text at the click point and copies only text style fields', () => {

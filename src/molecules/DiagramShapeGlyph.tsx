@@ -10,7 +10,7 @@ import type { T } from '../lib/i18n'
 /** Shared glyph viewBox so every shape button lines up visually. */
 const SHAPE_GLYPH_VIEW_BOX = '0 0 28 18'
 
-/** The v1 node shapes, in a stable display order (used by the palette + the inspector toggle). The
+/** The node shapes, in a stable display order (used by the palette + the inspector toggle). The
  *  two heading shapes (banner/chevron) trail the geometric shapes, grouped together. */
 export const NODE_SHAPE_ORDER: NodeShape[] =
    ['rectangle', 'rounded', 'pill', 'ellipse', 'diamond', 'banner', 'chevron']
@@ -34,7 +34,7 @@ export const NODE_SHAPE_LABEL_KEYS: Record<NodeShape,
 
 /**
  * A small inline-SVG glyph that READS AS the node shape it names (an actual rounded rect, ellipse,
- * diamond, …) rather than a generic icon, so the palette button + the inspector's segmented shape
+ * diamond, ...) rather than a generic icon, so the palette button + the inspector's segmented shape
  * toggle double as a live legend. `currentColor` follows the button's own text color (muted when
  * idle, accent when active/selected, set by the CSS, not the glyph).
  */
@@ -47,7 +47,7 @@ export function NodeShapeGlyph({ shape }: { shape: NodeShape }) {
             <polygon points="14,2 26,9 14,16 2,9" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
          ) : shape === 'chevron' ? (
             // A right-pointing arrow/process banner: the same six-vertex pentagon `chevronPoints`
-            // draws on the canvas, scaled to the glyph's 28×18 viewBox.
+            // draws on the canvas, scaled to the glyph's 28x18 viewBox.
             <polygon points="3,4 19,4 25,9 19,14 3,14 9,9" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
          ) : shape === 'banner' ? (
             // A flat heading bar with a bottom accent rule, echoing `renderBannerShape`.
@@ -70,7 +70,7 @@ export function NodeShapeGlyph({ shape }: { shape: NodeShape }) {
 // # SEGMENTED OPTIONS  #
 // #####################
 
-/** Build the five shape options for the inspector's `SegmentedIconToggle` from the current strings. */
+/** Build the shape options for the inspector's `SegmentedIconToggle` from the current strings. */
 export function buildShapeOptions(t: T): SegmentedIconToggleOption<NodeShape>[] {
    return NODE_SHAPE_ORDER.map(shape => ({
       value: shape,

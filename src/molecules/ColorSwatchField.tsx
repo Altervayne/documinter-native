@@ -39,15 +39,14 @@ interface ColorSwatchFieldProps {
 
 /**
  * A swatch button that opens the app's `react-piqua-color` `ColorPicker` in a floating,
- * portaled, viewport-clamped popover, built 2026-08-02 as the shared replacement for the
- * native `<input type="color">` previously used by the diagram inspector (`DiagramInspector`'s
- * `ColorRow`) and the image-markup editor (`ImageMarkupEditor`'s stroke/fill/text controls).
+ * portaled, viewport-clamped popover. Backs the diagram inspector's `ColorRow` and the
+ * image-markup editor's stroke/fill/text controls.
  *
  * Mirrors the shell of `GraphSeriesColorPopover` / `MetaFieldColorPopover`, same portal-to-
  * `document.body` + `useViewportClampedPosition({ type: 'rect' })` anchoring, so it renders
- * correctly above the floating Block Editor Window these two editors are hosted in. Unlike
- * those two (whose reset action is always present), the reset row here is optional: pass
- * `onReset` only when the field can fall back to something (a theme default, a palette slot).
+ * correctly above the floating Block Editor Window these editors are hosted in. Unlike those
+ * two (whose reset action is always present), the reset row here is optional: pass `onReset`
+ * only when the field can fall back to something (a theme default, a palette slot).
  */
 export function ColorSwatchField({ value, title, ariaLabel, onChange, onReset, resetLabel, className }: ColorSwatchFieldProps) {
    const [isOpen, setIsOpen]         = useState(false)

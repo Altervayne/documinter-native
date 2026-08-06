@@ -374,7 +374,7 @@ describe('Graph fence, vertical reference overlay (vref: token)', () => {
          scatterPlot: { series: [{ name: 'A', points: [{ x: 1, y: 2 }] }] },
       }
       const { info } = graphSpecToFence(spec)
-      // No spaces in the label ⇒ unquoted, exactly like the `ref:` token; a spaced label would be
+      // No spaces in the label -> unquoted, exactly like the `ref:` token; a spaced label would be
       // double-quoted by serializeInfoValue (covered by the horizontal-reference suite).
       expect(info).toContain('overlay=vref:3:Cutoff')
       expect(roundTripSpec(spec).options.overlays).toEqual([
@@ -472,8 +472,8 @@ describe('Graph fence, function type (equation plots)', () => {
       }
       const { info, body } = graphSpecToFence(spec)
       expect(info).toContain('type=function')
-      // -10/10/200 ARE the sane defaults per docs/reference/graph_equation_study.md Q5, a fence
-      // at the default domain stays lean and omits the tokens entirely.
+      // -10/10/200 are the default domain, so a fence at the default stays lean and omits the
+      // tokens entirely.
       expect(info).not.toContain('xmin=')
       expect(info).not.toContain('xmax=')
       expect(info).not.toContain('samples=')
@@ -893,9 +893,9 @@ describe('Graph fence, full-document serialization (.md and .mint both carry typ
    })
 })
 
-// A LINKED graph (stage 2a live link) carries a `source=<handle>` token plus optional `labelCol=`/
-// `orient=` mapping tokens on the info string, AND keeps the pipe-table body as a materialized
-// snapshot of the last-resolved data (so a `.md`/foreign viewer or a dangling link still shows it).
+// A linked graph carries a `source=<handle>` token plus optional `labelCol=`/`orient=` mapping
+// tokens on the info string, and keeps the pipe-table body as a materialized snapshot of the
+// last-resolved data (so a `.md`/foreign viewer or a dangling link still shows it).
 describe('Graph fence, live table link (source=)', () => {
    it('emits source= and keeps the snapshot body, round-tripping a plainly-linked graph', () => {
       const spec: GraphSpec = {
@@ -908,7 +908,7 @@ describe('Graph fence, live table link (source=)', () => {
          source: { handle: 'sales-2026' },
       }
       const { info, body } = graphSpecToFence(spec)
-      // The link rides the info string right after type=; default mapping ⇒ no labelCol/orient.
+      // The link rides the info string right after type=; default mapping -> no labelCol/orient.
       expect(info).toContain('source=sales-2026')
       expect(info).not.toContain('labelCol=')
       expect(info).not.toContain('orient=')

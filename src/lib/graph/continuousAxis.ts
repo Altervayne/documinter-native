@@ -1,20 +1,19 @@
 /**
- * continuousAxis.ts, the continuous (numeric) x-axis foundation shared by any chart type that
- * samples/plots over a real numeric domain instead of a categorical band, today just `function`,
- * eventually the deferred `scatter` type (see docs/reference/graph_equation_study.md, Q2).
+ * The continuous (numeric) x-axis foundation shared by chart types that sample/plot over a real
+ * numeric domain instead of a categorical band (function, scatter).
  *
- * Two small, generic pieces, built ONCE and shared:
- *   - buildContinuousXAdapter: wraps an already-built numeric x-scale + a fixed list of sampled
- *     x-values into the SAME narrow `{ center(index) }` shape cartesian.ts's line/area drawing
- *     loops (`buildPointRuns` / `renderLineSeries` / `renderAreaSeries`) already consume for a
- *     categorical `BandScale`, so those loops need ZERO changes to draw a sampled curve instead
- *     of a categorical series. `index` here is a SAMPLE index (a position in the sampled x-value
- *     list), matching exactly how the existing band-scale adapter treats `index` as a category
+ * Two small, generic pieces:
+ *   - buildContinuousXAdapter: wraps an already-built numeric x-scale plus a fixed list of
+ *     sampled x-values into the same narrow `{ center(index) }` shape cartesian.ts's line/area
+ *     drawing loops (`buildPointRuns` / `renderLineSeries` / `renderAreaSeries`) already consume
+ *     for a categorical `BandScale`, so those loops need zero changes to draw a sampled curve
+ *     instead of a categorical series. `index` here is a sample index (a position in the sampled
+ *     x-value list), the same way the existing band-scale adapter treats `index` as a category
  *     position.
  *   - renderNumericXAxisLabels: mirrors cartesian.ts's `renderCategoryLabels`, but draws formatted
- *     NUMBER tick labels (from `niceTicks` over the domain) instead of one label per category. No
- *     vertical gridlines/tick marks in v1, matching the existing x-axis's plain-label minimalism
- *     (the category axis draws no vertical gridlines today either).
+ *     number tick labels (from `niceTicks` over the domain) instead of one label per category. No
+ *     vertical gridlines or tick marks, matching the existing x-axis's plain-label minimalism
+ *     (the category axis draws no vertical gridlines either).
  */
 
 import { niceTicks } from './scale'

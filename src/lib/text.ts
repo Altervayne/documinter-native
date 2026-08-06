@@ -1,11 +1,6 @@
-/**
- * text.ts, Pure string and HTML utilities.
- *
- * Exports: esc, stripTags, sanitizeRichText, slugify
- *
- * These are stateless functions with no dependencies on document types.
- * They live here rather than in document.ts because they operate on raw
- * strings and have no knowledge of the block/section data model.
+/*
+ * Pure string and HTML utilities with no dependencies on document types. They live here, not in
+ * document.ts, because they operate on raw strings with no knowledge of the block/section model.
  */
 
 /** Escape a value for safe HTML insertion. Covers &, <, >, and ". */
@@ -25,7 +20,7 @@ export function stripTags(s: string): string {
 /**
  * Sanitize innerHTML from a rich ContentEditable.
  * Keeps only <strong>, <em>, <u>, <s>, <a>, <br>.
- * Normalises <b>→<strong>, <i>→<em>.
+ * Normalises <b> -> <strong>, <i> -> <em>.
  * Inline styles produced by some browsers (bold/italic/underline spans) are
  * converted to their semantic equivalents. Everything else loses its tags but
  * keeps its text content. Trailing <br> added by browsers is stripped.

@@ -78,7 +78,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
 
    return (
       <div ref={containerRef} className="relative">
-         {/* Trigger button */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             title={t.menuView}
@@ -94,7 +93,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
-         {/* Dropdown panel */}
          {open && (
             <div
                className={`absolute top-full mt-1.5 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`}

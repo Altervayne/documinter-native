@@ -2,10 +2,9 @@
  * smooth.ts, turns a freehand point list into a smoothed SVG path `d` string via a
  * Catmull-Rom -> cubic-Bezier conversion. PURE, unit-tested in isolation.
  *
- * The freehand tool stores raw (lightly simplified at capture, see the study's Q7 ratification)
- * sample points; smoothing is deliberately a RENDER concern, not a model concern, so a future
- * improvement to the curve algorithm needs no data migration (re-smoothing the same stored points
- * differently is free).
+ * The freehand tool stores raw, lightly simplified sample points; smoothing is deliberately a
+ * RENDER concern, not a model concern, so a future improvement to the curve algorithm needs no
+ * data migration (re-smoothing the same stored points differently is free).
  */
 
 import type { Point } from './geometry'

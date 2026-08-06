@@ -1,20 +1,18 @@
 /**
  * imageMarkupFence.ts, the ` ```imagemarkup ` fence serializer / parser for the image-markup block.
  *
- * RATIFIED (2026-08-02, see docs/reference/image_markup_study.md's "Ratified decisions" section,
- * this is the one deliberate DIVERGENCE from the study's original recommendation): the fence NEVER
- * carries the base64 image pixels, in EITHER `.mint` or `.md`. Both text formats stay pure,
- * human-readable, standalone-readable text, exactly like the existing `image` block, which drops
- * its base64 `src` on serialization (see `markdown.ts`'s `case 'image'`). Only the base image's
+ * The fence NEVER carries the base64 image pixels, in EITHER `.mint` or `.md`. Both text formats
+ * stay pure, human-readable, standalone-readable text, exactly like the existing `image` block, which
+ * drops its base64 `src` on serialization (see `markdown.ts`'s `case 'image'`). Only the base image's
  * PIXEL DIMENSIONS (`w=`/`h=`, needed to reconstruct the viewBox aspect ratio without decoding any
  * image) plus `alt=`/`caption=` metadata ride the info string; the overlay stack rides the body as
- * one compact `kind key=value …` line per element, in z-order. Consequence: a `.mint`/`.md` reopen
+ * one compact `kind key=value ...` line per element, in z-order. Consequence: a `.mint`/`.md` reopen
  * restores the block + every annotation but with an EMPTY `src` (no pixels), the renderer already
  * tolerates that gracefully (see `lib/imageMarkup/index.ts`). Full fidelity (base image pixels) is
  * the JSON path only (binder IndexedDB + the self-contained HTML export).
  *
  * The element-line grammar reuses the same `key=value` tokenizer/quoter as the top-level info
- * string (`fenceInfoString.ts`, promoted from the graph fence), each line is tokenized exactly
+ * string (`fenceInfoString.ts`), also shared with the graph fence; each line is tokenized exactly
  * like an info string, with the leading token naming the element `kind`.
  *
  * Both directions are total: `imageMarkupSpecToFence` never throws on a partial spec, and
@@ -33,7 +31,7 @@ import { serializeInfoValue, unquoteInfoValue, tokenizeInfoString } from './fenc
 // # ROUNDING  #
 // #############
 
-/** Round a normalized 0..1 coordinate to the ratified fence precision (4 decimal places). */
+/** Round a normalized 0..1 coordinate to the fence's precision (4 decimal places). */
 function roundCoordinate(value: number): number {
    if (!Number.isFinite(value)) return 0
    const factor = 10 ** MARKUP_COORDINATE_PRECISION
@@ -173,7 +171,7 @@ function parseElementLine(line: string): { kind: string; fields: Map<string, str
    return { kind, fields }
 }
 
-/** Parse one `freehand` line's `pts=x,y x,y …` field into a point list. Malformed pairs are skipped. */
+/** Parse one `freehand` line's `pts=x,y x,y ...` field into a point list. Malformed pairs are skipped. */
 function parsePoints(raw: string | undefined): { x: number; y: number }[] {
    if (raw === undefined || raw.trim() === '') return []
    const points: { x: number; y: number }[] = []
@@ -316,7 +314,7 @@ function elementToLine(markupElement: MarkupElement): string {
 
 /**
  * Serialize an ImageMarkupSpec to its fence pieces: the full info string (including the leading
- * `imagemarkup` tag) and the element-lines body. The caller wraps them in the ``` … ``` fence.
+ * `imagemarkup` tag) and the element-lines body. The caller wraps them in the ``` ... ``` fence.
  * The base64 `src` is NEVER emitted (see the module doc), same output in both `.mint` and `.md`.
  */
 export function imageMarkupSpecToFence(spec: ImageMarkupSpec): { info: string; body: string } {
@@ -327,7 +325,7 @@ export function imageMarkupSpecToFence(spec: ImageMarkupSpec): { info: string; b
 
 /**
  * Parse an `imagemarkup` fence (its whole info string + its body) back into an ImageMarkupSpec.
- * `src` always comes back EMPTY (the ratified no-base64-in-text-formats rule), full fidelity is
+ * `src` always comes back EMPTY (fences never carry base64 pixels), full fidelity is
  * the JSON path only. Total: an unknown element kind or a malformed numeric field degrades
  * gracefully (skipped / zeroed) rather than throwing.
  */

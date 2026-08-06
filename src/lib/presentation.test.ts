@@ -340,7 +340,7 @@ describe('rotation / tile-size / spacing / aspect-ratio clamps', () => {
    })
    it('the tile-size ceiling was raised well past the old 480px cap, up to at least 1200px', () => {
       expect(WATERMARK_MAX_TILE_SIZE).toBeGreaterThanOrEqual(1200)
-      // A value that used to be clamped down (the old max was 480) now passes through untouched.
+      // 800 sits comfortably inside the current range and passes through unclamped.
       expect(clampWatermarkTileSize(800)).toBe(800)
    })
    it('clampWatermarkSpacing clamps into range (0 = edge-to-edge is valid) and defaults on non-number', () => {
@@ -438,8 +438,9 @@ describe('resolveWatermarkPatternGeometry', () => {
       expect(geometry.imageY).toBe(15)
    })
    it('clamps out-of-range tileSize / spacing / aspectRatio before computing geometry', () => {
-      // tileSize -> WATERMARK_MAX_TILE_SIZE (480), aspectRatio -> WATERMARK_MAX_ASPECT_RATIO (20) so
-      // imageHeight = 480 / 20 = 24, spacingX -> WATERMARK_MIN_SPACING (0), spacingY -> WATERMARK_MAX_SPACING (400).
+      // tileSize clamps to WATERMARK_MAX_TILE_SIZE, aspectRatio clamps to WATERMARK_MAX_ASPECT_RATIO,
+      // so imageHeight = imageWidth / aspectRatio; spacingX clamps to WATERMARK_MIN_SPACING, spacingY
+      // clamps to WATERMARK_MAX_SPACING.
       const geometry = resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, tileSize: 99999, spacingX: -10, spacingY: 99999, aspectRatio: 999 })
       expect(geometry.imageWidth).toBe(WATERMARK_MAX_TILE_SIZE)
       expect(geometry.imageHeight).toBe(WATERMARK_MAX_TILE_SIZE / WATERMARK_MAX_ASPECT_RATIO)
@@ -537,7 +538,7 @@ describe('reconcileNavEntries', () => {
          { kind: 'auto', sectionId: 'b' },
          { kind: 'auto', sectionId: 'a' },
       ] }
-      // 'c' is not referenced → appended last, in section order.
+      // 'c' is not referenced -> appended last, in section order.
       expect(reconcileNavEntries(nav, SECTIONS)).toEqual([
          { kind: 'auto', sectionId: 'b' },
          { kind: 'auto', sectionId: 'a' },
@@ -595,7 +596,7 @@ describe('reconcileNav (resolved)', () => {
       ] }
       const resolved = reconcileNav(nav, SECTIONS)
       expect(resolved.find(entry => entry.kind === 'link' && entry.href === '#section-a')).toBeUndefined()
-      // 'b' is first-visible → number 1; 'c' appended → number 2.
+      // 'b' is first-visible -> number 1; 'c' appended -> number 2.
       expect(resolved).toContainEqual({ kind: 'link', id: 'auto-b', label: 'Details', href: '#section-b', external: false, number: 1 })
       expect(resolved).toContainEqual({ kind: 'link', id: 'auto-c', label: 'Appendix', href: '#section-c', external: false, number: 2 })
    })

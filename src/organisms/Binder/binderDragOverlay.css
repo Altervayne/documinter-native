@@ -113,7 +113,7 @@
 }
 .binder-spring-ring .binder-spring-fill {
    stroke: var(--color-accent);
-   stroke-dasharray: 69.12;    /* 2π · r(11) */
+   stroke-dasharray: 69.12;    /* 2 x pi x r(11) */
    stroke-dashoffset: 69.12;
    animation-name: binder-spring-fill;
    animation-timing-function: linear;

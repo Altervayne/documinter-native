@@ -61,9 +61,9 @@ export interface BlockContextMenuProps {
    onClose:        () => void
    listItem?:      ListItemContextActions
    tableCell?:     TableCellContextActions
-   /** Paged-format page-break action (Document Formats Phase 2). Present only in paged mode for an
-    *  outer block that has a place to break (or already has a break) after it. `insert` adds a break
-    *  after this block, `remove` drops the one already there. */
+   /** Paged-format page-break action. Present only in paged mode for an outer block that has a place
+    *  to break (or already has a break) after it. `insert` adds a break after this block, `remove`
+    *  drops the one already there. */
    pageBreak?:     { mode: 'insert' | 'remove'; onSelect: () => void }
 }
 

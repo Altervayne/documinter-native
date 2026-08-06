@@ -1,9 +1,9 @@
 /**
- * autosaveStorage.ts, Legacy localStorage autosave (read on startup, migrated to IndexedDB).
+ * autosaveStorage.ts, legacy localStorage autosave (read on startup, migrated to IndexedDB).
  *
- * Relocated verbatim from storage.ts. The current autosave path is IndexedDB-backed; these
- * helpers exist to read and clear the old `documinter-autosave` localStorage key during the
- * one-time migration on mount (see App.tsx hydration).
+ * The current autosave path is IndexedDB-backed; these helpers exist to read and clear the old
+ * `documinter-autosave` localStorage key during the one-time migration on mount (see App.tsx
+ * hydration).
  */
 
 import { migrateIds } from './documentMigration'

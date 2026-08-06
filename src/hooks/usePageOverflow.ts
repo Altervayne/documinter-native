@@ -13,23 +13,23 @@ import type { Page } from '../lib/pageModel'
 export interface PageOverflowMeasurement {
    /** The last-fitting block's id, "Split here" breaks AFTER it. `null` in the too-tall case. */
    cutAfterBlockId: string | null
-   /** The first overflowing block is taller than the page itself → show a note, not a Split button. */
+   /** The first overflowing block is taller than the page itself: show a note, not a Split button. */
    blockTooTall:    boolean
 }
 
 interface UsePageOverflowOptions {
    /** Measure only in paged EDIT mode; infinite/readOnly leaves this false and the hook is inert. */
    enabled:           boolean
-   /** The derived pages (null in infinite mode). Identity changes on any model edit → re-measure. */
+   /** The derived pages (null in infinite mode). Identity changes on any model edit, which re-measures. */
    pages:             Page[] | null
-   /** The A4 content-box height in px (sheet height − top/bottom margins), uniform across pages. */
+   /** The A4 content-box height in px (sheet height minus top/bottom margins), uniform across pages. */
    availableHeightPx: number
 }
 
 interface UsePageOverflowResult {
    /** Attach to the `.doc-pages` wrapper; the hook measures the `[data-page-id]` sheets inside it. */
    containerRef:     (element: HTMLElement | null) => void
-   /** page.id → its overflow verdict; a page absent from the map is not overflowing. */
+   /** page.id maps to its overflow verdict; a page absent from the map is not overflowing. */
    overflowByPageId: Map<string, PageOverflowMeasurement>
 }
 
@@ -43,7 +43,7 @@ const EMPTY_MEASUREMENTS = new Map<string, PageOverflowMeasurement>()
 // # HELPERS #
 // ###########
 
-/** CSS-escape an id for a `[data-*="…"]` selector (ids are UUIDs, but stay defensive). */
+/** CSS-escape an id for a `[data-*="..."]` selector (ids are UUIDs, but stay defensive). */
 function escapeForSelector(value: string): string {
    return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
       ? CSS.escape(value)
@@ -131,7 +131,7 @@ export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflo
             const blockElement = pageElement.querySelector<HTMLElement>(`[data-block-id="${escapeForSelector(blockId)}"]`)
             const bottom = blockElement
                ? blockElement.getBoundingClientRect().bottom - contentTop
-               : previousBottom   // not laid out yet → contributes zero, keeps indices aligned
+               : previousBottom   // not laid out yet: contributes zero, keeps indices aligned
             blockHeights.push(bottom - previousBottom)
             previousBottom = bottom
          }
@@ -160,7 +160,7 @@ export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflo
 
    // Trigger 2: async layout the React tree doesn't re-render on (web-font swap, image decode,
    // MathML/SVG settling, window resize). Coalesced into a single rAF so a burst of RO callbacks
-   // measures once. Rebuilt only when `enabled` flips (infinite ↔ paged), never per edit.
+   // measures once. Rebuilt only when `enabled` flips (infinite vs paged), never per edit.
    useEffect(() => {
       const container = containerElementRef.current
       if (!enabled || !container || typeof ResizeObserver === 'undefined') return

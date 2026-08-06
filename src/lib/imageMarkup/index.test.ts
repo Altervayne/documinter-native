@@ -87,8 +87,8 @@ describe('renderImageMarkupToSvg, each element kind', () => {
       const svg = renderImageMarkupToSvg(specWith([
          { id: '1', kind: 'arrow', x1: 0, y1: 0, x2: 0.5, y2: 0 },
       ]))
-      // The shaft stops SHORT of the tip (at the arrowhead base) so the line never blunts the point
-      // (Bug 3): tip is at x=500, the shaft ends ~16.4 units earlier at x≈483.56.
+      // The shaft stops SHORT of the tip (at the arrowhead base) so the line never blunts the point:
+      // tip is at x=500, the shaft ends about 16.4 units earlier at x=483.56.
       expect(svg).toContain('<line x1="0" y1="0" x2="483.56" y2="0"')
       expect(svg).toContain('<polygon points="500,0')
       expect(svg).not.toContain('<marker')

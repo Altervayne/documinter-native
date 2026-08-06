@@ -5,7 +5,7 @@
  * NOT as shared <marker> defs: a <marker> needs an `id` + a document-level <defs>, and with
  * MULTIPLE diagrams inlined into one exported HTML file those ids would collide unless namespaced.
  * An inline polygon keeps every SVG fully self-contained and id-free, the same "no cross-SVG
- * dependency" discipline the graph renderer follows (docs/reference/diagrams_study.md, Q5).
+ * dependency" discipline the graph renderer follows.
  */
 
 import type { Point } from './geometry'
@@ -15,7 +15,7 @@ import { selfClosingElement } from '../svg'
 // # CONSTANTS #
 // #############
 
-/** Arrowhead length (tip → base), in diagram units. */
+/** Arrowhead length (tip to base), in diagram units. */
 export const ARROW_LENGTH = 12
 
 /** Arrowhead half-width (base half-span), in diagram units. */
@@ -23,7 +23,7 @@ export const ARROW_HALF_WIDTH = 6
 
 /**
  * Build a filled triangular arrowhead polygon whose TIP sits at `tip`, pointing along the
- * direction from `from` → `tip` (the incoming segment). A zero-length segment (from === tip)
+ * direction from `from` -> `tip` (the incoming segment). A zero-length segment (from === tip)
  * draws nothing (returns ''), so a degenerate edge never emits NaN geometry.
  *
  * The polygon is filled with `color` (the edge's line color) so, layered over the edge <path>,
@@ -41,7 +41,7 @@ export function renderArrowhead(from: Point, tip: Point, color: string): string 
    const perpendicularX = -unitY
    const perpendicularY = unitX
 
-   // The base sits ARROW_LENGTH back from the tip, spanning ±ARROW_HALF_WIDTH across the segment.
+   // The base sits ARROW_LENGTH back from the tip, spanning +/-ARROW_HALF_WIDTH across the segment.
    const baseCenterX = tip.x - unitX * ARROW_LENGTH
    const baseCenterY = tip.y - unitY * ARROW_LENGTH
    const leftX  = baseCenterX + perpendicularX * ARROW_HALF_WIDTH

@@ -127,14 +127,15 @@ export function renderArrow(markupArrow: MarkupArrow, vbWidth: number, vbHeight:
    const headPosition = markupArrow.arrowheadPosition ?? MARKUP_DEFAULT_ARROWHEAD_POSITION
 
    // The head sits at the tip (default) or the line's midpoint. When at the midpoint it is oriented
-   // along the same start→end direction (from `start` toward the head point is collinear with the line).
+   // along the same start-to-end direction as the line (the segment from `start` to the head point
+   // stays collinear with it).
    const headPoint: Point = headPosition === 'middle'
       ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
       : end
 
    // The shaft runs the full line, EXCEPT for a `full` head at the `end`: there we stop the shaft at
-   // the arrowhead's base so the line's stroke width can't blunt the sharp tip (Bug 3). A chevron is
-   // open (its barbs meet AT the tip), so its shaft reaches the tip; a mid-line head never retracts.
+   // the arrowhead's base so the line's stroke width can't blunt the sharp tip. A chevron is open
+   // (its barbs meet AT the tip), so its shaft reaches the tip; a mid-line head never retracts.
    const shaftEnd = (headType === 'full' && headPosition === 'end')
       ? arrowShaftEnd(start.x, start.y, end.x, end.y)
       : end
@@ -148,7 +149,7 @@ export function renderArrow(markupArrow: MarkupArrow, vbWidth: number, vbHeight:
 
    const [tip, wingA, wingB] = arrowheadPolygonPoints(start.x, start.y, headPoint.x, headPoint.y)
    const head = headType === 'chevron'
-      // An open V: a two-leg polyline wingA → tip → wingB, stroked (never dashed) and never filled.
+      // An open V: a two-leg polyline wingA -> tip -> wingB, stroked (never dashed) and never filled.
       ? selfClosingElement('polyline', {
          points: `${round(wingA.x)},${round(wingA.y)} ${round(tip.x)},${round(tip.y)} ${round(wingB.x)},${round(wingB.y)}`,
          fill: 'none', stroke, 'stroke-width': strokeWidth,
@@ -209,7 +210,7 @@ export function renderCallout(markupCallout: MarkupCallout, vbWidth: number, vbH
       : MARKUP_DEFAULT_CALLOUT_FILL_OPACITY
 
    // The box's corner radius, shared with the tail so the tail base attaches on the straight part of
-   // the rounded-rect edge rather than floating over a rounded corner (Bug 2).
+   // the rounded-rect edge rather than floating over a rounded corner.
    const cornerRadius = Math.min(box.w, box.h) * MARKUP_CALLOUT_CORNER_RADIUS_FACTOR
 
    // The tail is drawn FIRST (bottom layer) so its base line disappears under the box border,

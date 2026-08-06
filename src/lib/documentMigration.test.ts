@@ -5,8 +5,8 @@ import { migrateIds, migrateMeta } from './documentMigration'
 import { normalizeIds } from '../test/normalizeIds'
 import type { DocState } from '../types'
 
-// migrateIds upgrades historical document shapes: numeric ids → strings, legacy string fields →
-// richText (via parseInlineContent, hence jsdom), and legacy list-item formats → ListItem trees.
+// migrateIds upgrades historical document shapes: numeric ids -> strings, legacy string fields ->
+// richText (via parseInlineContent, hence jsdom), and legacy list-item formats -> ListItem trees.
 
 describe('migrateIds', () => {
    // A legacy-shaped document: numeric ids, an HTML-string paragraph, and a list whose items are a

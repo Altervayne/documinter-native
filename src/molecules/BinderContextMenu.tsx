@@ -17,7 +17,7 @@ interface BinderContextMenuProps {
 }
 
 /**
- * Card context menu, shared by the ⋯ button and right-click. Thin adapter over the shared
+ * Card context menu, shared by the row's overflow button and right-click. Thin adapter over the shared
  * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
  */
 export function BinderContextMenu({

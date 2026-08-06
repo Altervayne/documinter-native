@@ -1,15 +1,14 @@
 /**
- * pageModel.ts, the pure page model for the paged (A4) document format.
+ * The pure page model for the paged (A4) document format.
  *
- * Document Formats PHASE 2. Pages are DERIVED, never stored on content: a document's flat section/
- * block flow is partitioned into discrete pages at explicit break markers (`format.pages`, the
- * `PageBreak[]` shipped by Phase 1). The `Section` / `Block` / `DocState` model is UNTOUCHED, this is
- * layout over the content, mirroring how `presentation.reconcileNav` derives the sidebar nav from the
- * same section flow without changing content. See docs/reference/document_formats_study.md (option
- * c', "pages as break-marker partitions over the flat section flow").
+ * Pages are DERIVED, never stored on content: a document's flat section/block flow is partitioned
+ * into discrete pages at explicit break markers (`format.pages`, a `PageBreak[]`). The `Section` /
+ * `Block` / `DocState` model is UNTOUCHED, this is layout over the content, mirroring how
+ * `presentation.reconcileNav` derives the sidebar nav from the same section flow without changing
+ * content.
  *
- * BREAK SEMANTICS (matching the shipped `PageBreak.before` field): a break's `before.blockId` names
- * the block that STARTS the next page, i.e. content from that anchor onward belongs to the next page.
+ * BREAK SEMANTICS (matching the `PageBreak.before` field): a break's `before.blockId` names the
+ * block that STARTS the next page, i.e. content from that anchor onward belongs to the next page.
  * The author-facing action is "insert a page break AFTER block X", which resolves to a break BEFORE
  * X's successor in the flat flow (see `addPageBreakAfter`), so a break can never isolate an empty
  * leading page.
@@ -27,7 +26,7 @@ import { cloneBlock } from './document'
 
 // A4 sheet geometry in CSS px at 96dpi (A4 = 210 x 297mm). Portrait is the sheet upright; landscape
 // swaps width/height. The editor renders sheets at these pixel sizes; the eventual @page export
-// (Phase 5) uses the mm-native margins so print maps 1:1 to physical A4.
+// uses the mm-native margins so print maps 1:1 to physical A4.
 export const A4_PORTRAIT_WIDTH_PX  = 794
 export const A4_PORTRAIT_HEIGHT_PX = 1123
 export const A4_LANDSCAPE_WIDTH_PX  = 1123
@@ -37,7 +36,7 @@ export const A4_LANDSCAPE_HEIGHT_PX = 794
 // keyed by the id of the PageBreak that begins them. crypto.randomUUID ids never collide with this.
 export const FIRST_PAGE_ID = 'page-first'
 
-// Millimetres → CSS px at 96dpi (25.4mm per inch), for turning the mm-native margins into editor
+// Millimetres to CSS px at 96dpi (25.4mm per inch), for turning the mm-native margins into editor
 // padding. Kept here so the editor and any later print path share ONE conversion.
 export function millimetresToPx(millimetres: number): number {
    return (millimetres * 96) / 25.4
@@ -79,7 +78,7 @@ export interface Page {
  * anchors likewise never produce an empty page.
  */
 export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Page[] {
-   // Anchor blockId → the PageBreak.id that begins a page BEFORE that block (last wins on a dup).
+   // Anchor blockId -> the PageBreak.id that begins a page BEFORE that block (last wins on a dup).
    const breakIdByBlockId = new Map<string, string>()
    for (const pageBreak of pages) breakIdByBlockId.set(pageBreak.before.blockId, pageBreak.id)
 
@@ -145,8 +144,8 @@ export function reconcilePages(pages: PageBreak[], sections: Section[]): PageBre
    const result: PageBreak[] = []
    for (const pageBreak of pages) {
       const sectionId = sectionIdByBlockId.get(pageBreak.before.blockId)
-      if (sectionId === undefined) continue                       // anchor block deleted → drop
-      if (seenBlockIds.has(pageBreak.before.blockId)) continue    // duplicate anchor → drop
+      if (sectionId === undefined) continue                       // anchor block deleted -> drop
+      if (seenBlockIds.has(pageBreak.before.blockId)) continue    // duplicate anchor -> drop
       seenBlockIds.add(pageBreak.before.blockId)
       result.push(sectionId === pageBreak.before.sectionId
          ? pageBreak
@@ -197,8 +196,8 @@ export function hasPageBreakAfter(pages: PageBreak[], sections: Section[], after
  * Returns `pages` unchanged when `afterBlockId` is the last block (no successor to break before) or a
  * break already sits there. Pure: yields a new array on a real change.
  *
- * NOTE the `sections` parameter (beyond the study's `(pages, blockId)` sketch): resolving "after X"
- * to the stored "before X's successor" anchor requires the flat flow.
+ * NOTE the `sections` parameter: resolving "after X" to the stored "before X's successor" anchor
+ * requires the flat flow.
  */
 export function addPageBreakAfter(pages: PageBreak[], sections: Section[], afterBlockId: string): PageBreak[] {
    const successor = successorAnchor(sections, afterBlockId)
@@ -225,7 +224,7 @@ export function removePageBreak(pages: PageBreak[], pageBreakId: string): PageBr
 // ###################
 
 /**
- * The page-sorter's three content-touching operations (PHASE 4): reorder, duplicate, delete a page.
+ * The page-sorter's three content-touching operations: reorder, duplicate, delete a page.
  *
  * These are the ONE place the paged format mutates the real Section/Block flow (everything else only
  * touches the break markers). The doctrine still holds: pages remain DERIVED from break markers, so
@@ -274,7 +273,7 @@ function reconstructSections(slices: PageSlice[]): Section[] {
    function flush(): void {
       if (currentTemplate === null) return
       let id = currentTemplate.id
-      if (usedSectionIds.has(id)) id = crypto.randomUUID()   // a genuinely split fragment → fresh id
+      if (usedSectionIds.has(id)) id = crypto.randomUUID()   // a genuinely split fragment -> fresh id
       usedSectionIds.add(id)
       result.push({ ...currentTemplate, id, blocks: currentBlocks })
    }
@@ -295,7 +294,7 @@ function reconstructSections(slices: PageSlice[]): Section[] {
 }
 
 /** Recompute the break list for an ordered sequence of page slice-groups over the reconstructed
- *  sections: page k (k ≥ 1) begins with a break BEFORE that page's first block, addressed with the
+ *  sections: page k (k >= 1) begins with a break BEFORE that page's first block, addressed with the
  *  block's id + its NEW (post-reconstruction) section id. Page 0 needs no marker. Fresh break ids. */
 function breaksForPageGroups(pageGroups: PageSlice[][], sections: Section[]): PageBreak[] {
    const sectionIdByBlockId = new Map<string, string>()

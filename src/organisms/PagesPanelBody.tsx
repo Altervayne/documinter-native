@@ -73,10 +73,10 @@ function PageThumbnail({
    const { t } = useLang()
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
 
-   // The page → self-contained doc HTML the same way the export builds it: the document header (title +
-   // meta) on the first page, then each section slice's `<h2>` heading + its blocks — so the thumbnail
-   // reflects the real page. Rendered at the real sheet px inside a scaled wrapper. Image blocks use the
-   // cheap placeholder (a thumbnail needs no full base64 fidelity); graphs / diagrams are inline SVG.
+   // Renders the page into self-contained doc HTML the same way the export builds it: the document header
+   // (title + meta) on the first page, then each section slice's `<h2>` heading + its blocks, so the
+   // thumbnail reflects the real page. Rendered at the real sheet px inside a scaled wrapper. Image blocks
+   // use the cheap placeholder (a thumbnail needs no full base64 fidelity); graphs / diagrams are inline SVG.
    const html = renderPagePreviewHtml(page, {
       isFirstPage: pageIndex === 0,
       meta, sections, accent: docAccent, theme: docTheme,
@@ -106,7 +106,7 @@ function PageThumbnail({
                className="page-thumb-scaler"
                style={{ width: `${sheetWidthPx}px`, height: `${sheetHeightPx}px`, transform: `scale(${scale})` }}
             >
-               {/* .doc-dark rides the frame (an ANCESTOR), so the `.doc-dark .doc-render …` descendant
+               {/* .doc-dark rides the frame (an ANCESTOR), so the `.doc-dark .doc-render ...` descendant
                    rules match AND the frame's own dark canvas background fills below short content. */}
                <div
                   className="doc-render page-thumb-render"

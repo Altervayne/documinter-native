@@ -120,7 +120,7 @@ export function BinderNav({
                })}
             </SortableContext>
             {subfolders.length === 0 ? (
-               /* No subfolders → a prominent "create a folder" call to action (the New-folder
+               /* No subfolders -> a prominent "create a folder" call to action (the New-folder
                   button blown up, since there's nothing else to anchor it to). */
                <button
                   type="button"

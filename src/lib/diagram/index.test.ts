@@ -106,7 +106,7 @@ describe('renderDiagramToSvg, node shapes', () => {
    it('draws a chevron as a six-vertex pentagon with a right point and a left notch', () => {
       const svg = shapeSvg('chevron')
       expect(svg).toContain('<polygon')
-      // 100x60 node: depth = (60/2)*0.6 = 18, capped at 100*0.45=45 → 18. right=100, centerY=30.
+      // 100x60 node: depth = (60/2)*0.6 = 18, capped at 100*0.45=45 -> 18. right=100, centerY=30.
       expect(svg).toContain('points="0,0 82,0 100,30 82,60 0,60 18,30"')
    })
 
@@ -200,7 +200,7 @@ describe('renderDiagramToSvg, edges', () => {
    it('skips an edge that references a missing node without throwing', () => {
       const svg = renderDiagramToSvg(spec({ nodes: twoNodes, edges: [{ id: 'e', from: 'a', to: 'ghost' }] }), LIGHT_DIAGRAM_THEME)
       expect(svg).toContain('<svg')
-      expect(svg).not.toContain('<path')  // the only edge was dangling → no path drawn
+      expect(svg).not.toContain('<path')  // the only edge was dangling -> no path drawn
    })
 
    it('draws a dashed edge with a stroke-dasharray', () => {
@@ -211,7 +211,7 @@ describe('renderDiagramToSvg, edges', () => {
    it('renders an orthogonal edge as a multi-segment elbow path', () => {
       const svg = renderDiagramToSvg(spec({ nodes: twoNodes, edges: [{ id: 'e', from: 'a', to: 'b', routing: 'orthogonal', arrow: 'none' }] }), LIGHT_DIAGRAM_THEME)
       const path = svg.match(/<path d="([^"]+)"/)?.[1] ?? ''
-      // Vertical-dominant elbow → a mid-bend, so at least three L commands (four points).
+      // Vertical-dominant elbow -> a mid-bend, so at least three L commands (four points).
       expect((path.match(/L/g) ?? []).length).toBeGreaterThanOrEqual(3)
    })
 

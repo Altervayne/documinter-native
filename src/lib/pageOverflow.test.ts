@@ -29,22 +29,22 @@ describe('computeOverflowCut', () => {
    })
 
    // ====================================
-   //  A mid-page block crosses the boundary → cut after the last fitting block
+   //  A mid-page block crosses the boundary: cut after the last fitting block
    // ====================================
    it('cuts after the last block that fully fits', () => {
-      // 100, 200, 300 cumulative; 300 > 250 at index 2 → last fitting is index 1.
+      // 100, 200, 300 cumulative; 300 > 250 at index 2, so the last fitting index is 1.
       const cut = computeOverflowCut([100, 100, 100], 250)
       expect(cut).toEqual({ overflows: true, cutAfterIndex: 1, overflowingIndex: 2, blockTooTall: false })
    })
 
    it('can cut after the very first block when the second block overflows', () => {
-      // 100 fits, 100 + 300 = 400 > 250 at index 1 → cut after index 0.
+      // 100 fits, 100 + 300 = 400 > 250 at index 1, so it cuts after index 0.
       const cut = computeOverflowCut([100, 300], 250)
       expect(cut).toEqual({ overflows: true, cutAfterIndex: 0, overflowingIndex: 1, blockTooTall: false })
    })
 
    // ====================================
-   //  The first block already overflows → no useful split (too-tall note)
+   //  The first block already overflows: no useful split (too-tall note)
    // ====================================
    it('flags a single block taller than the whole page as too-tall with no cut', () => {
       const cut = computeOverflowCut([500], 250)

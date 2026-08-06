@@ -1,14 +1,13 @@
 /**
  * graphFence.ts, the ` ```graph ` fence serializer / parser for the graph block.
  *
- * A graph block round-trips losslessly through a fenced payload shaped exactly like the study
- * ratified: chart type + presentation options ride the fence INFO STRING as `key=value` tokens
- * (mirroring the math block's `scale=` precedent), and the data rides the fence BODY as a
- * Markdown pipe table (labels column + one column per named series, reusing the same
- * `parsePipeTableRow` the table block parses with).
+ * A graph block round-trips losslessly through a fenced payload: chart type and presentation
+ * options ride the fence INFO STRING as `key=value` tokens (mirroring the math block's `scale=`
+ * token), and the data rides the fence BODY as a Markdown pipe table (labels column + one column
+ * per named series, reusing the same `parsePipeTableRow` the table block parses with).
  *
  * The `type=` token is load-bearing and is emitted in BOTH `.mint` and `.md` (a graph fence is
- * Documint-specific in either format, so there is no GitHub-compat reason to strip it), this is
+ * Documint-specific in either format, so there is no GitHub-compat reason to strip it); this is
  * the deliberate divergence from the math block, whose `scale=` is dropped in portable Markdown.
  *
  * Both directions are total: `graphSpecToFence` never throws on a partial spec, and
@@ -76,8 +75,8 @@ interface ParsedInfo {
 // where <series> is a slot index or the literal `all`. A reference label may contain spaces (and
 // colons), so the whole token is double-quoted by serializeInfoValue when it needs it. An
 // equation's <expression> is taken VERBATIM as everything after the first colon (never split
-// further), the expr.ts grammar (docs/reference/graph_equation_study.md) has NO `:` operator or
-// token anywhere (numbers, `x`, `pi`/`e`, `+ - * / ^`, parens, commas, function names), so the
+// further), the expr.ts grammar has NO `:` operator or token anywhere (numbers, `x`, `pi`/`e`,
+// `+ - * / ^`, parens, commas, function names), so the
 // `eq:` prefix split is unambiguous by construction; an expression containing whitespace or a
 // literal `"` is still double-quoted by serializeInfoValue like every other token, no new
 // escaping needed.
@@ -143,7 +142,7 @@ function parseOverlay(raw: string): Overlay | null {
 }
 
 /**
- * Parse the info string (the whole `graph …` line after the backticks) into a chart type,
+ * Parse the info string (the whole `graph ...` line after the backticks) into a chart type,
  * presentation options, and the per-series color-override list. Unknown tokens are ignored
  * (forward-compatible); a missing / invalid `type=` falls back to the default type.
  */
@@ -315,7 +314,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    const options = spec.options ?? {}
 
    // Live table link (tabular types only): `source=<handle>` rides the info string like every other
-   // token, right after `type=` so a linked fence reads "type=… source=…" up front. The mapping
+   // token, right after `type=` so a linked fence reads "type=... source=..." up front. The mapping
    // tokens `labelCol=`/`orient=` are emitted ONLY when non-default (label column 0 / `columns`),
    // keeping a plainly-linked fence lean, same default-diff rule barWidth=/lineWidth=/etc. follow.
    // The pipe-table body stays the materialized snapshot (serializeTableBody reads spec.data), so a
@@ -409,7 +408,7 @@ function serializeInfoTokens(spec: GraphSpec): string[] {
    // override. Emitted only when at least one series actually carries a color. `scatter` reads its
    // series list from `scatterPlot` (not `data.series`, which stays empty for this type), the
    // SAME token grammar every other type uses, just a different source array. `histogram` has only
-   // ONE dataset (no series axis at all), so it rides the same single-slot `colors="…"` token via a
+   // ONE dataset (no series axis at all), so it rides the same single-slot `colors="..."` token via a
    // synthetic one-item list built from `histogramData.color`.
    const colorSourceSeries = spec.type === 'scatter'
       ? (spec.scatterPlot?.series ?? [])
@@ -451,11 +450,12 @@ function isSeparatorRow(cells: string[]): boolean {
 }
 
 /**
- * Parse a single data cell into a `number | null`. Blank / non-numeric cells (`—`, `n/a`, an
- * empty cell) become `null` (a gap the renderer handles per type). Numbers are read forgivingly:
- * surrounding whitespace and thousands-grouping commas are stripped before parsing.
+ * Parse a single data cell into a `number | null`. Blank / non-numeric cells (an em-dash
+ * placeholder, `n/a`, an empty cell) become `null` (a gap the renderer handles per type). Numbers
+ * are read forgivingly: surrounding whitespace and thousands-grouping commas are stripped before
+ * parsing.
  *
- * Exported so `lib/graphTableData.ts` (the table↔graph one-shot extract) reuses the EXACT same
+ * Exported so `lib/graphTableData.ts` (the table-to-graph one-shot extract) reuses the EXACT same
  * numeric-parse semantics as the fence, keeping both mappings in lockstep by construction.
  */
 export function parseNumericCell(raw: string | undefined): number | null {
@@ -620,7 +620,7 @@ function serializeScatterTableBody(series: ScatterSeries[]): string {
  * "paste a pile of numbers" input, both for the fence body AND the editor's raw-samples textarea
  * (this is the SAME parser both call, so what you paste into the editor is byte-identical to what a
  * hand-edited fence body parses to). Tokens that do not parse to a finite number (an empty run
- * between separators, a stray word, `NaN`/`Infinity` spelled out, …) are silently skipped, never
+ * between separators, a stray word, `NaN`/`Infinity` spelled out, ...) are silently skipped, never
  * thrown, matching the "garbage ignored, never breaks the chart" contract every other graph parser
  * here honors.
  */
@@ -674,7 +674,7 @@ function serializeTableBody(spec: GraphSpec): string {
 
 /**
  * Serialize a GraphSpec to its fence pieces: the full info string (including the leading `graph`
- * tag) and the pipe-table body. The caller wraps them in the ``` … ``` fence. Same output in
+ * tag) and the pipe-table body. The caller wraps them in the ``` ... ``` fence. Same output in
  * both `.mint` and `.md`, the `type=` token is load-bearing and rides both.
  */
 export function graphSpecToFence(spec: GraphSpec): { info: string; body: string } {
@@ -767,7 +767,7 @@ export function fenceToGraphSpec(fenceInfo: string, body: string): GraphSpec {
    const spec: GraphSpec = { type, data, options }
 
    // A live table link attaches ONLY on the tabular path (function/scatter/histogram return above,
-   // they carry no category×series grid to map a table onto, so a stray `source=` on one of those is
+   // they carry no category x series grid to map a table onto, so a stray `source=` on one of those is
    // harmlessly ignored). Mapping fields ride along only when non-default, mirroring serialization.
    if (source.handle !== undefined) {
       const graphSource: GraphSource = { handle: source.handle }

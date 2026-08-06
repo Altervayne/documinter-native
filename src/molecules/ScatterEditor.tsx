@@ -222,14 +222,14 @@ function SortableScatterPoint({ pointIndex, onContextMenu, children }: SortableS
 
 /**
  * The Data-tab editor for a `scatter` chart: one block per series (color swatch + name + a small
- * X/Y numeric grid of that series' points, with add/remove point) followed by a "+ Series" footer,
- * replacing `GraphDataGrid` for this type, a scatter series has no categories and no shared
- * domain, so it earns its own dedicated surface (mirrors `EquationEditor`'s layout, one block per
- * SERIES here instead of one row per equation).
+ * X/Y numeric grid of that series' points, with add/remove point) followed by a "+ Series" footer.
+ * Used instead of `GraphDataGrid` for this chart type: a scatter series has no categories and no
+ * shared domain, so it earns its own dedicated surface (mirrors `EquationEditor`'s layout, one
+ * block per SERIES here instead of one row per equation).
  *
  * Draft/commit model exactly like `EquationEditor`/`GraphDataGrid`: numeric x/y typing drafts on
  * every keystroke (instant preview) and commits on blur; add/remove/color commit immediately.
- * v1 is points-only, no per-series trendline (a deferred fast-follow, not built here).
+ * Points-only, no per-series trendline.
  */
 export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: ScatterEditorProps) {
    const scatterPlot = spec.scatterPlot ?? FALLBACK_SCATTER_PLOT
@@ -254,7 +254,7 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
          && editingPoint.seriesIndex === seriesIndex
          && editingPoint.pointIndex === pointIndex
          && editingPoint.field === field) return editingPoint.text
-      // A blank-seeded point (non-finite x/y) renders as an empty field, the muted "–" placeholder
+      // A blank-seeded point (non-finite x/y) renders as an empty field, the muted dash placeholder
       // then reads it as a gap to type over, not a literal "0" to select-and-overwrite.
       return Number.isFinite(value) ? String(value) : ''
    }
@@ -415,7 +415,7 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
                className={`graph-text-input graph-scatter-point-input${xInvalid ? ' is-invalid' : ''}`}
                type="text"
                inputMode="decimal"
-               placeholder="–"
+               placeholder="-"
                value={pointFieldText(seriesIndex, pointIndex, 'x', point.x)}
                aria-label={t.graphScatterX}
                aria-invalid={xInvalid || undefined}
@@ -429,7 +429,7 @@ export function ScatterEditor({ spec, theme, t, onEditStart, onDraft, onCommit, 
                className={`graph-text-input graph-scatter-point-input${yInvalid ? ' is-invalid' : ''}`}
                type="text"
                inputMode="decimal"
-               placeholder="–"
+               placeholder="-"
                value={pointFieldText(seriesIndex, pointIndex, 'y', point.y)}
                aria-label={t.graphScatterY}
                aria-invalid={yInvalid || undefined}

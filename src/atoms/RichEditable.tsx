@@ -59,7 +59,7 @@ export function RichEditable({
    //  Mount + readOnly toggle
    // ========================
    // Re-runs when readOnly changes because React removes managed children when
-   // switching readOnly=true → false, leaving the element blank.
+   // switching readOnly=true -> false, leaving the element blank.
    useLayoutEffect(() => {
       if (!ref.current) return
       ref.current.innerHTML = renderInlineContent(content)

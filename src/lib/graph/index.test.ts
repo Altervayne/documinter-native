@@ -133,7 +133,7 @@ describe('cartesian marks', () => {
 // # PER-TYPE PARAMETERS    #
 // #########################
 
-/** Pull the numeric `width="…"` of the first drawn bar rect (rects with a `rx`/`fill`, not swatches). */
+/** Pull the numeric `width="..."` of the first drawn bar rect (rects with a `rx`/`fill`, not swatches). */
 function firstBarWidth(svg: string): number {
    const match = /<rect[^>]*\bwidth="([\d.]+)"[^>]*fill="#/.exec(svg)
    return match ? Number(match[1]) : Number.NaN
@@ -537,9 +537,9 @@ describe('edge cases', () => {
 // #####################
 // # FUNCTION CHARTS   #
 // #####################
-// Stage 2 (docs/reference/graph_equation_study.md): the `function` chart type, sampled equation
-// curves over a continuous numeric domain, drawn via the SAME line-rendering machinery every other
-// cartesian type uses, through a continuous-x adapter (see continuousAxis.ts) instead of a band.
+// The `function` chart type: sampled equation curves over a continuous numeric domain, drawn via
+// the same line-rendering machinery every other cartesian type uses, through a continuous-x
+// adapter (see continuousAxis.ts) instead of a band.
 
 /** A `function`-type spec: no `data`, an equation list + domain instead. */
 function makeFunctionSpec(
@@ -980,10 +980,10 @@ describe('histogram chart (binned frequency distribution)', () => {
 // #####################
 // # LOG VALUE AXIS    #
 // #####################
-// Built 2026-08-02: `options.yScale: 'log'`, a base-10 logarithmic value (y) axis. Policy: absent/
-// 'linear' stays byte-identical; log is offered for line/area/scatter/function/histogram/bar/
-// bar-grouped, NEVER for bar-stacked/pie/donut; a chart whose own data touches <= 0 (or an
-// unsupported type, defensively) silently falls back to linear rather than clamping or crashing.
+// `options.yScale: 'log'` is a base-10 logarithmic value (y) axis. Absent or 'linear' stays
+// byte-identical; log is offered for line/area/scatter/function/histogram/bar/bar-grouped, never
+// for bar-stacked/pie/donut; a chart whose own data touches <= 0 (or an unsupported type,
+// defensively) silently falls back to linear rather than clamping or crashing.
 
 describe('log value axis: byte-identical when absent/linear', () => {
    it('an explicit yScale: "linear" renders identically to leaving it unset (bar)', () => {
@@ -1062,10 +1062,8 @@ describe('log value axis: eligible chart types', () => {
       expect(countOccurrences(svg, '<polyline')).toBeGreaterThanOrEqual(1)
    })
 
-   // Regression (2026-08-02): a report of "log scale doesn't seem to do anything for functions"
-   // turned out to be the missing fallback notice (see the describe block below), but this pins
-   // the POSITIVE case as an explicit, unambiguous regression test: a genuinely positive function
-   // must draw real DECADE tick labels (1, 10, 100, values a linear autoscale of this same y-range
+   // Pins the positive case as an explicit, unambiguous test: a genuinely positive function must
+   // draw real DECADE tick labels (1, 10, 100, values a linear autoscale of this same y-range
    // would never happen to land on) plus faint minor gridlines, never silently staying linear.
    it('function: exp(x) over a narrow domain draws genuine decade tick labels, not a linear autoscale', () => {
       // exp(0) = 1, exp(ln(100)) = 100 -> y ranges [1, 100], strictly positive throughout.
@@ -1262,9 +1260,9 @@ describe('custom axis origin (textbook axes)', () => {
          .filter(tag => tag.includes(`stroke="${LIGHT_AXIS_STROKE}"`))
          .map(lineCoords)
       // The bold horizontal axis spans the full plot WIDTH (plotLeft..plotRight); the bold vertical
-      // axis spans the full HEIGHT (plotTop..plotBottom). origin x=1000 is far right of the data → the
-      // vertical axis clamps to the RIGHT edge (= the horizontal axis's right end); origin y=1000 is
-      // far above → the horizontal axis clamps to the TOP edge (= the vertical axis's top end).
+      // axis spans the full HEIGHT (plotTop..plotBottom). origin x=1000 is far right of the data, so
+      // the vertical axis clamps to the RIGHT edge (= the horizontal axis's right end); origin y=1000
+      // is far above, so the horizontal axis clamps to the TOP edge (= the vertical axis's top end).
       const boldVertical = axisLines.find(c => c.x1 === c.x2 && Math.abs(c.y2 - c.y1) > 100)!
       const boldHorizontal = axisLines.find(c => c.y1 === c.y2 && Math.abs(c.x2 - c.x1) > 100)!
       const plotRight = Math.max(boldHorizontal.x1, boldHorizontal.x2)

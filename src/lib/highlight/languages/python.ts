@@ -35,7 +35,7 @@ const builtinPattern = new RegExp(`\\b(${BUILTINS.join('|')})\\b(?=\\s*\\()`)
 export const python: Language = {
    name: 'python',
    rules: [
-      // Comments (#  …  end-of-line)
+      // Comments (# to end of line)
       { type: 'cmt',  pattern: /#[^\n]*/  },
 
       // Triple-quoted strings, must precede single-quoted rules
@@ -53,7 +53,6 @@ export const python: Language = {
       // Decorators, @name or @module.name, use tok-type (teal) for visual distinction
       { type: 'type', pattern: /@[\w.]+/ },
 
-      // Keywords
       { type: 'kw',   pattern: kwPattern },
 
       // Built-in function calls (word followed by open-paren)
@@ -62,7 +61,6 @@ export const python: Language = {
       // Any other function / method call
       { type: 'fn',   pattern: /\b([a-zA-Z_]\w*)\s*(?=\()/ },
 
-      // Operators and punctuation
       { type: 'op',   pattern: /[+\-*/%=<>!&|^~@:,]+/ },
    ],
 }

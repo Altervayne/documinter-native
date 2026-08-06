@@ -19,7 +19,7 @@
    Color tokens are mapped to the app palette; the mono font is mapped so the
    numeric/hex fields render in JetBrains Mono. The swatch size is bumped from
    its 1.25rem default so the 9-per-row palette spans the popover's full width:
-   the popover is w-62 (15.5rem) with p-2 padding → ~230px grid; 9 swatches at
+   the popover is w-62 (15.5rem) with p-2 padding -> 230px grid: 9 swatches at
    1.375rem (22px) + 8 gaps at 0.25rem (4px) = 230px, filling the row to the edge.
    Other non-color defaults (radii, thumb ring, checker) are left at shipped values. */
 .pqc-root {
@@ -83,7 +83,7 @@
   --color-accent:    #2dcea8;
   --color-on-accent: #0a0f0d;
   --color-text:      #dff0eb;
-  --color-muted:     #738f85;  /* lightened from #5c7a6d, 5.1:1 on raised */
+  --color-muted:     #738f85;  /* 5.1:1 contrast on raised */
   --color-canvas:  #0d1a15;
 
   /* ======================= */
@@ -108,7 +108,7 @@ html[data-theme="light"] {
   --color-raised:  #ffffff;
   --color-el:      #e6f5ee;
   --color-border:  #c0ddd1;
-  --color-accent:    #0a855f;  /* darkened from #0c9a76, 4.6:1 on white */
+  --color-accent:    #0a855f;  /* 4.6:1 contrast on white */
   --color-on-accent: #ffffff;
   --color-text:    #152b21;
   --color-muted:   #587a6c;

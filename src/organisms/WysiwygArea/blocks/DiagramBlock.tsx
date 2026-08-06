@@ -1,12 +1,11 @@
 /**
  * DiagramBlock, the diagram (nodes + links) block's in-app view + node editor.
  *
- * NODE EDITOR PASS (phase 2): the block adopts the Block Editor Window (the next adopter after Graph
- * + Image-markup). Inline, the block shows only its rendered diagram (read-only `renderDiagramToSvg`,
- * self-contained SVG, no runtime, theme baked from the doc theme) plus a hover-reveal Edit pill; the
- * full node editor, an interactive 2D `DiagramCanvas`, a `ShapePalette`, and a `DiagramInspector`,
- * lives in a floating, non-modal `BlockEditorWindow`. The window is APP CHROME (`--color-*`); only
- * the rendered diagram SVG follows the doc theme.
+ * The block uses the Block Editor Window. Inline, it shows only its rendered diagram (read-only
+ * `renderDiagramToSvg`, self-contained SVG, no runtime, theme baked from the doc theme) plus a
+ * hover-reveal Edit pill; the full node editor, an interactive 2D `DiagramCanvas`, a `ShapePalette`,
+ * and a `DiagramInspector`, lives in a floating, non-modal `BlockEditorWindow`. The window is APP
+ * CHROME (`--color-*`); only the rendered diagram SVG follows the doc theme.
  *
  * The draft/commit model mirrors the graph + image-markup blocks: a local `working` spec (also
  * mirrored in `workingRef` so pointer handlers read the latest value mid-drag) keeps a drag smooth;
@@ -14,10 +13,10 @@
  * a drag / style change) writes `patch({ diagram })`. The inline block renders the live `working`, so
  * it updates behind the non-modal window as the canvas is edited.
  *
- * EDGES ARE THE NEXT PASS. This component creates / selects / moves / resizes / relabels / styles /
- * deletes NODES; the model already carries edges (and the read-only renderer draws them), but there
- * is no edge drawing / editing UI here yet. Deleting a node cascades to its incident edges via the
- * pure `removeNode`, so the model never dangles.
+ * This component creates / selects / moves / resizes / relabels / styles / deletes NODES; the model
+ * already carries edges (and the read-only renderer draws them), but there is no edge drawing/editing
+ * UI here yet. Deleting a node cascades to its incident edges via the pure `removeNode`, so the model
+ * never dangles.
  */
 
 // -- React Imports --
@@ -280,8 +279,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    //  pointer mapping + unbounded-canvas clip stay correct at any user-chosen height)
    // ============
    // The fixed reference frame: `editorCanvas.width` is the stable scale-1 horizontal extent, and the
-   // HEIGHT is derived so the frame aspect exactly matches the measured container (unmeasured → the
-   // content extent as a first-frame fallback).
+   // HEIGHT is derived so the frame aspect exactly matches the measured container (falls back to the
+   // content extent as a first-frame default when unmeasured).
    function currentFrame(): DiagramViewBox {
       if (containerSize.width > 0 && containerSize.height > 0) {
          return frameFromContainer(editorCanvas.width, containerSize.width, containerSize.height)
@@ -361,9 +360,9 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    /**
-    * Right-click a node → select it + open the node context menu at the cursor. A right-click on empty
-    * canvas FALLS THROUGH (no preventDefault), leaving the native menu, since there's no empty-canvas
-    * action yet.
+    * Right-click a node to select it and open the node context menu at the cursor. A right-click on
+    * empty canvas falls through (no preventDefault), leaving the native menu, since there is no
+    * empty-canvas action yet.
     */
    function onCanvasContextMenu(point: Point, event: React.MouseEvent): void {
       const hit = hitTestNode(workingRef.current, point)
@@ -432,8 +431,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (4) Off every node: an edge close enough to the click selects it (a plain click-select, no
-      // drag this pass, waypoint drag is deferred). Waypoints/routing are honored by hitTestEdge.
+      // (4) Off every node: an edge close enough to the click selects it (a plain click-select; there
+      // is no drag or waypoint editing yet). Waypoints/routing are honored by hitTestEdge.
       const edgeHit = hitTestEdge(current, point, EDGE_HIT_THRESHOLD_PX / info.pixelsPerDiagramUnit)
       if (edgeHit) {
          selectEdge(edgeHit.id)
@@ -441,7 +440,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (5) The empty background begins a PAN and clears the selection (prior deselect behavior).
+      // (5) The empty background begins a PAN and clears the selection.
       selectNode(null)
       interactionRef.current = { mode: 'pan', startFrame: info.framePoint, startView: view }
       event.currentTarget.setPointerCapture(event.pointerId)
@@ -545,7 +544,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       if (editing.current) commit(workingRef.current)
    }
 
-   // Double-click a node → edit its label in place (reliable path #1; the inspector field is #2).
+   // Double-click a node to edit its label in place (the primary path; the inspector field is the other).
    function onCanvasDoubleClick(point: Point): void {
       const hit = hitTestNode(workingRef.current, point)
       if (hit) {
@@ -653,7 +652,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    //  Windowed editor: an UNBOUNDED canvas. Nodes render at their absolute diagram coordinates; the
    //  editor's viewBox is the VIEWPORT derived from the zoom/pan over those absolute coords, so no
    //  content is ever clipped to a fixed frame and any node is reachable by panning. `editorCanvas` is
-   //  now only the fixed reference frame (the scale-1 viewport size + the container aspect), never a
+   //  only the fixed reference frame (the scale-1 viewport size + the container aspect), never a
    //  content clip. The interaction overlay shares the same viewport viewBox, so its coordinates line
    //  up 1:1 with the drawn nodes at any zoom/pan.
    // ============

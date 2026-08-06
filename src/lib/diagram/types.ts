@@ -20,7 +20,7 @@
 // #########
 
 /**
- * A shape drawn for a node. v1 fixed set; an unknown value falls back to 'rectangle' on parse.
+ * A shape drawn for a node, from a fixed set; an unknown value falls back to 'rectangle' on parse.
  * `banner` and `chevron` are HEADING shapes: a flat bar and a right-pointing arrow/process banner,
  * for labeling steps/phases in a process chart. They are ordinary node shapes (same place/label/
  * style/move/resize/serialize/color as any other shape), just seeded at a wider, shorter default
@@ -29,10 +29,10 @@
  */
 export type NodeShape = 'rectangle' | 'rounded' | 'ellipse' | 'diamond' | 'pill' | 'banner' | 'chevron'
 
-/** Arrowhead placement on an edge. 'end' is the common flowchart arrow (A → B). */
+/** Arrowhead placement on an edge. 'end' is the common flowchart arrow (A -> B). */
 export type EdgeArrow = 'none' | 'end' | 'start' | 'both'
 
-/** How an edge's path is drawn between its endpoints (v1: straight or elbow; splines deferred). */
+/** How an edge's path is drawn between its endpoints (straight or elbow; splines deferred). */
 export type EdgeRouting = 'straight' | 'orthogonal'
 
 /**
@@ -47,7 +47,7 @@ export interface DiagramNode {
    width:  number          // diagram units; author-sized (see the text-in-SVG handling in index.ts)
    height: number
    shape:  NodeShape
-   label:  string          // plain text (v1); multi-line via '\n'
+   label:  string          // plain text; multi-line via '\n'
    fill?:  string          // optional hex fill override; default = the theme node surface
    stroke?: string         // optional hex border override; default = the theme node border
    textColor?: string      // optional hex label color override; default = the theme node text
@@ -94,19 +94,19 @@ export interface DiagramSpec {
 // # MODEL VALIDATION #
 // ####################
 
-/** Every node shape the v1 renderer accepts; the parse default when a `shape` cell is bad. */
+/** Every node shape the renderer accepts; the parse default when a `shape` cell is bad. */
 export const VALID_NODE_SHAPES: ReadonlySet<NodeShape> =
    new Set<NodeShape>(['rectangle', 'rounded', 'ellipse', 'diamond', 'pill', 'banner', 'chevron'])
 
 export const DEFAULT_NODE_SHAPE: NodeShape = 'rectangle'
 
-/** Every arrow placement the v1 renderer accepts; the parse default when an `arrow` cell is bad. */
+/** Every arrow placement the renderer accepts; the parse default when an `arrow` cell is bad. */
 export const VALID_EDGE_ARROWS: ReadonlySet<EdgeArrow> =
    new Set<EdgeArrow>(['none', 'end', 'start', 'both'])
 
 export const DEFAULT_EDGE_ARROW: EdgeArrow = 'end'
 
-/** Every routing mode the v1 renderer accepts; the parse default when a `routing` cell is bad. */
+/** Every routing mode the renderer accepts; the parse default when a `routing` cell is bad. */
 export const VALID_EDGE_ROUTINGS: ReadonlySet<EdgeRouting> =
    new Set<EdgeRouting>(['straight', 'orthogonal'])
 

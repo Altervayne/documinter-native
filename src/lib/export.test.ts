@@ -265,8 +265,8 @@ describe('generateExportHTML, background watermark', () => {
    })
 })
 
-// The header logo is the same additive, guarded emission as the watermark: absent ⇒ byte-identical
-// (exactly the pre-feature `<h1>…</h1>`, no extra CSS); present ⇒ a self-contained `<img>` inlined
+// The header logo is the same additive, guarded emission as the watermark: absent -> byte-identical
+// (exactly the pre-feature `<h1>...</h1>`, no extra CSS); present -> a self-contained `<img>` inlined
 // in .page-header, placed/aligned/capped per the model.
 describe('generateExportHTML, header logo', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
@@ -405,7 +405,7 @@ describe('generateExportHTML, sidebar nav', () => {
       const navUndef = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', presentation: { nav: undefined } })
       expect(empty).toBe(absent)
       expect(navUndef).toBe(absent)
-      // Today's numbered section links, in section order.
+      // The current numbered section links, in section order.
       expect(absent).toContain('<a href="#section-a" class="nav-link">1. Intro</a>')
       expect(absent).toContain('<a href="#section-b" class="nav-link">2. Details</a>')
       // The ORIGINAL (unguarded) scroll-spy click handler, and none of the nav-customization CSS.
@@ -504,9 +504,9 @@ describe('generateExportHTML, sidebar nav', () => {
    })
 })
 
-// Document Formats Phase 1: the infinite-width preset applied to `.doc-card`'s max-width. The
-// central guarantee is that an absent format, a bare `{ kind: 'infinite' }`, and an explicit
-// `width: 'normal'` all produce BYTE-IDENTICAL export output to before this feature existed.
+// The infinite-width preset applied to `.doc-card`'s max-width. The central guarantee is that an
+// absent format, a bare `{ kind: 'infinite' }`, and an explicit `width: 'normal'` all produce
+// BYTE-IDENTICAL export output to before this feature existed.
 describe('generateExportHTML, document format / infinite width', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
    const sections: Section[] = []
@@ -540,9 +540,9 @@ describe('generateExportHTML, document format / infinite width', () => {
    })
 })
 
-// Document Formats Phase 5: the paged-A4 export branch. A paged format emits an `@page` rule plus a
-// stack of A4 `.doc-page` sheets with page-break rules for correct browser print-to-PDF; an infinite /
-// absent format takes NONE of this and stays byte-identical to the single-.doc-card output.
+// The paged-A4 export branch. A paged format emits an `@page` rule plus a stack of A4 `.doc-page`
+// sheets with page-break rules for correct browser print-to-PDF; an infinite / absent format takes
+// NONE of this and stays byte-identical to the single-.doc-card output.
 describe('generateExportHTML, paged (A4) export', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
    const sections: Section[] = [{

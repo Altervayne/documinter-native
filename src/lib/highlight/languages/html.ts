@@ -6,10 +6,10 @@ import type { Language } from '../types'
 //
 // Token mapping:
 //   kw   (blue)  , tag names, including the opening <  or </
-//   type (teal)  , <!DOCTYPE …>, HTML entities (&amp; etc.)
+//   type (teal)  , <!DOCTYPE ...>, HTML entities (&amp; etc.)
 //   fn   (purple), attribute names
-//   str  (red)   , attribute values ("…" / '…')
-//   cmt  (green) , <!-- … --> comments
+//   str  (red)   , attribute values ("...") / ('...')
+//   cmt  (green) , <!-- ... --> comments
 //   op   (muted) , angle brackets, =, /
 
 export const html: Language = {

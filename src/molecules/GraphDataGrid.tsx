@@ -155,7 +155,7 @@ function parseCellNumber(raw: string): number | null {
    return Number.isFinite(parsed) ? parsed : null
 }
 
-/** Pull the integer index back out of a positional sortable id (`category-2` → 2). */
+/** Pull the integer index back out of a positional sortable id (`category-2` -> 2). */
 function indexFromSortableId(id: string, prefix: string): number {
    return Number(id.slice(prefix.length))
 }
@@ -232,8 +232,8 @@ function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: Sortable
 /**
  * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series
  * or MANY (not radial-vs-cartesian, a simple `bar` is single-series and shares the radial shape).
- * BOTH shapes are now categories = ROWS (scroll vertically, uncapped), which unifies their layout
- * and keeps the horizontally-bounded axis (≤ MAX_SERIES) as the columns:
+ * BOTH shapes use categories = ROWS (scroll vertically, uncapped), which unifies their layout
+ * and keeps the horizontally-bounded axis (<= MAX_SERIES) as the columns:
  *
  *   - MULTI-SERIES (grouped/stacked bar, line, area): rows = categories (a sticky leading column
  *     with each category's label + drag handle), columns = series (a sticky header row of the
@@ -320,7 +320,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    //  Cell rendering
    // ================
    // Show the transient raw text while a cell is being typed into; otherwise the stored number
-   // (an empty string for a null gap, the muted "–" placeholder then reads the cell as a gap).
+   // (an empty string for a null gap, the muted dash placeholder then reads the cell as a gap).
    function cellText(categoryIndex: number, seriesIndex: number, value: number | null | undefined): string {
       if (editingCell && editingCell.categoryIndex === categoryIndex && editingCell.seriesIndex === seriesIndex) {
          return editingCell.text
@@ -364,7 +364,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ================
    // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell. With
    // categories = rows and series = columns, pasted ROWS map to CATEGORIES (downward, uncapped) and
-   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES), matching the new orientation.
+   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES), matching the grid's orientation.
    // Non-numeric cells land as null. Applied over the pure transforms, committed once.
    function handleMultiSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
@@ -516,7 +516,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
             className={`graph-cell-input${invalid ? ' is-invalid' : ''}`}
             type="text"
             inputMode="decimal"
-            placeholder="–"
+            placeholder="-"
             value={cellText(categoryIndex, seriesIndex, value)}
             aria-label={t.graphCellValue}
             aria-invalid={invalid || undefined}

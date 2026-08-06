@@ -1,13 +1,13 @@
 /**
  * diagramFence.ts, the ` ```diagram ` fence serializer / parser for the diagram (nodes + links) block.
  *
- * A diagram block round-trips losslessly through a fenced payload shaped exactly as the study
- * ratified (docs/reference/diagrams_study.md, Q4): diagram-level options ride the fence INFO STRING
- * as `key=value` tokens (reusing the shared `fenceInfoString.ts` grammar), and the data rides the
- * fence BODY as TWO Markdown pipe tables, a nodes table + an edges table, separated by a blank
- * line, both parsed with the same `parsePipeTableRow` the table block uses. This is fidelity-first,
- * NOT mermaid: a manually positioned diagram's load-bearing state (x/y/size/shape/style) is exactly
- * what plain mermaid cannot express, so the native format stores the model directly.
+ * A diagram block round-trips losslessly through a fenced payload: diagram-level options ride the
+ * fence INFO STRING as `key=value` tokens (reusing the shared `fenceInfoString.ts` grammar), and
+ * the data rides the fence BODY as TWO Markdown pipe tables, a nodes table + an edges table,
+ * separated by a blank line, both parsed with the same `parsePipeTableRow` the table block uses.
+ * This is fidelity-first, NOT mermaid: a manually positioned diagram's load-bearing state
+ * (x/y/size/shape/style) is exactly what plain mermaid cannot express, so the native format stores
+ * the model directly.
  *
  * The two tables are classified by their HEADER (a nodes table's first header cell is `id`; an
  * edges table's is `from`), so their order is robust to hand editing and either can be absent.
@@ -49,7 +49,7 @@ function serializeInfoTokens(options: DiagramOptions): string[] {
    return tokens
 }
 
-/** Parse the info string (the whole `diagram …` line after the backticks) into options. */
+/** Parse the info string (the whole `diagram ...` line after the backticks) into options. */
 function parseInfoString(fenceInfo: string): DiagramOptions {
    const tokens = tokenizeInfoString(fenceInfo)
    // tokens[0] is the `diagram` tag itself; options start at index 1.
@@ -92,13 +92,13 @@ function parseCanvasToken(value: string): { width: number; height: number } | nu
 function encodeLabelCell(label: string): string {
    return label
       .replace(/\\/g, '\\\\')   // backslash first, so the escapes we add next aren't double-hit
-      .replace(/\n/g, '\\n')    // newline → literal backslash-n
-      .replace(/\|/g, '\\|')    // pipe → escaped pipe (matches parsePipeTableRow)
+      .replace(/\n/g, '\\n')    // newline -> literal backslash-n
+      .replace(/\|/g, '\\|')    // pipe -> escaped pipe (matches parsePipeTableRow)
 }
 
 /**
  * Decode a cell value that `parsePipeTableRow` already returned (pipes de-escaped) back to the
- * label text, resolving `\n` → newline and `\\` → backslash. A trailing lone backslash, or an
+ * label text, resolving `\n` -> newline and `\\` -> backslash. A trailing lone backslash, or an
  * `\<other>`, keeps the following character literally (lenient, never throws).
  */
 function decodeLabelCell(cell: string): string {
@@ -142,9 +142,9 @@ interface TableGroup {
    bodyRows: string[][]
 }
 
-/** A column-name → column-index lookup, built from a table group's (lower-cased) header cells.
+/** A column-name -> column-index lookup, built from a table group's (lower-cased) header cells.
  *  Lets the parsers read cells by NAME so a hand-edited fence with reordered / partial columns
- *  still resolves each field correctly (self-describing by header, per the study). */
+ *  still resolves each field correctly (self-describing by header). */
 function columnIndex(headerCells: string[]): Map<string, number> {
    const index = new Map<string, number>()
    headerCells.forEach((cell, position) => {
@@ -341,7 +341,7 @@ function parseEdgesTable(group: TableGroup): DiagramEdge[] {
 
 /**
  * Serialize a DiagramSpec to its fence pieces: the full info string (including the leading
- * `diagram` tag) and the two-table body. The caller wraps them in the ``` … ``` fence. Same output
+ * `diagram` tag) and the two-table body. The caller wraps them in the ``` ... ``` fence. Same output
  * in both `.mint` and `.md`, a diagram fence is Documint-specific in either format.
  */
 export function diagramSpecToFence(spec: DiagramSpec): { info: string; body: string } {

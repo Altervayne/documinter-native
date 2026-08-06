@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { applyColorToRange, mergeAdjacentRuns, runsHaveSameFlags } from './inlineFormatting'
 import type { InlineContent } from '../types'
 
-// The color/highlight application + run-normalization primitives the wave-3 selection work writes
-// into. The DOM helpers (countCharsToPosition, deriveActiveColorsAt, restoreSelectionRange) are a
-// later jsdom phase.
+// The color/highlight application + run-normalization primitives used by selection handling.
+// The DOM helpers (countCharsToPosition, deriveActiveColorsAt, restoreSelectionRange) need jsdom
+// and are covered in inlineFormatting.dom.test.ts.
 
 describe('applyColorToRange', () => {
    it('splits a single run when the range is interior to it', () => {

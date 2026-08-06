@@ -43,9 +43,9 @@ interface WysiwygSectionProps {
    activeBlockId?:  string | null
    readOnly?:       boolean
    // ==========================================================
-   //  Paged-format slice rendering (Document Formats Phase 2). When a section spans a page break it
-   //  is rendered as several slices (one per page it touches), each a WysiwygSection over a SUBSET of
-   //  the section's blocks. Absent = infinite mode = today's whole-section render (byte-identical).
+   //  Paged-format slice rendering. When a section spans a page break it is rendered as several
+   //  slices (one per page it touches), each a WysiwygSection over a SUBSET of the section's
+   //  blocks. Absent = infinite mode = the whole-section render (byte-identical).
    // ==========================================================
    /** Render only these blocks (a page slice). Block indices are still resolved ABSOLUTELY against
     *  section.blocks, so insert/move/reorder stay correct. Absent = render the whole section. */

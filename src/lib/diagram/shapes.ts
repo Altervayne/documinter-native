@@ -138,7 +138,7 @@ export function chevronPointDepth(node: DiagramNode): number {
  * The six vertex points of the chevron polygon: a rectangle whose right end comes to a point (the tip
  * sits ON the bounding box's right wall, at its vertical center) and whose left end is cut with a
  * matching inward notch (the classic "process arrow" pentagon), so a row of them approximates
- * interlocking like "▷ ▷ ▷" when placed edge-to-edge. Pure polygon geometry from x/y/width/height.
+ * interlocking arrows when placed edge-to-edge. Pure polygon geometry from x/y/width/height.
  */
 function chevronPoints(node: DiagramNode): string {
    const depth = chevronPointDepth(node)

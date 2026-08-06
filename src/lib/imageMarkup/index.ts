@@ -9,12 +9,12 @@
  * base image is the one exception, inlined as a `data:` URI when present), safe to inline verbatim
  * into the HTML export.
  *
- * NO async gate (unlike Math/Temml) and NO theme argument (unlike Graph), annotation colors are the
- * author's explicit per-element choices, not resolved from the document theme (see the study's
- * doctrine section). It NEVER throws: a missing/empty `src` renders a neutral placeholder ground
- * instead of the image, and a malformed element's coordinates clamp to 0 via the shared svg.ts
- * number formatting rather than emitting `NaN`/`Infinity`, the "invalid never breaks the document"
- * contract every graphic block here honors.
+ * NO async gate (unlike Math/Temml) and NO theme argument (unlike Graph): annotation colors are
+ * the author's explicit per-element choices, not resolved from the document theme. It NEVER
+ * throws: a missing/empty `src` renders a neutral placeholder ground instead of the image, and a
+ * malformed element's coordinates clamp to 0 via the shared svg.ts number formatting rather than
+ * emitting `NaN`/`Infinity`, the "invalid never breaks the document" contract every graphic block
+ * here honors.
  */
 
 import { titleElement, descElement, selfClosingElement } from '../svg'

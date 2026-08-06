@@ -47,7 +47,7 @@ interface TabChipContentProps {
    onTitleKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
 }
 
-/** The inner chip visual (title / edit input, dirty dot, close ×). Shared by the sortable row and
+/** The inner chip visual (title / edit input, dirty dot, close x). Shared by the sortable row and
  *  the drag-overlay clone so the dragged tab looks identical without duplicating markup. */
 function TabChipContent({
    openDocument, isActive, isEditing, titleDraft, placeholder, editAriaLabel, closeAriaLabel,
@@ -147,9 +147,9 @@ interface DocumentTitleBarProps {
 
 /**
  * The tab strip (second bar, document mode). One chip per open document: single-click an inactive
- * tab to activate it; double-click a tab to rename it inline (committing through onMetaChange →
+ * tab to activate it; double-click a tab to rename it inline (committing through onMetaChange ->
  * the active tab's meta.title); right-click for Duplicate / Rename / Close. Each chip shows a
- * per-tab dirty dot + a close (×), and the strip is drag-reorderable via a DragOverlay clone (which
+ * per-tab dirty dot + a close (x), and the strip is drag-reorderable via a DragOverlay clone (which
  * never changes the active tab or its content, and never resizes the bar).
  */
 export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onReorderTabs, onDuplicateTab, onMetaChange }: DocumentTitleBarProps) {
@@ -296,7 +296,7 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
       <>
       <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100">
          {/* Both arrow slots render together once the strip overflows, so toggling a single arrow's
-             glyph (disabled → opacity-0) never shifts the tabs; no slots at all when there's room. */}
+             glyph (disabled -> opacity-0) never shifts the tabs; no slots at all when there's room. */}
          {hasOverflow && (
             <button
                type="button"

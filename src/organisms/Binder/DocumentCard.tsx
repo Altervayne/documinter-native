@@ -10,8 +10,8 @@ import { BinderContextMenu } from '../../molecules/BinderContextMenu'
 
 interface DocumentCardProps {
    record:           BinderDocumentRecord
-   isActive:         boolean   // open in the active tab → "Currently editing"
-   isOpen:           boolean   // open in some tab (active or not) → "Open"
+   isActive:         boolean   // open in the active tab -> "Currently editing"
+   isOpen:           boolean   // open in some tab (active or not) -> "Open"
    isSelected:       boolean
    reorderable:      boolean   // manual sort active, only then do siblings shift to preview a reorder
    onSelect:         () => void
@@ -27,8 +27,8 @@ interface DocumentCardProps {
 /**
  * A document card: scaled preview (left) + metadata (right). The whole card is grabbable,
  * drag it onto a nav folder to move it, or (under manual sort) onto another card to reorder.
- * A 5px drag threshold keeps single-click (select) and double-click (open) working; the ⋯
- * button and right-click open the context menu.
+ * A 5px drag threshold keeps single-click (select) and double-click (open) working; the
+ * more-actions button and right-click open the context menu.
  */
 export function DocumentCard({
    record, isActive, isOpen, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown, onSaveAsTemplate,

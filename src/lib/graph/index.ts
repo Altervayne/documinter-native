@@ -21,7 +21,7 @@ import { renderRadial } from './radial'
 import { titleElement, descElement, textElement, element } from './svg'
 
 // The system sans stack the chart text renders in, so the export ships no font asset. Font
-// names use SINGLE quotes because this string sits inside a double-quoted `style="…"` attribute
+// names use SINGLE quotes because this string sits inside a double-quoted `style="..."` attribute
 // on the root <svg>; double quotes here would prematurely close the attribute.
 const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 

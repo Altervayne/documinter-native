@@ -51,7 +51,7 @@ interface UseBinderDragAndDropOptions {
  * cursor-"puck" morph driven by a window pointermove listener (direct DOM writes), back/cancel/
  * folder hit-testing via refs, spring-loaded folder navigation (dwell timer + ring), and native
  * file-drop import. State stays local to the binder subtree; the root binds the returned handlers
- * to DndContext and renders the overlay/nav from the returned state + refs. Pure extraction.
+ * to DndContext and renders the overlay/nav from the returned state + refs.
  */
 export function useBinderDragAndDrop({
    docs, nav, navigateTo, currentFolder, currentFolderId, manualSortActive, clearDocumentSelection,
@@ -140,7 +140,7 @@ export function useBinderDragAndDrop({
    const puckIntent: DropIntent = overBack ? 'up' : (isDocDragging ? (isOverFolder ? 'down' : null) : (folderNest ? 'down' : null))
 
    // While anything is dragging, follow the real cursor: pin the puck to it and flag the Back
-   // button (up-drop). For a card: nav-panel hover (card→puck morph) + funnel origin. For a folder:
+   // button (up-drop). For a card: nav-panel hover (card->puck morph) + funnel origin. For a folder:
    // hit-test the folder rows to derive the hovered row + zone (top/bottom edge = reorder, center =
    // nest). Direct DOM writes where possible, no re-render unless a tracked value changes.
    useEffect(() => {
@@ -275,7 +275,7 @@ export function useBinderDragAndDrop({
       folderTargetRef.current = null
       resetSpring()
 
-      // Dropped on the Cancel-move zone → abort: no move, reorder, or navigation commit.
+      // Dropped on the Cancel-move zone -> abort: no move, reorder, or navigation commit.
       if (droppedOnCancel) return
 
       const { active, over } = event
@@ -286,7 +286,7 @@ export function useBinderDragAndDrop({
          const record = documents.find(item => item.id === source.id)
          const isForeign = !record   // arrived in this view via spring-navigation, not a local doc
 
-         // Drop on the Back button → move the document up a level (to the current folder's parent).
+         // Drop on the Back button -> move the document up a level (to the current folder's parent).
          if (droppedOnBack && currentFolder) {
             if (!record || record.folderId !== currentFolder.parentId) {
                void handleMove(source.id, currentFolder.parentId)
@@ -303,7 +303,7 @@ export function useBinderDragAndDrop({
             return
          }
          if (isForeign) {
-            // Spring-navigated here from elsewhere → land the document in the current folder.
+            // Spring-navigated here from elsewhere -> land the document in the current folder.
             void handleMove(source.id, currentFolderId)
             clearDocumentSelection()
             return
@@ -330,7 +330,7 @@ export function useBinderDragAndDrop({
       }
       const isNativeFolder = subfolders.some(folder => folder.id === source.id)
       if (!isNativeFolder) {
-         // A folder spring-navigated here (foreign to this level) → land it in the current folder.
+         // A folder spring-navigated here (foreign to this level) -> land it in the current folder.
          void nestFolder(source.id, currentFolderId)
       } else if (folderTargetNow) {
          // Reorder before/after the target among the visible siblings.

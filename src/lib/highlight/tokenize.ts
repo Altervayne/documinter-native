@@ -7,7 +7,7 @@ function escChar(ch: string): string {
 /**
  * Greedy left-to-right tokenizer.
  * Each rule's pattern must have the `y` (sticky) flag.
- * Returns an HTML string with <span class="tok-{type}">…</span> wrappers.
+ * Returns an HTML string with <span class="tok-{type}">...</span> wrappers.
  */
 export function tokenize(code: string, rules: TokenRule[]): string {
    // Ensure all patterns are sticky

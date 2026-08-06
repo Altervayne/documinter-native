@@ -159,13 +159,13 @@ function SortableEquationRow({ equationIndex, onContextMenu, children }: Sortabl
 /**
  * The Data-tab editor for a `function` chart: a shared domain (x-range + sample count, plus an
  * optional pinned y-range) followed by one row per equation (color swatch + name + expression +
- * remove), replacing `GraphDataGrid` for this type, an equation list has no categories and no
- * per-cell numeric grid, so it earns its own dedicated surface (mirrors the study's Q6 sketch).
+ * remove), replacing `GraphDataGrid` for this type. An equation list has no categories and no
+ * per-cell numeric grid, so it earns its own dedicated surface.
  *
  * Draft/commit model exactly like `GraphDataGrid`: text/number typing drafts on every keystroke
  * (instant preview) and commits on blur; add/remove/color commit immediately. An expression that
  * fails `compileExpression` gets a live invalid-ring + tooltip (the same affordance the numeric
- * grid uses for a bad number) but is never blocked or reverted, the renderer already treats an
+ * grid uses for a bad number) but is never blocked or reverted. The renderer already treats an
  * uncompileable expression as "draw nothing for this curve," so the editor just surfaces that
  * state rather than fighting it.
  */
@@ -412,8 +412,8 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
                {domainField('xMax', t.graphDomainXMax, domain.xMax)}
                {domainField('samples', t.graphDomainSamples, domain.samples)}
             </div>
-            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain,
-                their own labeled sub-group makes that mapping legible; blank = autoscale. */}
+            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain.
+                Their own labeled sub-group makes that mapping legible; blank = autoscale. */}
             <span className="graph-section-label">{t.graphYRangeSection}</span>
             <div className="graph-domain-row">
                {yRangeField('yMin', t.graphDomainYMin, yMin)}

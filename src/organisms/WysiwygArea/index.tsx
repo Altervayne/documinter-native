@@ -53,10 +53,10 @@ interface WysiwygAreaProps {
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
-   /** Export-only / editor-only presentation extras (watermark, …); undefined = none set. */
+   /** Export-only / editor-only presentation extras (watermark, etc.); undefined means none set. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite canvas width, later paged A4); undefined = today's infinite/
-    *  normal-width behavior. */
+   /** Document page format (infinite canvas width, later paged A4); undefined resolves to the
+    *  default infinite / normal-width behavior. */
    format?: DocFormat
    /** Active tab key; a change closes any open block-editor window (it belongs to the outgoing tab). */
    activeTabKey?: string
@@ -69,7 +69,7 @@ interface WysiwygAreaProps {
    // ==========================================================
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    onDocAccentChange?: (hex: string) => void
-   /** Commit the document's presentation extras (watermark, …); undefined clears them. */
+   /** Commit the document's presentation extras (watermark, etc.); undefined clears them. */
    onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Commit the document's page format (infinite width, later paged A4); undefined clears it. */
    onFormatChange?: (next: DocFormat | undefined) => void
@@ -95,7 +95,8 @@ interface WysiwygAreaProps {
    // ==========================================================
    //  Page setup window (document-level, non-modal), open-state lifted to App.tsx like the
    //  presentation / navigation windows. Opened from the background context menu here AND the
-   //  Document top-bar menu. Phase 1: infinite-width control only (kind is implicitly infinite).
+   //  Document top-bar menu. Only the infinite-width control is exposed here (kind is implicitly
+   //  infinite).
    // ==========================================================
    formatOpen?:      boolean
    onOpenFormat?:    () => void
@@ -117,13 +118,13 @@ export function WysiwygArea({
    const { reorderSections, moveBlockAcross } = useDocumentMutations()
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
-   // unique per component instance, colons stripped since the id rides inside a raw `url(#…)`
+   // unique per component instance, colons stripped since the id rides inside a raw `url(#...)`
    // string), guards against <defs> id clashes if multiple watermarked sheets are ever mounted
    // at once.
    const watermarkPatternId = `doc-watermark-pattern-${useId().replace(/:/g, '')}`
 
-   // Header logo (presentation): rendered in .page-header, above or beside the title. undefined ⇒
-   // no logo, today's behavior.
+   // Header logo (presentation): rendered in .page-header, above or beside the title. undefined
+   // means no logo renders.
    const header = presentation?.header
 
    // ==========================================================
@@ -137,7 +138,7 @@ export function WysiwygArea({
    // Which field's color popover is open, plus the field rect that anchors it.
    const [colorPopover, setColorPopover] = useState<{ fieldId: string; rect: DOMRect } | null>(null)
    // The field whose right-click context menu is open, at the cursor. `rect` is the field's box,
-   // reused to anchor the color popover when the menu's Color… item is chosen.
+   // reused to anchor the color popover when the menu's Color... item is chosen.
    const [fieldMenu, setFieldMenu] = useState<{ fieldId: string; x: number; y: number; rect: DOMRect } | null>(null)
    // ==========================================================
    //  Document background context menu (document-level actions)
@@ -176,7 +177,7 @@ export function WysiwygArea({
    // The document-background context menu shares its entry list with the top-bar "Document" dropdown
    // (HeaderMenuBar) via the single buildDocumentMenuEntries source of truth, so the two surfaces can
    // never drift in label or order. Only the surface-specific openers differ: here selecting "Custom
-   // accent…" sets this surface's own selected-flag (and clicking a preset clears it), and the
+   // accent..." sets this surface's own selected-flag (and clicking a preset clears it), and the
    // preview toggle routes through onSetMode.
    function buildBackgroundMenuEntries(): ContextMenuEntry[] {
       return buildDocumentMenuEntries({
@@ -235,8 +236,8 @@ export function WysiwygArea({
       onUpdateMeta({ fields: fields.map(field =>
          field.id === id ? { ...field, position: field.position === 'above' ? 'below' : 'above' } : field) })
    }
-   // Toggle whether the label renders in the read view + export. Default (absent/true) → false
-   // drops the label key back to the default when it flips true again, keeping the model clean.
+   // Toggle whether the label renders in the read view + export. Flipping back to the default
+   // (absent/true) drops the showLabel key rather than storing it explicitly, keeping the model clean.
    function toggleFieldLabel(id: string) {
       onUpdateMeta({ fields: fields.map(field => {
          if (field.id !== id) return field
@@ -395,7 +396,7 @@ export function WysiwygArea({
       () => collectTableSources(sections.flatMap(section => section.blocks)),
    [sections])
 
-   // The full "Link to a table…" picker listing (stage 2b, the editor UX): every table, handled or
+   // The full "Link to a table..." picker listing (the editor UX): every table, handled or
    // not, with enough addressing to route a link/handle-assignment mutation back at a pick. Same
    // `useMemo`-over-`sections` seam as `documentTables`, one axis over (see `LinkableTable`).
    const linkableTables = useMemo(() => collectLinkableTables(sections), [sections])
@@ -408,18 +409,17 @@ export function WysiwygArea({
    const [activeBlockId, setActiveBlockId]     = useState<string | null>(null)
    const [activeBlockWidth, setActiveBlockWidth] = useState<number | null>(null)
 
-   // Document Formats Phase 1: the infinite-canvas sheet width. Absent format / bare infinite / an
-   // explicit 'normal' width all resolve to the SAME 860px this sheet already rendered at before the
-   // feature existed (see resolveDocumentSheetWidthPx), so an untouched document's editor is visually
-   // unchanged.
+   // The infinite-canvas sheet width. Absent format, bare infinite, or an explicit 'normal' width
+   // all resolve to the same 860px (see resolveDocumentSheetWidthPx), so an untouched document's
+   // editor renders unchanged.
    const sheetWidthPx = resolveDocumentSheetWidthPx(format)
 
    // ==========================================================
-   //  Document Formats Phase 2: the paged (A4) page model
+   //  The paged (A4) page model
    // ==========================================================
    // `paged` = a non-infinite kind. In paged mode the flat section/block flow is partitioned into
-   // discrete A4 sheets at the break markers (format.pages); infinite mode is untouched (byte-
-   // identical to Phase 1). The Section/Block model is never restructured, pages are derived.
+   // discrete A4 sheets at the break markers (format.pages); infinite mode stays untouched and
+   // byte-identical. The Section/Block model is never restructured, pages are derived.
    const paged        = !!format && format.kind !== 'infinite'
    const pageBreaks   = useMemo<PageBreak[]>(() => format?.pages ?? [], [format])
    const derivedPages = useMemo<Page[] | null>(
@@ -428,7 +428,7 @@ export function WysiwygArea({
    )
 
    // ==========================================================
-   //  Document Formats Phase 3: measured page-overflow detection + the "Split here" assist
+   //  Measured page-overflow detection + the "Split here" assist
    // ==========================================================
    // Paged geometry, resolved once for the overflow measurement (the per-sheet render below resolves
    // the same values locally). The available content height is the A4 sheet height minus the top +
@@ -559,7 +559,7 @@ export function WysiwygArea({
       }
 
       // Block move: read the source location off the dragged block, and the destination off whatever
-      // it was dropped on (a block ⇒ insert before it; a bottom zone ⇒ append to that array).
+      // it was dropped on (a block means insert before it; a bottom zone means append to that array).
       const from = active.data.current?.loc as BlockLoc | undefined
       if (!from) return
       const overType = over.data.current?.type
@@ -575,9 +575,9 @@ export function WysiwygArea({
    //  Render helpers (shared by the infinite single sheet + the paged A4 sheets)
    // ==========================================================
    // Background watermark layer, parametrized by <pattern> id so each paged sheet gets its own
-   // collision-free id. Guarded on the optional field (absent watermark ⇒ nothing renders). The tiled
-   // and single branches match export.ts exactly (shared string builders), so editor + export never
-   // drift.
+   // collision-free id. Guarded on the optional field (an absent watermark means nothing renders).
+   // The tiled and single branches match export.ts exactly (shared string builders), so editor +
+   // export never drift.
    function renderWatermarkLayer(patternId: string): React.ReactNode {
       if (!presentation?.watermark?.src) return null
       const watermark = presentation.watermark
@@ -720,8 +720,8 @@ export function WysiwygArea({
       )
    }
 
-   // One page slice (a section's contribution to a page) → a WysiwygSection over the subset. A unique
-   // sortableId + sectionDragDisabled keep a split section's two slices from clashing dnd ids.
+   // One page slice (a section's contribution to a page) becomes a WysiwygSection over the subset.
+   // A unique sortableId + sectionDragDisabled keep a split section's two slices from clashing dnd ids.
    function renderPageSlice(slice: PageSlice, page: Page): React.ReactNode {
       const sectionIndex = sections.findIndex(candidate => candidate.id === slice.section.id)
       return (
@@ -745,7 +745,7 @@ export function WysiwygArea({
    // The printed page number(s) for one sheet: an absolutely-positioned element per enabled edge,
    // centered in that edge's margin band and aligned to the content column (left/right margin) or
    // centered. Matches the paged HTML export's `.doc-page-number` element, so editor and export read
-   // the same. Absent pageNumbering ⇒ nothing rendered.
+   // the same. Absent pageNumbering means nothing renders.
    function renderPageNumbers(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
       const numbering = format?.pageNumbering
       if (!numbering) return null
@@ -776,7 +776,7 @@ export function WysiwygArea({
       const sheetWidth  = isLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
       const sheetHeight = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
       const isLastPage  = pageIndex === total - 1
-      // Phase 3: this sheet's measured overflow verdict (absent = fits). Only surfaced with a mutating
+      // This sheet's measured overflow verdict (absent means it fits). Only surfaced with a mutating
       // onFormatChange, matching the hook's `enabled` gate, so the ribbon can always act.
       const overflow    = onFormatChange ? overflowByPageId.get(page.id) : undefined
       return (
@@ -819,7 +819,7 @@ export function WysiwygArea({
                {page.slices.map(slice => renderPageSlice(slice, page))}
                {isLastPage && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
-            {/* Overflow assist ribbon (Phase 3), pinned to the page's bottom-margin line (the A4
+            {/* Overflow assist ribbon, pinned to the page's bottom-margin line (the A4
                 boundary the spill crosses). Absolutely positioned so it never alters page flow, hence
                 never feeds a measurement back into itself. A splittable overflow offers a one-click
                 "Split here" (assisted, never automatic); a first-block-too-tall overflow shows a note

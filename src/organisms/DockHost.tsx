@@ -84,10 +84,10 @@ function allGroups(layout: DockLayout): DockGroup[] {
 
 /**
  * Renders one side's dock: a resizable column of groups, each a tabbed container of panel bodies, with
- * per-group and whole-dock collapse and a config menu for the menu-driven reconfiguration (move to the
+ * per-group and whole-dock collapse and a config menu for menu-driven reconfiguration (move to the
  * other dock, split into its own group, merge into another group, collapse, close). The panel bodies
- * are supplied by App; this component owns only the dock chrome. Drag-and-drop reconfiguration comes in
- * Phase 2; the config menu stays permanently as the second way to reconfigure.
+ * are supplied by App; this component owns only the dock chrome. Drag-and-drop and the config menu are
+ * the two ways to reconfigure the layout.
  */
 export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostProps) {
    const column = layout[side]
@@ -103,10 +103,10 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
    const content = (
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
          {column.groups.map((group, groupIndex) => {
-            // The resize handle only exists between two EXPANDED neighbours — the only case where
+            // The resize handle only exists between two EXPANDED neighbours: the only case where
             // dragging changes anything (a collapsed group is a fixed-height header, a lone expanded
-            // group already fills). When it is hidden, a static top border keeps the between-groups
-            // separator the divider used to provide (its 4px bg-border line).
+            // group already fills). When it is hidden, a static top border marks the boundary between
+            // groups instead (a 4px bg-border line).
             const showDivider = groupIndex > 0 && !group.collapsed && !column.groups[groupIndex - 1].collapsed
             return (
             <div
@@ -230,11 +230,12 @@ function groupFlexStyle(group: DockGroup): CSSProperties {
    // A collapsed group shrinks to just its header.
    if (group.collapsed) return { flex: '0 0 auto' }
    // Expanded groups share the column by flex weight. Two subtleties:
-   //  - Guard a missing `flex` (legacy/partial layout) → default 1, else `flex: undefined 1 0` is invalid.
-   //  - Scale the grow factor ×100 so it is always ≥ 1. A divider stores fractional weights (e.g.
-   //    0.47 / 0.53) that sum to 1 only while BOTH groups are expanded; once a sibling collapses (grow
-   //    0), a lone 0.47 grow is < 1, and CSS flexbox distributes only 47% of the free space, leaving
-   //    a large blank below. Scaling keeps the ratio between expanded groups but the sum ≥ 1 (fills).
+   //  - Guard a missing `flex` (an older or partial layout): default to 1, else `flex: undefined 1 0` is invalid.
+   //  - Scale the grow factor by 100 so it is always >= 1. A divider stores fractional weights (for
+   //    example 0.47 / 0.53) that sum to 1 only while both groups are expanded; once a sibling collapses
+   //    (grow goes to 0), a lone 0.47 grow is under 1, and CSS flexbox distributes only 47% of the free
+   //    space, leaving a large blank below. Scaling keeps the ratio between expanded groups but the
+   //    sum >= 1 (fills).
    const weight = group.flex && group.flex > 0 ? group.flex : 1
    return { flex: `${weight * 100} 1 0`, minHeight: 0 }
 }

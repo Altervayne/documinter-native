@@ -36,7 +36,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
          .catch(error => {
             if (!active) return
             setIsLoading(false)
-            // Surfacing this (was silently swallowed): a throw here shows an empty binder.
+            // Log and toast the failure: an unhandled throw here would just leave the binder looking empty.
             console.error('[binder] listDocuments failed, grid will appear empty:', error)
             showToast(t.binderActionFailed, { type: 'error' })
          })

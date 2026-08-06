@@ -15,7 +15,7 @@
 // #########
 
 /**
- * The chart types the v1 renderer supports. Five rendering cores:
+ * The chart types the renderer supports. Five rendering cores:
  *   - cartesian:          bar, bar-grouped, bar-stacked, line, area
  *   - radial:             pie, donut
  *   - continuous-x plot:  function (sampled equation curves over a numeric domain)
@@ -76,8 +76,8 @@ export interface GraphData {
 /**
  * The computed reference marks an author can draw over a CARTESIAN plot (radial ignores overlays):
  *   - mean:      a horizontal line at a target series' arithmetic mean.
- *   - median:    a horizontal line at a target series' median (RESERVED, not yet wired to the
- *                editor, but the render + serialization paths handle it so it is a one-line follow).
+ *   - median:    a horizontal line at a target series' median (not yet exposed in the editor;
+ *                the render and serialization paths already handle it).
  *   - trend:     a linear least-squares trendline for a target series, labelled with its R^2.
  *   - reference: a horizontal line at a per-chart constant y (a target / threshold), no series.
  *   - equation:  an f(x) curve plotted over the host chart's existing category-index x-range,
@@ -106,13 +106,12 @@ export interface Overlay {
    /**
     * `reference` only: which axis the constant line is drawn on.
     *   - `'horizontal'` (the default when absent): a line at y = {@link value}, auto-extending the
-    *     Y-domain, the ORIGINAL, only behavior before this field, available on every cartesian type.
+    *     Y-domain. Available on every cartesian type.
     *   - `'vertical'`: a line at x = {@link value}, spanning the plot height, auto-extending the
-    *     X-domain, meaningful only where the x-axis is continuous, so the CONTINUOUS-X types
+    *     X-domain. Meaningful only where the x-axis is continuous, so the continuous-x types
     *     (`function` / `scatter`) draw it and the categorical cartesian types (bar family / line /
     *     area) skip it (a vertical x = const has no meaning on a categorical band axis).
-    * Absent ⇒ `'horizontal'`, so an existing reference overlay round-trips byte-identically. Ignored
-    * by every non-`reference` kind.
+    * Absent means `'horizontal'`. Ignored by every non-`reference` kind.
     */
    orientation?: 'horizontal' | 'vertical'
    /** Optional label override; falls back to a computed default per kind (see cartesian.ts). */
@@ -188,37 +187,36 @@ export interface GraphOptions {
     */
    barPeakLine?: boolean
    /**
-    * The VALUE axis (y for every type here; x stays categorical/continuous either way) scale.
-    * Undefined = `'linear'`, the pre-option behavior (byte-identical output). `'log'` requests a
-    * base-10 logarithmic value axis, meaningful for `line` / `area` / `scatter` / `function` /
-    * `histogram` / `bar` / `bar-grouped` (see {@link supportsLogScale}); NOT offered for the
-    * radial types (`pie`/`donut`, which have no value axis at all) or `bar-stacked` (zero-baseline
-    * stacking is mathematically incompatible with a log axis, there is no such thing as summing
-    * segments "from zero" on a scale where zero doesn't exist). The editor gates the toggle by
-    * {@link supportsLogScale} so an author can't pick an invalid combination; the renderer ALSO
-    * defensively ignores `'log'` for an unsupported type (a hand-edited fence can still set it).
+    * The value axis (y for every type here; x stays categorical/continuous either way) scale.
+    * Undefined means `'linear'`. `'log'` requests a base-10 logarithmic value axis, meaningful for
+    * `line` / `area` / `scatter` / `function` / `histogram` / `bar` / `bar-grouped` (see
+    * {@link supportsLogScale}); not offered for the radial types (`pie`/`donut`, which have no
+    * value axis at all) or `bar-stacked` (zero-baseline stacking has no analog on an axis where
+    * zero doesn't exist). The editor gates the toggle by {@link supportsLogScale} so an author
+    * can't pick an invalid combination; the renderer also defensively ignores `'log'` for an
+    * unsupported type (a hand-edited fence can still set it).
     *
-    * Log is undefined at <= 0. This library's chosen policy (see graph/cartesian.ts's per-type
-    * axis-mode resolution + docs/reports/2026-08-02-graph-log-scale.md): when a chart's own data
-    * touches zero or goes negative, `'log'` silently, safely FALLS BACK TO LINEAR for that render
-    *, never a clamp-to-floor, never NaN geometry. The editor surfaces a small in-editor note when
-    * this fallback is active (see `lib/graphEdit.ts`'s `logScaleWouldFallBackToLinear`).
+    * Log is undefined at <= 0: when a chart's own data touches zero or goes negative, `'log'`
+    * falls back to linear for that render (see graph/cartesian.ts's per-type axis-mode
+    * resolution), never a clamp-to-floor, never NaN geometry. The editor surfaces a small note
+    * when this fallback is active (see `lib/graphEdit.ts`'s `logScaleWouldFallBackToLinear`).
     */
    yScale?: 'linear' | 'log'
    /**
-    * A CUSTOM AXIS ORIGIN for the classic "textbook" / four-quadrant plot look, the CONTINUOUS-X
-    * types (`function` / `scatter`) ONLY (both axes numeric). Absent ⇒ the axes are drawn along the
-    * plot EDGES exactly as before this option (byte-identical output). Present ⇒ the axes are drawn
-    * CROSSING at (x, y): the y-axis is the vertical line at `xScale(x)` and the x-axis the horizontal
-    * line at `yScale(y)`, with tick marks + number labels riding those crossing lines instead of the
-    * edges, all four quadrants supported. The origin does NOT change the visible extent, `yMin`/
-    * `yMax` (and each type's x-domain) still set the range; the origin only moves where the axes are
-    * drawn WITHIN it, and is clamped to the nearest edge when it falls outside the visible domain.
+    * A custom axis origin for the classic "textbook" / four-quadrant plot look, the continuous-x
+    * types (`function` / `scatter`) only (both axes numeric). Absent means the axes are drawn
+    * along the plot edges. Present means the axes are drawn crossing at (x, y): the y-axis is the
+    * vertical line at `xScale(x)` and the x-axis the horizontal line at `yScale(y)`, with tick
+    * marks and number labels riding those crossing lines instead of the edges, all four quadrants
+    * supported. The origin does not change the visible extent: `yMin`/`yMax` (and each type's
+    * x-domain) still set the range, the origin only moves where the axes are drawn within it, and
+    * is clamped to the nearest edge when it falls outside the visible domain.
     *
     * Never offered for the categorical (bar family / line / area), radial (`pie`/`donut`), or
-    * `histogram` types, the renderer simply ignores it there. A custom origin is a LINEAR-axis
-    * concept, so it is also disabled whenever {@link yScale} resolves to `'log'` on that chart (the
-    * standard log value axis is drawn instead, see graph/cartesian.ts's function/scatter renderers).
+    * `histogram` types, the renderer simply ignores it there. A custom origin is a linear-axis
+    * concept, so it is also disabled whenever {@link yScale} resolves to `'log'` on that chart
+    * (the standard log value axis is drawn instead, see graph/cartesian.ts's function/scatter
+    * renderers).
     */
    axisOrigin?: { x: number; y: number }
 }
@@ -338,8 +336,8 @@ export interface ScatterSeries {
  * meaningful only when `type === 'scatter'`; `data` stays `{ labels: [], series: [] }` for this
  * type, matching the `function` type's convention (keeps GraphSpec's shape uniform across every
  * type). Unlike `function`, there is no shared domain, the x AND y ranges are both autoscaled
- * from the plotted points themselves (see `graph/cartesian.ts`'s `renderScatterPlot`). v1 is
- * points-only: a per-series trendline is a deferred fast-follow, NOT built here.
+ * from the plotted points themselves (see `graph/cartesian.ts`'s `renderScatterPlot`). Points
+ * only: a per-series trendline is not implemented.
  */
 export interface ScatterPlot {
    series: ScatterSeries[]
@@ -386,15 +384,15 @@ export const HISTOGRAM_MAX_BINS = 50
 
 /**
  * A live link from a graph to a document `table` block, identifying the table by its durable
- * {@link Block.handle} (the one per-block identity that survives a `.mint`/`.md` round-trip, see
- * docs/reference/graph_table_linking_study.md). Present on {@link GraphSpec.source} ⇒ the graph is
- * LINKED: its `data` is a materialized SNAPSHOT resolved from the referenced table (not authored),
- * refreshed live whenever the table edits. Absent ⇒ the graph owns its `data` exactly as before
- * this feature (byte-identical). The pure renderer NEVER sees this field, the block resolves the
- * link to concrete `data` first (see GraphBlock / graphTableData.ts's `resolveGraphSpec`).
+ * {@link Block.handle} (the one per-block identity that survives a `.mint`/`.md` round-trip).
+ * Present on {@link GraphSpec.source} means the graph is linked: its `data` is a materialized
+ * snapshot resolved from the referenced table (not authored), refreshed live whenever the table
+ * edits. Absent means the graph owns its `data` directly. The pure renderer never sees this
+ * field, the block resolves the link to concrete `data` first (see GraphBlock /
+ * graphTableData.ts's `resolveGraphSpec`).
  *
- * Only the TABULAR chart types (bar family / line / area / pie / donut) can be linked; the
- * continuous-x types (`function`/`scatter`/`histogram`) carry no category×series grid to map a
+ * Only the tabular chart types (bar family / line / area / pie / donut) can be linked; the
+ * continuous-x types (`function`/`scatter`/`histogram`) carry no category x series grid to map a
  * table onto, so they never attach a `source`.
  */
 export interface GraphSource {
@@ -420,20 +418,17 @@ export interface GraphSpec {
    data: GraphData
    options: GraphOptions
    /**
-    * Present ⇒ this graph is LINKED to a document table (see {@link GraphSource}); `data` is then a
-    * materialized snapshot of the resolved table data, kept current by a debounced write-back so it
-    * still serializes + survives a dangling link. Absent ⇒ the graph owns its `data` (byte-identical
-    * to before this feature). Only the tabular chart types ever carry a source.
+    * Present means this graph is linked to a document table (see {@link GraphSource}); `data` is
+    * then a materialized snapshot of the resolved table data, kept current by a debounced
+    * write-back so it still serializes and survives a dangling link. Absent means the graph owns
+    * its `data`. Only the tabular chart types ever carry a source.
     */
    source?: GraphSource
-   /** Only used when type === 'function'. Absent/empty on every other type, a spec that has
-    *  never been a function chart stays byte-identical to today. */
+   /** Only used when type === 'function'. Absent/empty on every other type. */
    functionPlot?: FunctionPlot
-   /** Only used when type === 'scatter'. Absent/empty on every other type, a spec that has
-    *  never been a scatter chart stays byte-identical to today. */
+   /** Only used when type === 'scatter'. Absent/empty on every other type. */
    scatterPlot?: ScatterPlot
-   /** Only used when type === 'histogram'. Absent/empty on every other type, a spec that has
-    *  never been a histogram chart stays byte-identical to today. */
+   /** Only used when type === 'histogram'. Absent/empty on every other type. */
    histogramData?: HistogramData
 }
 

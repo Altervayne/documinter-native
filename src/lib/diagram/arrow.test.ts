@@ -13,7 +13,7 @@ describe('renderArrowhead', () => {
       expect(markup).toContain('fill="#123456"')
       // Tip is the first point.
       expect(markup).toContain('100,50')
-      // The base sits ARROW_LENGTH back (x = 100 - 12 = 88), spanning ±ARROW_HALF_WIDTH in y.
+      // The base sits ARROW_LENGTH back (x = 100 - 12 = 88), spanning +/-ARROW_HALF_WIDTH in y.
       expect(markup).toContain(`88,${50 - ARROW_HALF_WIDTH}`)
       expect(markup).toContain(`88,${50 + ARROW_HALF_WIDTH}`)
    })
@@ -22,7 +22,7 @@ describe('renderArrowhead', () => {
       // Segment pointing down; tip at (50, 100). Base center at y = 100 - ARROW_LENGTH.
       const markup = renderArrowhead({ x: 50, y: 0 }, { x: 50, y: 100 }, '#000')
       const baseY = 100 - ARROW_LENGTH
-      // Base points span ±ARROW_HALF_WIDTH in x at the base y.
+      // Base points span +/-ARROW_HALF_WIDTH in x at the base y.
       expect(markup).toContain(`${50 - ARROW_HALF_WIDTH},${baseY}`)
       expect(markup).toContain(`${50 + ARROW_HALF_WIDTH},${baseY}`)
    })

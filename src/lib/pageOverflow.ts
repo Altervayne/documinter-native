@@ -1,20 +1,18 @@
 /**
- * pageOverflow.ts, the PURE cut-point decision for the paged (A4) overflow assist (Document Formats
- * PHASE 3).
+ * The pure cut-point decision for the paged (A4) overflow assist.
  *
- * The editor MEASURES each A4 page's rendered block heights from the real DOM (never predicts them,
- * DOM-free height estimation of arbitrary rich content is intractable and would be perpetually wrong,
- * see docs/reference/document_formats_study.md §3) and feeds the ordered heights + the page's available
- * content height in here. This module decides WHERE the page should be split so its content fits: the
- * last block that fully fits stays on the page, the first overflowing block starts the next page.
+ * The editor measures each A4 page's rendered block heights from the real DOM (never predicts them:
+ * DOM-free height estimation of arbitrary rich content is intractable and would be perpetually wrong)
+ * and feeds the ordered heights plus the page's available content height in here. This module decides
+ * where the page should be split so its content fits: the last block that fully fits stays on the
+ * page, the first overflowing block starts the next page.
  *
  * It never touches the DOM and never mutates the model, it only computes an index. The React layer
- * turns that index into an `addPageBreakAfter` when the AUTHOR clicks "Split here", the assist is
- * never automatic (no auto-reflow, that is the deferred v2). After a split the tail moves to a new
- * page which is itself re-measured, so an over-long tail resolves iteratively, one assisted click at a
- * time.
+ * turns that index into an `addPageBreakAfter` when the author clicks "Split here" - the assist never
+ * runs automatically, there is no auto-reflow. After a split the tail moves to a new page which is
+ * itself re-measured, so an over-long tail resolves iteratively, one assisted click at a time.
  *
- * No React, no DOM: pure and unit-testable, a sibling to pageModel.ts / format.ts.
+ * No React, no DOM: pure and unit-testable, a sibling to pageModel.ts and format.ts.
  */
 
 // #############
@@ -22,7 +20,7 @@
 // #############
 
 // Sub-pixel measurement slack: a page whose content fills the box to the pixel (a fractional
-// getBoundingClientRect vs. a fractional millimetre→px available height) must NOT flap an overflow
+// getBoundingClientRect vs. a fractional millimetre-to-px available height) must NOT flap an overflow
 // ribbon. Only content that spills past the box by more than this counts as overflowing.
 export const OVERFLOW_TOLERANCE_PX = 1
 
@@ -59,17 +57,17 @@ const NO_OVERFLOW: OverflowCut = {
 
 /**
  * Decide where (if anywhere) a page should be split, given the ORDERED rendered heights of its
- * top-level blocks and the page's available content height (A4 page height − top/bottom margins, in
- * px). `blockHeights[i]` is block `i`'s consumed height in flow order, so the running sum through
+ * top-level blocks and the page's available content height (A4 page height minus top/bottom margins,
+ * in px). `blockHeights[i]` is block `i`'s consumed height in flow order, so the running sum through
  * block `i` is that block's bottom edge measured from the content-box top (any chrome above the first
  * block, a page-1 header, a section title, is folded into the first entry, exactly the space it
  * consumes).
  *
  * Edge cases:
- *   - empty page / non-positive available height → no overflow.
- *   - everything fits (running sum ≤ available, within tolerance) → no overflow, no cut.
- *   - a mid-page block crosses the boundary → cut AFTER the last block that fully fits.
- *   - the FIRST block already overflows (a single block, or a leading block, taller than the page) →
+ *   - empty page / non-positive available height -> no overflow.
+ *   - everything fits (running sum <= available, within tolerance) -> no overflow, no cut.
+ *   - a mid-page block crosses the boundary -> cut AFTER the last block that fully fits.
+ *   - the FIRST block already overflows (a single block, or a leading block, taller than the page) ->
  *     no cut is offered and `blockTooTall` is set: pushing content up can't help, splitting after
  *     block 0 would only re-create the same overflow on a fresh page.
  */

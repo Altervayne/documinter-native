@@ -10,8 +10,8 @@ import {
 
 interface UseBinderNavResult {
    subfolders:           BinderFolderRecord[]   // immediate children of the current folder
-   ancestors:            BinderFolderRecord[]   // [root-most … immediate parent] of the current folder
-   folderDocumentCounts: Record<string, number> // folderId → direct document count (all folders)
+   ancestors:            BinderFolderRecord[]   // [root-most ... immediate parent] of the current folder
+   folderDocumentCounts: Record<string, number> // folderId -> direct document count (all folders)
    isLoading:            boolean
    createFolder:   (parentId: string, name: string) => Promise<string>
    renameFolder:   (id: string, name: string) => Promise<void>

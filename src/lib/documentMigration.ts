@@ -1,10 +1,9 @@
 /**
- * documentMigration.ts, Legacy-format upgrade for stored documents.
+ * Legacy-format upgrade for stored documents.
  *
- * Relocated verbatim from storage.ts. Brings any historical document shape (numeric ids,
- * pre-InlineContent string fields, old list-item formats) up to the current model. Shared by
- * autosaveStorage (localStorage read), documentBackupFile (JSON import), and binderDocuments
- * (IndexedDB read). Pure, no side effects.
+ * Brings any historical document shape (numeric ids, pre-InlineContent string fields, old
+ * list-item formats) up to the current model. Shared by autosaveStorage (localStorage read),
+ * documentBackupFile (JSON import), and binderDocuments (IndexedDB read). Pure, no side effects.
  */
 
 import { parseInlineContent, stripTrailingNewlines } from './inline'
@@ -47,7 +46,7 @@ function migrateListItem(raw: unknown): ListItem {
 function migrateBlock(rawBlock: LegacyRawBlock): Block {
    const base: LegacyRawBlock = { ...rawBlock, id: String(rawBlock.id) }
 
-   // Legacy standalone `image-markup` block → an `image` block carrying a markup overlay. The old
+   // Legacy standalone `image-markup` block -> an `image` block carrying a markup overlay. The old
    // shape stored an `ImageMarkupSpec` ({ src, width, height, elements, alt?, caption? }) on
    // `imageMarkup`; the new model puts src/alt/caption on the block and only the viewBox dims +
    // element stack on the overlay. Compared as a string since 'image-markup' is no longer a BlockType.

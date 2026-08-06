@@ -24,7 +24,6 @@ interface BlockEditorWindowContextValue {
    openBlockId: string | null
    /** Open the editor window for a block, replacing any currently-open one (single-window rule). */
    openEditor:  (blockId: string) => void
-   /** Close the editor window. */
    closeEditor: () => void
    /** Convenience predicate a block uses to decide its inline-vs-window presentation. */
    isEditing:   (blockId: string) => boolean

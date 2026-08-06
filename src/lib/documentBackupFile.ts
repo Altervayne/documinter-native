@@ -1,8 +1,8 @@
 /**
- * documentBackupFile.ts, Manual .documinter.json backup download + load.
+ * Manual .documinter.json backup download + load.
  *
- * Relocated verbatim from storage.ts. Pure file I/O over the editable DocState plus per-document
- * presentation; no IndexedDB. parseDocumentBackup runs id migration so older backups still load.
+ * Pure file I/O over the editable DocState plus per-document presentation; no IndexedDB.
+ * parseDocumentBackup runs id migration so older backups still load.
  */
 
 import { slugify } from './text'
@@ -50,7 +50,7 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
 
 /** Trigger a browser download of the document as a .documinter.json file (theme + accent included).
  *  `format` is written only when it diverges from the default (isDefaultFormat), so a document that
- *  never touched Page Setup produces the same byte-clean backup as before this feature existed. */
+ *  never touched Page Setup keeps producing a byte-clean backup with no format field. */
 export function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): void {
    const backup: DocumentBackup = {
       meta, sections,

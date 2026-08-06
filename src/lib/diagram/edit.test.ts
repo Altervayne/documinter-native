@@ -3,7 +3,7 @@
  *
  * These mirror the image-markup + graph edit-layer test suites: every transform is exercised for the
  * happy path, the no-op (absent id) path, and the geometric edge cases (resize flooring, handle
- * hit-test tolerance, pointer→unit mapping, delete-cascades-edges). The editor component is thin glue
+ * hit-test tolerance, pointer-to-unit mapping, delete-cascades-edges). The editor component is thin glue
  * over these, so proving them here proves the interaction math without a DOM.
  */
 
@@ -43,7 +43,7 @@ function spec(nodes: DiagramNode[], edges: DiagramSpec['edges'] = []): DiagramSp
 describe('createNode + addNode', () => {
    it('centers a default-sized node on the drop point, rounded to whole units', () => {
       const created = createNode('diamond', { x: 100.4, y: 60.6 }, 'Hi', 'n1')
-      // default box 120x56, centered → top-left = center - half
+      // default box 120x56, centered -> top-left = center - half
       expect(created).toMatchObject({ id: 'n1', shape: 'diamond', label: 'Hi', width: 120, height: 56 })
       expect(created.x).toBe(roundUnit(100.4 - 60))
       expect(created.y).toBe(roundUnit(60.6 - 28))
@@ -122,7 +122,7 @@ describe('removeNode', () => {
       )
       const next = removeNode(base, 'b')
       expect(next.nodes.map(single => single.id)).toEqual(['a', 'c'])
-      // e1 (a→b) and e2 (b→c) are incident to b; only e3 (c→a) survives.
+      // e1 (a->b) and e2 (b->c) are incident to b; only e3 (c->a) survives.
       expect((next.edges ?? []).map(edge => edge.id)).toEqual(['e3'])
    })
 
@@ -194,7 +194,7 @@ describe('resizeNode', () => {
       const next = resizeNode(base, 'a', 'w', { x: 300, y: 40 })
       const resized = findNode(next, 'a')!
       expect(resized.width).toBe(NODE_MIN_WIDTH)
-      // right edge (160) stays fixed → x = 160 - MIN
+      // right edge (160) stays fixed -> x = 160 - MIN
       expect(resized.x).toBe(160 - NODE_MIN_WIDTH)
    })
 
@@ -308,9 +308,9 @@ describe('pointerToDiagramPoint', () => {
    const viewBox = { minX: 0, minY: 0, width: 200, height: 150 } // half-scale
 
    it('maps a canvas pixel to diagram units proportionally', () => {
-      // center of the rect → center of the viewBox
+      // center of the rect -> center of the viewBox
       expect(pointerToDiagramPoint(300, 350, rect, viewBox)).toEqual({ x: 100, y: 75 })
-      // top-left corner → viewBox origin
+      // top-left corner -> viewBox origin
       expect(pointerToDiagramPoint(100, 200, rect, viewBox)).toEqual({ x: 0, y: 0 })
    })
 
@@ -335,7 +335,7 @@ describe('computeEditorCanvas', () => {
    })
 
    it('frames the padded content far-corner, floored at the minimum', () => {
-      // one node reaching to (160, 96); + 40 padding → (200, 136) → floored to the minimum
+      // one node reaching to (160, 96); + 40 padding -> (200, 136) -> floored to the minimum
       expect(computeEditorCanvas(spec([node('a')]))).toEqual({ width: 320, height: 220 })
       // a node far out grows the canvas past the minimum
       const wide = computeEditorCanvas(spec([node('a', { x: 400, y: 500, width: 120, height: 56 })]))
@@ -381,7 +381,7 @@ describe('applyViewTransform + invertViewTransform', () => {
       expect(applyViewTransform({ x: 10, y: 20 }, view)).toEqual({ x: 50, y: 30 })
    })
 
-   it('inverts exactly (round-trips diagram → view → diagram)', () => {
+   it('inverts exactly (round-trips diagram -> view -> diagram)', () => {
       const original = { x: 37, y: -12 }
       const roundTripped = invertViewTransform(applyViewTransform(original, view), view)
       expect(roundTripped.x).toBeCloseTo(original.x, 10)
@@ -411,13 +411,13 @@ describe('pointerToDiagramPoint under a view transform', () => {
    const frame = { minX: 0, minY: 0, width: 200, height: 150 } // 1 screen px = 1 view unit
 
    it('is the plain frame map with the default (identity) transform', () => {
-      // screen (50,30) → view (50,30) → diagram (50,30)
+      // screen (50,30) -> view (50,30) -> diagram (50,30)
       expect(pointerToDiagramPoint(50, 30, rect, frame)).toEqual({ x: 50, y: 30 })
    })
 
    it('composes the zoom + pan so the diagram point is the inverse-mapped view point', () => {
       const view: ViewTransform = { scale: 2, translateX: 20, translateY: 10 }
-      // screen (50,30) → view (50,30) → diagram ((50-20)/2, (30-10)/2) = (15,10)
+      // screen (50,30) -> view (50,30) -> diagram ((50-20)/2, (30-10)/2) = (15,10)
       const mapped = pointerToDiagramPoint(50, 30, rect, frame, view)
       expect(mapped.x).toBeCloseTo(15, 10)
       expect(mapped.y).toBeCloseTo(10, 10)
@@ -465,7 +465,7 @@ describe('fitViewToContent', () => {
    })
 
    it('scales large content down to fit (within the clamp) and keeps it inside the frame', () => {
-      // width 1000 over a 320 frame → scale 0.32, inside the [0.25, 4] clamp so it truly fits.
+      // width 1000 over a 320 frame -> scale 0.32, inside the [0.25, 4] clamp so it truly fits.
       const wide = node('a', { x: 0, y: 0, width: 1000, height: 40 })
       const fitted = fitViewToContent(spec([wide]), frame, 0)
       expect(fitted.scale).toBeGreaterThanOrEqual(VIEW_MIN_SCALE)
@@ -490,7 +490,7 @@ describe('viewportViewBox', () => {
    })
 
    it('shrinks the window (zoom in) and shifts the origin (pan)', () => {
-      // zoom 2× → half-size window; pan translate (-40, 20) → origin (20, -20)
+      // zoom 2x -> half-size window; pan translate (-40, 20) -> origin (20, -20)
       expect(viewportViewBox(frame, { scale: 2, translateX: -40, translateY: 20 }))
          .toEqual({ minX: 20, minY: -10, width: 160, height: 110 })
    })
@@ -501,9 +501,9 @@ describe('viewportViewBox', () => {
    })
 
    it('mapping through the derived viewport equals mapping through frame + view transform', () => {
-      // The unbounded-canvas invariant: pointer→diagram via the viewport (a plain frame map) is exactly
-      // the same as composing the view transform against the fixed frame, so pointer mapping stays
-      // pixel-accurate under the new model.
+      // The unbounded-canvas invariant: pointer-to-diagram via the viewport (a plain frame map) is
+      // exactly the same as composing the view transform against the fixed frame, so pointer mapping
+      // stays pixel-accurate under this model.
       const rect = { left: 0, top: 0, width: 600, height: 400 }
       const frameBox = { minX: 0, minY: 0, width: 300, height: 200 }
       const view = { scale: 2, translateX: -40, translateY: 20 }
@@ -563,7 +563,7 @@ describe('clampCanvasHeight', () => {
 
 describe('frameFromContainer', () => {
    it('gives the frame the EXACT aspect ratio of the container (keeps mapping undistorted)', () => {
-      // reference width 320, a 640×480 container → aspect 4:3 → height 240
+      // reference width 320, a 640x480 container -> aspect 4:3 -> height 240
       const frame = frameFromContainer(320, 640, 480)
       expect(frame).toEqual({ minX: 0, minY: 0, width: 320, height: 240 })
       expect(frame.width / frame.height).toBeCloseTo(640 / 480, 10)
@@ -572,7 +572,7 @@ describe('frameFromContainer', () => {
    it('grows the frame height when the container is made TALLER (more vertical room)', () => {
       const shortContainer = frameFromContainer(320, 640, 360)
       const tallContainer  = frameFromContainer(320, 640, 720)
-      // same reference width, taller container → taller frame → taller viewport → more diagram visible
+      // same reference width, taller container -> taller frame -> taller viewport -> more diagram visible
       expect(tallContainer.width).toBe(shortContainer.width)
       expect(tallContainer.height).toBeGreaterThan(shortContainer.height)
    })
@@ -584,7 +584,7 @@ describe('frameFromContainer', () => {
    it('keeps pointer mapping pixel-accurate at the new (taller) frame, mapping equivalence holds', () => {
       // A taller container yields a taller frame; the viewport-vs-compose invariant must still hold, so
       // node placement/drag/resize/selection stay exact after the user grows the canvas height.
-      const frame = frameFromContainer(320, 800, 600) // 4:3 → 320×240
+      const frame = frameFromContainer(320, 800, 600) // 4:3 -> 320x240
       const rect = { left: 0, top: 0, width: 800, height: 600 }
       const view = { scale: 1.5, translateX: -30, translateY: 45 }
       const viewport = viewportViewBox(frame, view)
@@ -610,7 +610,7 @@ describe('computeAlignmentSnaps', () => {
       const dragged = box({ x: 203, y: 300, width: 100, height: 60 })
       const other = box({ x: 200, y: 0, width: 100, height: 60 })
       const result = computeAlignmentSnaps(dragged, [other], 6)
-      expect(result.snapX).toBe(200) // left 203 → 200 (offset -3)
+      expect(result.snapX).toBe(200) // left 203 -> 200 (offset -3)
       expect(result.snapY).toBeUndefined()
    })
 
@@ -624,7 +624,7 @@ describe('computeAlignmentSnaps', () => {
    })
 
    it('picks the nearest of several candidate lines', () => {
-      // dragged left = 205; other-A right = 210 (dist 5), other-B left = 203 (dist 2) → snap to 203
+      // dragged left = 205; other-A right = 210 (dist 5), other-B left = 203 (dist 2) -> snap to 203
       const dragged = box({ x: 205, y: 400, width: 100, height: 60 })
       const otherA = box({ x: 110, y: 0, width: 100, height: 60 }) // right edge = 210
       const otherB = box({ x: 203, y: 0, width: 100, height: 60 }) // left edge = 203
@@ -633,11 +633,11 @@ describe('computeAlignmentSnaps', () => {
    })
 
    it('snaps horizontal-center to horizontal-center and independently on both axes', () => {
-      // dragged center x = 251 → snaps to other center x = 250 (offset -1); left/top also probed
+      // dragged center x = 251 -> snaps to other center x = 250 (offset -1); left/top also probed
       const dragged = box({ x: 201, y: 121, width: 100, height: 60 }) // centerX 251, centerY 151
       const other = box({ x: 200, y: 120, width: 100, height: 60 })    // centerX 250, centerY 150
       const result = computeAlignmentSnaps(dragged, [other], 6)
-      // nearest x pair: left 201↔200 (dist1) vs centerX 251↔250 (dist1), first (left) wins the tie
+      // nearest x pair: left 201 vs 200 (dist 1) and centerX 251 vs 250 (dist 1), first (left) wins the tie
       expect(result.snapX).toBe(200)
       expect(result.snapY).toBe(120)
    })
@@ -685,7 +685,7 @@ describe('computeResizeSnaps', () => {
       const rect = box({ x: 0, y: 0, width: 97, height: 60 })       // right edge = 97
       const other = box({ x: 100, y: 0, width: 100, height: 60 })   // left edge = 100
       const result = computeResizeSnaps(rect, 'e', [other], 6)
-      expect(result.rect).toMatchObject({ x: 0, y: 0, width: 100, height: 60 }) // right 97 → 100
+      expect(result.rect).toMatchObject({ x: 0, y: 0, width: 100, height: 60 }) // right 97 -> 100
       const guide = result.guides.find(single => single.orientation === 'vertical')
       expect(guide?.position).toBe(100)
    })
@@ -694,7 +694,7 @@ describe('computeResizeSnaps', () => {
       const rect = box({ x: 0, y: 0, width: 100, height: 57 })      // bottom edge = 57
       const other = box({ x: 0, y: 60, width: 100, height: 60 })    // top edge = 60
       const result = computeResizeSnaps(rect, 's', [other], 6)
-      expect(result.rect).toMatchObject({ x: 0, y: 0, width: 100, height: 60 }) // bottom 57 → 60
+      expect(result.rect).toMatchObject({ x: 0, y: 0, width: 100, height: 60 }) // bottom 57 -> 60
       const guide = result.guides.find(single => single.orientation === 'horizontal')
       expect(guide?.position).toBe(60)
    })
@@ -712,7 +712,7 @@ describe('computeResizeSnaps', () => {
       const rect = box({ x: 0, y: 0, width: 97, height: 60 })       // right edge = 97
       const other = box({ x: 50, y: 0, width: 100, height: 60 })    // centerX = 100
       const result = computeResizeSnaps(rect, 'e', [other], 6)
-      expect(result.rect.width).toBe(100)                            // right 97 → center 100
+      expect(result.rect.width).toBe(100)                            // right 97 -> center 100
    })
 
    it('leaves the rect untouched (no guides) when the moving edge is beyond the threshold', () => {
@@ -882,7 +882,7 @@ describe('hitTestPort', () => {
 describe('distancePointToSegment + distanceToPolyline', () => {
    it('measures the perpendicular distance to a segment, clamped to its extent', () => {
       expect(distancePointToSegment({ x: 5, y: 3 }, { x: 0, y: 0 }, { x: 10, y: 0 })).toBeCloseTo(3, 9)
-      // beyond the segment end → distance to the endpoint
+      // beyond the segment end -> distance to the endpoint
       expect(distancePointToSegment({ x: 20, y: 0 }, { x: 0, y: 0 }, { x: 10, y: 0 })).toBeCloseTo(10, 9)
    })
 
@@ -898,7 +898,7 @@ describe('distancePointToSegment + distanceToPolyline', () => {
 })
 
 describe('hitTestEdge', () => {
-   // two nodes side by side; a straight edge a→b runs horizontally between their facing borders.
+   // two nodes side by side; a straight edge a-b runs horizontally between their facing borders.
    const nodeA = node('a', { x: 0, y: 0, width: 100, height: 60 })   // right border x=100, midY=30
    const nodeB = node('b', { x: 200, y: 0, width: 100, height: 60 }) // left border x=200, midY=30
    const base = spec([nodeA, nodeB], [{ id: 'e1', from: 'a', to: 'b' }])
@@ -920,9 +920,9 @@ describe('hitTestEdge', () => {
    it('honors waypoints (hit-tests the drawn polyline, not the straight center line)', () => {
       // route the edge down through a waypoint far below the straight path
       const routed = spec([nodeA, nodeB], [{ id: 'e1', from: 'a', to: 'b', waypoints: [{ x: 150, y: 200 }] }])
-      // the straight center line at y=30 is now EMPTY there (the drawn path bends to y≈200)
+      // the straight center line at y=30 is now EMPTY there (the drawn path bends to roughly y=200)
       expect(hitTestEdge(routed, { x: 150, y: 33 }, 6)).toBeNull()
-      // near the waypoint the drawn polyline IS present → hit
+      // near the waypoint the drawn polyline IS present -> hit
       expect(hitTestEdge(routed, { x: 150, y: 200 }, 6)?.id).toBe('e1')
    })
 
@@ -932,7 +932,7 @@ describe('hitTestEdge', () => {
    })
 
    it('returns the topmost (later-drawn) edge on a tie', () => {
-      // two identical a→b edges; the later one (e2) wins
+      // two identical a-b edges; the later one (e2) wins
       const overlapping = spec([nodeA, nodeB], [{ id: 'e1', from: 'a', to: 'b' }, { id: 'e2', from: 'a', to: 'b' }])
       expect(hitTestEdge(overlapping, { x: 150, y: 30 }, 6)?.id).toBe('e2')
    })

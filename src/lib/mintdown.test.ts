@@ -4,7 +4,7 @@ import { buildFixtureDocument } from '../test/fixtures'
 import { normalizeIds } from '../test/normalizeIds'
 
 // Mintdown is the lossless format: every construct, including containers with their ratio, must
-// survive serialize → parse → serialize unchanged. The string round-trip is the workhorse; a few
+// survive serialize -> parse -> serialize unchanged. The string round-trip is the workhorse; a few
 // targeted parse checks pin the trickiest markers.
 
 describe('Mintdown round-trip', () => {
@@ -229,10 +229,10 @@ describe('Mintdown math block scale', () => {
    })
 })
 
-// The image-markup capability was folded INTO the image block: a marked-up image serializes as the
+// The image-markup capability lives inside the image block: a marked-up image serializes as the
 // ```imagemarkup fence (dims + alt/caption on the info string, one overlay element per body line,
 // NEVER any base64), while a plain image keeps its own convention byte-identical. Legacy standalone
-// `image-markup` fences must parse back into an `image` block carrying the overlay.
+// `image-markup` fences still parse back into an `image` block carrying the overlay.
 describe('Mintdown, image block with markup overlay', () => {
    const meta = { title: 'Doc', fields: [] }
 

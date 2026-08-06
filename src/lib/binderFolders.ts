@@ -1,9 +1,9 @@
 /**
  * binderFolders.ts, Folder CRUD + move/order for the binder (IndexedDB).
  *
- * Relocated verbatim from storage.ts. Reads/writes the `folders` store via the shared
- * connection in binderDatabase. deleteFolder reflows orphaned documents to root using
- * binderDocuments.nextDocumentSortOrder (the one document-side dependency).
+ * Reads/writes the `folders` store via the shared connection in binderDatabase. deleteFolder
+ * reflows orphaned documents to root using binderDocuments.nextDocumentSortOrder (the one
+ * document-side dependency).
  */
 
 import {
@@ -59,14 +59,14 @@ export async function deleteFolder(id: string, options?: { recursive?: boolean }
    const recursive = options?.recursive ?? false
    const database = await openDatabase()
 
-   // Phase 1, collect the folder and all descendants (iterative breadth-first).
+   // Collect the folder and all descendants (iterative breadth-first).
    const toDelete: string[] = [id]
    for (let index = 0; index < toDelete.length; index++) {
       const children = await getFolderChildren(toDelete[index])
       for (const child of children) toDelete.push(child.id)
    }
 
-   // Phase 2, handle the contained documents, then delete the folders themselves.
+   // Handle the contained documents, then delete the folders themselves.
    const stores = recursive
       ? [FOLDERS_STORE, DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE]
       : [FOLDERS_STORE, DOCUMENTS_STORE]

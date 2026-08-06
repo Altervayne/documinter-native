@@ -1,15 +1,12 @@
 /**
- * fenceInfoString.ts, the shared `key=value` info-string tokenizer/quoter used by every fenced
- * block whose options ride the fence's info string (the line right after the opening backticks).
- *
- * Promoted out of `graphFence.ts` (its original home) so the image-markup fence
- * (`imageMarkupFence.ts`) reuses the exact same quoting/escaping/tokenizing rules rather than
- * duplicating them, the grammar is format-agnostic, not graph-specific. `graphFence.ts` imports
- * from here unchanged in behavior.
+ * The shared `key=value` info-string tokenizer/quoter used by every fenced block whose options
+ * ride the fence's info string (the line right after the opening backticks). The grammar is
+ * format-agnostic, not graph-specific, so `graphFence.ts` and `imageMarkupFence.ts` both reuse the
+ * exact same quoting/escaping/tokenizing rules instead of duplicating them.
  *
  * Grammar: whitespace-separated `key=value` tokens; a value containing whitespace or a double
- * quote is wrapped in `"…"` with `\"`/`\\` escaped inside. Total: parsing a malformed or
- * hand-edited info string never throws.
+ * quote is wrapped in `"..."` with `\"`/`\\` escaped inside. Parsing a malformed or hand-edited
+ * info string never throws.
  */
 
 /** Whether a scalar must be double-quoted on the info string (spaces, quotes, or empty). */

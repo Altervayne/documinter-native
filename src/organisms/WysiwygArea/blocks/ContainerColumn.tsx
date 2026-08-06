@@ -5,8 +5,9 @@ import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 import { useLang } from '../../../contexts/LangContext'
 
 // -- Component Imports --
-// NOTE: WysiwygBlock is imported here creating a circular dep (ContainerColumn → WysiwygBlock → ContainerBlock → ContainerColumn).
-// This is intentional and safe: both references are inside function bodies, never at module-evaluation time.
+// WysiwygBlock is imported here, creating a circular dependency (ContainerColumn -> WysiwygBlock ->
+// ContainerBlock -> ContainerColumn). This is safe: both references are used inside function bodies,
+// never at module-evaluation time.
 import { WysiwygBlock } from '../WysiwygBlock'
 import { AddBlockRow } from '../../../molecules/AddBlockRow'
 import { BottomDropZone } from '../../../atoms/BottomDropZone'

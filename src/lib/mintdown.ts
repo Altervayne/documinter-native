@@ -187,7 +187,7 @@ function parseFrontMatterEntry(line: string): { key: string; value: string } | n
    return { key, value }
 }
 
-/** Resolves a ratio shorthand or explicit leftPct|rightPct token to a 0–1 fraction. */
+/** Resolves a ratio shorthand or explicit leftPct|rightPct token to a fraction between 0 and 1. */
 function parseRatioToken(token: string): number {
    switch (token) {
       case '':   return 0.5
@@ -315,7 +315,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
       const line = lines[index]
       index++
 
-      // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
             commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
@@ -334,7 +333,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // h3 heading
       const h3Match = line.match(/^### (.*)$/)
       if (h3Match) {
          commitBlock(flushAccum())
@@ -342,7 +340,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // Opening code fence
       // Group 2 captures the whole info string (lang tag plus any attributes such as the
       // math block's `scale=`), trimmed of surrounding whitespace.
       const fenceOpenMatch = line.match(/^(`{3,})\s*(.*?)\s*$/)
@@ -353,7 +350,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // Blockquote / callout
       if (line.startsWith('> ') || line === '>') {
          if ((accumKind as AccumKind | null) === 'blockquote') {
             accumLines.push(line)
@@ -363,7 +359,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // Handle anchor
       const handleMatch = line.match(/^\^([a-z0-9-]+)\s*$/)
       if (handleMatch) {
          commitBlock(flushAccum())
@@ -383,7 +378,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // Pipe table
       if (line.startsWith('|')) {
          if ((accumKind as AccumKind | null) === 'table') {
             accumLines.push(line)
@@ -393,7 +387,6 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // HR block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
@@ -447,14 +440,12 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // Blank line
       if (line.trim() === '') {
          if (accumKind !== null) commitBlock(flushAccum())
          pendingImageBlock = null
          continue
       }
 
-      // Default: paragraph
       if (accumKind === 'p') {
          accumLines.push(line)
       } else {
@@ -618,7 +609,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    let lineIndex = 0
 
    // ======================
-   //  Phase 1: Front matter
+   //  Front matter
    // ======================
 
    while (lineIndex < lines.length && lines[lineIndex].trim() === '') lineIndex++
@@ -666,7 +657,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    }
 
    // ===================
-   //  Phase 2: Body scan
+   //  Body scan
    // ===================
 
    let currentSection:    Section | null = null
@@ -741,7 +732,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       const line = lines[lineIndex]
       lineIndex++
 
-      // Inside code fence
       if (inCodeFence) {
          if (/^`+\s*$/.test(line) && line.trim().length >= fenceMark.length) {
             commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
@@ -798,7 +788,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // h3 heading
       const h3Match = line.match(/^### (.*)$/)
       if (h3Match) {
          commitBlock(flushAccum())
@@ -806,7 +795,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Opening code fence
       // Group 2 captures the whole info string (lang tag plus any attributes such as the
       // math block's `scale=`), trimmed of surrounding whitespace.
       const fenceOpenMatch = line.match(/^(`{3,})\s*(.*?)\s*$/)
@@ -817,7 +805,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Blockquote / callout
       if (line.startsWith('> ') || line === '>') {
          if ((accumKind as AccumKind | null) === 'blockquote') {
             accumLines.push(line)
@@ -827,7 +814,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Handle anchor
       const handleMatch = line.match(/^\^([a-z0-9-]+)\s*$/)
       if (handleMatch) {
          commitBlock(flushAccum())
@@ -847,7 +833,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Pipe table
       if (line.startsWith('|')) {
          if ((accumKind as AccumKind | null) === 'table') {
             accumLines.push(line)
@@ -857,7 +842,6 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // HR block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
@@ -945,14 +929,12 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Blank line
       if (line.trim() === '') {
          if (accumKind !== null) commitBlock(flushAccum())
          pendingImageBlock = null
          continue
       }
 
-      // Default: paragraph
       if (accumKind === 'p') {
          accumLines.push(line)
       } else {
@@ -972,7 +954,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       commitBlock(buildFenceBlock(fenceInfo, codeLines.join('\n')))
    }
 
-   // Unclosed container at end of file: discarded per spec (no partial block emitted)
+   // Unclosed container at end of file is discarded; no partial block is emitted.
 
    return { sections, meta }
 }

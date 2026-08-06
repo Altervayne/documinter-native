@@ -14,13 +14,13 @@
  * base image, rounded to {@link MARKUP_COORDINATE_PRECISION} decimals. Pointer coordinates are
  * mapped into this space via {@link pointerToNormalized} against the on-screen canvas rect.
  *
- * Pass-1 scope: the four GEOMETRIC tools (rect / ellipse / line / arrow). Pass-2 adds the TEXT,
- * CALLOUT and FREEHAND (pen) creators, the callout tail-drag handle, freehand capture
- * simplification ({@link simplifyFreehand}), and the z-order reorder helpers. `moveElement` and
- * `hitTest` tolerate every element kind; `resizeElement` handles the box shapes (rect / ellipse /
- * callout), the line/arrow endpoints, and the callout `tail` handle, and leaves point-anchored
- * (text) and multi-point (freehand) kinds unchanged under the box handles (they are moved by body
- * drag instead).
+ * Covers the four GEOMETRIC tools (rect / ellipse / line / arrow), the TEXT, CALLOUT and FREEHAND
+ * (pen) creators, the callout tail-drag handle, freehand capture simplification
+ * ({@link simplifyFreehand}), and the z-order reorder helpers. `moveElement` and `hitTest` tolerate
+ * every element kind; `resizeElement` handles the box shapes (rect / ellipse / callout), the
+ * line/arrow endpoints, and the callout `tail` handle, and leaves point-anchored (text) and
+ * multi-point (freehand) kinds unchanged under the box handles (they are moved by body drag
+ * instead).
  */
 
 import type {
@@ -124,8 +124,8 @@ export const DEGENERATE_SIZE = 0.01
 /**
  * Default Ramer-Douglas-Peucker tolerance (normalized units) applied to a freehand capture on
  * release: points closer than this to the retained polyline are dropped, so a jittery pointer trail
- * of hundreds of samples collapses to a lean, faithful point list (see the study's Q7 ratification,
- * "freehand simplified at capture"). Small enough that the smoothed curve is visually unchanged.
+ * of hundreds of samples collapses to a lean, faithful point list. Small enough that the smoothed
+ * curve is visually unchanged.
  */
 export const FREEHAND_SIMPLIFY_TOLERANCE = 0.004
 
@@ -180,9 +180,9 @@ export function pointerToNormalized(clientX: number, clientY: number, rect: Canv
  * The normalized axis-aligned bounding box of any element (used by hit-test + move clamping + the
  * selection chrome). For a `text` element the box has no intrinsic size in the model (only an anchor
  * point), so its extent is ESTIMATED from `fontSize` + glyph count when a `viewBox` is supplied
- * ({@link textBoundingBox}), this is what makes a text label reliably selectable / double-clickable
- * (Bug 1). Without a `viewBox` a text element falls back to its zero-size anchor point (the legacy
- * behavior, kept for move-clamping and back-compat).
+ * ({@link textBoundingBox}), which is what makes a text label reliably selectable and
+ * double-clickable. Without a `viewBox` a text element falls back to its zero-size anchor point,
+ * kept for move-clamping and back-compat.
  */
 export function getBoundingBox(element: MarkupElement, viewBox?: ViewBoxDimensions): NormalizedBox {
    switch (element.kind) {
@@ -202,11 +202,11 @@ export function getBoundingBox(element: MarkupElement, viewBox?: ViewBoxDimensio
 
 /**
  * Estimate a text element's selectable bounding box in normalized 0..1 units. The anchor `(x, y)` is
- * the LEFT BASELINE, so the box rises `ascent` above the baseline (≈ one font size) and dips a small
- * `descent` below it, and runs from a little left of the anchor to past the estimated glyph run. A
- * generous minimum width keeps even an empty / one-glyph label comfortably clickable. All extents are
- * computed in viewBox units then divided by the (anisotropic) viewBox dimensions to land in
- * normalized space; a zero/degenerate viewBox falls back to a square long-edge canvas.
+ * the LEFT BASELINE, so the box rises `ascent` above the baseline (approximately one font size) and
+ * dips a small `descent` below it, and runs from a little left of the anchor to past the estimated
+ * glyph run. A generous minimum width keeps even an empty / one-glyph label comfortably clickable.
+ * All extents are computed in viewBox units then divided by the (anisotropic) viewBox dimensions to
+ * land in normalized space; a zero/degenerate viewBox falls back to a square long-edge canvas.
  */
 export function textBoundingBox(element: MarkupText, viewBox: ViewBoxDimensions): NormalizedBox {
    const fontSize = element.fontSize ?? MARKUP_DEFAULT_FONT_SIZE
@@ -254,7 +254,7 @@ function boxFromPoints(points: NormalizedPoint[]): NormalizedBox {
 
 /**
  * Build a new element from a drag between two normalized points. Box tools (rect / ellipse)
- * normalize the drag rectangle so a bottom-right → top-left drag still yields a positive-size box;
+ * normalize the drag rectangle so a bottom-right -> top-left drag still yields a positive-size box;
  * line / arrow keep the two points as ordered endpoints (the arrowhead is drawn at `end`). Only the
  * DEFINED fields of `style` are copied on, so an untouched default element still serializes lean.
  */
@@ -445,8 +445,8 @@ function elementHit(element: MarkupElement, point: NormalizedPoint, tolerance: n
       case 'ellipse':
       case 'callout':
       case 'text': {
-         // Text gets its estimated glyph box (Bug 1) when a viewBox is known, so a label is grabbable
-         // well beyond its zero-size anchor; the other box kinds use their intrinsic bounds.
+         // Text gets its estimated glyph box when a viewBox is known, so a label is grabbable well
+         // beyond its zero-size anchor; the other box kinds use their intrinsic bounds.
          const box = getBoundingBox(element, viewBox)
          return point.x >= box.x - tolerance && point.x <= box.x + box.w + tolerance
              && point.y >= box.y - tolerance && point.y <= box.y + box.h + tolerance
@@ -464,7 +464,7 @@ function elementHit(element: MarkupElement, point: NormalizedPoint, tolerance: n
    }
 }
 
-/** Perpendicular distance from `point` to the segment `a`→`b` (clamped to the endpoints). */
+/** Perpendicular distance from `point` to the segment `a` to `b` (clamped to the endpoints). */
 function distanceToSegment(point: NormalizedPoint, a: NormalizedPoint, b: NormalizedPoint): number {
    const segmentX = b.x - a.x
    const segmentY = b.y - a.y
@@ -557,7 +557,7 @@ function resizeBox<Element extends MarkupRect | MarkupEllipse | MarkupCallout>(
    if (handle === 'sw' || handle === 's' || handle === 'se') bottom = point.y
 
    // Floor the size so an edge dragged past its opposite one stops at MIN_ELEMENT_SIZE rather than
-   // inverting the box (no flip this pass).
+   // inverting the box.
    if (right - left < MIN_ELEMENT_SIZE) {
       if (handle === 'nw' || handle === 'w' || handle === 'sw') left = right - MIN_ELEMENT_SIZE
       else right = left + MIN_ELEMENT_SIZE

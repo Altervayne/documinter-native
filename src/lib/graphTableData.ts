@@ -1,20 +1,20 @@
 /**
- * graphTableData.ts, the pure table<->graph data-mapping transform (STAGE 1 of the graph<->table
- * linking feature, the one-shot EXTRACT, per docs/reference/graph_table_linking_study.md).
+ * graphTableData.ts, the pure table<->graph data-mapping transform: the one-shot extract between
+ * a table block's cells and a graph's GraphData.
  *
  * Two directions, both pure and total (never throw, never require well-formed input):
  *   graphDataFromTable , table block cells (InlineContent[][])  -> GraphData
  *   tableFromGraphData , GraphData                              -> table block cells
  *
- * The mapping REUSES graphFence.ts's own numeric-parse semantics (`parseNumericCell`) so a table
+ * The mapping reuses graphFence.ts's own numeric-parse semantics (`parseNumericCell`) so a table
  * extracted to a chart, and a chart's ` ```graph ` fence body parsed from a hand-typed pipe table,
  * agree byte-for-byte on what counts as a number. This module owns no serialization and no block
  * model, it only turns cell content into GraphData and back; the caller (a block action) is
  * responsible for wrapping the result into a `graph` or `table` Block and inserting it.
  *
- * ALSO home to the STAGE 2 live-link resolver (`collectTableSources`/`resolveGraphSpec`/
- * `graphDataEquals`) and, here, the STAGE 2b EDITOR's linkable-tables catalog
- * (`collectLinkableTables`/`LinkableTable`), the "Link to a table…" picker's data source.
+ * Also home to the live-link resolver (`collectTableSources`/`resolveGraphSpec`/
+ * `graphDataEquals`) and the editor's linkable-tables catalog (`collectLinkableTables`/
+ * `LinkableTable`), the "Link to a table..." picker's data source.
  */
 
 import type { Block, InlineContent, Section, Side } from '../types'
@@ -43,7 +43,7 @@ function textToInlineContent(text: string): InlineContent {
 /**
  * The mapping options honored when resolving a table into GraphData, the same options a live link
  * carries on {@link GraphSource}. Both optional; omitting the whole argument (or passing all
- * defaults) yields the STAGE-1 mapping unchanged (label column 0, series = columns).
+ * defaults) yields the default mapping unchanged (label column 0, series = columns).
  */
 export interface GraphDataFromTableOptions {
    /** Which column supplies labels (orient `columns`) or series names (orient `rows`). Default 0;
@@ -71,9 +71,9 @@ export function graphDataFromTable(
    const orient      = options?.orient ?? 'columns'
    const labelColumn = options?.labelColumn ?? 0
 
-   // ============ Fast path: the stage-1 default mapping, preserved byte-for-byte ============
+   // ============ Fast path: the default mapping, preserved byte-for-byte ============
    // (label column 0, series = columns). Keeping it as its own branch guarantees every existing
-   // stage-1 caller + test is unaffected by the generalized path below.
+   // caller + test is unaffected by the generalized path below.
    if (orient === 'columns' && labelColumn === 0) {
       const headerTexts = richHeaders.map(cellPlainText)
       const seriesNames  = headerTexts.slice(1)
@@ -161,9 +161,9 @@ export function tableFromGraphData(data: GraphData): { richHeaders: InlineConten
    return { richHeaders, richRows }
 }
 
-// #############################
-// # LIVE LINK (STAGE 2) RESOLVER #
-// #############################
+// #########################
+// # LIVE LINK RESOLVER #
+// #########################
 
 /**
  * One referenced table's raw cells, keyed by handle in a {@link GraphTableCatalog}. This is the
@@ -201,9 +201,9 @@ export function collectTableSources(blocks: Block[]): GraphTableCatalog {
    return catalog
 }
 
-// #############################
-// # LINKABLE TABLES (STAGE 2b EDITOR), the "Link to a table…" picker's catalog #
-// #############################
+// #####################################################
+// # LINKABLE TABLES, the "Link to a table..." picker's catalog #
+// #####################################################
 
 /**
  * Where a table block ACTUALLY lives, for routing a mutation back at it. Top-level (no
@@ -221,7 +221,7 @@ export interface LinkableTableAddress {
 }
 
 /**
- * One document table as the "Link to a table…" picker sees it: identity + addressing (so a pick
+ * One document table as the "Link to a table..." picker sees it: identity + addressing (so a pick
  * can be turned into a mutation) plus enough of its shape to render a compact preview row. Unlike
  * {@link GraphTableCatalog} (which only ever catalogs HANDLED tables, the resolver's lookup key),
  * this lists EVERY table, handled or not, a handle-less table is exactly the case the picker must
@@ -242,7 +242,7 @@ export interface LinkableTable extends LinkableTableAddress {
  * Walk a document's sections (recursing into container `left`/`right` columns, exactly like
  * {@link collectTableSources}) and list EVERY `table` block, handled or not, as a
  * {@link LinkableTable}. Pure; used by the graph editor's Data tab to populate the "Link to a
- * table…" picker AND the linked-state "change source" control. Order follows document order
+ * table..." picker AND the linked-state "change source" control. Order follows document order
  * (section, then block, then container column), so the picker reads top-to-bottom like the doc.
  */
 export function collectLinkableTables(sections: Section[]): LinkableTable[] {

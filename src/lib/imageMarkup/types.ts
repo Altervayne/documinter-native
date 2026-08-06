@@ -6,8 +6,8 @@
  * of truth, consumed by the pure renderer (`lib/imageMarkup/index.ts`) to produce a self-contained
  * SVG string.
  *
- * Coordinate convention (the load-bearing decision, see docs/reference/image_markup_study.md):
- * every geometric field on a `MarkupElement` is NORMALIZED 0..1 relative to the base image, so
+ * Coordinate convention: every geometric field on a `MarkupElement` is NORMALIZED 0..1 relative
+ * to the base image, so
  * annotations are resolution-independent and survive the base image being re-encoded at a
  * different pixel size. The renderer projects these fractions into a fixed VIEWBOX whose aspect
  * ratio matches the image (see {@link MARKUP_VIEWBOX_LONG_EDGE}); `strokeWidth`/`fontSize` are
@@ -19,10 +19,10 @@
 // # TYPES #
 // #########
 
-/** The seven overlay tool kinds (see the study's Q1 tool-set ratification). */
+/** The seven overlay tool kinds. */
 export type MarkupElementKind = 'rect' | 'ellipse' | 'line' | 'arrow' | 'text' | 'callout' | 'freehand'
 
-/** Contour line style for the stroke-bearing kinds; undefined ⇒ {@link MARKUP_DEFAULT_STROKE_STYLE}. */
+/** Contour line style for the stroke-bearing kinds; undefined -> {@link MARKUP_DEFAULT_STROKE_STYLE}. */
 export type MarkupStrokeStyle = 'solid' | 'dashed' | 'dotted'
 
 /** Arrowhead shape: `full` = the filled triangle (default), `chevron` = an open two-stroke V/barb. */
@@ -33,8 +33,8 @@ export type MarkupArrowheadPosition = 'end' | 'middle'
 
 /**
  * Fields every element shares. `id` is a stable per-element id (crypto.randomUUID), used only by
- * the (future) editor for selection/reorder, it is NEVER serialized to the fence (element array
- * order carries z-order instead), so a fence round-trip mints a fresh id per element on reparse.
+ * the editor for selection/reorder; it is NEVER serialized to the fence (element array order
+ * carries z-order instead), so a fence round-trip mints a fresh id per element on reparse.
  */
 interface MarkupBase {
    id:           string
@@ -103,8 +103,8 @@ export interface MarkupCallout extends MarkupBase {
    textColor?: string
 }
 
-/** ≥2 points captured from a pointer drag (light RDP/distance simplified at capture time, see the
- *  study's Q7 ratification, so the model already carries a lean point count, not raw hundreds). */
+/** Two or more points captured from a pointer drag (lightly RDP/distance-simplified at capture
+ *  time, so the model already carries a lean point count, not raw hundreds). */
 export interface MarkupFreehand extends MarkupBase {
    kind: 'freehand'
    points: { x: number; y: number }[]
@@ -118,7 +118,7 @@ export type MarkupElement =
 /**
  * The base image plus its overlay stack, the block's whole payload.
  *
- * `src` is EMPTY on a `.mint`/`.md` reopen (ratified 2026-08-02: no base64 in text formats, see
+ * `src` is EMPTY on a `.mint`/`.md` reopen (no base64 is stored in text formats, see
  * `lib/imageMarkupFence.ts`). Full fidelity (base image pixels) lives only in the binder JSON and
  * the self-contained HTML export; the renderer tolerates an empty `src` gracefully (a neutral
  * placeholder ground, never a crash, see {@link renderImageMarkupToSvg} in `index.ts`).
@@ -154,12 +154,12 @@ export const MARKUP_COORDINATE_PRECISION = 4
 
 export const MARKUP_DEFAULT_STROKE        = '#e5484d' // annotation red
 export const MARKUP_DEFAULT_STROKE_WIDTH  = 4          // viewBox units
-export const MARKUP_DEFAULT_STROKE_STYLE: MarkupStrokeStyle = 'solid' // solid ⇒ no dash-array emitted
+export const MARKUP_DEFAULT_STROKE_STYLE: MarkupStrokeStyle = 'solid' // solid -> no dash-array emitted
 export const MARKUP_DEFAULT_FILL_OPACITY  = 1          // 0..1, only meaningful when `fill` is set
 export const MARKUP_DEFAULT_FONT_SIZE     = 28          // viewBox units
 export const MARKUP_DEFAULT_TEXT_COLOR    = '#1a1a2e'   // neutral ink, independent of doc theme
 
-/** Arrow defaults: the filled-triangle head at the tip (the pre-customization behavior). */
+/** Arrow defaults: a filled-triangle head at the tip. */
 export const MARKUP_DEFAULT_ARROWHEAD: MarkupArrowhead = 'full'
 export const MARKUP_DEFAULT_ARROWHEAD_POSITION: MarkupArrowheadPosition = 'end'
 
@@ -175,12 +175,12 @@ export const MARKUP_ARROWHEAD_ANGLE_DEGREES  = 24 // half-angle between the two 
 /** The callout tail's base width where it meets the box edge (see geometry.ts). */
 export const MARKUP_CALLOUT_TAIL_BASE_WIDTH = 28 // viewBox units
 
-/** The callout box's corner-radius factor (× the box's shorter side). ONE source of truth shared by
+/** The callout box's corner-radius factor (x the box's shorter side). ONE source of truth shared by
  *  the box `rx` in render.ts and the tail-base flush clamp in geometry.ts, so the tail base always
  *  attaches on the straight part of the rounded-rect edge rather than floating over a rounded corner. */
 export const MARKUP_CALLOUT_CORNER_RADIUS_FACTOR = 0.08
 
-/** Every element kind the v1 renderer/fence accepts; the fence parser skips any other tag. */
+/** Every element kind the renderer/fence accepts; the fence parser skips any other tag. */
 export const VALID_MARKUP_KINDS: ReadonlySet<MarkupElementKind> = new Set<MarkupElementKind>([
    'rect', 'ellipse', 'line', 'arrow', 'text', 'callout', 'freehand',
 ])

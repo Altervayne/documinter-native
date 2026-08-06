@@ -2,11 +2,11 @@
  * inline.ts, All inline-content logic.
  *
  * Exports:
- *   parseInlineContent      , HTML string → InlineContent (migration bridge)
- *   renderInlineContent     , InlineContent → HTML string
- *   domToInlineContent      , live HTMLElement → InlineContent (called on commit)
- *   inlineContentToMintdown , InlineContent → Mintdown string
- *   mintdownToInlineContent , Mintdown string → InlineContent
+ *   parseInlineContent      , HTML string -> InlineContent (migration bridge)
+ *   renderInlineContent     , InlineContent -> HTML string
+ *   domToInlineContent      , live HTMLElement -> InlineContent (called on commit)
+ *   inlineContentToMintdown , InlineContent -> Mintdown string
+ *   mintdownToInlineContent , Mintdown string -> InlineContent
  *   stripTrailingNewlines   , remove trailing newline-only runs (exposed for migration)
  *   isEmptyContent          , true if array is empty or all-whitespace
  *   inlineContentEquals     , deep equality check
@@ -46,11 +46,11 @@ interface ParseFlags {
  * (`inlineContentEquals`) because the stored value and the read-back value differ.
  *
  * Handles:
- *   rgb(r, g, b)       → #rrggbb
- *   rgba(r, g, b, a)   → #rrggbb  (alpha dropped, we only store opaque colors)
- *   #rgb               → #rrggbb  (3-digit shorthand)
- *   #rrggbb            → #rrggbb  (already canonical, lowercased)
- *   anything else      → returned as-is (lowercased)
+ *   rgb(r, g, b)       -> #rrggbb
+ *   rgba(r, g, b, a)   -> #rrggbb  (alpha dropped, we only store opaque colors)
+ *   #rgb               -> #rrggbb  (3-digit shorthand)
+ *   #rrggbb            -> #rrggbb  (already canonical, lowercased)
+ *   anything else      -> returned as-is (lowercased)
  */
 function normalizeColorValue(cssColor: string): string {
    const trimmed = cssColor.trim()
@@ -67,7 +67,7 @@ function normalizeColorValue(cssColor: string): string {
          + blue.toString(16).padStart(2, '0')
    }
 
-   // #rgb shorthand → #rrggbb
+   // #rgb shorthand -> #rrggbb
    const shortHexMatch = trimmed.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/)
    if (shortHexMatch) {
       return '#'
@@ -111,7 +111,7 @@ function appendRun(runs: InlineRun[], text: string, flags: ParseFlags): void {
 
 /**
  * Strip trailing '\n' runs from the end of a run list.
- * Exported so that migrateBlock / migrateListItem in storage.ts can sanitize
+ * Exported so that migrateBlock / migrateListItem in documentMigration.ts can sanitize
  * richText arrays loaded from older save files that predate this normalisation.
  * All current write paths (domToInlineContent, mintdownToInlineContent,
  * parseInlineContent) already call this before returning.
@@ -399,7 +399,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
 
 /**
  * Convert a raw innerHTML string (from the legacy rich-text model) to InlineContent.
- * Migration bridge, used by migrateBlock() in storage.ts when loading old documents.
+ * Migration bridge, used by migrateBlock() in documentMigration.ts when loading old documents.
  * Uses DOMParser; never touches the live document.
  */
 export function parseInlineContent(html: string): InlineContent {
@@ -415,7 +415,7 @@ export function parseInlineContent(html: string): InlineContent {
  * Convert an InlineContent array to a clean HTML string.
  * Suitable for: setting innerHTML on a contentEditable element, or embedding in export HTML.
  *
- * Nesting order (outermost → innermost): link → color → highlight → strong → em → u → s
+ * Nesting order (outermost to innermost): link -> color -> highlight -> strong -> em -> u -> s
  * '\n' in a run's text is output as <br>.
  * Text is always HTML-escaped.
  */
@@ -468,7 +468,7 @@ export function inlineContentToMintdown(content: InlineContent): string {
    return content.map(run => {
       let inner = escapeMintdown(run.text)
 
-      // Wrap inside-out: s → u → em → strong → color → highlight → link
+      // Wrap inside-out: s -> u -> em -> strong -> color -> highlight -> link
       if (run.strikethrough) inner = `~~${inner}~~`
       if (run.underline)     inner = `__${inner}__`
       if (run.italic)        inner = `*${inner}*`
@@ -489,7 +489,7 @@ export function inlineContentToMintdown(content: InlineContent): string {
  * Inverse of inlineContentToMintdown.
  *
  * Lenient: unclosed markers are treated as literal text.
- * Unknown {…} tags have their inner text preserved as a plain run.
+ * Unknown {...} tags have their inner text preserved as a plain run.
  */
 export function mintdownToInlineContent(source: string): InlineContent {
    if (!source) return []
@@ -533,8 +533,8 @@ export function inlineContentEquals(a: InlineContent, b: InlineContent): boolean
  *
  * Returns null when the selection is not inside the element or is not collapsed.
  *
- * This function is the designated replacement slot for the custom cursor engine:
- * when the engine arrives, only this function's internals change.
+ * Kept narrow and self-contained so its internals can be swapped for a different
+ * cursor-tracking strategy without touching callers.
  */
 export function computeCursorPosition(element: HTMLElement): CursorPosition | null {
    const selection = window.getSelection()

@@ -1,9 +1,9 @@
 /**
  * inlineFormatting.ts, Color application + selection helpers for the FormatToolbar.
  *
- * Relocated verbatim from inline.ts. These operate on InlineContent and the live DOM
- * Selection in service of the rich-text toolbar; they are editor-interaction logic, kept
- * separate from the pure inline-content model in inline.ts.
+ * These operate on InlineContent and the live DOM Selection in service of the rich-text
+ * toolbar; editor-interaction logic, kept separate from the pure inline-content model in
+ * inline.ts.
  *
  * computeCursorPosition's relatives countCharsToPosition and deriveActiveColorsAt READ
  * live DOM state without modifying it; restoreSelectionRange is the sole writer, it

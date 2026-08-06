@@ -1,12 +1,11 @@
 // ###############################################################################################
 // # DOCK LAYOUT MODEL                                                                           #
 // #                                                                                             #
-// # The pure data model + transforms for the side-panel docking system (see                    #
-// # docs/reference/side_panel_docking_study.md). A DockLayout is a flat structure: each side    #
-// # (left / right) holds at most one Column, a Column is a top-to-bottom stack of Groups, and a #
-// # Group is a tabbed container of one or more Panels. Docks attach only to the left or right    #
-// # edge of the workspace; there is no top or bottom dock (ratified). Vertical arrangement       #
-// # exists only as group stacking inside a column.                                              #
+// # The pure data model and transforms for the side-panel docking system. A DockLayout is a     #
+// # flat structure: each side (left / right) holds at most one Column, a Column is a top-to-    #
+// # bottom stack of Groups, and a Group is a tabbed container of one or more Panels. Docks      #
+// # attach only to the left or right edge of the workspace; there is no top or bottom dock.     #
+// # Vertical arrangement exists only as group stacking inside a column.                         #
 // #                                                                                             #
 // # Every function here is pure and returns a new layout, mirroring the discipline of the       #
 // # center-pane engine in lib/paneTree.ts so the whole thing stays unit-testable with no React. #
@@ -19,7 +18,7 @@
 export type DockSide = 'left' | 'right'
 
 // The registered side-panel ids. Extend this union as new panels register (see lib/panelRegistry).
-// A given panel id appears in a DockLayout at most once: the no-duplicates rule (ratified).
+// A given panel id appears in a DockLayout at most once: the no-duplicates rule.
 export type PanelId = 'structure' | 'pages'
 
 export interface DockGroup {
@@ -40,8 +39,8 @@ export interface DockColumn {
    width:  number
    /** Groups stacked top-to-bottom. A column is never stored empty (the side is set to null instead). */
    groups: DockGroup[]
-   /** When true the whole dock is collapsed to its rail. Distinct from a single group's `collapsed`
-    *  (the ratified granularity is both per-group and whole-dock). */
+   /** When true the whole dock is collapsed to its rail. Distinct from a single group's `collapsed`:
+    *  collapse applies at both the per-group and whole-dock granularity. */
    collapsed?: boolean
 }
 
@@ -58,7 +57,7 @@ export interface PanelLocation {
    tabIndex:   number
 }
 
-/** Geometry of a floating panel window (Phase 3 window-pinning). */
+/** Geometry of a floating, window-pinned panel. */
 export interface WindowPlacement {
    top:    number
    left:   number

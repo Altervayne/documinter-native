@@ -22,8 +22,8 @@ export interface InlineRun {
    italic?:        boolean
    underline?:     boolean
    strikethrough?: boolean
-   color?:         string     // CSS color value, reserved, not yet surfaced in UI
-   highlight?:     string     // CSS color value, reserved, not yet surfaced in UI
+   color?:         string     // CSS color value; not wired to any UI control
+   highlight?:     string     // CSS color value; not wired to any UI control
    link?:          string     // href, combines freely with all other flags
 }
 
@@ -100,10 +100,10 @@ export interface Block {
    caption?: string      // image: optional caption
    align?: 'left' | 'center' | 'right'  // image: horizontal alignment, default center
    imageHeight?: number                  // image: constrained display height in px; undefined = unconstrained
-   ratio?: number        // container: left column width 0.1–0.9, default 0.5
+   ratio?: number        // container: left column width 0.1-0.9, default 0.5
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks
-   handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" → href="#my-note")
+   handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" -> href="#my-note")
 }
 
 export interface Section {
@@ -139,17 +139,17 @@ export interface DocState {
 
 /** One open document in the workspace (a tab). Holds the document content plus a stable in-session
  *  key. `tabKey` is a fresh UUID, distinct from any binder id, so a never-saved document still has
- *  identity. Per-tab save identity/status (documentId, saveStatus) arrive in a later phase. */
+ *  identity. */
 export interface OpenDocument {
    tabKey:    string
    meta:      DocMeta
    sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
-   /** Export-only / editor-only presentation extras (watermark, …); absent = today's behavior.
+   /** Export-only / editor-only presentation extras (watermark, ...); absent = default behavior.
     *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Mintdown / Markdown. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite canvas width, and later paged A4); absent = today's infinite/
+   /** Document page format (infinite canvas width, or paged A4); absent = default infinite/
     *  normal-width behavior. Rides on the SAME seams as presentation; NEVER serialized to Mintdown /
     *  Markdown (chrome, not content, see lib/format.ts). */
    format?: DocFormat
@@ -203,11 +203,11 @@ export interface BinderDocumentRecord {
 export interface BinderDocumentContent {
    id:       string
    sections: Section[]
-   /** Image-bearing presentation extras (watermark base64, …) live on the HEAVY content store, not
+   /** Image-bearing presentation extras (watermark base64, ...) live on the HEAVY content store, not
     *  the light record listDocuments() reads for every card, a full-bleed base64 must never bloat
     *  the card-list query. Absent on documents saved before presentation existed. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite width, later paged A4); grouped with presentation on the heavy
+   /** Document page format (infinite width, or paged A4); grouped with presentation on the heavy
     *  store for seam consistency, even though it carries no base64. Absent on documents saved before
     *  format existed, or on a document that never left the default (see isDefaultFormat). */
    format?: DocFormat
@@ -230,8 +230,8 @@ export interface PaneLeaf {
 
 /**
  * A split pane, two children separated by a resizable divider.
- * `orientation: 'h'` → children sit left / right (horizontal divider)
- * `orientation: 'v'` → children sit top / bottom (vertical divider)
+ * `orientation: 'h'` -> children sit left / right (horizontal divider)
+ * `orientation: 'v'` -> children sit top / bottom (vertical divider)
  * `ratio` is children[0]'s fraction of the total axis length, clamped [0.15, 0.85].
  */
 export interface PaneSplit {

@@ -3,12 +3,12 @@ import type { BinderFolderRecord } from '../../types'
 import { useLang } from '../../contexts/LangContext'
 
 interface BinderBreadcrumbProps {
-   ancestors:     BinderFolderRecord[]        // [root-most … immediate parent]
+   ancestors:     BinderFolderRecord[]        // [root-most ... immediate parent]
    currentFolder: BinderFolderRecord | null   // null = root
    onNavigate:    (folder: BinderFolderRecord | null) => void
 }
 
-/** Folder path: All Documents → … → current. Each crumb navigates to that level. */
+/** Folder path: All Documents -> ... -> current. Each crumb navigates to that level. */
 export function BinderBreadcrumb({ ancestors, currentFolder, onNavigate }: BinderBreadcrumbProps) {
    const { t } = useLang()
    const trail = currentFolder ? [...ancestors, currentFolder] : ancestors

@@ -39,7 +39,7 @@ interface GraphBlockProps {
    block: Block
    patch: (partial: Partial<Block>) => void
    /** Inserts an already-built block right after this graph block (the "Extract data to a table"
-    *  one-shot extract, see docs/reference/graph_table_linking_study.md, stage 1). */
+    *  one-shot extract; no live link is kept). */
    onInsertBlockAfter: (newBlock: Block) => void
    readOnly?: boolean
 }
@@ -96,13 +96,11 @@ function overlayTargetSeriesList(spec: GraphSpec): { name: string; index: number
  * `dangerouslySetInnerHTML` inside a `.doc-graph` wrapper, no runtime, no external font. The
  * SVG bakes literal theme hex, so the theme is picked from the document theme (light/dark).
  *
- * WINDOWED EDITOR (block-editor-window adopter #1): inline, the block shows only its rendered
- * chart plus a hover-reveal Edit pill; the full editor, chart-type selector, editable data grid,
- * option controls, moves into a floating BlockEditorWindow opened via the
- * BlockEditorWindowContext. The draft/commit-on-blur model is unchanged (a local working spec
- * keeps typing smooth, committed via `patch({ graph })`); it simply lives in the window now. The
- * window is rendered inline by this component only while this block is the open one, so deleting
- * the block unmounts the window with it for free.
+ * Inline, the block shows only its rendered chart plus a hover-reveal Edit pill; the full editor,
+ * chart-type selector, editable data grid, and option controls live in a floating
+ * BlockEditorWindow opened via BlockEditorWindowContext. A local working spec keeps typing smooth
+ * and commits via `patch({ graph })` on blur. The window is rendered inline by this component only
+ * while this block is the open one, so deleting the block unmounts the window with it for free.
  */
 export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: GraphBlockProps) {
    const { t }        = useLang()
@@ -113,8 +111,8 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    // The document-wide `handle -> table cells` catalog a LINKED graph resolves its data from. A
    // table edit changes this map's identity, which re-renders this block and re-resolves the link.
    const documentTables = useDocumentTables()
-   // The "Link to a table…" picker's full listing (every table, handled or not), stage 2b, the
-   // editor UX built here. Unused in readOnly, but hooks must still run unconditionally.
+   // The "Link to a table..." picker's full listing (every table, handled or not). Unused in
+   // readOnly, but hooks must still run unconditionally.
    const linkableTables = useLinkableTables()
    // Every handle in the document, for generating a collision-free handle when auto-assigning one to
    // a handle-less table on link (see handleLinkTable below).
@@ -208,10 +206,9 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    }
 
    // One-shot extract: build a table block from this chart's current tabular data and drop it in
-   // right after the graph. Pure data mapping (tableFromGraphData); no link is retained, this is
-   // stage 1 of graph<->table linking, the live link is a separate, unbuilt stage 2. Only offered
-   // for the tabular chart types (see the `dataTab` gate below, `function`/`scatter`/`histogram`
-   // carry no `GraphData`).
+   // right after the graph. Pure data mapping (tableFromGraphData); no link is retained. Only
+   // offered for the tabular chart types (see the `dataTab` gate below; `function`/`scatter`/
+   // `histogram` carry no `GraphData`).
    function handleExtractTable(): void {
       const { richHeaders, richRows } = tableFromGraphData(working.data)
       const newBlock: Block = { id: crypto.randomUUID(), type: 'table', richHeaders, richRows }
@@ -265,13 +262,13 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    const options    = working.options
    // The inline output renders from the live working spec, so the chart updates behind the window
    // as the window's controls are used, no separate in-window preview needed. A linked graph
-   // resolves its data from the document's tables first (dangling → the materialized snapshot);
-   // the pure renderer only ever sees concrete data, never `source`.
+   // resolves its data from the document's tables first (falling back to the materialized snapshot
+   // when dangling); the pure renderer only ever sees concrete data, never `source`.
    const { renderSpec: previewRenderSpec, dangling: sourceDangling } = resolveGraphSpec(working, documentTables)
    const previewSvg = renderGraphToSvg(previewRenderSpec, graphTheme)
 
    // ==================================================================
-   //  Table-link editing (stage 2b): link / re-link, mapping, unlink
+   //  Table-link editing: link / re-link, mapping, unlink
    // ==================================================================
    // Link (or re-link) this graph to a table picked from GraphLinkPanel's picker. A handle-less
    // table is auto-assigned a fresh, document-unique handle FIRST (a mutation on that OTHER block,
@@ -516,7 +513,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    //   - function: REFERENCE lines ONLY (both orientations), a sampled f(x) curve has no discrete
    //     series to average/fit, and an equation overlay would just duplicate the plot; a reference
    //     line (horizontal y = c, or vertical x = c) is the one meaningful annotation.
-   // histogram analysis (e.g. a mean/std-dev overlay) is a v1.1 concern, not built here.
+   // Histogram analysis (e.g. a mean/std-dev overlay) is not built here.
    const analysisSection = !isRadial && !isHistogram && (
       <div className="graph-options graph-analysis">
          <span className="graph-section-label">{t.graphAnalysisSection}</span>
@@ -536,7 +533,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                   <option value="reference">{t.graphOverlayReference}</option>
                   {/* Equation curve is chart-level over the CATEGORICAL index axis; scatter has no
                       such axis and a function chart would just duplicate its own plot, so it isn't
-                      offered for either (a natural follow-up for scatter, not built in v1). */}
+                      offered for either. */}
                   {!isScatter && !isFunction && <option value="equation">{t.graphOverlayEquation}</option>}
                </select>
 
@@ -665,12 +662,12 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    const dataTab = (
       <div className="graph-data-tab">
          {/* ============ Value (y) axis scale: linear/log, + custom axis origin ============ */}
-         {/* Grouped together at the top of the Data tab (moved from the Visual tab) since both are
-             axis-configuration concerns that frame how the data below is plotted, not display/type
-             options. Hidden entirely for the radial types and bar-stacked (no value axis at all, or
-             no log analog for zero-baseline stacking), see supportsLogScale/LOG_SCALE_UNSUPPORTED_TYPES,
-             the SAME rule the renderer enforces defensively for a hand-edited fence; `function` and
-             `scatter` both support log scale, so this group always renders for them too. */}
+         {/* Grouped at the top of the Data tab since both are axis-configuration concerns that frame
+             how the data below is plotted, not display/type options. Hidden entirely for the radial
+             types and bar-stacked (no value axis at all, or no log analog for zero-baseline
+             stacking), see supportsLogScale/LOG_SCALE_UNSUPPORTED_TYPES, the SAME rule the renderer
+             enforces defensively for a hand-edited fence; `function` and `scatter` both support log
+             scale, so this group always renders for them too. */}
          {supportsLogScale(working.type) && (
             <div className="graph-editor-group graph-axis-controls">
                <div className="graph-toggle-row">
@@ -771,9 +768,9 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
             />
          ) : (
             <>
-               {/* Table link (stage 2b): a compact picker above the grid while unlinked, or the
-                   whole linked-state management UI (banner + read-only preview + mapping + unlink)
-                   REPLACING the grid entirely once `working.source` is set. Tabular types only,
+               {/* Table link: a compact picker above the grid while unlinked, or the whole
+                   linked-state management UI (banner + read-only preview + mapping + unlink)
+                   REPLACING the grid entirely once `working.source` is set. Tabular types only;
                    function/scatter/histogram never reach this branch. */}
                <GraphLinkPanel
                   spec={working}

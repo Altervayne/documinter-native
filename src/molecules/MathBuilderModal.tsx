@@ -41,7 +41,7 @@ interface MathBuilderModalProps {
 }
 
 /**
- * A snapshot of the cell that was focused when the in-modal ƒ(x) palette opened. The palette
+ * A snapshot of the cell that was focused when the in-modal f(x) palette opened. The palette
  * steals focus (its filter autofocuses), so the target cell, its value, its live selection, its
  * DOM node, and the setter that writes it back, must be captured UP FRONT, then a symbol insert
  * splices into `value` at `[selectionStart, selectionEnd)` and hands the result to `setValue`.
@@ -98,7 +98,7 @@ interface StepperControlProps {
    onChange: (next: number) => void
 }
 
-/** A compact label + [−] value [+] stepper, clamped to the dimension range. */
+/** A compact label + [-] value [+] stepper, clamped to the dimension range. */
 function StepperControl({ label, value, onChange }: StepperControlProps) {
    const atMin = value <= MIN_DIMENSION
    const atMax = value >= MAX_DIMENSION
@@ -148,7 +148,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
    // already injects it, but the modal must not assume a particular mount order).
    useEffect(() => { ensureTemmlStyles() }, [])
 
-   // Re-render once Temml's raw asset finishes loading, so the preview stops showing "rendering…".
+   // Re-render once Temml's raw asset finishes loading, so the preview stops showing "rendering...".
    const [temmlReady, setTemmlReady] = useState(isTemmlReady())
    useEffect(() => onTemmlReady(() => setTemmlReady(true)), [])
 
@@ -219,12 +219,12 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
    // ==================================
    //  In-modal symbol palette (per cell)
    // ==================================
-   // The ƒ(x) palette lets a cell hold real LaTeX (\pi, \frac{}{}, …). It mirrors MathBlock's
+   // The f(x) palette lets a cell hold real LaTeX (\pi, \frac{}{}, ...). It mirrors MathBlock's
    // caret contract, but the "source" is whichever cell input was last focused.
    const modalRef = useRef<HTMLDivElement>(null)
 
    // The last-focused cell: its DOM node + the setter that writes it back. Registered on each
-   // input's onFocus; read (live) when ƒ(x) is pressed so the snapshot reflects the real cursor.
+   // input's onFocus; read (live) when f(x) is pressed so the snapshot reflects the real cursor.
    const activeCellRef = useRef<{ element: HTMLInputElement; setValue: (next: string) => void } | null>(null)
    function registerActiveCell(element: HTMLInputElement, setValue: (next: string) => void): void {
       activeCellRef.current = { element, setValue }
@@ -245,7 +245,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
       setPendingCaret(null)
    }, [pendingCaret])
 
-   // Fallback when ƒ(x) is pressed with no cell focused: target the first cell (first input in DOM
+   // Fallback when f(x) is pressed with no cell focused: target the first cell (first input in DOM
    // order, which is row 0 / left column for every mode). Returns null only if no cell exists.
    function firstCellSnapshot(): ActiveCellSnapshot | null {
       const element = modalRef.current?.querySelector<HTMLInputElement>('.math-builder-input')
@@ -257,7 +257,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
       return { element, setValue, value: element.value, selectionStart: element.value.length, selectionEnd: element.value.length }
    }
 
-   // ƒ(x) pressed: snapshot the target cell UP FRONT (the palette autofocus will blur it), then
+   // f(x) pressed: snapshot the target cell UP FRONT (the palette autofocus will blur it), then
    // open/anchor the palette. MOUSEDOWN + preventDefault so the cell input does not blur here.
    function toggleCellPalette(event: React.MouseEvent<HTMLButtonElement>): void {
       event.preventDefault()
@@ -280,7 +280,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
 
    // Splice the chosen symbol into the snapshotted cell via the SHARED resolver (marker / selection
    // wrap handled there), write it back through the cell setter, close the palette, and schedule
-   // the caret restore. No cell snapshot → no-op.
+   // the caret restore. No cell snapshot -> no-op.
    function insertSymbolIntoCell(insert: string): void {
       const snapshot = snapshotRef.current
       if (!snapshot) return
@@ -329,7 +329,7 @@ export function MathBuilderModal({ kind, bracket, onInsert, onClose }: MathBuild
                   <button
                      type="button"
                      className={`math-builder-bracket-btn${paletteOpen ? ' is-active' : ''}`}
-                     // ƒ(x) opens the symbol palette targeting the focused cell. MOUSEDOWN +
+                     // f(x) opens the symbol palette targeting the focused cell. MOUSEDOWN +
                      // preventDefault keeps the cell input focused so its selection is snapshotable.
                      onMouseDown={toggleCellPalette}
                      aria-label={t.blockMathInsertSymbol}

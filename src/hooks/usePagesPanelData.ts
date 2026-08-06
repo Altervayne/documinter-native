@@ -33,12 +33,11 @@ export interface PagesPanelData {
 
 /**
  * Derives everything the Pages panel needs from the active document's sections + format, plus the
- * reorder / duplicate / delete / jump handlers. This used to live inside WysiwygArea (where the sorter
- * was mounted); it moves up to App so the Pages body can be hosted by the App-level dock. Each mutation
- * routes through the same pure pageModel transforms and commits BOTH the section flow and the break
- * markers in one event (React batches the two setState calls). Jump-to-page is a global DOM query, so it
- * works regardless of where the panel is hosted. When the document is not paged this returns an empty
- * page list; the dock only shows the Pages panel for a paged document anyway.
+ * reorder / duplicate / delete / jump handlers, so the panel body can be hosted anywhere in the dock.
+ * Each mutation routes through the same pure pageModel transforms and commits BOTH the section flow
+ * and the break markers in one event (React batches the two setState calls). Jump-to-page is a global
+ * DOM query, so it works regardless of where the panel is hosted. When the document is not paged this
+ * returns an empty page list; the dock only shows the Pages panel for a paged document anyway.
  */
 export function usePagesPanelData(
    sections:          Section[],

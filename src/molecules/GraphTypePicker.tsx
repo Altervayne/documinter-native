@@ -24,8 +24,7 @@ interface GraphTypePickerProps {
 
 /**
  * The chart types in the order they appear in the picker, each paired with the i18n key for its
- * label. Kept here (next to the picker) so the card grid and the GraphType union never drift; it
- * used to live in GraphBlock next to the old `<select>` and moved here with the control.
+ * label. Kept here, next to the picker, so the card grid and the GraphType union never drift.
  */
 type GraphTypeLabelKey =
    | 'graphTypeBar'
@@ -150,8 +149,8 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
 // #############
 
 /**
- * The chart-type picker: a grid of preview cards (one per GraphType) replacing the old dropdown.
- * Each card renders a REAL mini chart of that type via the shared `renderGraphToSvg`, fed the
+ * The chart-type picker: a grid of preview cards, one per GraphType. Each card renders a REAL
+ * mini chart of that type via the shared `renderGraphToSvg`, fed the
  * canned sample spec above, so the author picks a shape by seeing it rather than reading a label.
  * The cards depend only on the type list + theme (never on the author's data), so they are stable.
  * Clicking a card routes through the pure `setType` helper via `onChange`.

@@ -153,7 +153,7 @@ describe('graphTableData, mapping options (labelColumn / orient)', () => {
       expect(graphDataFromTable(headers, rows, { labelColumn: 1 })).toEqual<GraphData>({
          labels: ['10', '20'],
          series: [
-            { name: 'Region', values: [null, null] }, // "North"/"South" are non-numeric ⇒ null
+            { name: 'Region', values: [null, null] }, // "North"/"South" are non-numeric -> null
             { name: '2026',   values: [12, 22] },
          ],
       })
@@ -185,12 +185,12 @@ describe('graphTableData, collectTableSources', () => {
    it('catalogs handled table blocks, including inside containers, first-wins on a duplicate handle', () => {
       const blocks: Block[] = [
          tableBlock('sales', ['', 'V'], [['A', '1']]),
-         { id: 'no-handle', type: 'table', richHeaders: [run('')], richRows: [] }, // no handle ⇒ skipped
+         { id: 'no-handle', type: 'table', richHeaders: [run('')], richRows: [] }, // no handle -> skipped
          { id: 'para', type: 'p', richText: [{ text: 'x' }] },
          {
             id: 'container', type: 'container',
             left:  [tableBlock('inner', ['', 'W'], [['B', '2']])],
-            right: [tableBlock('sales', ['', 'DUP'], [['Z', '9']])], // duplicate handle ⇒ ignored (first wins)
+            right: [tableBlock('sales', ['', 'DUP'], [['Z', '9']])], // duplicate handle -> ignored (first wins)
          },
       ]
       const catalog = collectTableSources(blocks)

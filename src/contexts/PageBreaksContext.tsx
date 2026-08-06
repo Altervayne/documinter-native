@@ -1,11 +1,11 @@
 /**
  * PageBreaksContext, the paged-format page-break actions the block context menu consumes.
  *
- * Document Formats PHASE 2. The "Insert / Remove page break after this block" menu item lives deep in
- * the WysiwygBlock subtree, but the page-break model (format.pages) + its committer (onFormatChange)
- * live at WysiwygArea. Rather than prop-drill through WysiwygSection → WysiwygBlock, WysiwygArea
+ * The "Insert / Remove page break after this block" menu item lives deep in the WysiwygBlock
+ * subtree, but the page-break model (format.pages) + its committer (onFormatChange) live at
+ * WysiwygArea. Rather than prop-drill through WysiwygSection -> WysiwygBlock, WysiwygArea
  * publishes a tiny read+mutate API here (mirroring DocumentMutationsContext). A default no-op value
- * keeps any consumer OUTSIDE a provider (a container inner block, a stray render) safe: `paged` is
+ * keeps any consumer outside a provider (a container inner block, a stray render) safe: `paged` is
  * false, so the menu item never appears.
  */
 

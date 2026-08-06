@@ -21,8 +21,8 @@ export interface PageNumberLabels {
 
 /**
  * The printed page-number string for a 1-based page number out of `totalPages`.
- *   plain  → `1`          page   → `Page 1`       slash → `1 / 12`
- *   pageOf → `Page 1 of 12`                       dashes → `- 1 -`
+ *   plain  -> `1`          page   -> `Page 1`       slash -> `1 / 12`
+ *   pageOf -> `Page 1 of 12`                      dashes -> `- 1 -`
  */
 export function formatPageNumber(
    style:      PageNumberStyle,

@@ -1,14 +1,14 @@
 /**
- * presentation.ts, Document-level presentation extras (export + editor only).
+ * Document-level presentation extras (export + editor only).
  *
  * Pure types, defaults, and normalization for the presentation features that render IN the editor
  * and bake into the self-contained HTML export, but are intentionally NOT serialized to Mintdown /
  * Markdown (those carry portable content, not presentation). This object rides ALONGSIDE the flat
  * docTheme / docAccent presentation fields (never inside DocState), same category, same seams.
  *
- * Pass 1 implements the background watermark; pass 2 adds the header logo. The nav model
- * (pass 3) slots into DocPresentationExtras as a sibling optional field, and normalizePresentation
- * grows a branch for it, no consumer needs to change for the field to stay absent-tolerant.
+ * The background watermark, the header logo, and the nav model each slot into
+ * DocPresentationExtras as a sibling optional field, and normalizePresentation grows a branch per
+ * field, so no consumer needs to change for a field to stay absent-tolerant.
  *
  * No React, no DOM: the canvas image encode lives in imageDownscale.ts; everything here is pure so
  * it is unit-testable and reusable by both the editor render and the export pipeline.
@@ -86,8 +86,8 @@ export type NavTarget =
    | { type: 'url';     href: string }
 
 /**
- * An entry that mirrors a document section. `label` absent ⇒ the live section title is shown (so
- * renaming the section updates the nav for free); `label` present ⇒ a nav-only rename override.
+ * An entry that mirrors a document section. `label` absent -> the live section title is shown (so
+ * renaming the section updates the nav for free); `label` present -> a nav-only rename override.
  * `hidden: true` drops it from the exported sidebar while the section itself still renders in the body.
  */
 export interface NavAutoEntry {
@@ -114,14 +114,14 @@ export interface NavDivider {
 
 export type NavEntry = NavAutoEntry | NavCustomEntry | NavDivider
 
-/** The sidebar-nav model. Absent ⇒ today's pure section derivation (see reconcileNav below). */
+/** The sidebar-nav model. Absent -> today's pure section derivation (see reconcileNav below). */
 export interface NavModel {
    entries: NavEntry[]
 }
 
 /**
  * The presentation extras that ride alongside docTheme / docAccent. Every field is optional; an
- * absent field means today's behavior. Pass 1 = watermark, pass 2 = header/logo, pass 3 = nav.
+ * absent field means today's behavior.
  */
 export interface DocPresentationExtras {
    watermark?: Watermark
@@ -293,7 +293,7 @@ export function resolveHeaderBesideLayout(header: Header): HeaderBesideLayout {
 export function effectiveWatermarkOpacity(opacity: number, theme: 'light' | 'dark'): number {
    const clamped = clampWatermarkOpacity(opacity)
    const dimmed = theme === 'dark' ? clamped * WATERMARK_DARK_DIM_FACTOR : clamped
-   // Round to 3 decimals so the dark-dim multiply (e.g. 0.1 * 0.8 = 0.08000…2) serializes cleanly
+   // Round to 3 decimals so the dark-dim multiply (e.g. 0.1 * 0.8 = 0.08000...2) serializes cleanly
    // into the export's inline `opacity:` and the editor's style, never as a float-noise tail.
    return Math.round(dimmed * 1000) / 1000
 }
@@ -493,7 +493,7 @@ export function reconcileNavEntries(nav: NavModel | undefined, sections: Section
 
    for (const entry of stored) {
       if (entry.kind === 'auto') {
-         if (!sectionIdSet.has(entry.sectionId)) continue         // section deleted → drop
+         if (!sectionIdSet.has(entry.sectionId)) continue         // section deleted -> drop
          if (referencedSectionIds.has(entry.sectionId)) continue  // defensive de-dupe
          referencedSectionIds.add(entry.sectionId)
          result.push(entry)
@@ -514,7 +514,7 @@ export function reconcileNavEntries(nav: NavModel | undefined, sections: Section
 
 /**
  * A nav entry resolved to its concrete render form, what both the export pipeline and any render
- * surface consume. A `link` carries its final label + href + whether it points offsite (external →
+ * surface consume. A `link` carries its final label + href + whether it points offsite (external ->
  * open in a new tab, not scroll-spy observed) + an optional 1-based positional `number` (see the
  * numbering rule in reconcileNav). A `divider` carries only its optional caption.
  */
@@ -525,11 +525,11 @@ export type ResolvedNavEntry =
 /**
  * Reconcile AND resolve a nav model for rendering / export: runs reconcileNavEntries, then maps each
  * surviving entry to its concrete ResolvedNavEntry. Hidden `auto` entries are omitted; a broken link
- * target (custom → a deleted section, or an empty external URL) is dropped from the rendered nav (the
+ * target (custom -> a deleted section, or an empty external URL) is dropped from the rendered nav (the
  * raw reconcileNavEntries still keeps it so the editor can show + fix it).
  *
- * Numbering: section-target links (unhidden `auto` + `custom` → section) are numbered 1..N in nav
- * order; anchor links (custom → block handle), external links, and dividers are NOT numbered and do
+ * Numbering: section-target links (unhidden `auto` + `custom` -> section) are numbered 1..N in nav
+ * order; anchor links (custom -> block handle), external links, and dividers are NOT numbered and do
  * not consume a number, an anchor link is a sub-reference into a section, sibling to an external
  * link, so it stays unnumbered. When `nav` is absent this yields all sections numbered 1..N in
  * order, byte-identical to today's derivation.
@@ -567,10 +567,10 @@ export function reconcileNav(nav: NavModel | undefined, sections: Section[]): Re
       }
       // custom
       if (entry.target.type === 'url') {
-         if (entry.target.href.trim() === '') continue   // half-filled external adder → don't emit a broken link
+         if (entry.target.href.trim() === '') continue   // half-filled external adder -> don't emit a broken link
          resolved.push({ kind: 'link', id: entry.id, label: entry.label, href: entry.target.href, external: true })
       } else if (entry.target.type === 'anchor') {
-         if (!anchoredHandles.has(entry.target.handle)) continue   // points at a dropped anchor → drop
+         if (!anchoredHandles.has(entry.target.handle)) continue   // points at a dropped anchor -> drop
          // An anchor is an internal smooth-scroll link (external:false) but UNNUMBERED, a
          // sub-reference into a section, sibling to an external link, so it consumes no number.
          resolved.push({
@@ -581,7 +581,7 @@ export function reconcileNav(nav: NavModel | undefined, sections: Section[]): Re
             external: false,
          })
       } else {
-         if (!titleBySectionId.has(entry.target.sectionId)) continue   // points at a deleted section → drop
+         if (!titleBySectionId.has(entry.target.sectionId)) continue   // points at a deleted section -> drop
          sectionLinkNumber += 1
          resolved.push({
             kind:     'link',

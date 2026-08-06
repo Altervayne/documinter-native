@@ -41,8 +41,8 @@ interface FormatWindowProps {
 
 type WidthChoice = 'narrow' | 'normal' | 'wide' | 'custom'
 
-// A uniform-margin slider window (all four sides equal): the common Phase-2 case. Per-side margins
-// are carried on the model but a per-side editor is deferred.
+// A uniform-margin slider window (all four sides equal), the common case. Per-side margins are
+// carried on the model but a per-side editor is deferred.
 const MARGIN_MIN_MM = 0
 const MARGIN_MAX_MM = 40
 
@@ -52,11 +52,11 @@ const MARGIN_MAX_MM = 40
 
 /**
  * The document-level Page setup editor: a NON-MODAL draggable window (reusing BlockEditorWindow /
- * useDraggableWindow), mirroring PresentationWindow / NavWindow. PHASE 2 exposes the format KIND
+ * useDraggableWindow), mirroring PresentationWindow / NavWindow. It exposes the format KIND
  * (Infinite / A4 Portrait / A4 Landscape) plus the infinite-canvas WIDTH (infinite only) and the page
  * MARGINS (A4 only). Switching kind is non-destructive: the section/block content is untouched, and
  * any page breaks (format.pages) ride along across a kind switch (they simply aren't rendered in
- * infinite mode), so an A4 → infinite → A4 round-trip preserves the pagination.
+ * infinite mode), so an A4 -> infinite -> A4 round-trip preserves the pagination.
  */
 export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWindowProps) {
    const { t } = useLang()
@@ -70,7 +70,7 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
    const isCustom = typeof width === 'object'
    const customWidthPx = isCustom ? width.custom : resolveInfiniteWidthPx(width)
 
-   // Margins default to the shipped 20mm all-round; the uniform slider tracks the top side (all four
+   // Margins default to 20mm on every side; the uniform slider tracks the top side (all four
    // are kept equal by this control).
    const margins = resolved.margins ?? DEFAULT_A4_MARGINS
    const uniformMarginMm = margins.top
@@ -100,7 +100,7 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
    const pageNumbering = resolved.pageNumbering
    type EdgeChoice = 'off' | PageNumberAlign
 
-   // Commit a whole pageNumbering object, or clear it (both edges off ⇒ remove the field entirely).
+   // Commit a whole pageNumbering object, or clear it (both edges off -> remove the field entirely).
    function applyPageNumbering(next: PageNumbering | undefined): void {
       const withoutNumbering = { ...resolved }
       delete withoutNumbering.pageNumbering
@@ -201,7 +201,7 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
                </section>
             )}
 
-            {/* Page margins (A4 only). Uniform (all four sides equal) this phase. */}
+            {/* Page margins (A4 only). Uniform: all four sides equal. */}
             {!isInfinite && (
                <section className="presentation-section">
                   <span className="presentation-section-label">{t.formatMarginsLabel}</span>

@@ -79,7 +79,7 @@ function DateFilterRow({
                className={inputClass}
             />
          )}
-         {draft.mode === 'between' && <span className="text-xs text-muted">–</span>}
+         {draft.mode === 'between' && <span className="text-xs text-muted">-</span>}
          {showTo && (
             <input
                type="date"
@@ -94,9 +94,9 @@ function DateFilterRow({
    )
 }
 
-/** Build the chip text for a date bound: "Updated ≥ x", "Updated ≤ y", or "Updated x – y". */
+/** Build the chip text for a date bound: "Updated >= x", "Updated <= y", or "Updated x - y". */
 function dateChipLabel(fieldLabel: string, bounds: DateFilter): string {
-   if (bounds.from && bounds.to) return `${fieldLabel} ${bounds.from} – ${bounds.to}`
+   if (bounds.from && bounds.to) return `${fieldLabel} ${bounds.from} - ${bounds.to}`
    if (bounds.from)              return `${fieldLabel} ≥ ${bounds.from}`
    return `${fieldLabel} ≤ ${bounds.to}`
 }
@@ -217,7 +217,6 @@ export function BinderControls({
          {/* Row 2, advanced filter panel */}
          {isPanelOpen && (
             <div className="flex flex-col gap-3 rounded-md border border-border bg-el/40 p-3">
-               {/* Search scope */}
                <div className="flex items-center gap-2 flex-wrap">
                   <span className="w-16 shrink-0 text-xs text-muted">{t.binderSearchScope}</span>
                   <div className="flex rounded-md border border-border overflow-hidden w-fit">
@@ -242,7 +241,6 @@ export function BinderControls({
                ))}
                </div>
 
-               {/* Never opened */}
                <button
                   type="button"
                   onClick={onHasNeverOpenedToggle}

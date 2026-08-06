@@ -74,7 +74,7 @@ describe('insertPanelRight', () => {
 
 describe('relocatePanel', () => {
    it('removes the dragged leaf then re-inserts it beside the target on the chosen side', () => {
-      // Drag mintdown to the top of wysiwyg → a vertical split with mintdown first.
+      // Drag mintdown to the top of wysiwyg -> a vertical split with mintdown first.
       expect(relocatePanel(twoLeaves, 'mintdown', 'wysiwyg', 'top')).toEqual({
          kind: 'split', orientation: 'v', ratio: 0.5,
          children: [{ kind: 'leaf', paneId: 'mintdown' }, { kind: 'leaf', paneId: 'wysiwyg' }],

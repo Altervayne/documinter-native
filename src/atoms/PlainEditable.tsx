@@ -44,7 +44,7 @@ export function PlainEditable({
    const snapshotOnFocus = useRef<string>('')
 
    // Mount + readOnly toggle: repopulate because React removes managed children
-   // when switching readOnly=true → false, leaving the element blank.
+   // when switching readOnly=true -> false, leaving the element blank.
    useLayoutEffect(() => {
       if (!ref.current) return
       ref.current.innerText = content

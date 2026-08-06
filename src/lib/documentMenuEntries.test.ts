@@ -65,7 +65,7 @@ describe('buildDocumentMenuEntries', () => {
       const expected = [
          t.bgMenuAddSection,
          '---',
-         t.toDarkMode,                       // docTheme is light → offers switching to dark
+         t.toDarkMode,                       // docTheme is light -> offers switching to dark
          `header:${t.accent}`,
          `accent-grid:${ACCENT_PRESETS.join(',')}:custom=yes`,
          '---',

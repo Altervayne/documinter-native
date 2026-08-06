@@ -36,9 +36,9 @@ import { useToast } from '../contexts/ToastContext'
 //  Open format sniffing
 // ====================
 
-// Route one picked file to the right EXISTING loader. Extension decides when it is one we know;
-// otherwise the trimmed content is sniffed: `{` → JSON backup, `---` front matter → Mintdown,
-// anything else → Markdown. HTML is export-only and never routed here.
+// Route one picked file to the right existing loader. Extension decides when it is one we know;
+// otherwise the trimmed content is sniffed: `{` -> JSON backup, `---` front matter -> Mintdown,
+// anything else -> Markdown. HTML is export-only and never routed here.
 type OpenFormat = 'backup' | 'mintdown' | 'markdown'
 
 function detectOpenFormat(fileName: string, text: string): OpenFormat {
@@ -66,8 +66,8 @@ interface SaveStatusIndicatorProps {
 
 function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: SaveStatusIndicatorProps) {
    // Remember the last non-clean status so the pill keeps showing that label
-   // while it fades out after the status returns to 'clean'. This uses React's
-   // "adjust state during render" pattern so we never read/write a ref in render.
+   // while it fades out after the status returns to 'clean'. Uses React's
+   // "adjust state during render" pattern, so no ref read/write happens during render.
    const [displayed, setDisplayed] = useState<'dirty' | 'saving' | 'saved'>('dirty')
 
    if (status !== 'clean' && status !== displayed) setDisplayed(status)
@@ -137,14 +137,14 @@ interface HeaderMenuBarProps {
     *  a watermark bakes into the exported HTML. */
    presentation?:    DocPresentationExtras
    /** Opens the document-level Presentation window (from the Export dialog's HTML branch and the
-    *  Document menu's "Presentation…" entry). */
+    *  Document menu's "Presentation..." entry). */
    onOpenPresentation?: () => void
-   /** Opens the document-level Navigation window (the Document menu's "Navigation…" entry). */
+   /** Opens the document-level Navigation window (the Document menu's "Navigation..." entry). */
    onOpenNav?:          () => void
-   /** Document page format (infinite width, later paged A4) of the active document, threaded into
+   /** Document page format (infinite width or paged A4) of the active document, threaded into
     *  the Export dialog's ExportOptions so a non-default width bakes into the exported HTML. */
    format?:    DocFormat
-   /** Opens the document-level Page setup window (the Document menu's "Page setup…" entry). */
+   /** Opens the document-level Page setup window (the Document menu's "Page setup..." entry). */
    onOpenFormat?: () => void
 }
 
@@ -179,7 +179,7 @@ export function HeaderMenuBar({
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [isDocumentMode, onOpenExport])
 
-   // Placeholder for features not built this session (Tin, Save as, binder-mode imports).
+   // Placeholder for features not yet implemented (Tin, binder-mode imports).
    function comingSoon() {
       showToast(t.comingSoon, { type: 'neutral' })
    }
@@ -232,7 +232,6 @@ export function HeaderMenuBar({
       <>
          <div className="shrink-0 flex items-center gap-1 p-1 px-3 bg-raised border-b border-border z-200">
 
-            {/* Brand, left anchor */}
             <div className="flex items-center gap-2 mr-2 shrink-0 select-none">
                {theme === 'dark'
                   ? <LogoColor className="h-7 w-auto" />
@@ -241,7 +240,6 @@ export function HeaderMenuBar({
                <span className="font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
             </div>
 
-            {/* Menu bar */}
             <FileMenu
                mode={mode}
                onNewDocument={onNew}
@@ -292,7 +290,6 @@ export function HeaderMenuBar({
             {/* Spacer, pushes actions to the far right */}
             <div className="flex-1" />
 
-            {/* Save status */}
             <div className="shrink-0 flex items-center mr-1">
                <SaveStatusIndicator
                   status={saveStatus}
@@ -311,7 +308,7 @@ export function HeaderMenuBar({
                {isDocumentMode ? t.openBinder : t.closeBinder}
             </Button>
 
-            {/* Document-only quick actions. Export now lives in File → Export... (Ctrl+E). */}
+            {/* Document-only quick actions; Export lives in File -> Export... (Ctrl+E). */}
             {isDocumentMode && (
                <Button
                   variant="ghost"

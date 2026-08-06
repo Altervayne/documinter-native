@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { highlight } from './highlight'
 
-// tokenize wraps each matched token in <span class="tok-{type}">…</span> and HTML-escapes the rest.
+// tokenize wraps each matched token in <span class="tok-{type}">...</span> and HTML-escapes the rest.
 // Substring assertions keep these resilient to incidental spacing/markup.
 
 describe('highlight', () => {

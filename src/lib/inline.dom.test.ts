@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { parseInlineContent, domToInlineContent, computeCursorPosition } from './inline'
 
 // The DOM-walk half of the inline model: legacy-HTML parsing, the live-element commit path, and the
-// caret→offset reader. These need a real node tree + Selection, hence the per-file jsdom docblock.
+// caret-to-offset reader. These need a real node tree + Selection, hence the per-file jsdom docblock.
 
 describe('parseInlineContent', () => {
    it('reads nested formatting elements into flagged runs', () => {
@@ -66,7 +66,7 @@ describe('domToInlineContent', () => {
 })
 
 describe('computeCursorPosition', () => {
-   // Place a collapsed caret at (textNode, offset) and return the live Selection's reading.
+   // Places a collapsed caret at (textNode, offset) via the Selection API.
    function placeCaret(textNode: Node, offset: number): void {
       const range = document.createRange()
       range.setStart(textNode, offset)

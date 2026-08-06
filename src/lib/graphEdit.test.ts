@@ -1,5 +1,5 @@
 /**
- * graphEdit.test.ts, unit coverage for the pure graph-editor structural transforms.
+ * Unit coverage for the pure graph-editor structural transforms.
  *
  * Focus: the two invariants (rectangular arrays, keep-at-least-one) and the "fresh spec, input
  * untouched" contract. Mirrors mathStructures.test.ts in spirit, a pure-lib safety net that the
@@ -561,12 +561,10 @@ describe('logScaleWouldFallBackToLinear', () => {
       expect(logScaleWouldFallBackToLinear(withNegative)).toBe(true)
    })
 
-   // Reuses computeFunctionYDomain, the SAME expression-sampling pipeline renderFunctionPlot's own
-   // axis-mode decision runs, so this reflects exactly what the renderer will actually do, no
-   // separately-maintained approximation (this was a documented gap: see docs/reports/
-   // 2026-08-02-graph-log-scale-function-fix.md, a function was previously the only log-enabled
-   // type with no fallback notice, which read as "log scale does nothing" when a sampled curve
-   // dipped to/through zero).
+   // Reuses computeFunctionYDomain, the same expression-sampling pipeline renderFunctionPlot's own
+   // axis-mode decision runs, so this reflects exactly what the renderer does, with no separately
+   // maintained approximation that could drift and silently return the wrong verdict when a
+   // sampled curve dips to or through zero.
    it('is false for a function chart whose sampled curve stays strictly positive', () => {
       const spec: GraphSpec = {
          type: 'function',
@@ -724,12 +722,12 @@ describe('updateOverlay', () => {
 })
 
 // ##################################################
-// # functionPlot passthrough (the withData/setType/setOption fix)
+// # functionPlot passthrough (withData/setType/setOption)
 // ##################################################
-// Every generic data/option transform must carry an existing `functionPlot` through unchanged,
-// before this fix, `withData`/`setType`/`setOption` rebuilt the spec from named fields and
-// silently dropped it, which would have wiped an author's equations on the very next option
-// toggle (title, legend, ...) on a `function` chart.
+// Every generic data/option transform must carry an existing `functionPlot` through unchanged. If
+// `withData`/`setType`/`setOption` rebuilt the spec from named fields alone, they would silently
+// drop it, wiping an author's equations on the next option toggle (title, legend, and so on) on a
+// `function` chart.
 
 describe('functionPlot passthrough', () => {
    it('setOption preserves functionPlot on a function-type spec', () => {
@@ -948,12 +946,11 @@ describe('moveEquation', () => {
 })
 
 // ##################################################
-// # scatterPlot passthrough (the withData/setType/setOption spread)
+// # scatterPlot passthrough (withData/setType/setOption)
 // ##################################################
-// Every generic data/option transform already carries `scatterPlot` through unchanged because
-// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }` (the same spread that
-// fixed the equivalent functionPlot-dropping bug), so no separate fix was needed for scatter, this
-// just locks that behavior in with its own tests.
+// Every generic data/option transform carries `scatterPlot` through unchanged because
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, so this just locks
+// that behavior in with its own tests.
 
 describe('scatterPlot passthrough', () => {
    it('setOption preserves scatterPlot on a scatter-type spec', () => {
@@ -980,12 +977,11 @@ describe('scatterPlot passthrough', () => {
 })
 
 // ####################################################
-// # histogramData passthrough (the withData/setType/setOption spread)
+// # histogramData passthrough (withData/setType/setOption)
 // ####################################################
-// Every generic data/option transform already carries `histogramData` through unchanged because
-// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, the same spread that
-// fixed the equivalent functionPlot/scatterPlot-dropping bugs, so no separate fix was needed for
-// histogram either; this just locks that behavior in with its own tests.
+// Every generic data/option transform carries `histogramData` through unchanged because
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, so this just locks
+// that behavior in with its own tests.
 
 describe('histogramData passthrough', () => {
    it('setOption preserves histogramData on a histogram-type spec', () => {
@@ -1396,7 +1392,7 @@ describe('moveScatterPoint', () => {
 })
 
 // ##############################
-// # TABLE LINK (STAGE 2b EDITOR) #
+// # TABLE LINK EDITOR            #
 // ##############################
 
 describe('setSource', () => {

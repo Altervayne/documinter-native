@@ -55,12 +55,12 @@ interface NavWindowProps {
 // #############
 
 /**
- * The document-level Navigation editor: a NON-MODAL draggable window (reusing BlockEditorWindow /
- * useDraggableWindow) whose controls mutate the document's `presentation.nav` object. Split out of
- * PresentationWindow so navigation gets its own launcher (Document → Navigation…) and its own window;
- * the window itself is APP CHROME (app --color-* tokens, html[data-theme]).
+ * The document-level Navigation editor: a non-modal draggable window (reusing BlockEditorWindow /
+ * useDraggableWindow) whose controls mutate the document's `presentation.nav` object. It has its own
+ * launcher (Document -> Navigation...) and its own window, separate from PresentationWindow; the
+ * window itself is app chrome (app --color-* tokens, html[data-theme]).
  *
- * The editor bakes the EXPORTED sidebar nav only, it has no effect on the live editor sheet (the nav
+ * The editor bakes the exported sidebar nav only: it has no effect on the live editor sheet (the nav
  * is an export-only surface).
  */
 export function NavWindow({ presentation, sections, anchorRect, onChange, onClose }: NavWindowProps) {
@@ -68,7 +68,7 @@ export function NavWindow({ presentation, sections, anchorRect, onChange, onClos
 
    // Patch the nav field, collapsing an emptied extras object back to undefined so no empty shell
    // lingers in storage / export. Passing undefined resets the nav back to the zero-config default
-   // (today's derivation) AND, if it was the only extra, drops the whole extras object.
+   // (reconciled fresh from the sections) and, if it was the only extra, drops the whole extras object.
    function updateNav(nextNav: NavModel | undefined): void {
       const nextExtras: DocPresentationExtras = { ...presentation, nav: nextNav }
       if (!nextExtras.nav) delete nextExtras.nav
@@ -94,7 +94,7 @@ export function NavWindow({ presentation, sections, anchorRect, onChange, onClos
 // ###############
 
 /** A single-axis lock: every nav-entry drag glides vertically only (x pinned), without depending on
- *  `@dnd-kit/modifiers` (not installed), mirrors the graph editors' sortable lock. */
+ *  `@dnd-kit/modifiers` (not installed). Mirrors the graph editors' sortable lock. */
 const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 /** The drag-handle wiring a sortable nav row hands to its grip (mirrors ScatterEditor/GraphDataGrid). */
@@ -142,22 +142,22 @@ interface NavSectionProps {
 
 /**
  * The sidebar-nav editor: a reorderable list over the reconciled nav entries (one per section by
- * default, plus any custom links / dividers). It edits the model that bakes the EXPORTED sidebar nav
- * (this list has no effect on the live editor sheet, the nav is an export-only surface). Every commit
- * writes the full reconciled entry array, so the first touch seeds `nav` from today's derivation and
- * then customizes it; "Reset" clears the model back to that zero-config default.
+ * default, plus any custom links / dividers). It edits the model that bakes the exported sidebar nav
+ * (this list has no effect on the live editor sheet; the nav is an export-only surface). Every commit
+ * writes the full reconciled entry array, so the first touch seeds `nav` from the zero-config
+ * derivation and then customizes it; "Reset" clears the model back to that same default.
  */
 function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
-   // The working, reconciled entry list, the exact list the export consumes (before resolution).
+   // The working, reconciled entry list: the exact list the export consumes (before resolution).
    const entries = reconcileNavEntries(nav, sections)
    const titleBySectionId = new Map(sections.map(section => [section.id, section.title]))
    const isCustomized = nav !== undefined
 
-   // Every block carrying a deep-link handle, the "Element link" target universe, matching the
-   // inline "jump to block" picker (FormatToolbar). No anchors ⇒ the element-link adder is disabled.
+   // Every block carrying a deep-link handle: the "Element link" target universe, matching the
+   // inline "jump to block" picker (FormatToolbar). No anchors -> the element-link adder is disabled.
    const anchoredBlocks = getAnchoredBlocks(sections)
 
    /** A readable option label for an anchored block: its content preview plus the `#handle`. */

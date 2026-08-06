@@ -6,10 +6,9 @@
  * number the same way so output is byte-deterministic (no locale, no Date, no random), and
  * assemble elements from attribute records. NEVER emit unescaped user text.
  *
- * Originally built for the graph block (`lib/graph/svg.ts`), promoted here so the image-markup
- * block (`lib/imageMarkup/`) shares the exact same escaping/formatting source of truth rather
- * than reaching into graph's folder. `lib/graph/svg.ts` re-exports this module verbatim so
- * every existing graph import keeps working unchanged.
+ * Shared by the graph block (`lib/graph/svg.ts`) and the image-markup block (`lib/imageMarkup/`)
+ * as the single escaping/formatting source of truth. `lib/graph/svg.ts` re-exports this module
+ * verbatim so graph code can keep importing from its own path.
  */
 
 // ############
@@ -74,7 +73,7 @@ function groupThousands(integerString: string): string {
 /** An attribute map. Numbers are coordinate-rounded; strings are escaped; undefined is dropped. */
 export type SvgAttributes = Record<string, string | number | undefined>
 
-/** Serialize an attribute record into a ` name="value" …` fragment (leading space omitted). */
+/** Serialize an attribute record into a ` name="value" ...` fragment (leading space omitted). */
 export function attributesToString(attributes: SvgAttributes): string {
    const parts: string[] = []
    for (const [name, value] of Object.entries(attributes)) {
@@ -98,7 +97,7 @@ export function element(tag: string, attributes: SvgAttributes, children = ''): 
    return `${opening}${children}</${tag}>`
 }
 
-/** Build a self-closing element (rect, circle, line, path, …). */
+/** Build a self-closing element (rect, circle, line, path, ...). */
 export function selfClosingElement(tag: string, attributes: SvgAttributes): string {
    const attributeString = attributesToString(attributes)
    return attributeString ? `<${tag} ${attributeString}/>` : `<${tag}/>`

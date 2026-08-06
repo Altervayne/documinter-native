@@ -354,7 +354,7 @@ describe('safety: no code execution surface', () => {
 
    it('a constant or variable followed by parens is implicit multiplication, not a call: pi(1) == pi*1', () => {
       // pi/x are not in the function allowlist, so "(" right after one never triggers a call,
-      // it falls through to the ordinary implicit-multiplication rule instead (ratified grammar).
+      // it falls through to the ordinary implicit-multiplication rule instead.
       expect(evaluateAt('pi(1)', 0)).toBeCloseTo(Math.PI, 10)
       expect(evaluateAt('x(1)', 5)).toBe(5)
    })

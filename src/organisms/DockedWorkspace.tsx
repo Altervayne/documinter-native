@@ -225,7 +225,7 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
 
          {isDragging && pointer && <DragGhost panelId={draggingPanelId} pointer={pointer} />}
 
-         {/* Floating panel windows (Phase 3), portaled to the body from within PanelWindow. */}
+         {/* Floating panel windows, portaled to the body from within PanelWindow. */}
          {(Object.keys(dock.floatingPanels) as PanelId[]).map((panelId) => {
             const placement = dock.floatingPanels[panelId]
             if (!placement) return null

@@ -40,7 +40,7 @@
 }
 
 /* ############################################################
-   Paged (A4) format, Document Formats Phase 2. The single infinite sheet is replaced by a centered
+   Paged (A4) format. The single infinite sheet is replaced by a centered
    column of A4-sized page sheets. Each `.doc-page` is sized to the kind's portrait/landscape px in
    an inline style (WysiwygArea), inset by the page margins (inline padding on its own .doc-render),
    and carries a page label; pages 2..N carry a remove-break affordance. The sheet chrome mirrors the
@@ -125,7 +125,7 @@
 }
 
 /* ============================================================
-   Overflow assist ribbon (Document Formats Phase 3). Editor-only, ephemeral, never exported: it is
+   Overflow assist ribbon. Editor-only, ephemeral, never exported: it is
    pinned (inline top/left/right from WysiwygArea) to a paged sheet's bottom-margin line, the A4
    boundary the spilling content crosses. A dashed rule draws the boundary; a pill straddling it
    carries the message + the one-click "Split here" (or a too-tall note when no split can help).
@@ -214,7 +214,7 @@
 }
 
 /* ############################################################
-   Page-sorter pane thumbnails (Document Formats Phase 4). The pane shell itself is APP CHROME (Tailwind
+   Page-sorter pane thumbnails. The pane shell itself is APP CHROME (Tailwind
    utility classes on the <aside>, like the sidebar Panel), but each thumbnail's INNER content is a
    scaled-down render of the page's real A4 sheet, it reuses `renderBlocksToDocHtml` inside a
    `.doc-render` at full sheet px, then CSS-scales the wrapper. So the thumb content is DOCUMENT
@@ -786,7 +786,7 @@
 }
 
 /* Numeric data cells: borderless inputs filling the cell; the grid lines do the separating. A null
-   gap shows a muted "–" placeholder (reads as a deliberate gap, not just untouched); non-numeric
+   gap shows a muted "-" placeholder (reads as a deliberate gap, not just untouched); non-numeric
    text raises a subtle danger ring without corrupting the stored value. */
 .graph-cell        { vertical-align: middle; padding: 0; }
 .graph-cell-input  {
@@ -922,7 +922,7 @@
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
-/* ============ Data tab (tabular types): table-link management (stage 2b) ============ */
+/* ============ Data tab (tabular types): table-link management ============ */
 /* One `.graph-editor-group` card, two states. UNLINKED: just the picker `<select>` (the caller still
    renders the ordinary editable grid alongside it). LINKED: the picker is gone, replaced by a
    banner + a READ-ONLY preview (reusing the grid's own table/cell chrome, .graph-grid-table /
@@ -1518,7 +1518,7 @@
 /* Math block editor, monospaced LaTeX source over a live preview. */
 .doc-render .math-block   { margin: 1.25rem 0; }
 
-/* Size stepper, a compact A−/A+ control docked above the LaTeX source. */
+/* Size stepper, a compact A-/A+ control docked above the LaTeX source. */
 .doc-render .math-toolbar     { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
 .doc-render .math-size-label  { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #767676; }
 .doc-render .math-size-stepper { display: inline-flex; align-items: center; gap: 0.25rem; }
@@ -1533,7 +1533,7 @@
 .doc-render .math-size-btn:disabled { opacity: 0.4; cursor: default; }
 .doc-render .math-size-value  { min-width: 2.6rem; text-align: center; font-size: 0.72rem; font-variant-numeric: tabular-nums; color: #475569; }
 
-/* Spacer keeps the ƒ(x) symbol toggle on the left and the size stepper on the right. */
+/* Spacer keeps the f(x) symbol toggle on the left and the size stepper on the right. */
 .doc-render .math-toolbar-spacer { flex: 1 1 auto; }
 .doc-render .math-palette-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1677,7 +1677,7 @@
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
-/* Dimension stepper (Rows / Columns): label above a [−] value [+] control. */
+/* Dimension stepper (Rows / Columns): label above a [-] value [+] control. */
 .math-builder-stepper { display: flex; flex-direction: column; gap: 0.4rem; }
 .math-builder-stepper-label {
   font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
@@ -1765,14 +1765,14 @@
 
 /* Syntax token colors, WinDev IDE convention:
    keywords=blue, strings=dark-red, comments=green, types=teal
-   All values verified ≥4.5:1 on the #f8fafc code-block background.         */
+   All values verified >=4.5:1 on the #f8fafc code-block background.        */
 .tok-kw   { color: #0550C0; font-weight: 600; } /* 6.9:1 */
 .tok-str  { color: #A31515; }                   /* 7.5:1 */
 .tok-cmt  { color: #008000; font-style: italic; }/* 4.9:1 */
-.tok-num  { color: #087d53; }                   /* 4.95:1, was #098658 (4.4:1) */
+.tok-num  { color: #087d53; }                   /* 4.95:1 */
 .tok-fn   { color: #7c3aed; }                   /* 5.5:1 */
 .tok-op   { color: #6b7280; }                   /* 4.6:1 */
-.tok-type { color: #0a78a0; }                   /* 4.8:1, was #0891b2 (3.5:1) */
+.tok-type { color: #0a78a0; }                   /* 4.8:1 */
 
 
 /* Section, flex row with a dedicated drag handle in the padding gutter */
@@ -1791,7 +1791,7 @@
   justify-content: center;
   padding-top: 0.65rem;
   cursor: grab;
-  color: #6b7280; /* was #9ca3af (2.5:1), now 4.8:1 */
+  color: #6b7280; /* 4.8:1 contrast */
   user-select: none;
 }
 .sec-drag-handle:active { cursor: grabbing; }
@@ -1804,7 +1804,7 @@
   position: absolute; top: 0.15rem; right: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: none; cursor: pointer;
-  color: #6b7280; padding: 4px; border-radius: 6px; /* was #9ca3af */
+  color: #6b7280; padding: 4px; border-radius: 6px;
   transition: color 0.1s, background 0.1s; z-index: 5;
 }
 .sec-delete:hover { color: #e11d48; background: rgba(225,29,72,0.08); }
@@ -1835,13 +1835,13 @@
 .doc-render [data-placeholder][contenteditable]:empty:not(:focus)::before,
 .doc-render [data-placeholder][contenteditable]:not(:focus):has(> br:only-child)::before {
   content: attr(data-placeholder);
-  color: #767676; /* was #bbb (1.9:1), now 4.6:1 */
+  color: #767676; /* 4.6:1 contrast */
   font-style: italic;
   pointer-events: none;
 }
 .doc-dark [data-placeholder][contenteditable]:empty:not(:focus)::before,
 .doc-dark [data-placeholder][contenteditable]:not(:focus):has(> br:only-child)::before {
-  color: #7d8490; /* was #484f58 (2.1:1), now 4.6:1 */
+  color: #7d8490; /* 4.6:1 contrast */
 }
 
 /* Sub-list control buttons (hover-reveal per list item) */
@@ -1858,7 +1858,7 @@
 
 /* Lang picker pills */
 .lang-picker { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
-.lang-picker span { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #6b7280; margin-right: 4px; } /* was #9ca3af */
+.lang-picker span { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; color: #6b7280; margin-right: 4px; }
 .lang-picker button {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.6rem; padding: 0.08rem 0.35rem;
@@ -1937,13 +1937,13 @@
 
 /* Empty states */
 .wysiwyg-empty {
-  text-align: center; padding: 5rem 2rem; color: #6b7280; /* was #9ca3af */
+  text-align: center; padding: 5rem 2rem; color: #6b7280;
 }
 .wysiwyg-empty strong {
   display: block; font-size: 1.1rem; color: #6b7280; margin-bottom: 0.5rem;
 }
 .section-empty {
-  font-size: 0.8rem; color: #767676; font-style: italic; /* was #bbb (1.9:1) */
+  font-size: 0.8rem; color: #767676; font-style: italic;
   padding: 0.4rem 0 0.2rem; margin: 0;
 }
 
@@ -1974,8 +1974,8 @@
 }
 .image-dropzone:hover,
 .image-dropzone.dropping { border-color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 5%, transparent); }
-.image-dropzone-hint { font-size: 0.8rem; color: #6b7280; margin: 0; } /* was #9ca3af */
-.image-field { font-size: 0.75rem !important; color: #6b7280 !important; margin: 0.2rem 0 0 !important; font-style: italic; } /* was #9ca3af */
+.image-dropzone-hint { font-size: 0.8rem; color: #6b7280; margin: 0; }
+.image-field { font-size: 0.75rem !important; color: #6b7280 !important; margin: 0.2rem 0 0 !important; font-style: italic; }
 .image-alt    { border-bottom: 1px dashed #e5e7eb; }
 
 /* Container block */
@@ -1984,7 +1984,7 @@
 .container-col { min-width: 0; }
 .container-col-label {
   font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
-  color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; /* was #9ca3af */
+  color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem;
 }
 /* Draggable divider, IS the resize handle */
 .container-divider {
@@ -2007,7 +2007,7 @@
   position: relative; z-index: 1;
   font-family: 'JetBrains Mono', monospace; font-size: 0.55rem;
   background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 3px;
-  padding: 1px 3px; color: #6b7280; white-space: nowrap; /* was #9ca3af */
+  padding: 1px 3px; color: #6b7280; white-space: nowrap;
   opacity: 0; transition: opacity 0.15s;
 }
 
@@ -2062,7 +2062,7 @@
 .doc-dark .doc-render li          { color: #c9d1d9; }
 .doc-dark .doc-render li::marker  { color: #79c0ff; }
 
-/* Syntax tokens (dark), GitHub Dark palette, all verified ≥6:1 on #0d1117  */
+/* Syntax tokens (dark), GitHub Dark palette, all verified >=6:1 on #0d1117 */
 .doc-dark .tok-kw   { color: #ff7b72; }  /* 7.5:1 */
 .doc-dark .tok-str  { color: #a5d6ff; }  /* 12.2:1 */
 .doc-dark .tok-cmt  { color: #8b949e; }  /* 6.1:1 */
@@ -2081,25 +2081,25 @@
 .doc-dark .lang-picker button     { color: #8b949e; }
 .doc-dark .lang-picker button:hover { color: #e6edf3; }
 .doc-dark .lang-picker button.active { color: var(--doc-accent, var(--color-accent)); border-color: var(--doc-accent, var(--color-accent)); }
-.doc-dark .sec-drag-handle        { color: #7d8490; } /* was #484f58 (2.1:1), now 4.6:1 */
+.doc-dark .sec-drag-handle        { color: #7d8490; } /* 4.6:1 contrast */
 .doc-dark .sec-drag-handle:hover  { color: #8b949e; }
-.doc-dark .sec-delete             { color: #7d8490; } /* was #484f58 */
+.doc-dark .sec-delete             { color: #7d8490; }
 .doc-dark .wysiwyg-util-row button { background: #1c2128; border-color: #30363d; color: #c9d1d9; }
 .doc-dark .wysiwyg-util-row button:hover { background: #21262d; }
 /* .wysiwyg-util-row button.danger now uses var(--callout-danger-accent), no .doc-dark override needed */
 .doc-dark .list-sub-btn { background: #21262d; border-color: #30363d; color: #8b949e; }
 .doc-dark .list-sub-btn:hover { background: #30363d; color: #c9d1d9; }
-.doc-dark .section-empty          { color: #7d8490; } /* was #484f58 */
+.doc-dark .section-empty          { color: #7d8490; }
 
 /* Container dark overrides */
 .doc-dark .container-divider              { color: #30363d; }
 .doc-dark .container-divider::before      { background: #30363d; }
-.doc-dark .container-ratio-badge          { background: #161b22; border-color: #30363d; color: #7d8490; } /* was #484f58 */
-.doc-dark .container-col-label            { color: #7d8490; } /* was #484f58 */
+.doc-dark .container-ratio-badge          { background: #161b22; border-color: #30363d; color: #7d8490; }
+.doc-dark .container-col-label            { color: #7d8490; }
 /* Image dropzone (dark) */
 .doc-dark .image-dropzone                 { border-color: #30363d; }
 .doc-dark .image-dropzone:hover,
 .doc-dark .image-dropzone.dropping        { border-color: var(--doc-accent, var(--color-accent)); background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 8%, #161b22); }
-.doc-dark .image-dropzone-hint            { color: #7d8490; } /* was #484f58 */
-.doc-dark .image-field                    { color: #7d8490 !important; } /* was #484f58 */
+.doc-dark .image-dropzone-hint            { color: #7d8490; }
+.doc-dark .image-field                    { color: #7d8490 !important; }
 .doc-dark .image-alt                      { border-bottom-color: #30363d; }

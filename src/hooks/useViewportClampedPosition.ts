@@ -33,9 +33,9 @@ const DEFAULT_MARGIN = 12
 // # INTERNAL #
 // ############
 
-// Two-sided clamp: never past the far edge (Math.min) and never before the near
-// edge (Math.max). The near-edge floor is the fix for the audited bug, a Math.min-only
-// clamp lets `viewport − size − margin` go negative and pushes the popover off-screen.
+// Two-sided clamp: never past the far edge (Math.min) and never before the near edge (Math.max).
+// The near-edge floor matters because a Math.min-only clamp lets `viewport - size - margin` go
+// negative and push the popover off-screen.
 // Exported so the draggable-window primitive reuses the exact same clamp rule rather than
 // re-deriving it (single source of truth for "can never leave the viewport").
 export function clampAxis(desired: number, size: number, viewportSize: number, margin: number): number {
@@ -78,11 +78,10 @@ function computePosition(
 /**
  * Positions a portaled popover so it stays fully on-screen on both axes.
  *
- * The popover's size is measured from the actual rendered node (layout effect + ref),
- * not estimated from an item count, heights here are dynamic (a context menu grows with
- * its rows, BlockContextMenu can reach ~650px), and estimating is exactly what let the
- * off-screen-clamp bug slip in. Recomputes on window resize so an open popover follows
- * the viewport.
+ * The popover's size is measured from the actual rendered node (layout effect + ref) rather than
+ * estimated from an item count: heights here are dynamic (a context menu grows with its rows,
+ * BlockContextMenu can reach roughly 650px), and an estimate can undershoot enough to push the
+ * popover off-screen. Recomputes on window resize so an open popover follows the viewport.
  */
 export function useViewportClampedPosition<ElementType extends HTMLElement = HTMLDivElement>(
    anchor: ClampAnchor,
@@ -95,9 +94,8 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
       height: window.innerHeight,
    }))
 
-   // Measure the rendered popover before paint (synchronous, so no visible flicker as the
-   // 0×0 first pass is corrected). This captures the real box on mount, the fix for the
-   // estimate-driven off-screen bug.
+   // Measure the rendered popover before paint (synchronous, so there is no visible flicker as the
+   // 0x0 first pass is corrected). This captures the real box on mount rather than an estimate.
    useLayoutEffect(() => {
       const element = ref.current
       if (!element) return

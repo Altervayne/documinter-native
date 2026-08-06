@@ -3,9 +3,9 @@
 // #                                                                                             #
 // # A template captures a document's CHROME (meta scaffold, theme, accent, presentation extras, #
 // # page format) so a new document starts pre-styled instead of blank. It never captures        #
-// # content (sections/blocks) nor the content-position-dependent `format.pages` array (see       #
-// # docs/reference/templates_study.md). Everything here is pure and JSON-serializable, tested in #
-// # isolation; the IndexedDB store (lib/templateStore.ts) and the App wiring build on it.        #
+// # content (sections/blocks) nor the content-position-dependent `format.pages` array.          #
+// # Everything here is pure and JSON-serializable, tested in isolation; the IndexedDB store     #
+// # (lib/templateStore.ts) and the App wiring build on it.                                      #
 // ###############################################################################################
 
 // -- Type Imports --
@@ -117,7 +117,7 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
 export const DEFAULT_DOC_ACCENT = '#2dcea8'
 
 /**
- * The one built-in template: the classic "default layout" the app used to seed new documents with, an
+ * The one built-in template: the classic "default layout" the app seeds new documents with, an
  * accent-tinted `Module` field above the title and `Environment` / `Date` / `Author` fields below it
  * (all value-blank), infinite canvas, default theme + accent. Its field ids are placeholders, replaced
  * on instantiation. `name` is English here; the picker localizes built-in names by id.

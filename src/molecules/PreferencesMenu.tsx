@@ -6,7 +6,7 @@ import type { Lang, T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
+// Not portaled or JS-positioned (see molecules/ContextMenu.tsx for that pattern); this dropdown
 // stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
 // below, sized to the dropdown's own `w-64` Tailwind class.
 const DROPDOWN_WIDTH = 256
@@ -30,10 +30,9 @@ interface PreferencesMenuProps {
 // #############
 
 /**
- * The Preferences menu: APP-WIDE settings only, the app/chrome light/dark theme (html[data-theme])
+ * The Preferences menu: app-wide settings only, the app/chrome light/dark theme (html[data-theme])
  * and the UI language. Per-document appearance (doc theme + accent) lives in the Document menu; the
- * two are deliberately separate settings. This replaces the dissolved Appearance menu, which used to
- * mix the app-wide and per-document settings in one dropdown.
+ * two are deliberately separate settings.
  */
 export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }: PreferencesMenuProps) {
    const [open, setOpen]            = useState(false)
@@ -87,7 +86,7 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
          {open && (
             <div className={`absolute top-full mt-1.5 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2 ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
 
-               {/* App theme (chrome), NOT the document theme. */}
+               {/* App theme (chrome), not the document theme. */}
                <ToggleRow
                   label={t.appLabel}
                   options={[

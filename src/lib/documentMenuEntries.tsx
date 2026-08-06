@@ -24,12 +24,12 @@ export interface DocumentMenuOptions {
    docTheme:     'light' | 'dark'
    /** The current document accent hex, drives which swatch (if any) renders as active. */
    docAccent:    string
-   /** The editor/preview sub-mode, for the preview-toggle entry's icon + (unchanged) label. */
+   /** The editor/preview sub-mode, for the preview-toggle entry's icon and label. */
    previewMode?: Mode
    /** Read-only (preview) render: the "Add section" entry stays in the list but disabled. */
    readOnly?:    boolean
    onAddSection?:      () => void
-   /** Flip the DOCUMENT theme (dark ⇄ light), distinct from the app/chrome theme. */
+   /** Flip the DOCUMENT theme between dark and light, distinct from the app/chrome theme. */
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    /** Pick one of the accent presets, or apply a live change from the custom ColorPicker. */
    onDocAccentChange?: (hex: string) => void
@@ -52,7 +52,7 @@ export interface DocumentMenuOptions {
    onOpenPresentation?: () => void
    /** Open the document-level Navigation window. */
    onOpenNavigation?:   () => void
-   /** Open the document-level Page setup window (Phase 1: infinite-canvas width only). */
+   /** Open the document-level Page setup window (infinite-canvas width only). */
    onOpenFormat?:       () => void
    /** Open the format-aware Export dialog. */
    onOpenExport?: () => void
@@ -72,9 +72,9 @@ export interface DocumentMenuOptions {
  * pure function, is what enforces the two surfaces can never drift in label or order: they render
  * the identical `ContextMenuEntry[]`, each through its own thin renderer.
  *
- * Order: Add section · Doc theme · Accent (header + swatch grid) · | Presentation… · Navigation…
- * · Page setup… | Save · Save As… · Export… | Preview toggle. The bottom actions are split into
- * three separator-divided groups (document windows, file actions, preview) so the long run is
+ * Order: Add section, Doc theme, Accent (header + swatch grid) | Presentation..., Navigation...,
+ * Page setup... | Save, Save As..., Export... | Preview toggle. The bottom actions split into
+ * three separator-divided groups (document windows, file actions, preview) so the long run stays
  * scannable at a glance. Icon size 13 matches both surfaces' existing rows.
  */
 export function buildDocumentMenuEntries(options: DocumentMenuOptions): ContextMenuEntry[] {

@@ -88,9 +88,8 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
       setFocused(0)
    }, [filterQuery])
 
-   // Measured, two-sided clamp on both axes (flips above/below the anchor, then keeps the picker
-   // fully on-screen even when neither side has enough room), replaces the old height-estimate
-   // heuristic that only handled the above/below choice and never clamped the vertical axis.
+   // Measured, two-sided clamp on both axes: flips above/below the anchor, then keeps the picker
+   // fully on-screen even when neither side has enough room.
    const { ref: listRef, top, left } = useViewportClampedPosition<HTMLDivElement>({
       type: 'rect', rect: anchorRect, preferAbove,
    })
@@ -150,8 +149,8 @@ export function BlockTypePicker({ onSelect, onClose, insideContainer, anchorRect
             placeholder={t.blockFilterPlaceholder}
             className="mx-2 mt-2 mb-1 shrink-0 rounded-lg border border-border bg-base px-3 py-2 text-xs text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
          />
-         {/* Scroll lives on this INNER element, not the rounded outer: a scrollbar on the rounded
-             box itself squares off the corners it sits on, so we clip it inside the rounding
+         {/* Scroll lives on this inner element, not the rounded outer one: a scrollbar on the rounded
+             box itself squares off the corners it sits on, so the scroll clips inside the rounding
              instead (outer = rounded + overflow-hidden). min-h-0 lets it shrink under maxHeight. */}
          <div className="min-h-0 overflow-y-auto px-2 pb-2">
             {groups.map(group => (

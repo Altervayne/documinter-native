@@ -126,10 +126,10 @@ describe('fenceToDiagramSpec, tolerant', () => {
       const spec = fenceToDiagramSpec('diagram', body)
       expect(spec.nodes).toHaveLength(1)
       expect(spec.nodes[0].shape).toBe('rectangle')
-      expect(spec.nodes[0].x).toBe(0)          // 'oops' → default 0
+      expect(spec.nodes[0].x).toBe(0)          // 'oops' -> default 0
       expect(spec.nodes[0].y).toBe(10)
-      expect(spec.nodes[0].width).toBe(120)    // blank → default width
-      expect(spec.nodes[0].height).toBe(56)    // blank → default height
+      expect(spec.nodes[0].width).toBe(120)    // blank -> default width
+      expect(spec.nodes[0].height).toBe(56)    // blank -> default height
    })
 
    it('keeps an edge referencing a missing node (the renderer skips it, the parser does not)', () => {

@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
    const toastsRef = useRef<ToastEntry[]>([])
    toastsRef.current = toasts
 
-   // Map of toast id → auto-dismiss timer, plus id+"-remove" → removal timer
+   // Map of toast id -> auto-dismiss timer, plus id+"-remove" -> removal timer
    const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
    const markExiting = useCallback((id: string) => {

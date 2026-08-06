@@ -34,7 +34,7 @@ interface StructurePanelBodyProps {
 /**
  * The Structure panel's body: the scrollable, drag-reorderable section tree plus the add-section
  * affordance. This is the panel content only, with no surrounding header, rail, or dock chrome, so it
- * renders identically whether it is hosted by the dock (DockHost) or, later, a floating window.
+ * renders identically whether it is hosted by the dock (DockHost) or a floating window (PanelWindow).
  */
 export function StructurePanelBody({
    sections,

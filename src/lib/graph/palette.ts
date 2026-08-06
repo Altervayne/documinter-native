@@ -1,13 +1,14 @@
 /**
  * palette.ts, the graph block's categorical series palette + color resolution.
  *
- * PURE DATA / PURE FUNCTIONS. The palette is the dataviz-skill-validated 8-hue categorical
- * set (its light + dark columns), NOT the document accent and NOT ACCENT_PRESETS. Hues are
- * assigned in FIXED slot order, never cycled for cosmetics: series index -> slot index. The
- * validated ordering is itself the colorblind-safety mechanism, so the order is load-bearing.
+ * PURE DATA / PURE FUNCTIONS. The palette is a validated 8-hue categorical set (its light +
+ * dark columns), NOT the document accent and NOT ACCENT_PRESETS. Hues are assigned in FIXED
+ * slot order, never cycled for cosmetics: series index -> slot index. The validated ordering
+ * is itself the colorblind-safety mechanism, so the order is load-bearing.
  *
- * v1 caps at 8 distinct series colors. resolveSeriesColor wraps (modulo) past the cap so it
- * can never fail, but the renderer separately caps the number of drawn series at MAX_SERIES.
+ * The palette caps at 8 distinct series colors. resolveSeriesColor wraps (modulo) past the
+ * cap so it can never fail, but the renderer separately caps the number of drawn series at
+ * MAX_SERIES.
  */
 
 import type { GraphTheme } from './types'
@@ -18,8 +19,8 @@ import type { GraphTheme } from './types'
 
 /**
  * The 8-hue categorical palette for the LIGHT chart surface (#fcfcfb), in fixed slot order.
- * Validated by the dataviz skill: worst adjacent colorblind separation OKLab dE 9.1 (>=8
- * target), worst adjacent normal-vision dE 19.6 (>=15 floor).
+ * Worst adjacent colorblind separation OKLab dE 9.1 (>=8 target), worst adjacent
+ * normal-vision dE 19.6 (>=15 floor).
  */
 export const GRAPH_SERIES_LIGHT = [
    '#2a78d6', // 1 blue
@@ -49,7 +50,7 @@ export const GRAPH_SERIES_DARK = [
 ] as const
 
 /**
- * The series cap. v1 assigns 8 distinct palette slots; a 9th+ series is NOT a generated hue.
+ * The series cap: 8 distinct palette slots; a 9th+ series is NOT a generated hue.
  * The renderer draws at most this many series; resolveSeriesColor wraps past it defensively.
  */
 export const MAX_SERIES = 8
@@ -141,9 +142,9 @@ export function relativeLuminance(hexColor: string): number {
 
 /**
  * Pick white or near-black for a label placed ON a filled slice, choosing whichever gives the
- * higher WCAG contrast against the fill (per the dataviz "in-slice text picks white-or-ink"
- * rule). Contrast, not a raw luminance threshold, so mid-luminance hues like yellow correctly
- * take ink rather than white.
+ * higher WCAG contrast against the fill (in-slice text always picks white-or-ink). Contrast,
+ * not a raw luminance threshold, so mid-luminance hues like yellow correctly take ink rather
+ * than white.
  */
 export function readableTextOn(fillColor: string): string {
    const fillLuminance = relativeLuminance(fillColor)

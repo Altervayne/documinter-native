@@ -17,9 +17,10 @@ interface TemplateCardProps {
 
 /**
  * A template card: name + built-in badge, a scaffold preview (the accent swatch, the meta field
- * labels it will seed, and the page-format badge), a prominent "Use template" action, and a ⋯ menu
- * (Duplicate always; Rename / Delete only for user templates, since built-ins are code-defined).
- * Templates carry no content, so there is no live document preview like DocumentCard has.
+ * labels it will seed, and the page-format badge), a prominent "Use template" action, and an
+ * overflow menu (Duplicate always; Rename / Delete only for user templates, since built-ins are
+ * code-defined). Templates carry no content, so there is no live document preview like
+ * DocumentCard has.
  */
 export function TemplateCard({ template, onUse, onDuplicate, onExport, onRename, onDelete }: TemplateCardProps) {
    const { t } = useLang()

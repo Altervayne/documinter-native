@@ -131,7 +131,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
       case 'graph': {
          // A ```graph fence: chart type + options on the info string, data as a Markdown pipe
          // table body. `type=` is load-bearing and rides BOTH flavours (no mintdown branch),
-         // a graph fence is Documint-specific in either format. The rendered SVG is never
+         // a graph fence is Documinter-specific in either format. The rendered SVG is never
          // serialized; it is re-derived from this spec on load.
          const spec = block.graph
          if (!spec) return '```graph type=bar\n|  |\n| --- |\n```'
@@ -141,7 +141,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
 
       case 'diagram': {
          // A ```diagram fence: options on the info string, TWO pipe tables (nodes + edges) in the
-         // body separated by a blank line. Documint-specific in both flavours (no mintdown branch).
+         // body separated by a blank line. Documinter-specific in both flavours (no mintdown branch).
          // The rendered SVG is never serialized; it is re-derived from this spec on load.
          const spec = block.diagram
          if (!spec) {
@@ -187,7 +187,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
 
       case 'image': {
          // A marked-up image serializes as a ```imagemarkup fence: base dims + alt/caption on the
-         // info string, one overlay element per body line. RATIFIED (see imageMarkupFence.ts): the
+         // info string, one overlay element per body line. See imageMarkupFence.ts: the
          // base64 `src` is NEVER emitted in either flavour, so a `.mint`/`.md` reopen restores every
          // annotation but with an empty `src`. A PLAIN image (no overlay) keeps its own convention
          // below, byte-identical. The rendered SVG is never serialized, re-derived from the spec.
@@ -481,7 +481,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    let lineIndex = 0
 
    // =======================
-   //  Phase 1: Metadata scan
+   //  Metadata scan
    // =======================
    // Read until '---' divider or end of input.
    while (lineIndex < lines.length) {
@@ -506,7 +506,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    }
 
    // ===================
-   //  Phase 2: Body scan
+   //  Body scan
    // ===================
 
    let currentSection:    Section | null = null
@@ -848,7 +848,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // Thematic break: --- → hr block
+      // Thematic break: --- becomes an hr block
       if (line === '---') {
          commitBlock(flushAccum())
          commitBlock({ id: crypto.randomUUID(), type: 'hr' })
