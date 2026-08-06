@@ -6,7 +6,7 @@
  */
 
 import { slugify } from './text'
-import { migrateIds } from './documentMigration'
+import { migrateIds, migrateFormatPageBreaks } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
 import type { DocPresentation } from './binderDocuments'
@@ -40,7 +40,7 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
             docTheme:  raw.docTheme  ?? 'light',
             docAccent: raw.docAccent ?? '#2dcea8',
             presentation: normalizePresentation(raw.presentation),
-            format: normalizeFormat(raw.format),
+            format: normalizeFormat(migrateFormatPageBreaks(raw.format, migrated.sections)),
          },
       }
    } catch {

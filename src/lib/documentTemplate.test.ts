@@ -46,7 +46,7 @@ describe('captureTemplate', () => {
       const format: DocFormat = {
          kind: 'a4-portrait',
          margins: { top: 10, right: 10, bottom: 10, left: 10 },
-         pages: [{ id: 'brk', before: { sectionId: 's', blockId: 'x' } }],
+         pages: [{ id: 'brk', after: { sectionId: 's', blockId: 'x' } }],
       }
       const template = captureTemplate('T', chrome({ format }), 'id', 0)
       expect(template.format?.kind).toBe('a4-portrait')

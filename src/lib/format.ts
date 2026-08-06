@@ -39,8 +39,10 @@ export interface PageMargins { top: number; right: number; bottom: number; left:
  */
 export interface PageBreak {
    id: string                 // crypto.randomUUID(), stable across reorders, the sorter's key
-   /** The cut point: content from this anchor onward belongs to the NEXT page. */
-   before: { sectionId: string; blockId: string }
+   /** The boundary sits immediately AFTER this block, the last block of the page before it. null puts
+    *  the boundary before all content (a leading blank page). Multiple breaks sharing an anchor stack
+    *  as consecutive blank pages. */
+   after: { sectionId: string; blockId: string } | null
    /** Optional per-page landscape/portrait override for a mixed-orientation doc. */
    orientationOverride?: 'a4-portrait' | 'a4-landscape'
 }
@@ -139,19 +141,29 @@ function normalizeMargins(raw: unknown): PageMargins | undefined {
 }
 
 /** A single stored PageBreak, permissively normalized (this does not validate the anchor against
- *  live content); malformed entries (missing id/before) are dropped defensively. */
+ *  live content); malformed entries (missing id/after) are dropped defensively. A null `after` is a
+ *  valid leading blank page. Legacy `before`-anchored breaks are converted to `after` upstream at load
+ *  (see migrateFormatPageBreaks), which needs the flow, so this reader only understands `after`. */
 function normalizePageBreak(raw: unknown): PageBreak | undefined {
    if (!raw || typeof raw !== 'object') return undefined
    const source = raw as Record<string, unknown>
    const id = typeof source.id === 'string' ? source.id : ''
    if (id.trim() === '') return undefined
-   const rawBefore = source.before
-   if (!rawBefore || typeof rawBefore !== 'object') return undefined
-   const before = rawBefore as Record<string, unknown>
-   const sectionId = typeof before.sectionId === 'string' ? before.sectionId : ''
-   const blockId    = typeof before.blockId   === 'string' ? before.blockId   : ''
-   if (sectionId.trim() === '' || blockId.trim() === '') return undefined
-   const result: PageBreak = { id, before: { sectionId, blockId } }
+   if (!('after' in source)) return undefined
+   const rawAfter = source.after
+   let after: PageBreak['after']
+   if (rawAfter === null) {
+      after = null
+   } else if (rawAfter && typeof rawAfter === 'object') {
+      const anchor = rawAfter as Record<string, unknown>
+      const sectionId = typeof anchor.sectionId === 'string' ? anchor.sectionId : ''
+      const blockId   = typeof anchor.blockId   === 'string' ? anchor.blockId   : ''
+      if (sectionId.trim() === '' || blockId.trim() === '') return undefined
+      after = { sectionId, blockId }
+   } else {
+      return undefined
+   }
+   const result: PageBreak = { id, after }
    if (source.orientationOverride === 'a4-portrait' || source.orientationOverride === 'a4-landscape') {
       result.orientationOverride = source.orientationOverride
    }

@@ -60,16 +60,21 @@ describe('normalizeFormat', () => {
       const result = normalizeFormat({
          kind: 'a4-portrait',
          pages: [
-            { id: 'p1', before: { sectionId: 's1', blockId: 'b1' } },
-            { id: '', before: { sectionId: 's1', blockId: 'b1' } },   // missing id -> dropped
-            { before: { sectionId: 's1', blockId: 'b1' } },           // missing id -> dropped
-            { id: 'p2', before: { sectionId: 's2' } },                // missing blockId -> dropped
+            { id: 'p1', after: { sectionId: 's1', blockId: 'b1' } },
+            { id: 'lead', after: null },                             // leading blank page, kept
+            { id: '', after: { sectionId: 's1', blockId: 'b1' } },   // missing id -> dropped
+            { after: { sectionId: 's1', blockId: 'b1' } },           // missing id -> dropped
+            { id: 'p2', after: { sectionId: 's2' } },                // missing blockId -> dropped
+            { id: 'legacy', before: { sectionId: 's1', blockId: 'b1' } }, // no `after` key -> dropped
             'nonsense',
          ],
       })
       expect(result).toEqual({
          kind: 'a4-portrait',
-         pages: [{ id: 'p1', before: { sectionId: 's1', blockId: 'b1' } }],
+         pages: [
+            { id: 'p1', after: { sectionId: 's1', blockId: 'b1' } },
+            { id: 'lead', after: null },
+         ],
       })
    })
 
@@ -91,7 +96,7 @@ describe('isDefaultFormat', () => {
       expect(isDefaultFormat({ kind: 'infinite', width: { custom: 900 } })).toBe(false)
       expect(isDefaultFormat({ kind: 'infinite', margins: { top: 1, right: 1, bottom: 1, left: 1 } })).toBe(false)
       expect(isDefaultFormat({ kind: 'a4-portrait' })).toBe(false)
-      const withPages: DocFormat = { kind: 'infinite', pages: [{ id: 'p1', before: { sectionId: 's', blockId: 'b' } }] }
+      const withPages: DocFormat = { kind: 'infinite', pages: [{ id: 'p1', after: { sectionId: 's', blockId: 'b' } }] }
       expect(isDefaultFormat(withPages)).toBe(false)
    })
 })

@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState, useMemo, useId, useEffect } from 'react'
+import { useState, useMemo, useId, useEffect, useRef } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
@@ -39,7 +39,7 @@ import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatte
 import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins, type PageNumberAlign } from '../../lib/format'
 import { formatPageNumber } from '../../lib/pageNumbering'
 import {
-   partitionIntoPages, reconcilePages, millimetresToPx,
+   partitionIntoPages, reconcilePages, reanchorMovedBlocks, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
@@ -464,18 +464,23 @@ export function WysiwygArea({
    }
 
 
-   // Reconcile-on-change: drop any break whose anchor block was deleted/undone (mirrors reconcileNav),
-   // so a dangling marker can never leave a phantom cut. Inlined (not via commitPageBreaks) so the
-   // effect's own guard, only fire when the reconciled list actually differs, keeps it loop-free.
+   // Reconcile-on-change: re-anchor a break whose anchor block was deleted to its surviving
+   // predecessor (a boundary stays put, leaving a blank page where its content is gone) and refresh a
+   // stale sectionId. The previous flow is needed to find that predecessor, so it is tracked in a ref.
+   // Inlined (not via commitPageBreaks) so the effect's own guard, only fire when the reconciled list
+   // actually differs, keeps it loop-free.
+   const previousSectionsRef = useRef(sections)
    useEffect(() => {
+      const previousSections = previousSectionsRef.current
+      previousSectionsRef.current = sections
       const currentPages = format?.pages
       if (!onFormatChange || !currentPages || currentPages.length === 0) return
-      const reconciled = reconcilePages(currentPages, sections)
+      const reconciled = reconcilePages(currentPages, sections, previousSections)
       const changed = reconciled.length !== currentPages.length
          || reconciled.some((entry, index) =>
                entry.id !== currentPages[index].id
-            || entry.before.blockId !== currentPages[index].before.blockId
-            || entry.before.sectionId !== currentPages[index].before.sectionId)
+            || (entry.after?.blockId ?? null) !== (currentPages[index].after?.blockId ?? null)
+            || (entry.after?.sectionId ?? null) !== (currentPages[index].after?.sectionId ?? null))
       if (!changed) return
       const base = normalizeFormat(format)
       if (reconciled.length === 0) {
@@ -492,9 +497,9 @@ export function WysiwygArea({
    const pageBreaksApi: PageBreaksApi = {
       paged,
       canBreakAfter:    blockId => canBreakAfter(sections, blockId),
-      hasBreakAfter:    blockId => hasPageBreakAfter(pageBreaks, sections, blockId),
+      hasBreakAfter:    blockId => hasPageBreakAfter(pageBreaks, blockId),
       insertBreakAfter: blockId => commitPageBreaks(addPageBreakAfter(pageBreaks, sections, blockId)),
-      removeBreakAfter: blockId => commitPageBreaks(removePageBreakAfter(pageBreaks, sections, blockId)),
+      removeBreakAfter: blockId => commitPageBreaks(removePageBreakAfter(pageBreaks, blockId)),
    }
 
    // The title element, factored out so the "beside" logo placement can wrap it inside the same
@@ -568,7 +573,15 @@ export function WysiwygArea({
       // Containers are one level deep: never drop a container block into a container column.
       if (active.data.current?.blockType === 'container' && to.kind === 'column') return
       const beforeBlockId = overType === 'block' ? String(over.id) : null
-      moveBlockAcross(from, String(active.id), to, beforeBlockId)
+      const movedBlockId = String(active.id)
+      // If the dragged block ends a page (a break's anchor), keep that boundary where the page ended
+      // rather than letting it follow the block across the document. Commit before the move so both
+      // land together; the moved block that STARTS a page is not an anchor, so it needs no handling.
+      if (paged && onFormatChange) {
+         const reanchored = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
+         if (reanchored !== pageBreaks) commitPageBreaks(reanchored)
+      }
+      moveBlockAcross(from, movedBlockId, to, beforeBlockId)
    }
 
    // ==========================================================

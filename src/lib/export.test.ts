@@ -572,7 +572,7 @@ describe('generateExportHTML, paged (A4) export', () => {
    it('splits at a break marker into discrete pages, section heading only on the section-start slice', () => {
       const html = generateExportHTML(meta, sections, {
          theme: 'light', accent: '#f97316',
-         format: { kind: 'a4-portrait', pages: [{ id: 'brk', before: { sectionId: 's', blockId: 'b2' } }] },
+         format: { kind: 'a4-portrait', pages: [{ id: 'brk', after: { sectionId: 's', blockId: 'b1' } }] },
       })
       // Two sheets; the break puts b2 on page 2.
       expect((html.match(/class="doc-page"/g) || []).length).toBe(2)

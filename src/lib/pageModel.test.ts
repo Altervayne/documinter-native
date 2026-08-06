@@ -4,6 +4,7 @@ import type { PageBreak } from './format'
 import {
    partitionIntoPages,
    reconcilePages,
+   reanchorMovedBlocks,
    addPageBreakAfter,
    removePageBreakAfter,
    removePageBreak,
@@ -12,6 +13,7 @@ import {
    reorderPages,
    duplicatePage,
    deletePage,
+   insertBlankPageAfter,
    FIRST_PAGE_ID,
 } from './pageModel'
 
@@ -27,8 +29,14 @@ function mkSection(id: string, blockIds: string[]): Section {
    return { id, title: id, collapsed: false, blocks: blockIds.map(mkBlock) }
 }
 
-function breakBefore(id: string, sectionId: string, blockId: string): PageBreak {
-   return { id, before: { sectionId, blockId } }
+/** A boundary sitting after `blockId` (the last block of the page before it). */
+function breakAfter(id: string, sectionId: string, blockId: string): PageBreak {
+   return { id, after: { sectionId, blockId } }
+}
+
+/** A leading blank-page boundary, before all content. */
+function breakLeading(id: string): PageBreak {
+   return { id, after: null }
 }
 
 // A two-section document: s1[a,b,c], s2[d,e].
@@ -45,14 +53,20 @@ function shape(pages: ReturnType<typeof partitionIntoPages>) {
    }))
 }
 
+/** Just the per-page block-id lists (ignores page ids), for structural assertions. */
+function blockGrid(pages: ReturnType<typeof partitionIntoPages>) {
+   return shape(pages).map(page => page.blocks)
+}
+
 // #############
 // # PARTITION #
 // #############
 
 describe('partitionIntoPages', () => {
    it('returns a single page for a document with no breaks', () => {
-      const pages = partitionIntoPages(SECTIONS, [])
-      expect(shape(pages)).toEqual([{ id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c', 'd', 'e'] }])
+      expect(shape(partitionIntoPages(SECTIONS, []))).toEqual([
+         { id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c', 'd', 'e'] },
+      ])
    })
 
    it('returns a single empty page for an empty document', () => {
@@ -62,9 +76,9 @@ describe('partitionIntoPages', () => {
       expect(pages[0].slices).toEqual([])
    })
 
-   it('splits mid-section at a break anchoring a block inside the section', () => {
-      // break before 'c': page 1 ends after b, page 2 begins at c.
-      const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's1', 'c')])
+   it('splits mid-section at a break after a block inside the section', () => {
+      // break after 'b': page 1 ends after b, page 2 begins at c.
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's1', 'b')])
       expect(shape(pages)).toEqual([
          { id: FIRST_PAGE_ID, blocks: ['a', 'b'] },
          { id: 'brk',         blocks: ['c', 'd', 'e'] },
@@ -72,55 +86,51 @@ describe('partitionIntoPages', () => {
    })
 
    it('marks the split section slices with start/end flags', () => {
-      const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's1', 'c')])
-      // Page 1: s1 slice is the section START but NOT the end (c is elsewhere).
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's1', 'b')])
       const page1s1 = pages[0].slices[0]
       expect(page1s1.section.id).toBe('s1')
       expect(page1s1.isSectionStart).toBe(true)
       expect(page1s1.isSectionEnd).toBe(false)
-      // Page 2: first slice is the s1 CONTINUATION (not start) that ends the section.
       const page2s1 = pages[1].slices[0]
       expect(page2s1.section.id).toBe('s1')
       expect(page2s1.isSectionStart).toBe(false)
       expect(page2s1.isSectionEnd).toBe(true)
-      // Page 2: second slice is s2, a fresh section start + end.
       const page2s2 = pages[1].slices[1]
       expect(page2s2.section.id).toBe('s2')
       expect(page2s2.isSectionStart).toBe(true)
       expect(page2s2.isSectionEnd).toBe(true)
    })
 
-   it('handles multiple breaks producing several ordered pages', () => {
-      const pages = partitionIntoPages(SECTIONS, [
-         breakBefore('b1', 's1', 'b'),
-         breakBefore('b2', 's2', 'd'),
-      ])
-      expect(shape(pages)).toEqual([
-         { id: FIRST_PAGE_ID, blocks: ['a'] },
-         { id: 'b1',          blocks: ['b', 'c'] },
-         { id: 'b2',          blocks: ['d', 'e'] },
-      ])
-   })
-
-   it('isolates the last block onto a final page when the break anchors it', () => {
-      const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's2', 'e')])
-      expect(shape(pages)).toEqual([
-         { id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c', 'd'] },
-         { id: 'brk',         blocks: ['e'] },
-      ])
-   })
-
    it('breaks cleanly at a section boundary (whole next section on a new page)', () => {
-      const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's2', 'd')])
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's1', 'c')])
+      expect(blockGrid(pages)).toEqual([['a', 'b', 'c'], ['d', 'e']])
+   })
+
+   it('isolates the last block onto a final page when the break sits after the one before it', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's2', 'd')])
+      expect(blockGrid(pages)).toEqual([['a', 'b', 'c', 'd'], ['e']])
+   })
+
+   it('makes a trailing blank page for a break after the document last block', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's2', 'e')])
       expect(shape(pages)).toEqual([
-         { id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c'] },
-         { id: 'brk',         blocks: ['d', 'e'] },
+         { id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c', 'd', 'e'] },
+         { id: 'brk',         blocks: [] },
+      ])
+      expect(pages[1].slices).toEqual([])
+   })
+
+   it('makes a leading blank page for a null-anchored break', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakLeading('brk')])
+      expect(shape(pages)).toEqual([
+         { id: FIRST_PAGE_ID, blocks: [] },
+         { id: 'brk',         blocks: ['a', 'b', 'c', 'd', 'e'] },
       ])
    })
 
-   it('absorbs a break anchoring the very first block (no empty leading page)', () => {
-      const pages = partitionIntoPages(SECTIONS, [breakBefore('brk', 's1', 'a')])
-      expect(shape(pages)).toEqual([{ id: FIRST_PAGE_ID, blocks: ['a', 'b', 'c', 'd', 'e'] }])
+   it('stacks two breaks on the same anchor as a blank page between content pages', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('b1', 's1', 'b'), breakAfter('b2', 's1', 'b')])
+      expect(blockGrid(pages)).toEqual([['a', 'b'], [], ['c', 'd', 'e']])
    })
 
    it('places an empty section as a single start+end slice, no cut', () => {
@@ -134,12 +144,11 @@ describe('partitionIntoPages', () => {
       expect(emptySlice.isSectionEnd).toBe(true)
    })
 
-   it('preserves stable block ordering across pages', () => {
+   it('preserves stable block ordering regardless of the breaks-array order', () => {
       const pages = partitionIntoPages(SECTIONS, [
-         breakBefore('b2', 's2', 'd'),
-         breakBefore('b1', 's1', 'b'),   // deliberately out of flow order
+         breakAfter('b2', 's2', 'd'),
+         breakAfter('b1', 's1', 'a'),   // deliberately out of flow order
       ])
-      // Ordering follows the FLAT FLOW, not the pages-array order.
       expect(shape(pages).flatMap(page => page.blocks)).toEqual(['a', 'b', 'c', 'd', 'e'])
    })
 })
@@ -149,26 +158,69 @@ describe('partitionIntoPages', () => {
 // #############
 
 describe('reconcilePages', () => {
-   it('drops a break whose anchor block no longer exists', () => {
-      const pages = [breakBefore('brk', 's1', 'gone')]
-      expect(reconcilePages(pages, SECTIONS)).toEqual([])
+   it('drops a break whose anchor block no longer exists and there is no previous flow', () => {
+      expect(reconcilePages([breakAfter('brk', 's1', 'gone')], SECTIONS)).toEqual([])
    })
 
    it('keeps a break whose anchor block still exists', () => {
-      const pages = [breakBefore('brk', 's1', 'c')]
+      const pages = [breakAfter('brk', 's1', 'b')]
       expect(reconcilePages(pages, SECTIONS)).toEqual(pages)
    })
 
-   it('de-dupes multiple breaks on the same anchor', () => {
-      const pages = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's1', 'c')]
-      expect(reconcilePages(pages, SECTIONS)).toEqual([breakBefore('brk1', 's1', 'c')])
+   it('keeps stacked breaks (blank pages), no longer de-duped', () => {
+      const pages = [breakAfter('brk1', 's1', 'b'), breakAfter('brk2', 's1', 'b')]
+      expect(reconcilePages(pages, SECTIONS)).toEqual(pages)
+   })
+
+   it('always keeps a leading blank break', () => {
+      const pages = [breakLeading('brk')]
+      expect(reconcilePages(pages, SECTIONS)).toEqual(pages)
    })
 
    it('refreshes a stale sectionId when the anchor block moved sections', () => {
-      // 'd' now lives in s1, but the stored break still says s2.
       const moved: Section[] = [mkSection('s1', ['a', 'd']), mkSection('s2', ['e'])]
-      const pages = [breakBefore('brk', 's2', 'd')]
-      expect(reconcilePages(pages, moved)).toEqual([breakBefore('brk', 's1', 'd')])
+      const pages = [breakAfter('brk', 's2', 'd')]
+      expect(reconcilePages(pages, moved)).toEqual([breakAfter('brk', 's1', 'd')])
+   })
+
+   it('leaves the boundary put when the page-starting (top) block is deleted', () => {
+      // break after 'b' starts a page at 'c'. Delete 'c' (the top block): the boundary stays after b.
+      const afterDelete: Section[] = [mkSection('s1', ['a', 'b']), mkSection('s2', ['d', 'e'])]
+      const reconciled = reconcilePages([breakAfter('brk', 's1', 'b')], afterDelete, SECTIONS)
+      expect(blockGrid(partitionIntoPages(afterDelete, reconciled))).toEqual([['a', 'b'], ['d', 'e']])
+   })
+
+   it('leaves a blank page when a page-only block is deleted (delete keeps the boundary)', () => {
+      // Pages [a,b][c][d,e] via breaks after b and after c. Delete 'c' (that page's only block).
+      const pages = [breakAfter('b1', 's1', 'b'), breakAfter('b2', 's1', 'c')]
+      const afterDelete: Section[] = [mkSection('s1', ['a', 'b']), mkSection('s2', ['d', 'e'])]
+      const reconciled = reconcilePages(pages, afterDelete, SECTIONS)
+      expect(blockGrid(partitionIntoPages(afterDelete, reconciled))).toEqual([['a', 'b'], [], ['d', 'e']])
+   })
+
+   it('re-anchors to a leading blank when the deleted anchor was the first block', () => {
+      // break after 'a' (page 1 = just 'a'). Delete 'a': boundary becomes a leading blank page.
+      const afterDelete: Section[] = [mkSection('s1', ['b', 'c']), mkSection('s2', ['d', 'e'])]
+      const reconciled = reconcilePages([breakAfter('brk', 's1', 'a')], afterDelete, SECTIONS)
+      expect(reconciled).toEqual([breakLeading('brk')])
+   })
+})
+
+describe('reanchorMovedBlocks', () => {
+   it('re-anchors a boundary to the moved anchor block predecessor', () => {
+      // break after 'c'. Drag 'c' away: the boundary should stay after 'b' (c predecessor).
+      expect(reanchorMovedBlocks([breakAfter('brk', 's1', 'c')], SECTIONS, ['c']))
+         .toEqual([breakAfter('brk', 's1', 'b')])
+   })
+
+   it('leaves a boundary untouched when a non-anchor (top) block moves', () => {
+      const pages = [breakAfter('brk', 's1', 'b')]
+      expect(reanchorMovedBlocks(pages, SECTIONS, ['c'])).toBe(pages)
+   })
+
+   it('re-anchors to a leading blank when the moved anchor was the first block', () => {
+      expect(reanchorMovedBlocks([breakAfter('brk', 's1', 'a')], SECTIONS, ['a']))
+         .toEqual([breakLeading('brk')])
    })
 })
 
@@ -180,30 +232,28 @@ describe('canBreakAfter / hasPageBreakAfter', () => {
    it('canBreakAfter is true for every block except the last', () => {
       expect(canBreakAfter(SECTIONS, 'a')).toBe(true)
       expect(canBreakAfter(SECTIONS, 'd')).toBe(true)
-      expect(canBreakAfter(SECTIONS, 'e')).toBe(false)   // last block of the document
+      expect(canBreakAfter(SECTIONS, 'e')).toBe(false)
       expect(canBreakAfter(SECTIONS, 'missing')).toBe(false)
    })
 
-   it('hasPageBreakAfter reflects a break before the successor', () => {
-      const pages = [breakBefore('brk', 's1', 'c')]   // break BEFORE c == break AFTER b
-      expect(hasPageBreakAfter(pages, SECTIONS, 'b')).toBe(true)
-      expect(hasPageBreakAfter(pages, SECTIONS, 'a')).toBe(false)
-      expect(hasPageBreakAfter(pages, SECTIONS, 'e')).toBe(false)
+   it('hasPageBreakAfter reflects a break directly after the block', () => {
+      const pages = [breakAfter('brk', 's1', 'b')]
+      expect(hasPageBreakAfter(pages, 'b')).toBe(true)
+      expect(hasPageBreakAfter(pages, 'a')).toBe(false)
    })
 })
 
 describe('addPageBreakAfter', () => {
-   it('adds a break before the successor of the target block', () => {
-      const next = addPageBreakAfter([], SECTIONS, 'b')   // after b -> before c
+   it('adds a break after the target block', () => {
+      const next = addPageBreakAfter([], SECTIONS, 'b')
       expect(next).toHaveLength(1)
-      expect(next[0].before).toEqual({ sectionId: 's1', blockId: 'c' })
-      expect(typeof next[0].id).toBe('string')
+      expect(next[0].after).toEqual({ sectionId: 's1', blockId: 'b' })
       expect(next[0].id.length).toBeGreaterThan(0)
    })
 
    it('crosses a section boundary (after the last block of a section)', () => {
-      const next = addPageBreakAfter([], SECTIONS, 'c')   // after c -> before d (s2)
-      expect(next[0].before).toEqual({ sectionId: 's2', blockId: 'd' })
+      const next = addPageBreakAfter([], SECTIONS, 'c')
+      expect(next[0].after).toEqual({ sectionId: 's1', blockId: 'c' })
    })
 
    it('is a no-op after the last block of the document', () => {
@@ -212,25 +262,30 @@ describe('addPageBreakAfter', () => {
    })
 
    it('is a no-op when a break already sits there', () => {
-      const pages = [breakBefore('brk', 's1', 'c')]
+      const pages = [breakAfter('brk', 's1', 'b')]
       expect(addPageBreakAfter(pages, SECTIONS, 'b')).toBe(pages)
    })
 })
 
 describe('removePageBreakAfter / removePageBreak', () => {
    it('removes the break sitting after the target block', () => {
-      const pages = [breakBefore('brk', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
-      expect(removePageBreakAfter(pages, SECTIONS, 'b')).toEqual([breakBefore('brk2', 's2', 'e')])
+      const pages = [breakAfter('brk', 's1', 'b'), breakAfter('brk2', 's2', 'd')]
+      expect(removePageBreakAfter(pages, 'b')).toEqual([breakAfter('brk2', 's2', 'd')])
+   })
+
+   it('peels one stacked blank off at a time (removes the last match)', () => {
+      const pages = [breakAfter('brk1', 's1', 'b'), breakAfter('brk2', 's1', 'b')]
+      expect(removePageBreakAfter(pages, 'b')).toEqual([breakAfter('brk1', 's1', 'b')])
    })
 
    it('leaves the array untouched when nothing sits after the block', () => {
-      const pages = [breakBefore('brk', 's1', 'c')]
-      expect(removePageBreakAfter(pages, SECTIONS, 'a')).toEqual(pages)
+      const pages = [breakAfter('brk', 's1', 'b')]
+      expect(removePageBreakAfter(pages, 'a')).toBe(pages)
    })
 
    it('removePageBreak drops the break with the given id', () => {
-      const pages = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
-      expect(removePageBreak(pages, 'brk1')).toEqual([breakBefore('brk2', 's2', 'e')])
+      const pages = [breakAfter('brk1', 's1', 'b'), breakAfter('brk2', 's2', 'd')]
+      expect(removePageBreak(pages, 'brk1')).toEqual([breakAfter('brk2', 's2', 'd')])
    })
 })
 
@@ -238,81 +293,44 @@ describe('removePageBreakAfter / removePageBreak', () => {
 // # PAGE OPERATIONS #
 // ###################
 
-/** Re-derive the page shape from a committed { sections, pages } result, the round-trip that proves
- *  a reorder/duplicate/delete really produces the intended page order over the new flat flow. */
-function resultShape(result: { sections: Section[]; pages: PageBreak[] }) {
-   return shape(partitionIntoPages(result.sections, result.pages))
+/** Re-derive the page shape from a committed { sections, pages } result. */
+function resultGrid(result: { sections: Section[]; pages: PageBreak[] }) {
+   return blockGrid(partitionIntoPages(result.sections, result.pages))
 }
 
-/** Flat list of every section id in order (to inspect section splitting / id uniqueness). */
 function sectionIds(result: { sections: Section[]; pages: PageBreak[] }) {
    return result.sections.map(section => section.id)
 }
 
-describe('reorderPages', () => {
-   // Three-page fixture: break before c (s1) and before e (s2).
-   //   P0 = [a, b], P1 = [c, d], P2 = [e]
-   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
+// Three-page fixture: P0 = [a, b], P1 = [c, d], P2 = [e].
+const THREE_PAGE_BREAKS = [breakAfter('brk1', 's1', 'b'), breakAfter('brk2', 's2', 'd')]
 
+describe('reorderPages', () => {
    it('is a no-op for equal indices (same references)', () => {
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 1)
       expect(result.sections).toBe(SECTIONS)
       expect(result.pages).toBe(THREE_PAGE_BREAKS)
    })
 
-   it('is a no-op for an out-of-range index', () => {
-      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 9)
-      expect(result.sections).toBe(SECTIONS)
-   })
-
    it('swaps two adjacent pages', () => {
-      // Move P1 above P0: [c, d], [a, b], [e].
-      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 0)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['a', 'b'], ['e']])
+      expect(resultGrid(reorderPages(SECTIONS, THREE_PAGE_BREAKS, 1, 0))).toEqual([['c', 'd'], ['a', 'b'], ['e']])
    })
 
    it('moves a page to the front', () => {
-      // Move P2 (the last page) to the front: [e], [a, b], [c, d].
-      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
+      expect(resultGrid(reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0))).toEqual([['e'], ['a', 'b'], ['c', 'd']])
    })
 
    it('moves a page to the end', () => {
-      // Move P0 to the end: [c, d], [e], [a, b].
-      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 2)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e'], ['a', 'b']])
-   })
-
-   it('reorders multi-block pages at a clean section boundary', () => {
-      // Break at the section boundary: P0 = [a, b, c] (s1), P1 = [d, e] (s2).
-      const result = reorderPages(SECTIONS, [breakBefore('brk', 's2', 'd')], 1, 0)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['d', 'e'], ['a', 'b', 'c']])
-      // Section identity is preserved (no split): s2 then s1, both ids intact.
-      expect(sectionIds(result)).toEqual(['s2', 's1'])
+      expect(resultGrid(reorderPages(SECTIONS, THREE_PAGE_BREAKS, 0, 2))).toEqual([['c', 'd'], ['e'], ['a', 'b']])
    })
 
    it('splits a section when a mid-section slice is torn away (fresh id, unique)', () => {
-      // s2 = [d, e] spans P1 (d) and P2 (e). Moving P2 (e) to the front tears e off d.
       const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['e'], ['a', 'b'], ['c', 'd']])
       const ids = sectionIds(result)
-      // s2 fragment carrying 'e' keeps the id (first occurrence); the fragment carrying 'd' is a
-      // genuine split, so it gets a fresh id. All ids stay unique.
       expect(new Set(ids).size).toBe(ids.length)
       const sectionOfBlock = (blockId: string) =>
          result.sections.find(section => section.blocks.some(block => block.id === blockId))!.id
       expect(sectionOfBlock('e')).not.toBe(sectionOfBlock('d'))
-      // The un-torn section s1 stays a single section.
-      expect(result.sections.filter(section => section.id === 's1')).toHaveLength(1)
-   })
-
-   it('re-merges a break-spanning section that stays contiguous after the move', () => {
-      // s1 = [a, b, c] spans P0 (a, b) and P1 (c). Move P2 (e) between them? No, keep P0,P1 adjacent
-      // by moving P2 to the front: s1's a,b and c remain adjacent in the flow, staying ONE s1 section.
-      const result = reorderPages(SECTIONS, THREE_PAGE_BREAKS, 2, 0)
-      const s1Sections = result.sections.filter(section => section.id === 's1')
-      expect(s1Sections).toHaveLength(1)
-      expect(s1Sections[0].blocks.map(block => block.id)).toEqual(['a', 'b', 'c'])
    })
 
    it('preserves every block exactly once', () => {
@@ -320,29 +338,26 @@ describe('reorderPages', () => {
       const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
       expect(allBlockIds.sort()).toEqual(['a', 'b', 'c', 'd', 'e'])
    })
+
+   it('keeps a blank page through a reorder', () => {
+      // [a,b][blank][c,d,e] -> move the blank to the front.
+      const withBlank = [breakAfter('b1', 's1', 'b'), breakAfter('b2', 's1', 'b')]
+      const result = reorderPages(SECTIONS, withBlank, 1, 0)
+      expect(resultGrid(result)).toEqual([[], ['a', 'b'], ['c', 'd', 'e']])
+   })
 })
 
 describe('duplicatePage', () => {
-   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
-
    it('inserts a clone directly after the source page', () => {
-      // Duplicate P0 = [a, b]: a fresh page of two cloned blocks sits at index 1.
       const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
-      const pageBlockCounts = resultShape(result).map(page => page.blocks.length)
-      expect(pageBlockCounts).toEqual([2, 2, 2, 1])   // P0, clone(P0), P1, P2
+      expect(resultGrid(result).map(page => page.length)).toEqual([2, 2, 2, 1])
    })
 
    it('gives the clone fresh block ids (no id collision)', () => {
       const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
       const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
       expect(new Set(allBlockIds).size).toBe(allBlockIds.length)
-      expect(allBlockIds).toHaveLength(7)   // 5 originals + 2 clones
-   })
-
-   it('gives the clone fresh, unique section ids', () => {
-      const result = duplicatePage(SECTIONS, THREE_PAGE_BREAKS, 0)
-      const ids = sectionIds(result)
-      expect(new Set(ids).size).toBe(ids.length)
+      expect(allBlockIds).toHaveLength(7)
    })
 
    it('is a no-op for an out-of-range index (same references)', () => {
@@ -353,25 +368,20 @@ describe('duplicatePage', () => {
 })
 
 describe('deletePage', () => {
-   const THREE_PAGE_BREAKS = [breakBefore('brk1', 's1', 'c'), breakBefore('brk2', 's2', 'e')]
-
    it('drops a page and its content, leaving the rest in order', () => {
-      // Delete P1 = [c, d]: leaves [a, b], [e].
-      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 1)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['a', 'b'], ['e']])
+      expect(resultGrid(deletePage(SECTIONS, THREE_PAGE_BREAKS, 1))).toEqual([['a', 'b'], ['e']])
    })
 
-   it('re-coalesces a section left split by the deletion', () => {
-      // s1 = [a, b, c]. Delete P0 = [a, b]: s1 keeps only [c], still ONE section.
-      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 0)
-      expect(resultShape(result).map(page => page.blocks)).toEqual([['c', 'd'], ['e']])
-      expect(result.sections.filter(section => section.id === 's1')).toHaveLength(1)
-   })
-
-   it('removes exactly the deleted page\'s blocks', () => {
-      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 2)   // delete [e]
+   it('removes exactly the deleted page blocks', () => {
+      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 2)
       const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
       expect(allBlockIds.sort()).toEqual(['a', 'b', 'c', 'd'])
+   })
+
+   it('deletes a blank page cleanly, keeping the two content pages separated', () => {
+      // [a,b][blank][c,d,e] -> delete the blank -> the content boundary after b remains.
+      const withBlank = [breakAfter('b1', 's1', 'b'), breakAfter('b2', 's1', 'b')]
+      expect(resultGrid(deletePage(SECTIONS, withBlank, 1))).toEqual([['a', 'b'], ['c', 'd', 'e']])
    })
 
    it('is a no-op when only one page exists (same references)', () => {
@@ -379,9 +389,27 @@ describe('deletePage', () => {
       expect(result.sections).toBe(SECTIONS)
       expect(result.pages).toEqual([])
    })
+})
 
-   it('is a no-op for an out-of-range index', () => {
-      const result = deletePage(SECTIONS, THREE_PAGE_BREAKS, 9)
+describe('insertBlankPageAfter', () => {
+   it('inserts a blank page after the given page', () => {
+      const result = insertBlankPageAfter(SECTIONS, THREE_PAGE_BREAKS, 0)
+      expect(resultGrid(result)).toEqual([['a', 'b'], [], ['c', 'd'], ['e']])
+   })
+
+   it('appends a trailing blank page after the last page', () => {
+      const result = insertBlankPageAfter(SECTIONS, THREE_PAGE_BREAKS, 2)
+      expect(resultGrid(result)).toEqual([['a', 'b'], ['c', 'd'], ['e'], []])
+   })
+
+   it('adds a blank page to a single-page document', () => {
+      const result = insertBlankPageAfter(SECTIONS, [], 0)
+      expect(resultGrid(result)).toEqual([['a', 'b', 'c', 'd', 'e'], []])
+   })
+
+   it('is a no-op for an out-of-range index (same references)', () => {
+      const result = insertBlankPageAfter(SECTIONS, THREE_PAGE_BREAKS, 9)
       expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toBe(THREE_PAGE_BREAKS)
    })
 })

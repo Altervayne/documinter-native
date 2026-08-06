@@ -170,6 +170,42 @@ export function migrateMeta(meta: unknown): DocMeta {
    return { title, fields }
 }
 
+// ##########################
+// # PAGE-BREAK MODEL MIGRATION #
+// ##########################
+
+/**
+ * Convert legacy `before`-anchored page breaks to the current `after` model, using the block flow to
+ * resolve each anchor's predecessor (`before X` == `after X's predecessor`). Runs on a raw stored
+ * format before normalizeFormat validates it, so the reader only ever sees the `after` shape.
+ * Already-`after` breaks, non-paged formats, and malformed input pass through untouched. Must be given
+ * the already-id-migrated sections so anchors resolve against the same block ids.
+ */
+export function migrateFormatPageBreaks(rawFormat: unknown, sections: Section[]): unknown {
+   if (!rawFormat || typeof rawFormat !== 'object') return rawFormat
+   const format = rawFormat as Record<string, unknown>
+   if (!Array.isArray(format.pages)) return rawFormat
+
+   const flat: { sectionId: string; blockId: string }[] = []
+   for (const section of sections)
+      for (const block of section.blocks) flat.push({ sectionId: section.id, blockId: String(block.id) })
+   const indexByBlockId = new Map(flat.map((entry, index) => [entry.blockId, index]))
+
+   const pages = format.pages.map(raw => {
+      if (!raw || typeof raw !== 'object') return raw
+      const pageBreak = raw as Record<string, unknown>
+      if ('after' in pageBreak) return pageBreak                        // already the new model
+      const before = pageBreak.before as Record<string, unknown> | undefined
+      const beforeBlockId = before && typeof before.blockId === 'string' ? before.blockId : undefined
+      if (beforeBlockId === undefined) return pageBreak
+      const index = indexByBlockId.get(beforeBlockId)
+      const predecessor = index !== undefined && index > 0 ? flat[index - 1] : null
+      const { before: _dropped, ...rest } = pageBreak
+      return { ...rest, after: predecessor }
+   })
+   return { ...format, pages }
+}
+
 export function migrateIds(state: DocState): DocState {
    return {
       ...state,
