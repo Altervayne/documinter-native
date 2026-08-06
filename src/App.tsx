@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type SetStateAction, type Rea
 import { arrayMove } from '@dnd-kit/sortable'
 
 // -- Lib / Util Imports --
-import { mkSection } from './lib/document'
+import { mkSection, isEmptyDocument } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
@@ -263,36 +263,6 @@ export default function App() {
       setActiveTabKey(activeTab.tabKey)
    }, [])
 
-   // Replace the in-editor document with fresh content that is NOT yet a binder record
-   // (new / JSON load / file import). Resets currentDocumentId to null so the next edit
-   // creates a new IndexedDB record rather than overwriting the previously-open document,
-   // and skips the autosave cycle this replacement triggers. An optional presentation restores
-   // the document's saved theme + accent (e.g. from a JSON backup); omit to keep the current ones.
-   const replaceDocument = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation, pendingFolderId?: string | null) => {
-      skipNextAutosaveRef.current = true
-      const newTabKey = crypto.randomUUID()
-      setOpenDocuments(documents => {
-         // Without a presentation, carry the active tab's current theme/accent forward (matches the
-         // old behavior of leaving setDocTheme/setDocAccent untouched on a plain new/import/load).
-         const current = documents.find(document => document.tabKey === activeTabKeyRef.current)
-         return [{
-            tabKey:    newTabKey,
-            meta:      nextMeta,
-            sections:  nextSections,
-            docTheme:  presentation ? presentation.docTheme  : current?.docTheme  ?? 'light',
-            docAccent: presentation ? presentation.docAccent : current?.docAccent ?? DEFAULT_DOC_ACCENT,
-            // A supplied presentation (e.g. a JSON backup) restores its extras; a plain new/import
-            // carries the current tab's forward, matching the theme/accent carry above.
-            presentation: presentation ? presentation.presentation : current?.presentation,
-            format:       presentation ? presentation.format       : current?.format,
-            documentId:            null,   // not yet a binder record; the first edit forks a fresh one
-            saveStatus:            'clean',
-            pendingNewDocFolderId: pendingFolderId ?? null,
-         }]
-      })
-      setActiveTabKey(newTabKey)
-   }, [])
-
    // One-time async hydration: restore every open tab from last session (eager, each document is
    // loaded in full), or migrate a legacy localStorage autosave. The blank default shows until this
    // resolves; if nothing survives it stays (the always-have-a-document invariant).
@@ -522,15 +492,22 @@ export default function App() {
 
    // Pending action awaiting unsaved-changes confirmation: a dirty tab close (discard-and-close).
    // Opening a doc / creating one now add-or-focus a tab, discarding nothing, so they need no guard.
-   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'close-tab'; tabKey: string } | null>(null)
+   const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'close-tab'; tabKey: string; reason: 'dirty' | 'unsaved-open' } | null>(null)
 
-   // Close a tab. A dirty/saving tab routes through the unsaved-changes guard (discard-and-close);
-   // a clean tab closes immediately.
+   // Close a tab, guarding two ways data could be lost:
+   //  - dirty/saving: unsaved edits (discard-and-close).
+   //  - a clean tab opened from a file but never saved to the binder (documentId null + real content):
+   //    it has no stored record, so closing it loses it. The blank scaffold has nothing to lose.
+   // Anything safely stored (a binder record, or the empty blank) closes immediately.
    const closeTab = useCallback((tabKey: string) => {
       const target = openDocumentsRef.current.find(document => document.tabKey === tabKey)
       if (!target) return
       if (target.saveStatus === 'dirty' || target.saveStatus === 'saving') {
-         setPendingNavigation({ kind: 'close-tab', tabKey })
+         setPendingNavigation({ kind: 'close-tab', tabKey, reason: 'dirty' })
+         return
+      }
+      if (target.documentId === null && !isEmptyDocument(target)) {
+         setPendingNavigation({ kind: 'close-tab', tabKey, reason: 'unsaved-open' })
          return
       }
       performCloseTab(tabKey)
@@ -769,22 +746,45 @@ export default function App() {
             : document))
    }, [])
 
-   // Import a Markdown file, parse it, replace the document. Opening a file lands in the editor,
+   // Open freshly-loaded content (File -> Open: JSON backup / Markdown / Mintdown) in a NEW tab,
+   // activating it. Discards nothing (it never replaces another tab). The new tab is NOT yet a binder
+   // record (documentId null), so the first edit forks a fresh IndexedDB record; a JSON backup's
+   // presentation restores its saved theme / accent / extras, a plain Markdown/Mintdown import lands
+   // with the document defaults. Opening from a file never auto-creates a binder entry (Open is not
+   // Import); closeTab warns before an unsaved opened tab is lost.
+   const openLoadedInNewTab = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
+      const newTab: OpenDocument = {
+         tabKey:    crypto.randomUUID(),
+         meta:      nextMeta,
+         sections:  nextSections,
+         docTheme:  presentation ? presentation.docTheme  : 'light',
+         docAccent: presentation ? presentation.docAccent : DEFAULT_DOC_ACCENT,
+         presentation: presentation ? presentation.presentation : undefined,
+         format:       presentation ? presentation.format       : undefined,
+         documentId:            null,   // not yet a binder record; the first edit forks a fresh one
+         saveStatus:            'clean',
+         pendingNewDocFolderId: null,
+      }
+      setOpenDocuments(documents => [...documents, newTab])
+      void activateTab(newTab.tabKey)
+   }, [activateTab])
+
+   // Import a Markdown file, parse it, open it in a new tab. Opening a file lands in the editor,
    // so leave binder mode if it was open.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
       return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         replaceDocument(newMeta, newSections)
+         openLoadedInNewTab(newMeta, newSections)
          setBinderOpen(false)
       })
-   }, [replaceDocument])
+   }, [openLoadedInNewTab])
 
-   // Import a Mintdown file, parse it, replace the document.
+   // Import a Mintdown file, parse it, open it in a new tab.
    const handleImportMintdown = useCallback((file: File): Promise<void> => {
       return importMintdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         replaceDocument(newMeta, newSections)
+         openLoadedInNewTab(newMeta, newSections)
          setBinderOpen(false)
       })
-   }, [replaceDocument])
+   }, [openLoadedInNewTab])
 
    // Meta
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
@@ -794,11 +794,12 @@ export default function App() {
             : document))
    }, [])
 
-   // Load state from JSON (restoring its saved theme + accent). Opening lands in the editor.
+   // Load state from JSON (restoring its saved theme + accent) into a new tab. Opening lands in the
+   // editor. Not added to the binder (Open is not Import); closeTab warns before it is lost unsaved.
    const handleLoad = useCallback((state: DocState, presentation: DocPresentation) => {
-      replaceDocument(state.meta, state.sections, presentation)
+      openLoadedInNewTab(state.meta, state.sections, presentation)
       setBinderOpen(false)
-   }, [replaceDocument])
+   }, [openLoadedInNewTab])
 
    // ===================================
    //  Header: New + standalone binder toggle
@@ -1034,9 +1035,9 @@ export default function App() {
 
             {pendingNavigation && (
                <ConfirmDialog
-                  title={t.binderUnsavedTitle}
-                  message={t.binderUnsavedMessage}
-                  confirmLabel={t.binderUnsavedProceed}
+                  title={pendingNavigation.reason === 'unsaved-open' ? t.closeUnsavedOpenTitle : t.binderUnsavedTitle}
+                  message={pendingNavigation.reason === 'unsaved-open' ? t.closeUnsavedOpenMessage : t.binderUnsavedMessage}
+                  confirmLabel={pendingNavigation.reason === 'unsaved-open' ? t.closeUnsavedOpenConfirm : t.binderUnsavedProceed}
                   cancelLabel={t.binderUnsavedCancel}
                   danger
                   onConfirm={handleConfirmNavigation}

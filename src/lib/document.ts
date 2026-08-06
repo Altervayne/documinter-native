@@ -13,7 +13,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react'
-import type { Block, BlockType, ListItem, Section, Side } from '../types'
+import type { Block, BlockType, DocMeta, ListItem, Section, Side } from '../types'
 import type { T } from './i18n'
 
 
@@ -244,6 +244,19 @@ export function mutateSec(
 // ##############################################################################################
 // # CROSS-ARRAY BLOCK MOVE (block DnD: cross-section, and into / out of container columns)      #
 // ##############################################################################################
+
+/**
+ * Whether a document holds nothing worth warning about before discarding it: no blocks anywhere, no
+ * title, and no filled-in meta field values. True of a fresh blank OR a template-created doc (a
+ * template seeds a meta scaffold with BLANK values, trivially recreatable), false of a document
+ * opened from a file (real content). App's closeTab uses it to decide whether losing an unsaved,
+ * not-yet-in-the-binder tab warrants a confirmation.
+ */
+export function isEmptyDocument(document: { meta: DocMeta; sections: Section[] }): boolean {
+   const hasBlocks      = document.sections.some(section => section.blocks.length > 0)
+   const hasFieldValues = document.meta.fields.some(field => field.value.trim() !== '')
+   return !hasBlocks && !document.meta.title.trim() && !hasFieldValues
+}
 
 /** Find a block anywhere on the canvas (a section body, or a container column) together with its
  *  owning section. The shared drag ghost uses this so it can render inner container blocks too, which
