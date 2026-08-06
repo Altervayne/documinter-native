@@ -11,9 +11,10 @@ import { CSS } from '@dnd-kit/utilities'
 import { Copy, Trash2 } from 'lucide-react'
 
 // -- Lib / Context Imports --
-import { renderBlocksToDocHtml } from '../lib/export'
+import { renderPagePreviewHtml } from '../lib/export'
 import { millimetresToPx, type Page } from '../lib/pageModel'
 import type { PageMargins } from '../lib/format'
+import type { DocMeta, Section } from '../types'
 import { useLang } from '../contexts/LangContext'
 
 // #############
@@ -31,6 +32,8 @@ const THUMBNAIL_WIDTH_PX = 150
 
 interface PagesPanelBodyProps {
    pages:         Page[]
+   meta:          DocMeta
+   sections:      Section[]
    docTheme:      'light' | 'dark'
    docAccent:     string
    margins:       PageMargins
@@ -50,6 +53,8 @@ interface PageThumbnailProps {
    page:          Page
    pageIndex:     number
    pageCount:     number
+   meta:          DocMeta
+   sections:      Section[]
    docTheme:      'light' | 'dark'
    docAccent:     string
    margins:       PageMargins
@@ -62,17 +67,21 @@ interface PageThumbnailProps {
 }
 
 function PageThumbnail({
-   page, pageIndex, pageCount, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
+   page, pageIndex, pageCount, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
    canDelete, onJump, onDuplicate, onDelete,
 }: PageThumbnailProps) {
    const { t } = useLang()
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
 
-   // The page's flat block flow (across its section slices) → self-contained doc HTML, rendered at the
-   // real sheet px inside a scaled wrapper. Image blocks use the cheap placeholder (a thumbnail needs
-   // no full base64 fidelity); graphs / diagrams are inline SVG and render as-is.
-   const blocks = page.slices.flatMap(slice => slice.blocks)
-   const html   = renderBlocksToDocHtml(blocks, { theme: docTheme, imagePlaceholder: true })
+   // The page → self-contained doc HTML the same way the export builds it: the document header (title +
+   // meta) on the first page, then each section slice's `<h2>` heading + its blocks — so the thumbnail
+   // reflects the real page. Rendered at the real sheet px inside a scaled wrapper. Image blocks use the
+   // cheap placeholder (a thumbnail needs no full base64 fidelity); graphs / diagrams are inline SVG.
+   const html = renderPagePreviewHtml(page, {
+      isFirstPage: pageIndex === 0,
+      meta, sections, accent: docAccent, theme: docTheme,
+      fallbackTitle: t.untitledDoc, imagePlaceholder: true,
+   })
 
    const scale       = THUMBNAIL_WIDTH_PX / sheetWidthPx
    const frameHeight = sheetHeightPx * scale
@@ -155,7 +164,7 @@ function PageThumbnail({
  * transforms upstream (the parent supplies the handlers).
  */
 export function PagesPanelBody({
-   pages, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
+   pages, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
    onReorder, onDuplicate, onDelete, onJump,
 }: PagesPanelBodyProps) {
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -196,6 +205,8 @@ export function PagesPanelBody({
                      page={page}
                      pageIndex={pageIndex}
                      pageCount={pages.length}
+                     meta={meta}
+                     sections={sections}
                      docTheme={docTheme}
                      docAccent={docAccent}
                      margins={margins}

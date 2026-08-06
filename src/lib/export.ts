@@ -21,6 +21,7 @@ import { formatPageNumber } from './pageNumbering'
 import {
    partitionIntoPages, millimetresToPx,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
+   type Page,
 } from './pageModel'
 
 export interface ExportOptions {
@@ -194,6 +195,30 @@ export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlacehol
    // present in the same preview (a table outside the slice simply dangles → its snapshot).
    const tables = collectTableSources(blocks)
    return blocks.map(block => exportBlock(block, { ...options, tables })).join('\n')
+}
+
+/**
+ * Render ONE page's HTML the way the paged export does — the document header (`<h1>` + meta zones) on
+ * the first page, then each section slice as `<div class="doc-section"><h2>N. Title</h2>…blocks…</div>`
+ * — so the Pages-panel thumbnail reflects the actual page (titles + headings), not a bare block list.
+ * `sections` is the full document flow, used only to number a slice's section (matches the export).
+ */
+export function renderPagePreviewHtml(
+   page: Page,
+   opts: { isFirstPage: boolean; meta: DocMeta; sections: Section[]; accent: string; theme: 'light' | 'dark'; fallbackTitle: string; imagePlaceholder?: boolean },
+): string {
+   const { isFirstPage, meta, sections, accent, theme, fallbackTitle, imagePlaceholder } = opts
+   const tables = collectTableSources(page.slices.flatMap(slice => slice.blocks))
+   const headerHTML = isFirstPage
+      ? `<div class="page-header">${renderMetaZone(meta, 'above', accent)}${renderPageTitle(meta, fallbackTitle, undefined)}${renderMetaZone(meta, 'below', accent)}</div>`
+      : ''
+   const slicesHTML = page.slices.map(slice => {
+      const sectionIndex = sections.findIndex(section => section.id === slice.section.id)
+      const heading    = slice.isSectionStart ? `<h2>${sectionIndex + 1}. ${esc(slice.section.title)}</h2>` : ''
+      const blocksHTML = slice.blocks.map(block => exportBlock(block, { theme, imagePlaceholder, tables })).join('\n')
+      return `<div class="doc-section">${heading}${blocksHTML}</div>`
+   }).join('\n')
+   return headerHTML + slicesHTML
 }
 
 interface Colors {

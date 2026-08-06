@@ -268,6 +268,9 @@
      is set here; typography/colors come from the shared `.doc-render` rules for full fidelity. */
   box-sizing: border-box;
   overflow: hidden;
+  /* The thumbnail sits inside a <button> (`.page-thumb-frame`), which defaults to text-align:center;
+     document content is left-aligned, so force it back. */
+  text-align: left;
 }
 /* Bar beneath the thumbnail: page number + hover-revealed duplicate / delete actions. */
 .page-thumb-bar {

@@ -854,6 +854,8 @@ export default function App() {
       pages: (
          <PagesPanelBody
             pages={pagesData.pages}
+            meta={meta}
+            sections={sections}
             docTheme={docTheme}
             docAccent={docAccent}
             margins={pagesData.margins}
