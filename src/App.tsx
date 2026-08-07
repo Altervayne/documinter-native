@@ -32,6 +32,8 @@ import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument } from './lib/export'
+import { paginate, buildMetrics, contentBoxHeightPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
+import type { Page } from './lib/pageModel'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
 import type { DockPanelToggle } from './molecules/ViewMenu'
@@ -685,6 +687,17 @@ export default function App() {
       setMode(newMode)
    }
 
+   // Measured paged layout, OWNED here so all three consumers agree: the editor (WysiwygArea) measures
+   // its rendered sheets and reports the heights up through `setMeasuredHeights`; the Pages panel and
+   // export then paginate from this same source. Reset on tab switch so a new document never paginates
+   // against the previous one's item heights (ids never match, and the map stays free of stale entries).
+   const [measuredHeights, setMeasuredHeights] = useState<MeasuredHeights>(EMPTY_HEIGHTS)
+   useEffect(() => { setMeasuredHeights(EMPTY_HEIGHTS) }, [activeTabKey])
+   const pagedDocument = !!format && format.kind !== 'infinite'
+   const laidOutPages: Page[] = pagedDocument
+      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), buildMetrics(measuredHeights, sections))
+      : []
+
    // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
    // File -> Export... / Ctrl+E path AND the document background context menu's "Export..." item
    // open the exact same modal instance.
@@ -695,8 +708,8 @@ export default function App() {
    // Save as PDF from the Pages panel: the browser print dialog over the paged export HTML, using the
    // document's own theme / accent / presentation / format. The Pages panel exists only for paged docs.
    const handleSaveAsPdf = useCallback(() => {
-      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
-   }, [meta, sections, docTheme, docAccent, lang, presentation, format])
+      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: laidOutPages })
+   }, [meta, sections, docTheme, docAccent, lang, presentation, format, laidOutPages])
 
    // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
    // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
@@ -840,7 +853,7 @@ export default function App() {
    // here so the App-level dock can host the body directly, without WysiwygArea owning it.
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
-   const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t)
+   const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t, laidOutPages)
 
    // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
    // wires each body's data + handlers here; the dock hosts only the chrome.
@@ -922,6 +935,7 @@ export default function App() {
             onOpenPresentation={handleOpenPresentation}
             onOpenNav={handleOpenNav}
             format={format}
+            pagedLayout={laidOutPages}
             onOpenFormat={handleOpenFormat}
          />
 
@@ -1021,6 +1035,8 @@ export default function App() {
                               onCloseFormat={handleCloseFormat}
                               previewMode={mode}
                               onSetMode={handleSetMode}
+                              measuredHeights={measuredHeights}
+                              onMeasuredHeights={setMeasuredHeights}
                            />
                         ),
                         mintdown: (

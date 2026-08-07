@@ -35,6 +35,11 @@ export interface ExportOptions {
     *  width or a 'normal' width, all resolve to the same 860px `.doc-card` max-width, so output stays
     *  byte-identical (see resolveDocumentSheetWidthPx). */
    format?: DocFormat
+   /** The reflowed pages measured in the editor (splittable lists auto-flowed across sheets). When
+    *  present, the paged export renders these EXACT pages so the PDF matches the editor; when absent
+    *  (an export from a context with no live measurement, e.g. the binder), it falls back to the plain
+    *  forced-break partition, which never splits a block. */
+   pagedLayout?: Page[]
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
@@ -840,8 +845,11 @@ ${blocksHTML}
    // Empty for an infinite export.
    const headerBand = resolveHeader(opts.format)
    const footerBand = resolveFooterBand(opts.format)
+   // Prefer the editor's measured reflow (splittable lists auto-flowed across sheets) so the PDF matches
+   // what the author saw; fall back to the plain forced-break partition when no measurement was supplied.
+   const exportPages = opts.pagedLayout ?? partitionIntoPages(sections, opts.format?.pages ?? [])
    const pagesHTML = paged
-      ? partitionIntoPages(sections, opts.format?.pages ?? []).map((page, pageIndex, allPages) => {
+      ? exportPages.map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
               ? ''
               : (watermark!.tile

@@ -5,6 +5,7 @@ import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOptio
 import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
+import type { Page } from '../lib/pageModel'
 import { generateExportHTML, downloadHTML, printDocument, type ExportOptions } from '../lib/export'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
@@ -31,6 +32,9 @@ interface ExportModalProps {
    /** Active document's page format (infinite width or paged A4), baked into the exported HTML's
     *  `.doc-card` width. */
    format?: DocFormat
+   /** The editor's measured reflow (splittable lists auto-flowed across sheets), so the HTML / PDF
+    *  export matches what the author sees. Absent falls back to the plain forced-break partition. */
+   pagedLayout?: Page[]
    lang: Lang
    onClose: () => void
    /** Opens the document-level Presentation window (watermark / header / nav editing). */
@@ -52,7 +56,7 @@ interface ExportModalProps {
  *   - Markdown, documentToMarkdown -> download (via exportMarkdownFile). Lean, no options.
  *   - JSON    , downloadJSON, a lossless snapshot of the document's own state. Lean, no options.
  */
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, pagedLayout, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
@@ -68,7 +72,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    // .md paths never see them (they serialize content only). Aliased to docFormat above to avoid
    // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
    // markdown, a separate concept from the document's page format).
-   const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
+   const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat, pagedLayout }
 
    // =========
    //  Actions

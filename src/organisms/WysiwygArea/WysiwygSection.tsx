@@ -32,6 +32,31 @@ import { mkSection } from '../../lib/document'
 // -- Type Imports --
 import type { Block, Section } from '../../types'
 
+// #############
+// # UTILITIES #
+// #############
+
+/**
+ * Locates a rendered block's position inside a split list/checklist (see pageLayout.ts
+ * sliceListBlock): the block's fragment carries only a slice of the model's root items, same id
+ * on every page it spans. `itemOffset` is where that slice starts in the model's full item list
+ * (root-level dnd-kit reorder indices are fragment-relative and need this to land on the right
+ * item); `isListTail` marks the fragment holding the model's last root item, so the add-item
+ * button renders once instead of once per page. Non-list blocks and whole (unsplit) lists resolve
+ * to the untouched defaults.
+ */
+function resolveListFragment(fragmentBlock: Block, modelBlock: Block | undefined): { itemOffset: number; isListTail: boolean } {
+   if (fragmentBlock.type !== 'list' && fragmentBlock.type !== 'checklist') return { itemOffset: 0, isListTail: true }
+   const fragmentItems = fragmentBlock.items ?? []
+   if (fragmentItems.length === 0) return { itemOffset: 0, isListTail: true }
+   const modelItems = modelBlock?.items ?? []
+   const firstItemId = fragmentItems[0].id
+   const lastItemId  = fragmentItems[fragmentItems.length - 1].id
+   const itemOffset  = Math.max(0, modelItems.findIndex(item => item.id === firstItemId))
+   const isListTail  = modelItems.length > 0 && modelItems[modelItems.length - 1].id === lastItemId
+   return { itemOffset, isListTail }
+}
+
 interface WysiwygSectionProps {
    section:         Section
    index:           number
@@ -230,6 +255,8 @@ export function WysiwygSection({
                         // Absolute index in section.blocks (blocksToRender may be a page-slice subset),
                         // so insert / move / reorder always address the right position in the section.
                         const blockIndex = section.blocks.findIndex(candidate => candidate.id === block.id)
+                        const modelBlock = blockIndex >= 0 ? section.blocks[blockIndex] : undefined
+                        const { itemOffset, isListTail } = resolveListFragment(block, modelBlock)
                         return (
                         <WysiwygBlock
                            key={block.id}
@@ -238,6 +265,8 @@ export function WysiwygSection({
                            blockLoc={sectionLoc}
                            containerMutations={containerMutations}
                            activeBlockId={activeBlockId}
+                           itemOffset={itemOffset}
+                           isListTail={isListTail}
                            onInsertBefore={type => insertBlockAt(section.id, blockIndex, type)}
                            onInsertAfter={type => insertBlockAt(section.id, blockIndex + 1, type)}
                            onMoveUp={blockIndex > 0 ? () => reorderBlocks(section.id, blockIndex, blockIndex - 1) : undefined}

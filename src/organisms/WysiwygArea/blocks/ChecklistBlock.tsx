@@ -7,6 +7,8 @@ interface ChecklistBlockProps {
    onAddItem: () => void
    readOnly?: boolean
    gripSide?: 'left' | 'right'
+   /** See ListBlockProps.isListTail: gates the add-item button on a split checklist's last fragment. */
+   isListTail?: boolean
 }
 
 /**

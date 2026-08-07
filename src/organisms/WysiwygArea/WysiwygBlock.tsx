@@ -55,6 +55,14 @@ interface WysiwygBlockProps {
    readOnly?: boolean
    /** ID of the block currently being dragged (for insertion indicator) */
    activeBlockId?: string | null
+   /** For a list/checklist rendered as a page-split fragment: where this fragment's root items start
+    *  in the model block's full item list (see pageLayout.ts sliceListBlock). 0 for a whole (unsplit)
+    *  list. Converts dnd-kit's fragment-relative root reorder indices to absolute model indices. */
+   itemOffset?: number
+   /** For a list/checklist rendered as a page-split fragment: whether this fragment holds the model
+    *  block's last root item. True for a whole (unsplit) list. Gates the add-item button so a split
+    *  list shows it once, on the page it ends on. */
+   isListTail?: boolean
    // Handlers passed from parent (used by both inner and outer blocks)
    onInsertBefore?: (type: BlockType) => void
    onInsertAfter?:  (type: BlockType) => void
@@ -93,6 +101,7 @@ interface WysiwygBlockProps {
 export function WysiwygBlock({
    secId, block, containerMutations, activeBlockId, blockLoc,
    inner, draggable, gripSide = 'left', readOnly,
+   itemOffset = 0, isListTail = true,
    onInsertBefore, onInsertAfter,
    onMoveUp, onMoveDown,
    onUpdate, onRemove, onDuplicate, onInsertBlockAfter,
@@ -166,7 +175,13 @@ export function WysiwygBlock({
    const handleRemoveListItem         = inner ? onRemoveListItem!         : (itemId: string) => ctx.removeListItem(secId, block.id, itemId)
    const handleInsertListItemAfter    = inner ? onInsertListItemAfter!    : (afterItemId: string, newItem: ListItem) => ctx.insertListItemAfter(secId, block.id, afterItemId, newItem)
    const handleUpdateListItemRichText = inner ? onUpdateListItemRichText! : (itemId: string, richText: InlineContent) => ctx.updateListItemRichText(secId, block.id, itemId, richText)
-   const handleReorderListItems       = inner ? onReorderListItems!       : (parentItemId: string | null, oldIndex: number, newIndex: number) => ctx.reorderListItemsUnderParent(secId, block.id, parentItemId, oldIndex, newIndex)
+   const handleReorderListItems       = inner ? onReorderListItems!       : (parentItemId: string | null, oldIndex: number, newIndex: number) => {
+      // A split list/checklist fragment (see pageLayout.ts) renders only a slice of the model's root
+      // items, so dnd-kit's root-level indices are relative to that slice. Offset them to absolute
+      // model indices. Nested children are never sliced, so a non-root reorder needs no offset.
+      const rootOffset = parentItemId === null ? itemOffset : 0
+      ctx.reorderListItemsUnderParent(secId, block.id, parentItemId, oldIndex + rootOffset, newIndex + rootOffset)
+   }
    const handleToggleChecklistItem    = inner ? onToggleChecklistItem!    : (itemId: string) => ctx.toggleChecklistItem(secId, block.id, itemId)
 
    const listItemOps: ListItemOperations = {
@@ -251,9 +266,9 @@ export function WysiwygBlock({
       if (block.type === 'diagram')
          return <DiagramBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
-         return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
+         return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} isListTail={isListTail} />
       if (block.type === 'checklist')
-         return <ChecklistBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} />
+         return <ChecklistBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} isListTail={isListTail} />
       if (block.type === 'table')
          return <TableBlock block={block} patch={patch} onAddRow={handleRowAdd} onAddCol={handleColAdd} onRemoveRow={handleRowDel} onInsertBlockAfter={handleInsertBlockAfter} readOnly={readOnly} />
       if (block.type === 'image')

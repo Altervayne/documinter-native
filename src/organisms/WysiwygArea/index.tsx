@@ -46,6 +46,7 @@ import {
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
+import { EMPTY_HEIGHTS, type MeasuredHeights } from '../../lib/pageLayout'
 import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
@@ -108,6 +109,12 @@ interface WysiwygAreaProps {
    /** Editor/preview toggle, for the background menu's optional "Toggle preview" item. */
    previewMode?: Mode
    onSetMode?:   (mode: Mode) => void
+   // ==========================================================
+   //  Measured paged layout (App-owned). The editor measures its rendered sheets and reports the
+   //  heights up so the Pages panel and export paginate from the identical source.
+   // ==========================================================
+   measuredHeights?:   MeasuredHeights
+   onMeasuredHeights?: (heights: MeasuredHeights) => void
 }
 
 export function WysiwygArea({
@@ -117,6 +124,7 @@ export function WysiwygArea({
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
+   measuredHeights, onMeasuredHeights,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections, moveBlockAcross } = useDocumentMutations()
@@ -447,6 +455,8 @@ export function WysiwygArea({
       sections,
       forcedBreaks:    pageBreaks,
       availableHeight: availableContentHeightPx,
+      heights:         measuredHeights ?? EMPTY_HEIGHTS,
+      onHeightsChange: onMeasuredHeights ?? (() => {}),
    })
    const derivedPages: Page[] | null = paged ? laidOutPages : null
 

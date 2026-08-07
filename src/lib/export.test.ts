@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { generateExportHTML } from './export'
 import { millimetresToPx } from './pageModel'
+import type { Page } from './pageModel'
 import type { DocMeta, Block, Section } from '../types'
 import type { GraphSpec } from './graph'
 import type { Watermark, Header } from './presentation'
@@ -49,6 +50,44 @@ describe('generateExportHTML, marked-up image block', () => {
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316' })
       expect(html).toContain('<div class="doc-image-markup"><svg')
       expect(html).not.toContain('<image')
+   })
+})
+
+// A paged export renders the supplied `pagedLayout` (the editor's measured reflow) EXACTLY, so a list
+// that was auto-split across sheets in the editor comes out split in the PDF/HTML too. Each fragment is
+// a shallow list block whose `items` hold only that page's slice, so it renders as its own <ul>.
+describe('generateExportHTML, paged reflow (pagedLayout)', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+   const listBlock: Block = {
+      id: 'L', type: 'list',
+      items: [
+         { id: 'i0', children: [], richText: [{ text: 'Alpha' }] },
+         { id: 'i1', children: [], richText: [{ text: 'Bravo' }] },
+         { id: 'i2', children: [], richText: [{ text: 'Charlie' }] },
+      ],
+   }
+   const section: Section = { id: 's', title: 'Items', collapsed: false, blocks: [listBlock] }
+   const sliced = (start: number, end: number): Block => ({ ...listBlock, items: listBlock.items!.slice(start, end) })
+
+   it('renders a list split across two sheets as two <ul> fragments, one per sheet', () => {
+      const pagedLayout: Page[] = [
+         { id: 'page-first', slices: [{ section, blocks: [sliced(0, 2)], isSectionStart: true,  isSectionEnd: false }] },
+         { id: 'auto:L:c0',  slices: [{ section, blocks: [sliced(2, 3)], isSectionStart: false, isSectionEnd: true  }] },
+      ]
+      const html = generateExportHTML(meta, [section], {
+         theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait' }, pagedLayout,
+      })
+      // Two physical sheets, and the list split across them (Alpha/Bravo on the first, Charlie on the second).
+      expect((html.match(/class="doc-page"/g) ?? []).length).toBe(2)
+      expect((html.match(/<ul>/g) ?? []).length).toBe(2)
+      expect(html.indexOf('Bravo')).toBeLessThan(html.indexOf('Charlie'))
+   })
+
+   it('falls back to the forced-break partition (no split) when no pagedLayout is supplied', () => {
+      const html = generateExportHTML(meta, [section], { theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait' } })
+      // The whole list stays on one sheet as a single <ul>.
+      expect((html.match(/class="doc-page"/g) ?? []).length).toBe(1)
+      expect((html.match(/<ul>/g) ?? []).length).toBe(1)
    })
 })
 

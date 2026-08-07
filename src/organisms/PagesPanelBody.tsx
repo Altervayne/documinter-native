@@ -13,6 +13,7 @@ import { Copy, Trash2, FilePlus2, Plus, Printer } from 'lucide-react'
 // -- Lib / Context Imports --
 import { renderPagePreviewHtml } from '../lib/export'
 import { millimetresToPx, type Page } from '../lib/pageModel'
+import { isAutoPageId } from '../lib/pageLayout'
 import type { PageMargins } from '../lib/format'
 import type { DocMeta, Section } from '../types'
 import { useLang } from '../contexts/LangContext'
@@ -64,6 +65,7 @@ interface PageThumbnailProps {
    sheetWidthPx:  number
    sheetHeightPx: number
    canDelete:     boolean
+   isContinuation: boolean
    onJump:        (pageId: string) => void
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
@@ -72,10 +74,12 @@ interface PageThumbnailProps {
 
 function PageThumbnail({
    page, pageIndex, pageCount, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   canDelete, onJump, onDuplicate, onDelete, onInsertAfter,
+   canDelete, isContinuation, onJump, onDuplicate, onDelete, onInsertAfter,
 }: PageThumbnailProps) {
    const { t } = useLang()
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
+   // A continuation sheet is an auto reflow of the block flowing onto it, not an author-made page: it
+   // cannot be dragged, duplicated, deleted, or inserted after. Jump-to-page still works.
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id, disabled: isContinuation })
 
    // Renders the page into self-contained doc HTML the same way the export builds it: the document header
    // (title + meta) on the first page, then each section slice's `<h2>` heading + its blocks, so the
@@ -104,7 +108,7 @@ function PageThumbnail({
             aria-label={`${t.pageSorterJump} ${pageIndex + 1}`}
             onClick={() => onJump(page.id)}
             {...attributes}
-            {...listeners}
+            {...(isContinuation ? {} : listeners)}
          >
             <div
                className="page-thumb-scaler"
@@ -128,39 +132,44 @@ function PageThumbnail({
 
          <div className="page-thumb-bar">
             <span className="page-thumb-number">{pageIndex + 1} / {pageCount}</span>
-            <div className="page-thumb-actions">
-               <button
-                  type="button"
-                  className="page-thumb-action"
-                  title={t.formatInsertPageAfter}
-                  aria-label={t.formatInsertPageAfter}
-                  onPointerDown={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onInsertAfter(pageIndex) }}
-               >
-                  <FilePlus2 size={13} />
-               </button>
-               <button
-                  type="button"
-                  className="page-thumb-action"
-                  title={t.pageSorterDuplicate}
-                  aria-label={t.pageSorterDuplicate}
-                  onPointerDown={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onDuplicate(pageIndex) }}
-               >
-                  <Copy size={13} />
-               </button>
-               <button
-                  type="button"
-                  className="page-thumb-action page-thumb-action-danger"
-                  title={t.pageSorterDelete}
-                  aria-label={t.pageSorterDelete}
-                  disabled={!canDelete}
-                  onPointerDown={event => event.stopPropagation()}
-                  onClick={event => { event.stopPropagation(); onDelete(pageIndex) }}
-               >
-                  <Trash2 size={13} />
-               </button>
-            </div>
+            {isContinuation ? (
+               // A continuation sheet has no independent page controls: it just labels itself.
+               <span className="page-thumb-continuation">{t.pageSorterContinuation}</span>
+            ) : (
+               <div className="page-thumb-actions">
+                  <button
+                     type="button"
+                     className="page-thumb-action"
+                     title={t.formatInsertPageAfter}
+                     aria-label={t.formatInsertPageAfter}
+                     onPointerDown={event => event.stopPropagation()}
+                     onClick={event => { event.stopPropagation(); onInsertAfter(pageIndex) }}
+                  >
+                     <FilePlus2 size={13} />
+                  </button>
+                  <button
+                     type="button"
+                     className="page-thumb-action"
+                     title={t.pageSorterDuplicate}
+                     aria-label={t.pageSorterDuplicate}
+                     onPointerDown={event => event.stopPropagation()}
+                     onClick={event => { event.stopPropagation(); onDuplicate(pageIndex) }}
+                  >
+                     <Copy size={13} />
+                  </button>
+                  <button
+                     type="button"
+                     className="page-thumb-action page-thumb-action-danger"
+                     title={t.pageSorterDelete}
+                     aria-label={t.pageSorterDelete}
+                     disabled={!canDelete}
+                     onPointerDown={event => event.stopPropagation()}
+                     onClick={event => { event.stopPropagation(); onDelete(pageIndex) }}
+                  >
+                     <Trash2 size={13} />
+                  </button>
+               </div>
+            )}
          </div>
       </div>
    )
@@ -228,6 +237,7 @@ export function PagesPanelBody({
                      sheetWidthPx={sheetWidthPx}
                      sheetHeightPx={sheetHeightPx}
                      canDelete={canDelete}
+                     isContinuation={isAutoPageId(page.id)}
                      onJump={onJump}
                      onDuplicate={onDuplicate}
                      onDelete={onDelete}

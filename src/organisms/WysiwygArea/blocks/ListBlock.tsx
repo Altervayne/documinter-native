@@ -311,9 +311,13 @@ interface ListBlockProps {
    checklist?: boolean
    readOnly?: boolean
    gripSide?: 'left' | 'right'
+   /** Whether this render holds the list's last root item. False only for a non-tail fragment of a
+    *  list split across a page boundary (see pageLayout.ts), which shows no add-item button of its
+    *  own since the button belongs on the last page the list spans. Default true. */
+   isListTail?: boolean
 }
 
-export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, gripSide = 'left' }: ListBlockProps) {
+export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, gripSide = 'left', isListTail = true }: ListBlockProps) {
    const { t } = useLang()
    const rootItems = block.items ?? []
 
@@ -329,7 +333,7 @@ export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, grip
             gripSide={gripSide}
          />
 
-         {!readOnly && (
+         {!readOnly && isListTail && (
             <div className="mt-4 p-2">
                <button
                   onClick={onAddItem}

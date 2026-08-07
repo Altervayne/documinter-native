@@ -325,6 +325,16 @@
   color: var(--color-muted);
   user-select: none;
 }
+/* A continuation sheet's label sits where the page controls would be, subdued so it reads as a state
+   rather than an action. */
+.page-thumb-continuation {
+  font-size: 0.62rem;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+  opacity: 0.7;
+  user-select: none;
+}
 .page-thumb-actions {
   display: flex;
   align-items: center;

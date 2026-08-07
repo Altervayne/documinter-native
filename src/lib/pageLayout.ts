@@ -26,9 +26,9 @@
  */
 
 import type { Block, Section } from '../types'
-import type { PageBreak } from './format'
+import { DEFAULT_A4_MARGINS, type DocFormat, type PageBreak } from './format'
 import type { Page, PageSlice } from './pageModel'
-import { FIRST_PAGE_ID } from './pageModel'
+import { FIRST_PAGE_ID, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_HEIGHT_PX, millimetresToPx } from './pageModel'
 
 // #############
 // # CONSTANTS #
@@ -65,6 +65,63 @@ export interface LayoutMetrics {
    /** For a splittable `list`/`checklist` block, the consumed height of each ROOT item in order;
     *  `null` for any non-splittable block (measured as one atomic unit via `blockHeight`). */
    listItemHeights: (blockId: string) => number[] | null
+}
+
+/**
+ * The rendered heights read from the DOM (CSS px), keyed by stable model id so they survive
+ * re-pagination (a split changes which sheet a unit sits on, never its width, hence never its height).
+ * The measuring hook (`usePagedLayout`) produces this; `buildMetrics` turns it into a `LayoutMetrics`.
+ * Kept here (pure) so both the editor hook and the App-level consumers (Pages panel, export) build the
+ * SAME metrics and so paginate identically.
+ */
+export interface MeasuredHeights {
+   header:         number
+   titleBySection: Map<string, number>
+   blockById:      Map<string, number>
+   listItemById:   Map<string, number>
+}
+
+export const EMPTY_HEIGHTS: MeasuredHeights = {
+   header: 0, titleBySection: new Map(), blockById: new Map(), listItemById: new Map(),
+}
+
+/**
+ * Build the paginator's height oracle from measured heights and the model (which names the splittable
+ * list blocks and their root item ids). An unmeasured item (a freshly added one, before the next
+ * measure) is ESTIMATED from the average of the list's measured items, so adding an item keeps the
+ * existing split stable instead of flashing the whole list back onto one page. A list with ZERO
+ * measured items stays atomic (the one-time bootstrap before the first measure).
+ */
+export function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetrics {
+   const listRootItemIds = new Map<string, string[]>()
+   for (const section of sections)
+      for (const block of section.blocks)
+         if ((block.type === 'list' || block.type === 'checklist') && block.items && block.items.length > 0)
+            listRootItemIds.set(block.id, block.items.map(item => item.id))
+
+   return {
+      headerHeight:       heights.header,
+      sectionTitleHeight: (sectionId) => heights.titleBySection.get(sectionId) ?? 0,
+      blockHeight:        (blockId) => heights.blockById.get(blockId) ?? 0,
+      listItemHeights:    (blockId) => {
+         const rootIds = listRootItemIds.get(blockId)
+         if (!rootIds) return null
+         const measured = rootIds.map(itemId => heights.listItemById.get(itemId))
+         const known = measured.filter((height): height is number => height !== undefined)
+         if (known.length === 0) return null
+         const average = known.reduce((sum, height) => sum + height, 0) / known.length
+         return measured.map(height => height ?? average)
+      },
+   }
+}
+
+/** The A4 content-box height (sheet height minus top/bottom margins) for a format, in CSS px. The
+ *  available height every paged consumer feeds `paginate`; shared so the editor, Pages panel, and
+ *  export agree to the pixel. */
+export function contentBoxHeightPx(format: DocFormat | undefined): number {
+   const sheetHeight = format?.kind === 'a4-landscape' ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
+   const margins = format?.margins ?? DEFAULT_A4_MARGINS
+   return sheetHeight - millimetresToPx(margins.top) - millimetresToPx(margins.bottom)
 }
 
 // ##########
