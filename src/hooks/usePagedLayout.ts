@@ -2,7 +2,8 @@
 import { useEffect, useRef } from 'react'
 
 // -- Lib Imports --
-import { paginate, buildMetrics, EMPTY_HEIGHTS, type MeasuredHeights } from '../lib/pageLayout'
+import { paginate, buildMetrics, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
+import { countCharsToPosition } from '../lib/inlineFormatting'
 import type { Page } from '../lib/pageModel'
 import type { PageBreak } from '../lib/format'
 import type { Section } from '../types'
@@ -23,6 +24,10 @@ interface UsePagedLayoutOptions {
     *  same source. This hook only measures the DOM and reports back through `onHeightsChange`. */
    heights:         MeasuredHeights
    onHeightsChange: (heights: MeasuredHeights) => void
+   /** Block ids kept whole (never split) during pagination. The App feeds every paragraph id here so
+    *  the editor renders paragraphs whole and stays in lockstep with the Pages panel (which paginates
+    *  from the same set); export paginates with none, so paragraphs split there. */
+   atomicBlockIds:  Set<string>
 }
 
 interface UsePagedLayoutResult {
@@ -63,11 +68,109 @@ function sameNumberMap(left: Map<string, number>, right: Map<string, number>): b
    return true
 }
 
+function sameLines(left: ParagraphLine[], right: ParagraphLine[]): boolean {
+   if (left.length !== right.length) return false
+   for (let index = 0; index < left.length; index += 1)
+      if (left[index].height !== right[index].height || left[index].charEnd !== right[index].charEnd) return false
+   return true
+}
+
+function sameParagraphLinesMap(left: Map<string, ParagraphLine[]>, right: Map<string, ParagraphLine[]>): boolean {
+   if (left.size !== right.size) return false
+   for (const [key, value] of left) {
+      const other = right.get(key)
+      if (!other || !sameLines(value, other)) return false
+   }
+   return true
+}
+
 function sameHeights(left: MeasuredHeights, right: MeasuredHeights): boolean {
    return left.header === right.header
       && sameNumberMap(left.titleBySection, right.titleBySection)
       && sameNumberMap(left.blockById, right.blockById)
       && sameNumberMap(left.listItemById, right.listItemById)
+      && sameParagraphLinesMap(left.paragraphLinesById, right.paragraphLinesById)
+}
+
+/** The paragraph block ids in the flow paired with their model richText length (char count, `\n`
+ *  counted once), so a measured line's end offset can be clamped to the paragraph's own length. Only
+ *  top-level `p` blocks are measured (only those can be split by the paginator). */
+function collectParagraphCharCounts(sections: Section[]): Map<string, number> {
+   const counts = new Map<string, number>()
+   for (const section of sections)
+      for (const block of section.blocks)
+         if (block.type === 'p')
+            counts.set(block.id, (block.richText ?? []).reduce((sum, run) => sum + run.text.length, 0))
+   return counts
+}
+
+/** Map a viewport point to a flat char offset within `root`, via the browser's point-to-caret API
+ *  (`caretPositionFromPoint` in most engines, `caretRangeFromPoint` in WebKit/Blink). Returns -1 when
+ *  neither resolves a caret inside `root`. */
+function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clientY: number): number {
+   let node: Node | null = null
+   let offset = 0
+   const withCaretPosition = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+   }
+   if (typeof withCaretPosition.caretPositionFromPoint === 'function') {
+      const position = withCaretPosition.caretPositionFromPoint(clientX, clientY)
+      if (position) { node = position.offsetNode; offset = position.offset }
+   }
+   if (!node && typeof document.caretRangeFromPoint === 'function') {
+      const range = document.caretRangeFromPoint(clientX, clientY)
+      if (range) { node = range.startContainer; offset = range.startOffset }
+   }
+   if (!node || !root.contains(node)) return -1
+   return countCharsToPosition(root, node, offset)
+}
+
+/**
+ * Measure the rendered visual lines of a paragraph's text element. Uses `Range.getClientRects()` over
+ * the element content (one rect per line box, though rich runs split a line into several boxes, so the
+ * rects are grouped back into lines by vertical band). Each line's END char offset comes from a
+ * point-to-caret hit-test at the line's right edge, mapped to a flat offset; the last line is pinned to
+ * the paragraph's own char length so a trailing-edge miss never drops the final characters.
+ */
+function measureParagraphLines(element: HTMLElement, totalChars: number): ParagraphLine[] {
+   const range = document.createRange()
+   range.selectNodeContents(element)
+   const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 || rect.height > 0)
+   if (rects.length === 0) return []
+
+   // Group rects into visual lines: a rect on the same line vertically overlaps the current band; a
+   // rect that drops below the band's bottom starts a new line.
+   interface Band { top: number; bottom: number; right: number }
+   const bands: Band[] = []
+   for (const rect of rects) {
+      const current = bands[bands.length - 1]
+      if (current && rect.top < current.bottom - 1) {
+         current.bottom = Math.max(current.bottom, rect.bottom)
+         current.right  = Math.max(current.right, rect.right)
+      } else {
+         bands.push({ top: rect.top, bottom: rect.bottom, right: rect.right })
+      }
+   }
+
+   const lines: ParagraphLine[] = []
+   let previousCharEnd = 0
+   for (let index = 0; index < bands.length; index += 1) {
+      const band   = bands[index]
+      const height = Math.round(band.bottom - band.top)
+      const isLast = index === bands.length - 1
+      let charEnd: number
+      if (isLast) {
+         charEnd = totalChars
+      } else {
+         const mapped = caretCharOffsetAtPoint(element, band.right, (band.top + band.bottom) / 2)
+         charEnd = mapped < 0 ? previousCharEnd : mapped
+      }
+      // Keep offsets strictly increasing so no fragment is empty, and never past the paragraph length.
+      if (charEnd <= previousCharEnd) charEnd = Math.min(previousCharEnd + 1, totalChars)
+      lines.push({ height, charEnd })
+      previousCharEnd = charEnd
+   }
+   return lines
 }
 
 /** Pages that hold a single atomic block taller than the whole content area: auto-reflow cannot help
@@ -102,7 +205,7 @@ function findTooTallPages(pages: Page[], heights: MeasuredHeights, availableHeig
  * derivation: nothing here touches the serialized model.
  */
 export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutResult {
-   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange } = options
+   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds } = options
 
    const containerElementRef = useRef<HTMLElement | null>(null)
    const heightsRef = useRef(heights)
@@ -113,7 +216,7 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
    // heights arrive and the split resolves.
    const effectiveHeights = enabled ? heights : EMPTY_HEIGHTS
    const metrics = buildMetrics(effectiveHeights, sections)
-   const pages = paginate(sections, forcedBreaks, availableHeight, metrics)
+   const pages = paginate(sections, forcedBreaks, availableHeight, metrics, atomicBlockIds)
    const tooTallPageIds = enabled ? findTooTallPages(pages, heights, availableHeight) : new Set<string>()
 
    function measure(): void {
@@ -125,10 +228,11 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
 
       const headerElement = container.querySelector<HTMLElement>('.page-header')
       const next: MeasuredHeights = {
-         header:         headerElement ? outerHeight(headerElement) : 0,
-         titleBySection: new Map(),
-         blockById:      new Map(),
-         listItemById:   new Map(),
+         header:             headerElement ? outerHeight(headerElement) : 0,
+         titleBySection:     new Map(),
+         blockById:          new Map(),
+         listItemById:       new Map(),
+         paragraphLinesById: new Map(),
       }
       for (const sectionElement of container.querySelectorAll<HTMLElement>('[data-section-id]')) {
          const sectionId = sectionElement.getAttribute('data-section-id')
@@ -143,6 +247,18 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
       for (const itemElement of container.querySelectorAll<HTMLElement>('[data-list-item-id]')) {
          const itemId = itemElement.getAttribute('data-list-item-id')
          if (itemId && !next.listItemById.has(itemId)) next.listItemById.set(itemId, outerHeight(itemElement))
+      }
+      // Paragraph line boxes: for each top-level `p` block, measure the rendered lines of its rich-text
+      // element. First occurrence wins (a split paragraph renders under the same id on several sheets,
+      // though in this stage the editor keeps paragraphs whole).
+      const paragraphCharCounts = collectParagraphCharCounts(sections)
+      for (const blockElement of container.querySelectorAll<HTMLElement>('[data-block-id]')) {
+         const blockId = blockElement.getAttribute('data-block-id')
+         if (!blockId || !paragraphCharCounts.has(blockId) || next.paragraphLinesById.has(blockId)) continue
+         const textElement = blockElement.querySelector<HTMLElement>('[data-rich]')
+         if (!textElement) continue
+         const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
+         if (lines.length > 0) next.paragraphLinesById.set(blockId, lines)
       }
 
       if (!sameHeights(heightsRef.current, next)) onHeightsChange(next)

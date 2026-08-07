@@ -32,7 +32,7 @@ import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument } from './lib/export'
-import { paginate, buildMetrics, contentBoxHeightPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
+import { paginate, buildMetrics, contentBoxHeightPx, allParagraphIds, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
 import type { Page } from './lib/pageModel'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
@@ -694,8 +694,15 @@ export default function App() {
    const [measuredHeights, setMeasuredHeights] = useState<MeasuredHeights>(EMPTY_HEIGHTS)
    useEffect(() => { setMeasuredHeights(EMPTY_HEIGHTS) }, [activeTabKey])
    const pagedDocument = !!format && format.kind !== 'infinite'
+   const layoutMetrics = buildMetrics(measuredHeights, sections)
+   // Every paragraph id, held atomic for the editor + Pages panel so paragraphs render WHOLE (and stay
+   // editable) there; export paginates with an empty atomic set so paragraphs split across sheets.
+   const paragraphAtomicIds = allParagraphIds(sections)
    const laidOutPages: Page[] = pagedDocument
-      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), buildMetrics(measuredHeights, sections))
+      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, paragraphAtomicIds)
+      : []
+   const exportPages: Page[] = pagedDocument
+      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, new Set<string>())
       : []
 
    // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
@@ -708,8 +715,8 @@ export default function App() {
    // Save as PDF from the Pages panel: the browser print dialog over the paged export HTML, using the
    // document's own theme / accent / presentation / format. The Pages panel exists only for paged docs.
    const handleSaveAsPdf = useCallback(() => {
-      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: laidOutPages })
-   }, [meta, sections, docTheme, docAccent, lang, presentation, format, laidOutPages])
+      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: exportPages })
+   }, [meta, sections, docTheme, docAccent, lang, presentation, format, exportPages])
 
    // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
    // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
@@ -935,7 +942,7 @@ export default function App() {
             onOpenPresentation={handleOpenPresentation}
             onOpenNav={handleOpenNav}
             format={format}
-            pagedLayout={laidOutPages}
+            pagedLayout={exportPages}
             onOpenFormat={handleOpenFormat}
          />
 
@@ -1037,6 +1044,7 @@ export default function App() {
                               onSetMode={handleSetMode}
                               measuredHeights={measuredHeights}
                               onMeasuredHeights={setMeasuredHeights}
+                              atomicBlockIds={paragraphAtomicIds}
                            />
                         ),
                         mintdown: (

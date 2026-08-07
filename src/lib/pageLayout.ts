@@ -6,13 +6,16 @@
  * (and a single block taller than the page dead-ends). This module fills that gap: given the rendered
  * HEIGHTS of the content (measured from the DOM, never predicted) plus the available content height,
  * it greedily fills each sheet and, when a `list`/`checklist` block would overrun, splits it at the
- * last root item that fits and continues the remainder on the next sheet. Other block types stay
- * atomic (moved whole to the next sheet, or left to overflow when taller than a whole page).
+ * last root item that fits and continues the remainder on the next sheet. A `p` block splits the same
+ * way at a rendered-line boundary (when its per-line metrics are known and it is not held atomic).
+ * Other block types stay atomic (moved whole to the next sheet, or left to overflow when taller than a
+ * whole page).
  *
  * Reflow is a LAYOUT DERIVATION, never a model mutation: the Section/Block flow is untouched. A
  * spanning list is expressed as SHALLOW-COPIED list blocks whose `items` hold only that page's slice,
- * so the existing slice renderers (editor `renderPageSlice`, export `exportBlock`) need no
- * fragment-awareness; a continuation simply renders as another `<ul>`.
+ * and a spanning paragraph as shallow `p` blocks whose `richText` holds only that page's char slice, so
+ * the existing slice renderers (editor `renderPageSlice`, export `exportBlock`) need no
+ * fragment-awareness; a continuation simply renders as another `<ul>` or `<p>`.
  *
  * Heights are width-stable: an item / block height depends only on the content width (constant across
  * sheets of one format), never on where the break lands, so the caller measures once per content
@@ -26,6 +29,7 @@
  */
 
 import type { Block, Section } from '../types'
+import { splitInlineContent } from './inline'
 import { DEFAULT_A4_MARGINS, type DocFormat, type PageBreak } from './format'
 import type { Page, PageSlice } from './pageModel'
 import { FIRST_PAGE_ID, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_HEIGHT_PX, millimetresToPx } from './pageModel'
@@ -49,6 +53,14 @@ export function isAutoPageId(pageId: string): boolean {
 // # TYPES #
 // #########
 
+/** One rendered visual line of a splittable paragraph: the height it consumes and the char offset at
+ *  its END, measured over the paragraph's OWN richText (so a split after this line cuts the richText at
+ *  `charEnd`). `charEnd` counts every character, with `\n` (a `<br>`) as one, matching splitInlineContent. */
+export interface ParagraphLine {
+   height:  number
+   charEnd: number
+}
+
 /**
  * The height oracle the paginator reads, in CSS px. Supplied by the measuring hook from the real DOM
  * (or by tests as synthetic numbers). Every height INCLUDES the element's own top + bottom margin, so
@@ -65,6 +77,9 @@ export interface LayoutMetrics {
    /** For a splittable `list`/`checklist` block, the consumed height of each ROOT item in order;
     *  `null` for any non-splittable block (measured as one atomic unit via `blockHeight`). */
    listItemHeights: (blockId: string) => number[] | null
+   /** For a splittable `p` block, its rendered lines in order (height + end char offset each); `null`
+    *  for any other block type, and for a `p` not measured yet (kept atomic until its lines are known). */
+   paragraphLines: (blockId: string) => ParagraphLine[] | null
 }
 
 /**
@@ -75,14 +90,16 @@ export interface LayoutMetrics {
  * SAME metrics and so paginate identically.
  */
 export interface MeasuredHeights {
-   header:         number
-   titleBySection: Map<string, number>
-   blockById:      Map<string, number>
-   listItemById:   Map<string, number>
+   header:             number
+   titleBySection:     Map<string, number>
+   blockById:          Map<string, number>
+   listItemById:       Map<string, number>
+   paragraphLinesById: Map<string, ParagraphLine[]>
 }
 
 export const EMPTY_HEIGHTS: MeasuredHeights = {
    header: 0, titleBySection: new Map(), blockById: new Map(), listItemById: new Map(),
+   paragraphLinesById: new Map(),
 }
 
 /**
@@ -94,10 +111,13 @@ export const EMPTY_HEIGHTS: MeasuredHeights = {
  */
 export function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetrics {
    const listRootItemIds = new Map<string, string[]>()
+   const paragraphBlockIds = new Set<string>()
    for (const section of sections)
-      for (const block of section.blocks)
+      for (const block of section.blocks) {
          if ((block.type === 'list' || block.type === 'checklist') && block.items && block.items.length > 0)
             listRootItemIds.set(block.id, block.items.map(item => item.id))
+         if (block.type === 'p') paragraphBlockIds.add(block.id)
+      }
 
    return {
       headerHeight:       heights.header,
@@ -112,7 +132,31 @@ export function buildMetrics(heights: MeasuredHeights, sections: Section[]): Lay
          const average = known.reduce((sum, height) => sum + height, 0) / known.length
          return measured.map(height => height ?? average)
       },
+      paragraphLines:     (blockId) => {
+         // Only a `p` block splits; and only once its lines are measured. A freshly typed paragraph
+         // with no measured lines stays atomic (null) so it is never split at a stale offset.
+         if (!paragraphBlockIds.has(blockId)) return null
+         const lines = heights.paragraphLinesById.get(blockId)
+         if (!lines || lines.length === 0) return null
+         return lines
+      },
    }
+}
+
+/** Every `p` block id in the flow (walking container columns too). Fed to `paginate` as its atomic set
+ *  by the editor and Pages panel so paragraphs render WHOLE there, while export passes an empty set so
+ *  they split across sheets. */
+export function allParagraphIds(sections: Section[]): Set<string> {
+   const ids = new Set<string>()
+   function walk(blocks: Block[]): void {
+      for (const block of blocks) {
+         if (block.type === 'p') ids.add(block.id)
+         if (block.left)  walk(block.left)
+         if (block.right) walk(block.right)
+      }
+   }
+   for (const section of sections) walk(section.blocks)
+   return ids
 }
 
 /** The A4 content-box height (sheet height minus top/bottom margins) for a format, in CSS px. The
@@ -134,6 +178,15 @@ function sliceListBlock(block: Block, start: number, end: number): Block {
    return { ...block, items: (block.items ?? []).slice(start, end) }
 }
 
+/** A shallow render-copy of a `p` block whose richText is the `[charStart, charEnd)` slice of the model
+ *  richText, tagged with its fragment range for the renderer. Same block id; the model block is never
+ *  mutated. `paragraphFragment` is transient (render-only) and never serialized. */
+function sliceParagraphBlock(block: Block, charStart: number, charEnd: number, isTail: boolean): Block {
+   const [, fromStart] = splitInlineContent(block.richText ?? [], charStart)
+   const [slice]       = splitInlineContent(fromStart, charEnd - charStart)
+   return { ...block, richText: slice, paragraphFragment: { charStart, charEnd, isTail } }
+}
+
 // ##############
 // # PAGINATE   #
 // ##############
@@ -142,14 +195,16 @@ function sliceListBlock(block: Block, start: number, end: number): Block {
  * Lay the section/block flow out into height-fitted pages. Honours explicit breaks exactly like
  * `partitionIntoPages` (leading `after:null` breaks are blank pages, breaks stacked on one anchor are
  * consecutive blanks), then auto-flows the content between them so nothing overruns a sheet. Always
- * returns at least one page. Pure: it re-references the same Block objects (list fragments are shallow
- * copies) and never mutates `sections`.
+ * returns at least one page. Pure: it re-references the same Block objects (list / paragraph fragments
+ * are shallow copies) and never mutates `sections`. A `p` block whose id is in `atomicBlockIds` (or
+ * whose lines are unmeasured) stays whole; otherwise it splits across sheets at a line boundary.
  */
 export function paginate(
    sections:        Section[],
    forcedBreaks:    PageBreak[],
    availableHeight: number,
    metrics:         LayoutMetrics,
+   atomicBlockIds:  Set<string> = new Set(),
 ): Page[] {
    // Explicit-break maps, identical to pageModel.partitionIntoPages.
    const breaksAfterBlockId = new Map<string, PageBreak[]>()
@@ -247,10 +302,55 @@ export function paginate(
    pages.push({ id: pageId, slices })
    return pages
 
-   // Place one block on the current page, auto-breaking (and, for a splittable list, splitting) so it
-   // fits. `openSlice` is guaranteed non-null on entry.
+   // Place one block on the current page, auto-breaking (and, for a splittable list or paragraph,
+   // splitting) so it fits. `openSlice` is guaranteed non-null on entry.
    function placeBlock(block: Block): void {
-      const itemHeights = metrics.listItemHeights(block.id)
+      const itemHeights    = metrics.listItemHeights(block.id)
+      const paragraphLines = metrics.paragraphLines(block.id)
+      // A paragraph splits only when its lines are known AND it is not held atomic (the editor / Pages
+      // panel pass every paragraph id as atomic so they render whole; export passes none).
+      const splitParagraph = !!paragraphLines && paragraphLines.length > 0 && !atomicBlockIds.has(block.id)
+
+      if (splitParagraph) {
+         // Splittable paragraph: fill rendered lines across pages, cutting the richText at the char
+         // offset ending the last line that fits. Continuation page keys use a continuation ORDINAL
+         // (not the line index) so nudging the boundary while typing keeps the key stable, exactly like
+         // the list branch below.
+         const lines = paragraphLines!
+         let startLine    = 0
+         let charStart    = 0
+         let continuation = 0
+         while (startLine < lines.length) {
+            let endLine = startLine
+            let sum     = 0
+            for (let index = startLine; index < lines.length; index += 1) {
+               const next = sum + lines[index].height
+               // Stop before the first line that crosses the boundary, but always take at least one line
+               // when the page is otherwise empty (else an oversized line would loop forever).
+               if (next > remaining() && (index > startLine || used > 0)) break
+               sum = next
+               endLine = index + 1
+            }
+
+            if (endLine === startLine) {
+               autoBreak(`${block.id}:c${continuation}`, true)
+               continuation += 1
+               continue
+            }
+
+            const charEnd = lines[endLine - 1].charEnd
+            const isTail  = endLine === lines.length
+            openSlice!.blocks.push(sliceParagraphBlock(block, charStart, charEnd, isTail))
+            used += sum
+            charStart = charEnd
+            startLine = endLine
+            if (startLine < lines.length) {
+               autoBreak(`${block.id}:c${continuation}`, true)
+               continuation += 1
+            }
+         }
+         return
+      }
 
       if (!itemHeights || itemHeights.length === 0) {
          // Atomic block: keep it whole. Move to a fresh page when it does not fit under existing

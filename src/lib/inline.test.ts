@@ -6,6 +6,7 @@ import {
    inlineContentEquals,
    stripTrailingNewlines,
    isEmptyContent,
+   splitInlineContent,
 } from './inline'
 import type { InlineContent } from '../types'
 
@@ -148,5 +149,118 @@ describe('isEmptyContent', () => {
 
    it('treats any real content as non-empty', () => {
       expect(isEmptyContent([{ text: '  ' }, { text: 'x' }])).toBe(false)
+   })
+})
+
+/** Concatenate every run's text, the plain-text equivalent of an InlineContent array. */
+function flattenText(content: InlineContent): string {
+   return content.map(run => run.text).join('')
+}
+
+describe('splitInlineContent', () => {
+   const mixedContent: InlineContent = [
+      { text: 'plain ' },
+      { text: 'bold', bold: true },
+      { text: ' normal ' },
+      { text: 'link', link: 'https://example.com' },
+      { text: ' tail' },
+   ]
+
+   it('concatenates back to the original text at every offset', () => {
+      const totalLength = flattenText(mixedContent).length
+      for (let offset = 0; offset <= totalLength; offset++) {
+         const [before, after] = splitInlineContent(mixedContent, offset)
+         expect(flattenText(before) + flattenText(after)).toBe(flattenText(mixedContent))
+      }
+   })
+
+   it('returns an empty first half and a clone of the content when offset is 0', () => {
+      const [before, after] = splitInlineContent(mixedContent, 0)
+      expect(before).toEqual([])
+      expect(after).toEqual(mixedContent)
+      expect(after[0]).not.toBe(mixedContent[0])
+   })
+
+   it('returns an empty first half for a negative offset', () => {
+      const [before, after] = splitInlineContent(mixedContent, -5)
+      expect(before).toEqual([])
+      expect(after).toEqual(mixedContent)
+   })
+
+   it('returns an empty second half when offset is at the total length', () => {
+      const totalLength = flattenText(mixedContent).length
+      const [before, after] = splitInlineContent(mixedContent, totalLength)
+      expect(before).toEqual(mixedContent)
+      expect(after).toEqual([])
+   })
+
+   it('returns an empty second half for an offset past the total length', () => {
+      const totalLength = flattenText(mixedContent).length
+      const [before, after] = splitInlineContent(mixedContent, totalLength + 50)
+      expect(before).toEqual(mixedContent)
+      expect(after).toEqual([])
+   })
+
+   it('returns two empty halves for empty content', () => {
+      expect(splitInlineContent([], 3)).toEqual([[], []])
+   })
+
+   it('keeps runs whole when the split falls exactly on a run boundary', () => {
+      const content: InlineContent = [{ text: 'abc', bold: true }, { text: 'def' }]
+      const [before, after] = splitInlineContent(content, 3)
+      expect(before).toEqual([{ text: 'abc', bold: true }])
+      expect(after).toEqual([{ text: 'def' }])
+   })
+
+   it('splits a marked run in two, both halves carrying the same marks', () => {
+      const content: InlineContent = [{ text: 'abcdef', bold: true, color: '#ff0000' }]
+      const [before, after] = splitInlineContent(content, 2)
+      expect(before).toEqual([{ text: 'ab', bold: true, color: '#ff0000' }])
+      expect(after).toEqual([{ text: 'cdef', bold: true, color: '#ff0000' }])
+   })
+
+   it('splits inside a link run when content mixes bold, a link, and plain text', () => {
+      // 'plain '(6) + 'bold'(4) + ' normal '(8) = 18 characters before the link run starts;
+      // offset 20 lands two characters into 'link', splitting it into 'li' | 'nk'.
+      const [before, after] = splitInlineContent(mixedContent, 20)
+      expect(before).toEqual([
+         { text: 'plain ' },
+         { text: 'bold', bold: true },
+         { text: ' normal ' },
+         { text: 'li', link: 'https://example.com' },
+      ])
+      expect(after).toEqual([
+         { text: 'nk', link: 'https://example.com' },
+         { text: ' tail' },
+      ])
+   })
+
+   it('splits inside a run that contains a newline, keeping the newline on its side', () => {
+      const content: InlineContent = [{ text: 'line one\nline two', italic: true }]
+      const [before, after] = splitInlineContent(content, 9)
+      expect(before).toEqual([{ text: 'line one\n', italic: true }])
+      expect(after).toEqual([{ text: 'line two', italic: true }])
+   })
+
+   it('does not share run objects between the two halves or with the input', () => {
+      const content: InlineContent = [{ text: 'abcdef', bold: true }]
+      const [before, after] = splitInlineContent(content, 3)
+      expect(before[0]).not.toBe(content[0])
+      expect(after[0]).not.toBe(content[0])
+      expect(before[0]).not.toBe(after[0])
+
+      // Mutating a returned run must not affect the original content.
+      before[0].text = 'mutated'
+      expect(content[0].text).toBe('abcdef')
+   })
+
+   it('merges back into a single run when a split point falls where marks are identical on both sides', () => {
+      // Two adjacent runs sharing the same marks are already merged by the stored
+      // invariant, but the split path re-collapses from characters, this checks it
+      // still produces one run rather than two identical-mark runs.
+      const content: InlineContent = [{ text: 'hello world', underline: true }]
+      const [before, after] = splitInlineContent(content, 5)
+      expect(before).toHaveLength(1)
+      expect(after).toHaveLength(1)
    })
 })

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { paginate, isAutoPageId, AUTO_PAGE_PREFIX, type LayoutMetrics } from './pageLayout'
+import { paginate, buildMetrics, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
 import { FIRST_PAGE_ID } from './pageModel'
 import type { Block, Section, ListItem } from '../types'
 
@@ -24,18 +24,21 @@ function section(id: string, blocks: Block[]): Section {
    return { id, title: id, collapsed: false, blocks }
 }
 
-// A synthetic height oracle: uniform section title height, per-block heights, and per-list item heights.
+// A synthetic height oracle: uniform section title height, per-block heights, per-list item heights,
+// and per-paragraph rendered lines.
 function metricsFrom(spec: {
-   headerHeight?: number
-   titleHeight?:  number
-   blockHeights:  Record<string, number>
-   listItems?:    Record<string, number[]>
+   headerHeight?:   number
+   titleHeight?:    number
+   blockHeights:    Record<string, number>
+   listItems?:      Record<string, number[]>
+   paragraphLines?: Record<string, ParagraphLine[]>
 }): LayoutMetrics {
    return {
       headerHeight:       spec.headerHeight ?? 0,
       sectionTitleHeight: () => spec.titleHeight ?? 0,
       blockHeight:        (blockId) => spec.blockHeights[blockId] ?? 0,
       listItemHeights:    (blockId) => spec.listItems?.[blockId] ?? null,
+      paragraphLines:     (blockId) => spec.paragraphLines?.[blockId] ?? null,
    }
 }
 
@@ -136,6 +139,94 @@ describe('paginate — list splitting', () => {
       const pages = paginate(sections, [], 100, metrics)
       expect(pages).toHaveLength(1)
       expect(pages[0].slices[0].blocks[0].items?.length).toBe(3)
+   })
+})
+
+describe('paginate — paragraph splitting', () => {
+   // A `p` block whose richText is `length` chars long, so a fragment's sliced richText is verifiable.
+   function paragraphBlock(id: string, length: number): Block {
+      return { id, type: 'p', richText: [{ text: 'x'.repeat(length) }] }
+   }
+   function fragmentOf(block: Block | undefined) {
+      return block?.paragraphFragment
+   }
+
+   it('splits a paragraph across two pages at the last line that fits', () => {
+      const sections = [section('S', [paragraphBlock('P', 40)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      // page 1 has 90 left after the title; lines 0..2 (90) fit, line 3 flows over.
+      const pages = paginate(sections, [], 100, metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } }))
+      expect(pages).toHaveLength(2)
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toEqual({ charStart: 0, charEnd: 30, isTail: false })
+      expect(fragmentOf(pages[1].slices[0].blocks[0])).toEqual({ charStart: 30, charEnd: 40, isTail: true })
+      // The sliced richText carries exactly that page's char range, and the block id is shared.
+      expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(30) }])
+      expect(pages[1].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(10) }])
+      expect(pages[0].slices[0].blocks[0].id).toBe('P')
+      expect(pages[1].slices[0].blocks[0].id).toBe('P')
+      expect(pages[0].slices[0].isSectionEnd).toBe(false)
+      expect(pages[1].slices[0].isSectionEnd).toBe(true)
+      expect(isAutoPageId(pages[1].id)).toBe(true)
+   })
+
+   it('splits a paragraph across three pages at the right char offsets', () => {
+      const sections = [section('S', [paragraphBlock('P', 200)])]
+      const lines: ParagraphLine[] = [
+         { height: 40, charEnd: 40 }, { height: 40, charEnd: 80 }, { height: 40, charEnd: 120 },
+         { height: 40, charEnd: 160 }, { height: 40, charEnd: 200 },
+      ]
+      // page 1: 90 left -> lines 0..1 (80); page 2: 100 -> lines 2..3 (80); page 3: line 4.
+      const pages = paginate(sections, [], 100, metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } }))
+      expect(pages).toHaveLength(3)
+      expect(pages.map(page => fragmentOf(page.slices[0].blocks[0])?.charEnd)).toEqual([80, 160, 200])
+      expect(pages.map(page => fragmentOf(page.slices[0].blocks[0])?.charStart)).toEqual([0, 80, 160])
+      expect(pages.map(page => fragmentOf(page.slices[0].blocks[0])?.isTail)).toEqual([false, false, true])
+   })
+
+   it('keeps a paragraph whole when its id is in atomicBlockIds', () => {
+      const sections = [section('S', [paragraphBlock('P', 40)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      // Held atomic: it uses blockHeight('P') (one whole unit) instead of its per-line channel, so it
+      // is never split, only placed or moved whole.
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { P: 50 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics, allParagraphIds(sections))
+      expect(pages).toHaveLength(1)
+      expect(pages[0].slices[0].blocks).toHaveLength(1)
+      // The model block is placed as-is, carrying no fragment tag and its full richText.
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
+      expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(40) }])
+   })
+
+   it('does not split a paragraph that fits on one page', () => {
+      const sections = [section('S', [paragraphBlock('P', 20)])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
+      const pages = paginate(sections, [], 100, metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } }))
+      expect(pages).toHaveLength(1)
+      expect(pages[0].slices[0].blocks).toHaveLength(1)
+      // One fragment covering the whole paragraph (start 0, end = length, tail), so nothing crosses a seam.
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toEqual({ charStart: 0, charEnd: 20, isTail: true })
+   })
+
+   it('never splits an h3 or callout, even with stray paragraph-line measurements', () => {
+      // The type gate lives in buildMetrics: only `p` blocks get a non-null paragraphLines channel.
+      const sections = [section('S', [block('H', 'h3'), block('C', 'callout')])]
+      const heights: MeasuredHeights = {
+         header: 0, titleBySection: new Map(), blockById: new Map(),
+         listItemById: new Map(),
+         paragraphLinesById: new Map([
+            ['H', [{ height: 30, charEnd: 5 }, { height: 30, charEnd: 10 }]],
+            ['C', [{ height: 30, charEnd: 5 }, { height: 30, charEnd: 10 }]],
+         ]),
+      }
+      const metrics = buildMetrics(heights, sections)
+      expect(metrics.paragraphLines('H')).toBeNull()
+      expect(metrics.paragraphLines('C')).toBeNull()
    })
 })
 

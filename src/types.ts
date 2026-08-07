@@ -104,6 +104,12 @@ export interface Block {
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks
    handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" -> href="#my-note")
+   /** RENDER-ONLY, set by the paginator on a shallow-copied `p` fragment when a paragraph is split
+    *  across page sheets. Names the fragment's char range within the model richText and whether it is
+    *  the final piece, so a renderer can identify a fragment and its offset (paragraphs carry no item
+    *  ids to match on, unlike lists). Transient: the model block never carries it and no serializer
+    *  reads it, so it never reaches any .mint / .md / .documinter.json output. Absent on a whole block. */
+   paragraphFragment?: { charStart: number; charEnd: number; isTail: boolean }
 }
 
 export interface Section {

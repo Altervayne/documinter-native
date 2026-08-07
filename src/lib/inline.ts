@@ -11,6 +11,7 @@
  *   isEmptyContent          , true if array is empty or all-whitespace
  *   inlineContentEquals     , deep equality check
  *   computeCursorPosition   , derive CursorPosition from the browser Selection API
+ *   splitInlineContent      , split content into two halves at a character offset
  *
  * Almost all functions are pure. The DOM-aware exceptions, domToInlineContent and
  * computeCursorPosition, READ live DOM state without modifying it. The color application
@@ -131,6 +132,59 @@ export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
       }
    }
    return result
+}
+
+// ###########################################################
+// # PRIVATE HELPERS, CHARACTER-LEVEL SPLIT (splitInlineContent) #
+// ###########################################################
+
+/** One character of InlineContent paired with the run it came from. */
+interface CharacterEntry {
+   character: string
+   run:       InlineRun
+}
+
+/** Explode InlineContent into one entry per character, run marks carried along. */
+function explodeIntoCharacters(content: InlineContent): CharacterEntry[] {
+   const characters: CharacterEntry[] = []
+   for (const run of content) {
+      for (const character of run.text) {
+         characters.push({ character, run })
+      }
+   }
+   return characters
+}
+
+/** Returns true when two runs carry identical formatting marks (ignoring text). */
+function runMarksEqual(runA: InlineRun, runB: InlineRun): boolean {
+   return !!runA.bold          === !!runB.bold
+       && !!runA.italic        === !!runB.italic
+       && !!runA.underline     === !!runB.underline
+       && !!runA.strikethrough === !!runB.strikethrough
+       && (runA.link      ?? '') === (runB.link      ?? '')
+       && (runA.color     ?? '') === (runB.color     ?? '')
+       && (runA.highlight ?? '') === (runB.highlight ?? '')
+}
+
+/**
+ * Collapse character entries back into runs, merging consecutive characters whose
+ * marks match into a single run. Inverse of explodeIntoCharacters.
+ */
+function collapseCharactersIntoRuns(characters: CharacterEntry[]): InlineContent {
+   if (characters.length === 0) return []
+   const runs: InlineRun[] = []
+   let currentRun: InlineRun = { ...characters[0].run, text: characters[0].character }
+   for (let index = 1; index < characters.length; index++) {
+      const entry = characters[index]
+      if (runMarksEqual(entry.run, currentRun)) {
+         currentRun = { ...currentRun, text: currentRun.text + entry.character }
+      } else {
+         runs.push(currentRun)
+         currentRun = { ...entry.run, text: entry.character }
+      }
+   }
+   runs.push(currentRun)
+   return runs
 }
 
 // ###################################################################################
@@ -597,4 +651,28 @@ export function computeCursorPosition(element: HTMLElement): CursorPosition | nu
    // Cursor is past the last run (e.g. empty content)
    const lastRunIndex = Math.max(0, currentContent.length - 1)
    return { runIndex: lastRunIndex, offset: currentContent[lastRunIndex]?.text.length ?? 0 }
+}
+
+/**
+ * Split a paragraph's InlineContent into two independent halves at a character offset.
+ * Foundation for splitting a paragraph across a page boundary during layout.
+ *
+ * charOffset is 0-based over the concatenation of every run's text ('\n' counts as one
+ * character). The first half covers [0, charOffset), the second covers the rest. A split
+ * that lands inside a run divides it into two runs carrying the same marks; a split on a
+ * run boundary leaves runs whole. Out-of-range offsets clamp, so charOffset <= 0 yields an
+ * empty first half and charOffset >= the total length yields an empty second half.
+ *
+ * Both halves are freshly built: no run object is shared with the input or between the
+ * two halves, and each half is normalised (no empty runs, no adjacent runs with identical
+ * marks left unmerged).
+ */
+export function splitInlineContent(content: InlineContent, charOffset: number): [InlineContent, InlineContent] {
+   const characters    = explodeIntoCharacters(content)
+   const clampedOffset = Math.max(0, Math.min(charOffset, characters.length))
+
+   return [
+      collapseCharactersIntoRuns(characters.slice(0, clampedOffset)),
+      collapseCharactersIntoRuns(characters.slice(clampedOffset)),
+   ]
 }

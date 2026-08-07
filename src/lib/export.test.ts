@@ -91,6 +91,33 @@ describe('generateExportHTML, paged reflow (pagedLayout)', () => {
    })
 })
 
+// A paragraph split across sheets in the paged layout is two shallow `p` blocks whose sliced richText
+// holds only that page's char range; generateExportHTML renders each as its own <p>, in order across
+// the two sheets (the transient paragraphFragment tag is render-only and never affects the markup).
+describe('generateExportHTML, paged reflow (split paragraph)', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+   const paragraph: Block = { id: 'P', type: 'p', richText: [{ text: 'Alpha bravo charlie delta echo foxtrot' }] }
+   const section: Section = { id: 's', title: 'Prose', collapsed: false, blocks: [paragraph] }
+   const fragment = (text: string, charStart: number, charEnd: number, isTail: boolean): Block =>
+      ({ ...paragraph, richText: [{ text }], paragraphFragment: { charStart, charEnd, isTail } })
+
+   it('renders a paragraph split across two sheets as two <p> fragments, one per sheet', () => {
+      const pagedLayout: Page[] = [
+         { id: 'page-first', slices: [{ section, blocks: [fragment('Alpha bravo charlie', 0, 19, false)], isSectionStart: true,  isSectionEnd: false }] },
+         { id: 'auto:P:c0',  slices: [{ section, blocks: [fragment('delta echo foxtrot', 20, 38, true)],  isSectionStart: false, isSectionEnd: true  }] },
+      ]
+      const html = generateExportHTML(meta, [section], {
+         theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait' }, pagedLayout,
+      })
+      // Two physical sheets, and the paragraph split across them as two <p> fragments in order.
+      expect((html.match(/class="doc-page"/g) ?? []).length).toBe(2)
+      expect((html.match(/<p>/g) ?? []).length).toBe(2)
+      expect(html).toContain('<p>Alpha bravo charlie</p>')
+      expect(html).toContain('<p>delta echo foxtrot</p>')
+      expect(html.indexOf('Alpha bravo charlie')).toBeLessThan(html.indexOf('delta echo foxtrot'))
+   })
+})
+
 // The HTML export renders the freeform metadata fields around the title. These checks pin the
 // per-field presentation rules that are not exercised by the serializer round-trips: color
 // resolution and the showLabel value-only mode.

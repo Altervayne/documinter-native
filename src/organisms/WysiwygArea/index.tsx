@@ -51,6 +51,10 @@ import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
 
+// A stable empty set for the atomic-ids fallback, so a missing prop never allocates a fresh Set per
+// render (which would churn the pagination memo needlessly).
+const EMPTY_ATOMIC_BLOCK_IDS: Set<string> = new Set()
+
 interface WysiwygAreaProps {
    meta:      DocMeta
    sections:  Section[]
@@ -115,6 +119,9 @@ interface WysiwygAreaProps {
    // ==========================================================
    measuredHeights?:   MeasuredHeights
    onMeasuredHeights?: (heights: MeasuredHeights) => void
+   /** Block ids kept whole during pagination (App feeds every paragraph id), so the editor renders
+    *  paragraphs whole and stays in lockstep with the Pages panel. */
+   atomicBlockIds?:    Set<string>
 }
 
 export function WysiwygArea({
@@ -124,7 +131,7 @@ export function WysiwygArea({
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
-   measuredHeights, onMeasuredHeights,
+   measuredHeights, onMeasuredHeights, atomicBlockIds,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections, moveBlockAcross } = useDocumentMutations()
@@ -457,6 +464,7 @@ export function WysiwygArea({
       availableHeight: availableContentHeightPx,
       heights:         measuredHeights ?? EMPTY_HEIGHTS,
       onHeightsChange: onMeasuredHeights ?? (() => {}),
+      atomicBlockIds:  atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
    })
    const derivedPages: Page[] | null = paged ? laidOutPages : null
 
