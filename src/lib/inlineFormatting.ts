@@ -13,6 +13,7 @@
  *   runsHaveSameFlags     , true when two runs share identical formatting flags
  *   mergeAdjacentRuns     , collapse neighbouring runs with identical flags
  *   countCharsToPosition  , flat char offset of a (node, offset) within an element
+ *   caretCharOffsetAtPoint, flat char offset under a viewport point within an element
  *   applyColorToRange     , set/clear a color field over a flat char range
  *   restoreSelectionRange , re-select a flat char range after an innerHTML rewrite
  *   deriveActiveColorsAt  , active font/highlight color at a selection position
@@ -85,6 +86,29 @@ export function countCharsToPosition(
 
    for (const child of Array.from(root.childNodes)) walk(child)
    return found ? count : -1
+}
+
+/**
+ * Map a viewport point to a flat char offset within `root`, via the browser's point-to-caret API
+ * (`caretPositionFromPoint` in most engines, `caretRangeFromPoint` in WebKit/Blink). Returns -1 when
+ * neither resolves a caret inside `root`.
+ */
+export function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clientY: number): number {
+   let node: Node | null = null
+   let offset = 0
+   const withCaretPosition = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+   }
+   if (typeof withCaretPosition.caretPositionFromPoint === 'function') {
+      const position = withCaretPosition.caretPositionFromPoint(clientX, clientY)
+      if (position) { node = position.offsetNode; offset = position.offset }
+   }
+   if (!node && typeof document.caretRangeFromPoint === 'function') {
+      const range = document.caretRangeFromPoint(clientX, clientY)
+      if (range) { node = range.startContainer; offset = range.startOffset }
+   }
+   if (!node || !root.contains(node)) return -1
+   return countCharsToPosition(root, node, offset)
 }
 
 /**

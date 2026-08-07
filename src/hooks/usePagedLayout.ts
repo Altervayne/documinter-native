@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 
 // -- Lib Imports --
 import { paginate, buildMetrics, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
-import { countCharsToPosition } from '../lib/inlineFormatting'
+import { caretCharOffsetAtPoint } from '../lib/inlineFormatting'
 import type { Page } from '../lib/pageModel'
 import type { PageBreak } from '../lib/format'
 import type { Section } from '../types'
@@ -24,10 +24,15 @@ interface UsePagedLayoutOptions {
     *  same source. This hook only measures the DOM and reports back through `onHeightsChange`. */
    heights:         MeasuredHeights
    onHeightsChange: (heights: MeasuredHeights) => void
-   /** Block ids kept whole (never split) during pagination. The App feeds every paragraph id here so
-    *  the editor renders paragraphs whole and stays in lockstep with the Pages panel (which paginates
-    *  from the same set); export paginates with none, so paragraphs split there. */
+   /** Block ids kept whole (never split) during pagination. The App feeds the single focused paragraph
+    *  id here so it stays whole while the rest split at rest, in lockstep with the Pages panel (which
+    *  paginates from the same set); export paginates with none, so paragraphs split there. */
    atomicBlockIds:  Set<string>
+   /** The paragraph currently focused for editing, or null. While one is focused its typing lives only
+    *  in the contentEditable DOM until blur commits it, so re-measuring would feed new heights, re-mount
+    *  the editable from the stale committed model, and discard the in-progress text. Measurement freezes
+    *  while this is set; the focus reflow itself is driven by `atomicBlockIds` and keeps working. */
+   focusedParagraphId: string | null
 }
 
 interface UsePagedLayoutResult {
@@ -102,27 +107,6 @@ function collectParagraphCharCounts(sections: Section[]): Map<string, number> {
          if (block.type === 'p')
             counts.set(block.id, (block.richText ?? []).reduce((sum, run) => sum + run.text.length, 0))
    return counts
-}
-
-/** Map a viewport point to a flat char offset within `root`, via the browser's point-to-caret API
- *  (`caretPositionFromPoint` in most engines, `caretRangeFromPoint` in WebKit/Blink). Returns -1 when
- *  neither resolves a caret inside `root`. */
-function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clientY: number): number {
-   let node: Node | null = null
-   let offset = 0
-   const withCaretPosition = document as Document & {
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
-   }
-   if (typeof withCaretPosition.caretPositionFromPoint === 'function') {
-      const position = withCaretPosition.caretPositionFromPoint(clientX, clientY)
-      if (position) { node = position.offsetNode; offset = position.offset }
-   }
-   if (!node && typeof document.caretRangeFromPoint === 'function') {
-      const range = document.caretRangeFromPoint(clientX, clientY)
-      if (range) { node = range.startContainer; offset = range.startOffset }
-   }
-   if (!node || !root.contains(node)) return -1
-   return countCharsToPosition(root, node, offset)
 }
 
 /**
@@ -205,7 +189,7 @@ function findTooTallPages(pages: Page[], heights: MeasuredHeights, availableHeig
  * derivation: nothing here touches the serialized model.
  */
 export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutResult {
-   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds } = options
+   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId } = options
 
    const containerElementRef = useRef<HTMLElement | null>(null)
    const heightsRef = useRef(heights)
@@ -225,6 +209,14 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
          if (heightsRef.current !== EMPTY_HEIGHTS) onHeightsChange(EMPTY_HEIGHTS)
          return
       }
+
+      // A paragraph is being edited: freeze measurement. Its uncommitted text lives only in the DOM,
+      // and feeding new heights now would re-paginate and re-mount the editable from the stale committed
+      // model, wiping the typing. Blur clears `focusedParagraphId`, which re-runs this via the effect
+      // deps below, so the now-committed, longer paragraph is measured and split correctly. The focus
+      // reflow (split -> whole, whole -> split) is driven by `atomicBlockIds` off the EXISTING heights,
+      // so it keeps working while frozen.
+      if (focusedParagraphId) return
 
       const headerElement = container.querySelector<HTMLElement>('.page-header')
       const next: MeasuredHeights = {
@@ -249,16 +241,25 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
          if (itemId && !next.listItemById.has(itemId)) next.listItemById.set(itemId, outerHeight(itemElement))
       }
       // Paragraph line boxes: for each top-level `p` block, measure the rendered lines of its rich-text
-      // element. First occurrence wins (a split paragraph renders under the same id on several sheets,
-      // though in this stage the editor keeps paragraphs whole).
+      // element. A paragraph the editor is splitting at rest renders as read-only fragments (no
+      // [data-rich]) and so cannot be measured; carry its last whole-render lines forward instead. The
+      // lines are width-stable, and any text edit forces the paragraph whole (focused) before it commits,
+      // which re-measures fresh, so a carried-over value is only stale after a width change (the
+      // buildMetrics length guard then keeps the paragraph whole until it is measured again). First
+      // occurrence wins for the same id across sheets.
       const paragraphCharCounts = collectParagraphCharCounts(sections)
+      const previousParagraphLines = heightsRef.current.paragraphLinesById
       for (const blockElement of container.querySelectorAll<HTMLElement>('[data-block-id]')) {
          const blockId = blockElement.getAttribute('data-block-id')
          if (!blockId || !paragraphCharCounts.has(blockId) || next.paragraphLinesById.has(blockId)) continue
          const textElement = blockElement.querySelector<HTMLElement>('[data-rich]')
-         if (!textElement) continue
-         const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
-         if (lines.length > 0) next.paragraphLinesById.set(blockId, lines)
+         if (textElement) {
+            const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
+            if (lines.length > 0) next.paragraphLinesById.set(blockId, lines)
+         } else {
+            const carried = previousParagraphLines.get(blockId)
+            if (carried) next.paragraphLinesById.set(blockId, carried)
+         }
       }
 
       if (!sameHeights(heightsRef.current, next)) onHeightsChange(next)
@@ -281,10 +282,12 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
    const scheduleRef = useRef(scheduleMeasure)
    scheduleRef.current = scheduleMeasure
 
-   // Trigger 1: re-measure after every commit whose model / geometry changed (debounced).
+   // Trigger 1: re-measure after every commit whose model / geometry changed (debounced). Includes
+   // `focusedParagraphId` so clearing it on blur schedules the measure that splits the just-edited
+   // paragraph, and setting it schedules a measure that early-returns (the freeze).
    useEffect(() => {
       scheduleRef.current()
-   }, [enabled, sections, forcedBreaks, availableHeight])
+   }, [enabled, sections, forcedBreaks, availableHeight, focusedParagraphId])
 
    // Trigger 2: async layout the React tree does not re-render on (fonts, image decode, MathML/SVG
    // settling, window resize), routed through the same debounce. Rebuilt only when `enabled` flips.

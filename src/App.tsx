@@ -32,7 +32,7 @@ import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument } from './lib/export'
-import { paginate, buildMetrics, contentBoxHeightPx, allParagraphIds, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
+import { paginate, buildMetrics, contentBoxHeightPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
 import type { Page } from './lib/pageModel'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
@@ -695,11 +695,17 @@ export default function App() {
    useEffect(() => { setMeasuredHeights(EMPTY_HEIGHTS) }, [activeTabKey])
    const pagedDocument = !!format && format.kind !== 'infinite'
    const layoutMetrics = buildMetrics(measuredHeights, sections)
-   // Every paragraph id, held atomic for the editor + Pages panel so paragraphs render WHOLE (and stay
-   // editable) there; export paginates with an empty atomic set so paragraphs split across sheets.
-   const paragraphAtomicIds = allParagraphIds(sections)
+   // Which paragraph is held whole for editing (the "split at rest, whole when focused" behavior). One
+   // id at a time; a paragraph fragment press sets it, its blur clears it. Reset on tab switch like
+   // measuredHeights, since the id belongs to the outgoing document's flow.
+   const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
+   useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
+   // The atomic set the editor + Pages panel paginate against: only the focused paragraph is held whole,
+   // so every other overflowing paragraph splits at rest. Export paginates with an empty set (below), so
+   // it always splits every paragraph.
+   const editorAtomicIds = focusedParagraphId ? new Set([focusedParagraphId]) : new Set<string>()
    const laidOutPages: Page[] = pagedDocument
-      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, paragraphAtomicIds)
+      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, editorAtomicIds)
       : []
    const exportPages: Page[] = pagedDocument
       ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, new Set<string>())
@@ -1044,7 +1050,9 @@ export default function App() {
                               onSetMode={handleSetMode}
                               measuredHeights={measuredHeights}
                               onMeasuredHeights={setMeasuredHeights}
-                              atomicBlockIds={paragraphAtomicIds}
+                              atomicBlockIds={editorAtomicIds}
+                              focusedParagraphId={focusedParagraphId}
+                              onParagraphFocusChange={setFocusedParagraphId}
                            />
                         ),
                         mintdown: (

@@ -112,11 +112,17 @@ export const EMPTY_HEIGHTS: MeasuredHeights = {
 export function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetrics {
    const listRootItemIds = new Map<string, string[]>()
    const paragraphBlockIds = new Set<string>()
+   // Model char count per top-level `p` block, so measured lines whose total no longer matches (an edit
+   // landed since the last measure) can be rejected as stale rather than slicing at the wrong offsets.
+   const paragraphCharCount = new Map<string, number>()
    for (const section of sections)
       for (const block of section.blocks) {
          if ((block.type === 'list' || block.type === 'checklist') && block.items && block.items.length > 0)
             listRootItemIds.set(block.id, block.items.map(item => item.id))
-         if (block.type === 'p') paragraphBlockIds.add(block.id)
+         if (block.type === 'p') {
+            paragraphBlockIds.add(block.id)
+            paragraphCharCount.set(block.id, (block.richText ?? []).reduce((sum, run) => sum + run.text.length, 0))
+         }
       }
 
    return {
@@ -138,6 +144,13 @@ export function buildMetrics(heights: MeasuredHeights, sections: Section[]): Lay
          if (!paragraphBlockIds.has(blockId)) return null
          const lines = heights.paragraphLinesById.get(blockId)
          if (!lines || lines.length === 0) return null
+         // The last measured line ends at the paragraph's char count AT MEASURE TIME. If the model no
+         // longer holds that many chars the measurement predates the current text, so keep the block
+         // whole (return null) until the next measure re-reads it, rather than slicing at stale offsets
+         // that would drop or misplace characters.
+         const measuredTotal = lines[lines.length - 1].charEnd
+         const modelTotal    = paragraphCharCount.get(blockId) ?? measuredTotal
+         if (measuredTotal !== modelTotal) return null
          return lines
       },
    }
@@ -340,7 +353,13 @@ export function paginate(
 
             const charEnd = lines[endLine - 1].charEnd
             const isTail  = endLine === lines.length
-            openSlice!.blocks.push(sliceParagraphBlock(block, charStart, charEnd, isTail))
+            // A single piece covering the whole richText means the paragraph fit without an auto-break:
+            // it is NOT split, so push the ORIGINAL untagged block (which renders as a normal editable
+            // paragraph). Only a genuine cross-page piece carries a `paragraphFragment` tag (which forces
+            // the read-only fragment rendering). A paragraph pushed whole onto a fresh continuation page
+            // still counts as whole here.
+            const whole = charStart === 0 && endLine === lines.length
+            openSlice!.blocks.push(whole ? block : sliceParagraphBlock(block, charStart, charEnd, isTail))
             used += sum
             charStart = charEnd
             startLine = endLine

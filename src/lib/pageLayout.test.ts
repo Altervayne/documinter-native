@@ -203,14 +203,36 @@ describe('paginate — paragraph splitting', () => {
       expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(40) }])
    })
 
-   it('does not split a paragraph that fits on one page', () => {
+   it('leaves a paragraph that fits on one page untagged (a normal editable block, not a fragment)', () => {
       const sections = [section('S', [paragraphBlock('P', 20)])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
       const pages = paginate(sections, [], 100, metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } }))
       expect(pages).toHaveLength(1)
       expect(pages[0].slices[0].blocks).toHaveLength(1)
-      // One fragment covering the whole paragraph (start 0, end = length, tail), so nothing crosses a seam.
-      expect(fragmentOf(pages[0].slices[0].blocks[0])).toEqual({ charStart: 0, charEnd: 20, isTail: true })
+      // No split happened, so the ORIGINAL block is placed: no fragment tag, full richText. This is what
+      // keeps a whole paragraph rendering as an editable block instead of a read-only fragment.
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
+      expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(20) }])
+   })
+
+   it('tags fragments only when a paragraph genuinely spans two or more pages', () => {
+      // Fits: one untagged piece. Splits: every piece carries a partial-range fragment tag.
+      const fits = paginate(
+         [section('S', [paragraphBlock('P', 20)])], [], 100,
+         metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }] } }),
+      )
+      expect(fits).toHaveLength(1)
+      expect(fits[0].slices[0].blocks.every(candidate => candidate.paragraphFragment === undefined)).toBe(true)
+
+      const splits = paginate(
+         [section('S', [paragraphBlock('Q', 40)])], [], 100,
+         metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { Q: [
+            { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 }, { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+         ] } }),
+      )
+      expect(splits.length).toBeGreaterThan(1)
+      const fragments = splits.flatMap(page => page.slices.flatMap(slice => slice.blocks))
+      expect(fragments.every(candidate => candidate.paragraphFragment !== undefined)).toBe(true)
    })
 
    it('never splits an h3 or callout, even with stray paragraph-line measurements', () => {
@@ -227,6 +249,30 @@ describe('paginate — paragraph splitting', () => {
       const metrics = buildMetrics(heights, sections)
       expect(metrics.paragraphLines('H')).toBeNull()
       expect(metrics.paragraphLines('C')).toBeNull()
+   })
+
+   it('serves measured paragraph lines while their total still matches the model char count', () => {
+      const paragraph: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(40) }] }
+      const sections = [section('S', [paragraph])]
+      const lines: ParagraphLine[] = [{ height: 30, charEnd: 20 }, { height: 30, charEnd: 40 }]
+      const heights: MeasuredHeights = {
+         header: 0, titleBySection: new Map(), blockById: new Map(), listItemById: new Map(),
+         paragraphLinesById: new Map([['P', lines]]),
+      }
+      expect(buildMetrics(heights, sections).paragraphLines('P')).toEqual(lines)
+   })
+
+   it('rejects paragraph lines whose total no longer matches the model (an edit landed since measure)', () => {
+      // The measurement ended at char 40 but the model now holds 30 chars, so the lines predate the
+      // current text: the paragraph must stay whole until it is re-measured.
+      const paragraph: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(30) }] }
+      const sections = [section('S', [paragraph])]
+      const staleLines: ParagraphLine[] = [{ height: 30, charEnd: 20 }, { height: 30, charEnd: 40 }]
+      const heights: MeasuredHeights = {
+         header: 0, titleBySection: new Map(), blockById: new Map(), listItemById: new Map(),
+         paragraphLinesById: new Map([['P', staleLines]]),
+      }
+      expect(buildMetrics(heights, sections).paragraphLines('P')).toBeNull()
    })
 })
 

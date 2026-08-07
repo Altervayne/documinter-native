@@ -17,6 +17,15 @@ interface RichEditableProps {
    className?:      string
    style?:          React.CSSProperties
    onClick?:        React.MouseEventHandler<HTMLElement>
+   /** Pressed on the read-only element, the click-to-focus hook a split paragraph fragment uses to
+    *  reflow itself whole and place the caret. Only wired on the read-only path. */
+   onMouseDown?:    React.MouseEventHandler<HTMLElement>
+   /** Fired after the editable path commits on blur (whether or not the content changed), so a focused
+    *  paragraph can clear its focus state and re-split. */
+   onBlur?:         () => void
+   /** Fired when the editable path gains focus, so a focused paragraph can be held whole and freeze the
+    *  paged re-measure while it is edited. */
+   onFocus?:        () => void
    onKeyDown?:      (event: React.KeyboardEvent<HTMLElement>) => void
    /** Prevents Enter entirely (single-line fields). */
    singleLine?:     boolean
@@ -46,6 +55,9 @@ export function RichEditable({
    className,
    style,
    onClick,
+   onMouseDown,
+   onBlur,
+   onFocus,
    onKeyDown,
    singleLine,
    placeholder,
@@ -102,6 +114,7 @@ export function RichEditable({
          <Tag
             className={className}
             style={style}
+            onMouseDown={onMouseDown}
             dangerouslySetInnerHTML={{ __html: renderInlineContent(content) }}
          />
       )
@@ -124,6 +137,7 @@ export function RichEditable({
          onFocus={() => {
             editing.current = true
             snapshotOnFocus.current = ref.current ? domToInlineContent(ref.current) : []
+            onFocus?.()
          }}
          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             // External handler runs first; if it calls preventDefault, skip internal logic
@@ -156,8 +170,9 @@ export function RichEditable({
          onBlur={(event: React.FocusEvent<HTMLElement>) => {
             editing.current = false
             const currentContent = domToInlineContent(event.currentTarget)
-            if (inlineContentEquals(currentContent, snapshotOnFocus.current)) return
-            onCommit(currentContent)
+            if (!inlineContentEquals(currentContent, snapshotOnFocus.current)) onCommit(currentContent)
+            // After any commit, so a focused paragraph re-splits from its just-committed text.
+            onBlur?.()
          }}
       />
    )

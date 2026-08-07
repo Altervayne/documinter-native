@@ -14,6 +14,7 @@ import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { DocumentTablesProvider, LinkableTablesProvider } from '../../contexts/DocumentTablesContext'
 import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
+import { ParagraphFocusProvider } from '../../contexts/ParagraphFocusContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
 import { usePagedLayout } from '../../hooks/usePagedLayout'
@@ -33,6 +34,7 @@ import { FormatWindow } from '../../molecules/FormatWindow'
 import { WysiwygSection } from './WysiwygSection'
 import { WysiwygBlock } from './WysiwygBlock'
 import { findBlockOnCanvas, type BlockLoc } from '../../lib/document'
+import { restoreSelectionRange } from '../../lib/inlineFormatting'
 
 // -- Type Imports --
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
@@ -119,9 +121,14 @@ interface WysiwygAreaProps {
    // ==========================================================
    measuredHeights?:   MeasuredHeights
    onMeasuredHeights?: (heights: MeasuredHeights) => void
-   /** Block ids kept whole during pagination (App feeds every paragraph id), so the editor renders
-    *  paragraphs whole and stays in lockstep with the Pages panel. */
+   /** Block ids kept whole during pagination. App feeds the single focused paragraph's id (or none), so
+    *  overflowing paragraphs split at rest and the focused one reflows whole; the Pages panel paginates
+    *  from the same set. */
    atomicBlockIds?:    Set<string>
+   /** The paragraph currently held whole for editing (App-owned so editor + Pages panel agree). */
+   focusedParagraphId?: string | null
+   /** Set / clear the focused paragraph: a fragment press sets it, a blur clears it. */
+   onParagraphFocusChange?: (blockId: string | null) => void
 }
 
 export function WysiwygArea({
@@ -132,6 +139,7 @@ export function WysiwygArea({
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
    measuredHeights, onMeasuredHeights, atomicBlockIds,
+   focusedParagraphId = null, onParagraphFocusChange,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections, moveBlockAcross } = useDocumentMutations()
@@ -465,8 +473,74 @@ export function WysiwygArea({
       heights:         measuredHeights ?? EMPTY_HEIGHTS,
       onHeightsChange: onMeasuredHeights ?? (() => {}),
       atomicBlockIds:  atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
+      focusedParagraphId,
    })
    const derivedPages: Page[] | null = paged ? laidOutPages : null
+
+   // ==========================================================
+   //  Paragraph focus: "split at rest, whole when focused"
+   // ==========================================================
+   // An overflowing paragraph renders as read-only fragments across sheets; pressing one reflows it
+   // whole (App holds it atomic) and places the caret where the press landed. The focused id lives in
+   // App so the Pages panel agrees; here we drive the request / blur signals and the caret placement.
+   //
+   // `focusedParagraphIdRef` mirrors the prop but is written EAGERLY on request / clear, so the blur
+   // that fires synchronously when focus hands off from one paragraph to another reads the incoming id
+   // (not the outgoing render's stale prop) and correctly skips clearing.
+   const focusedParagraphIdRef = useRef<string | null>(focusedParagraphId)
+   focusedParagraphIdRef.current = focusedParagraphId
+   // The pending caret to place once the requested paragraph has reflowed whole into the DOM.
+   const pendingParagraphCaretRef = useRef<{ blockId: string; caretOffset: number } | null>(null)
+
+   function setFocusedParagraph(blockId: string): void {
+      focusedParagraphIdRef.current = blockId
+      onParagraphFocusChange?.(blockId)
+   }
+
+   function requestParagraphFocus(blockId: string, caretOffset: number): void {
+      // A fragment was pressed: reflow whole and place the caret at the pressed offset once it mounts.
+      pendingParagraphCaretRef.current = { blockId, caretOffset }
+      setFocusedParagraph(blockId)
+   }
+
+   function notifyParagraphFocus(blockId: string): void {
+      // Any paragraph editable gained focus (a direct click on a whole paragraph, or the reflowed
+      // fragment once it mounts). Holding it as the focused id freezes measurement while it is edited, so
+      // a paragraph typed past a page boundary from scratch is protected too, not only fragment reflows.
+      setFocusedParagraph(blockId)
+   }
+
+   function notifyParagraphBlur(blockId: string): void {
+      // Only clear when THIS paragraph is still the focused one: a press on another paragraph's fragment
+      // (or a focus hand-off) has already moved the focused id forward, so its blur must not undo it.
+      if (focusedParagraphIdRef.current !== blockId) return
+      focusedParagraphIdRef.current = null
+      onParagraphFocusChange?.(null)
+   }
+
+   const paragraphFocusValue = {
+      focusedParagraphId,
+      requestFocus: requestParagraphFocus,
+      notifyFocus:  notifyParagraphFocus,
+      notifyBlur:   notifyParagraphBlur,
+   }
+
+   // Once the requested paragraph has reflowed to its single whole editable, focus it and drop the caret
+   // at the pressed offset. rAF defers past the readOnly -> editable innerHTML re-injection so the text
+   // nodes the caret addresses are present.
+   useEffect(() => {
+      const pending = pendingParagraphCaretRef.current
+      if (!pending || pending.blockId !== focusedParagraphId) return
+      const frame = requestAnimationFrame(() => {
+         const element = document.querySelector<HTMLElement>(`[data-block-id="${pending.blockId}"] [data-rich]`)
+         if (element) {
+            element.focus()
+            restoreSelectionRange(element, pending.caretOffset, pending.caretOffset)
+         }
+         pendingParagraphCaretRef.current = null
+      })
+      return () => cancelAnimationFrame(frame)
+   }, [focusedParagraphId])
 
    // Commit a new page-break list back through onFormatChange, preserving kind/width/margins. An empty
    // list drops the `pages` key entirely (an untouched, non-default format stays clean).
@@ -1002,6 +1076,7 @@ export function WysiwygArea({
        <LinkableTablesProvider tables={linkableTables}>
        <DocThemeProvider theme={docTheme}>
         <BlockEditorWindowProvider resetKey={activeTabKey}>
+         <ParagraphFocusProvider value={paragraphFocusValue}>
          <PageBreaksContext.Provider value={pageBreaksApi}>
          <div className="flex flex-col h-full min-h-0 w-full">
          {!readOnly && <FormatToolbar sections={sections} />}
@@ -1076,6 +1151,7 @@ export function WysiwygArea({
          </div>
          </div>
          </PageBreaksContext.Provider>
+         </ParagraphFocusProvider>
         </BlockEditorWindowProvider>
        </DocThemeProvider>
        </LinkableTablesProvider>
