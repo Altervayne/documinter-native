@@ -48,6 +48,10 @@ const EMPTY_HEIGHTS: MeasuredHeights = {
    header: 0, titleBySection: new Map(), blockById: new Map(), listItemById: new Map(),
 }
 
+// How long to wait after the last edit / resize before re-measuring and reflowing. Long enough that a
+// burst of keystrokes reflows once, on the pause, not per character; short enough to feel immediate.
+const REFLOW_DEBOUNCE_MS = 180
+
 // ###########
 // # HELPERS #
 // ###########
@@ -76,9 +80,11 @@ function sameHeights(left: MeasuredHeights, right: MeasuredHeights): boolean {
 }
 
 /** Build the pure paginator's height oracle from the measured heights and the model (which names the
- *  splittable list blocks and their root item ids). A list is only offered for splitting once EVERY
- *  root item is measured; until then it is treated as one atomic unit so a half-measured list never
- *  splits at the wrong place. */
+ *  splittable list blocks and their root item ids). Crucially, an unmeasured item (a freshly added one,
+ *  before the next measure) does NOT collapse the whole list to atomic: it is ESTIMATED from the average
+ *  of the list's measured items, so adding an item keeps the existing split stable instead of flashing
+ *  the whole list back onto one page and re-splitting. Only a list with ZERO measured items stays atomic
+ *  (the one-time bootstrap before the first measure). */
 function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetrics {
    const listRootItemIds = new Map<string, string[]>()
    for (const section of sections)
@@ -93,9 +99,11 @@ function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetr
       listItemHeights:    (blockId) => {
          const rootIds = listRootItemIds.get(blockId)
          if (!rootIds) return null
-         const itemHeights = rootIds.map(itemId => heights.listItemById.get(itemId))
-         if (itemHeights.some(height => height === undefined)) return null
-         return itemHeights as number[]
+         const measured = rootIds.map(itemId => heights.listItemById.get(itemId))
+         const known = measured.filter((height): height is number => height !== undefined)
+         if (known.length === 0) return null   // nothing measured yet: bootstrap atomic, no split
+         const average = known.reduce((sum, height) => sum + height, 0) / known.length
+         return measured.map(height => height ?? average)
       },
    }
 }
@@ -180,29 +188,39 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
    const measureRef = useRef(measure)
    measureRef.current = measure
 
-   // Trigger 1: re-measure after every commit whose model / geometry changed (useEffect, after paint).
+   // Re-measurement is DEBOUNCED: while the author types, the pagination stays frozen (the sheet grows
+   // by min-height, no clipping) and the reflow lands once typing pauses. Measuring on every keystroke
+   // would re-paginate and reshuffle sheets under the caret, jittering the whole canvas.
+   const debounceTimerRef = useRef(0)
+   function scheduleMeasure(): void {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = window.setTimeout(() => {
+         debounceTimerRef.current = 0
+         measureRef.current()
+      }, REFLOW_DEBOUNCE_MS)
+   }
+   const scheduleRef = useRef(scheduleMeasure)
+   scheduleRef.current = scheduleMeasure
+
+   // Trigger 1: re-measure after every commit whose model / geometry changed (debounced).
    useEffect(() => {
-      measureRef.current()
+      scheduleRef.current()
    }, [enabled, sections, forcedBreaks, availableHeight])
 
    // Trigger 2: async layout the React tree does not re-render on (fonts, image decode, MathML/SVG
-   // settling, window resize). Coalesced into one rAF; rebuilt only when `enabled` flips.
+   // settling, window resize), routed through the same debounce. Rebuilt only when `enabled` flips.
    useEffect(() => {
       const container = containerElementRef.current
       if (!enabled || !container || typeof ResizeObserver === 'undefined') return
 
-      let frame = 0
-      const schedule = () => {
-         if (frame) return
-         frame = requestAnimationFrame(() => { frame = 0; measureRef.current() })
-      }
+      const schedule = () => scheduleRef.current()
       const observer = new ResizeObserver(schedule)
       observer.observe(container)
       window.addEventListener('resize', schedule)
       return () => {
-         if (frame) cancelAnimationFrame(frame)
          observer.disconnect()
          window.removeEventListener('resize', schedule)
+         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       }
    }, [enabled])
 

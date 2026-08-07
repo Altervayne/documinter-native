@@ -206,8 +206,12 @@ export function paginate(
          return
       }
 
-      // Splittable list: fill root items across pages, splitting at the last item that fits.
+      // Splittable list: fill root items across pages, splitting at the last item that fits. The
+      // continuation page key is the block id plus a continuation ORDINAL (0, 1, 2...), not the split
+      // item index, so nudging the boundary by an item while typing keeps the same page key and never
+      // remounts the continuation subtree (which would jump the caret and jitter the canvas).
       let start = 0
+      let continuation = 0
       while (start < itemHeights.length) {
          let end = start
          let sum = 0
@@ -222,14 +226,18 @@ export function paginate(
 
          if (end === start) {
             // Nothing fits in the space left: break to a fresh page and retry this item there.
-            autoBreak(`${block.id}:${start}`, true)
+            autoBreak(`${block.id}:c${continuation}`, true)
+            continuation += 1
             continue
          }
 
          openSlice!.blocks.push(sliceListBlock(block, start, end))
          used += sum
          start = end
-         if (start < itemHeights.length) autoBreak(`${block.id}:${start}`, true)
+         if (start < itemHeights.length) {
+            autoBreak(`${block.id}:c${continuation}`, true)
+            continuation += 1
+         }
       }
    }
 }
