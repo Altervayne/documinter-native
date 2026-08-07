@@ -12,7 +12,11 @@ import { clsx } from '../lib/clsx'
 export interface SegmentedIconToggleOption<Value extends string> {
    value: Value
    label: string
-   icon:  ReactNode
+   /** Optional leading glyph. Omit for a text-only segment (e.g. a page-number format example, where
+    *  the label itself is the glyph). */
+   icon?: ReactNode
+   /** Greyed out and unselectable (still shows its tooltip). Keyboard navigation skips it. */
+   disabled?: boolean
 }
 
 interface SegmentedIconToggleProps<Value extends string> {
@@ -43,22 +47,26 @@ export function SegmentedIconToggle<Value extends string>({
 }: SegmentedIconToggleProps<Value>) {
    const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-   // Moves the selection AND keyboard focus together to the option at `nextIndex`, wrapping around
-   // both ends so Left from the first option reaches the last one and vice versa.
-   function focusAndSelect(nextIndex: number): void {
-      const wrappedIndex = (nextIndex + options.length) % options.length
-      const nextOption = options[wrappedIndex]
-      onChange(nextOption.value)
-      buttonRefs.current[wrappedIndex]?.focus()
+   // Moves the selection AND keyboard focus together in `direction` (+1 / -1), wrapping at both ends and
+   // skipping any disabled option, so arrow keys never land on an unselectable segment.
+   function moveSelection(fromIndex: number, direction: 1 | -1): void {
+      for (let step = 1; step <= options.length; step++) {
+         const index = ((fromIndex + direction * step) % options.length + options.length) % options.length
+         if (!options[index].disabled) {
+            onChange(options[index].value)
+            buttonRefs.current[index]?.focus()
+            return
+         }
+      }
    }
 
    function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
          event.preventDefault()
-         focusAndSelect(index + 1)
+         moveSelection(index, 1)
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
          event.preventDefault()
-         focusAndSelect(index - 1)
+         moveSelection(index, -1)
       }
    }
 
@@ -78,13 +86,14 @@ export function SegmentedIconToggle<Value extends string>({
                   type="button"
                   role="radio"
                   aria-checked={isSelected}
+                  aria-disabled={option.disabled || undefined}
                   tabIndex={index === tabbableIndex ? 0 : -1}
-                  className={clsx('segmented-icon-toggle-option', isSelected && 'is-selected')}
-                  onClick={() => onChange(option.value)}
+                  className={clsx('segmented-icon-toggle-option', isSelected && 'is-selected', option.disabled && 'is-disabled')}
+                  onClick={() => { if (!option.disabled) onChange(option.value) }}
                   onKeyDown={event => handleKeyDown(event, index)}
                   title={option.label}
                >
-                  <span className="segmented-icon-toggle-icon" aria-hidden="true">{option.icon}</span>
+                  {option.icon && <span className="segmented-icon-toggle-icon" aria-hidden="true">{option.icon}</span>}
                   <span className="segmented-icon-toggle-label">{option.label}</span>
                </button>
             )

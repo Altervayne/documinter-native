@@ -11,15 +11,16 @@ import { useLang } from '../contexts/LangContext'
 import {
    normalizeFormat,
    resolveInfiniteWidthPx,
+   resolveHeader,
    DEFAULT_A4_MARGINS,
    INFINITE_WIDTH_CUSTOM_MIN_PX,
    INFINITE_WIDTH_CUSTOM_MAX_PX,
    type DocFormat,
    type InfiniteWidth,
    type PageKind,
-   type PageNumberAlign,
    type PageNumberStyle,
-   type PageNumbering,
+   type PageBand,
+   type BandPosition,
 } from '../lib/format'
 import { PAGE_NUMBER_STYLES } from '../lib/pageNumbering'
 
@@ -95,37 +96,10 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
    }
 
    // ==========================
-   //  Page numbering (A4 only)
+   //  Header + footer bands (A4 only)
    // ==========================
-   const pageNumbering = resolved.pageNumbering
-   type EdgeChoice = 'off' | PageNumberAlign
-
-   // Commit a whole pageNumbering object, or clear it (both edges off -> remove the field entirely).
-   function applyPageNumbering(next: PageNumbering | undefined): void {
-      const withoutNumbering = { ...resolved }
-      delete withoutNumbering.pageNumbering
-      onChange(next ? { ...withoutNumbering, pageNumbering: next } : withoutNumbering)
-   }
-
-   function setEdge(edge: 'top' | 'bottom', choice: EdgeChoice): void {
-      const nextSlot = choice === 'off' ? undefined : { align: choice }
-      const top    = edge === 'top'    ? nextSlot : pageNumbering?.top
-      const bottom = edge === 'bottom' ? nextSlot : pageNumbering?.bottom
-      if (!top && !bottom) { applyPageNumbering(undefined); return }
-      applyPageNumbering({ style: pageNumbering?.style ?? 'plain', ...(top ? { top } : {}), ...(bottom ? { bottom } : {}) })
-   }
-
-   function setStyle(style: PageNumberStyle): void {
-      if (pageNumbering) applyPageNumbering({ ...pageNumbering, style })
-   }
-
-   // Off / Left / Center / Right as icon buttons (parity with the format-kind toggle).
-   const edgeOptions: SegmentedIconToggleOption<EdgeChoice>[] = [
-      { value: 'off',    label: t.formatPageNumberOff,         icon: <Ban size={15} /> },
-      { value: 'left',   label: t.formatPageNumberAlignLeft,   icon: <AlignLeft size={15} /> },
-      { value: 'center', label: t.formatPageNumberAlignCenter, icon: <AlignCenter size={15} /> },
-      { value: 'right',  label: t.formatPageNumberAlignRight,  icon: <AlignRight size={15} /> },
-   ]
+   type PositionChoice = 'off' | BandPosition
+   const positions: BandPosition[] = ['left', 'center', 'right']
    const styleLabels: Record<PageNumberStyle, string> = {
       plain:  t.pageNumberStylePlain,
       page:   t.pageNumberStylePage,
@@ -133,8 +107,91 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
       pageOf: t.pageNumberStylePageOf,
       dashes: t.pageNumberStyleDashes,
    }
-   const topChoice:    EdgeChoice = pageNumbering?.top?.align    ?? 'off'
-   const bottomChoice: EdgeChoice = pageNumbering?.bottom?.align ?? 'off'
+   // Page-number format examples read as text (the label IS the glyph), so no leading icon.
+   const styleOptions: SegmentedIconToggleOption<PageNumberStyle>[] = PAGE_NUMBER_STYLES.map(style => ({ value: style, label: styleLabels[style] }))
+
+   // Off / Left / Center / Right position buttons; `blocked` greys out the position the sibling control
+   // already holds, so a header page number and header text can never share a position.
+   function positionOptions(blocked: PositionChoice): SegmentedIconToggleOption<PositionChoice>[] {
+      return [
+         { value: 'off',    label: t.formatBandNone,   icon: <Ban size={15} /> },
+         { value: 'left',   label: t.formatBandLeft,   icon: <AlignLeft size={15} />,   disabled: blocked === 'left' },
+         { value: 'center', label: t.formatBandCenter, icon: <AlignCenter size={15} />, disabled: blocked === 'center' },
+         { value: 'right',  label: t.formatBandRight,  icon: <AlignRight size={15} />,  disabled: blocked === 'right' },
+      ]
+   }
+
+   // Read the one optional page number / text item out of a band.
+   function readNumber(band: PageBand): { position: PositionChoice; style: PageNumberStyle } {
+      for (const position of positions) if (band[position]?.kind === 'pageNumber') return { position, style: (band[position] as { style: PageNumberStyle }).style }
+      return { position: 'off', style: 'plain' }
+   }
+   function readText(band: PageBand): { position: PositionChoice; text: string } {
+      for (const position of positions) if (band[position]?.kind === 'content') return { position, text: (band[position] as { text?: string }).text ?? '' }
+      return { position: 'off', text: '' }
+   }
+
+   const header       = resolveHeader(resolved)
+   const headerNumber = readNumber(header)
+   const headerText   = readText(header)
+   const footerNumber = readNumber(resolved.footer ?? {})
+
+   // Rebuild the whole header from its two controls, so setting one never disturbs the other.
+   function commitHeader(number: { position: PositionChoice; style: PageNumberStyle }, text: { position: PositionChoice; text: string }): void {
+      const next: PageBand = {}
+      if (number.position !== 'off') next[number.position] = { kind: 'pageNumber', style: number.style }
+      if (text.position !== 'off')   next[text.position]   = { kind: 'content', text: text.text }
+      onChange({ ...resolved, header: next })
+   }
+   // Footer: the credit always shows (auto-placed); the only control is an optional page number.
+   function setFooterNumber(position: PositionChoice, style: PageNumberStyle): void {
+      onChange({ ...resolved, footer: position === 'off' ? {} : { [position]: { kind: 'pageNumber', style } } })
+   }
+
+   // A page-number control (position + style), shared by the header and footer sections.
+   function renderNumberControl(value: { position: PositionChoice; style: PageNumberStyle }, blocked: PositionChoice, onPosition: (position: PositionChoice) => void, onStyle: (style: PageNumberStyle) => void): React.ReactNode {
+      return (
+         <div className="flex flex-col gap-1.5 mt-1">
+            <span className="presentation-field-label">{t.formatBandPageNumber}</span>
+            <SegmentedIconToggle<PositionChoice> ariaLabel={t.formatBandPageNumber} value={value.position} onChange={onPosition} options={positionOptions(blocked)} />
+            {value.position !== 'off' && (
+               <SegmentedIconToggle<PageNumberStyle> ariaLabel={t.formatPageNumberStyle} value={value.style} onChange={onStyle} options={styleOptions} />
+            )}
+         </div>
+      )
+   }
+
+   function renderHeaderEditor(): React.ReactNode {
+      return (
+         <section className="presentation-section">
+            <span className="presentation-section-label">{t.formatHeaderLabel}</span>
+            {renderNumberControl(headerNumber, headerText.position, position => commitHeader({ ...headerNumber, position }, headerText), style => commitHeader({ position: headerNumber.position, style }, headerText))}
+            <div className="flex flex-col gap-1.5 mt-1">
+               <span className="presentation-field-label">{t.formatBandText}</span>
+               <SegmentedIconToggle<PositionChoice> ariaLabel={t.formatBandText} value={headerText.position} onChange={position => commitHeader(headerNumber, { ...headerText, position })} options={positionOptions(headerNumber.position)} />
+               {headerText.position !== 'off' && (
+                  <input
+                     type="text"
+                     className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm text-text"
+                     value={headerText.text}
+                     placeholder={t.formatBandTextPlaceholder}
+                     onChange={event => commitHeader(headerNumber, { position: headerText.position, text: event.target.value })}
+                  />
+               )}
+            </div>
+         </section>
+      )
+   }
+
+   function renderFooterEditor(): React.ReactNode {
+      return (
+         <section className="presentation-section">
+            <span className="presentation-section-label">{t.formatFooterLabel}</span>
+            <p className="presentation-hint">{t.formatFooterHint}</p>
+            {renderNumberControl(footerNumber, 'off', position => setFooterNumber(position, footerNumber.style), style => setFooterNumber(footerNumber.position, style))}
+         </section>
+      )
+   }
 
    const widthLabels: Record<WidthChoice, string> = {
       narrow: t.formatWidthNarrow,
@@ -218,49 +275,16 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
                </section>
             )}
 
-            {/* Page numbering (A4 only). Top + bottom are independent edges; each is Off or L/C/R.
-                The number style is offered once at least one edge is on. */}
+            {/* Running header + footer bands (A4 only): each shows on every page in the margin, with
+                left / center / right positions holding a page number, custom text, or the credit. */}
             {!isInfinite && (
                <section className="presentation-section">
-                  <span className="presentation-section-label">{t.formatPageNumberLabel}</span>
-                  <p className="presentation-hint">{t.formatPageNumberHint}</p>
-
-                  <div className="flex flex-col gap-1.5 mt-1">
-                     <span className="presentation-field-label">{t.formatPageNumberTop}</span>
-                     <SegmentedIconToggle<EdgeChoice>
-                        ariaLabel={t.formatPageNumberTop}
-                        value={topChoice}
-                        onChange={choice => setEdge('top', choice)}
-                        options={edgeOptions}
-                     />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 mt-1">
-                     <span className="presentation-field-label">{t.formatPageNumberBottom}</span>
-                     <SegmentedIconToggle<EdgeChoice>
-                        ariaLabel={t.formatPageNumberBottom}
-                        value={bottomChoice}
-                        onChange={choice => setEdge('bottom', choice)}
-                        options={edgeOptions}
-                     />
-                  </div>
-
-                  {pageNumbering && (
-                     <label className="presentation-field">
-                        <span className="presentation-field-label">{t.formatPageNumberStyle}</span>
-                        <select
-                           className="presentation-select"
-                           value={pageNumbering.style}
-                           onChange={event => setStyle(event.target.value as PageNumberStyle)}
-                        >
-                           {PAGE_NUMBER_STYLES.map(style => (
-                              <option key={style} value={style}>{styleLabels[style]}</option>
-                           ))}
-                        </select>
-                     </label>
-                  )}
+                  <span className="presentation-section-label">{t.formatBandsLabel}</span>
+                  <p className="presentation-hint">{t.formatBandsHint}</p>
                </section>
             )}
+            {!isInfinite && renderHeaderEditor()}
+            {!isInfinite && renderFooterEditor()}
          </div>
       </BlockEditorWindow>
    )

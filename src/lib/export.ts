@@ -16,8 +16,8 @@ import {
    collectAnchoredHandles,
    type DocPresentationExtras, type Watermark, type Header,
 } from './presentation'
-import { resolveDocumentSheetWidthPx, DEFAULT_A4_MARGINS, type DocFormat, type PageMargins } from './format'
-import { formatPageNumber } from './pageNumbering'
+import { resolveDocumentSheetWidthPx, resolveHeader, resolveFooterBand, DEFAULT_A4_MARGINS, type DocFormat, type PageMargins } from './format'
+import { renderPageBandHtml } from './pageBands'
 import {
    partitionIntoPages, millimetresToPx,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
@@ -588,23 +588,29 @@ function buildPagedStyles(
                   box-shadow: ${colors.cardShadow};
             }
             .doc-page > .doc-render { padding: ${millimetresToPx(margins.top)}px ${millimetresToPx(margins.right)}px ${millimetresToPx(margins.bottom)}px ${millimetresToPx(margins.left)}px; }
-            /* Configured page number(s), sitting in the sheet's margin band (matches the editor). Only
-               emitted for a paged export; the per-sheet element opts into top/bottom + left/center/right. */
-            .doc-page-number {
+            /* Running header / footer bands: one left/center/right row each, pinned in the top / bottom
+               margin band of EVERY sheet (mirrors the editor's .doc-band rules). */
+            .doc-band {
                   position: absolute;
+                  left: ${millimetresToPx(margins.left)}px;
+                  right: ${millimetresToPx(margins.right)}px;
+                  display: flex;
+                  align-items: center;
                   font-family: 'JetBrains Mono', monospace;
                   font-size: 0.7rem;
                   letter-spacing: 0.03em;
                   color: ${colors.textMuted};
-                  opacity: 0.75;
             }
-            .doc-page-number-top    { top: ${millimetresToPx(margins.top) / 2}px; transform: translateY(-50%); }
-            .doc-page-number-bottom { bottom: ${millimetresToPx(margins.bottom) / 2}px; transform: translateY(50%); }
-            .doc-page-number-left   { left: ${millimetresToPx(margins.left)}px; }
-            .doc-page-number-right  { right: ${millimetresToPx(margins.right)}px; }
-            .doc-page-number-center { left: ${millimetresToPx(margins.left)}px; right: ${millimetresToPx(margins.right)}px; text-align: center; }
-            /* Collision: when a bottom-right page number is on, the last sheet's credit flips to the left. */
-            .doc-page > .doc-footer.doc-footer-left { justify-content: flex-start; }
+            .doc-band-header { top: ${millimetresToPx(margins.top) / 2}px; transform: translateY(-50%); }
+            .doc-band-footer { bottom: ${millimetresToPx(margins.bottom) / 2}px; transform: translateY(50%); }
+            .doc-band-cell { flex: 1 1 0; display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+            .doc-band-left   { justify-content: flex-start; }
+            .doc-band-center { justify-content: center; }
+            .doc-band-right  { justify-content: flex-end; }
+            .doc-band-credit { display: inline-flex; align-items: center; gap: 0.35rem; opacity: 0.55; }
+            .doc-band-logo { height: 1rem; width: auto; flex-shrink: 0; }
+            .doc-band-img  { max-height: 1.6rem; width: auto; flex-shrink: 0; }
+            .doc-band-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .doc-render .doc-figure, .doc-render .doc-image-markup, .doc-render .doc-graph,
             .doc-render .doc-diagram, .doc-render .table-wrap, .doc-render .doc-math,
             .doc-render .callout, .doc-render pre { page-break-inside: avoid; break-inside: avoid; }
@@ -621,8 +627,11 @@ function buildPagedStyles(
                   .sidebar, #toTopBtn { display: none !important; }
                   .main { margin: 0; padding: 0; }
                   .doc-pages { display: block; gap: 0; margin: 0; padding: 0; }
+                  /* Each sheet fills one physical page (height: 100vh) so the footer band pins to the
+                     real page bottom instead of floating under short content; overflow: hidden clips any
+                     sub-pixel spill that would otherwise leak a blank page. */
                   .doc-page {
-                        box-shadow: none; border-radius: 0; width: 100%; min-height: 0; margin: 0;
+                        box-shadow: none; border-radius: 0; width: 100%; height: 100vh; margin: 0; overflow: hidden;
                         page-break-after: always; break-after: page;
                         -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
@@ -827,11 +836,11 @@ ${blocksHTML}
    const docFooterHTML = `<div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${strings.madeWith}</div>`
 
    // Paged pages: each derived page is one A4 `.doc-page` sheet holding its slices. A slice renders its
-   // section heading only when it STARTS the section (continuation slices flow headingless); the page
-   // header rides page 1 and the footer rides the last page. Empty for an infinite export.
-   // Page numbering (paged only): an absolutely-positioned element per enabled edge, on every sheet.
-   // When a bottom-right number is on, the last sheet's "made with" credit flips left to avoid it.
-   const numbering = opts.format?.pageNumbering
+   // section heading only when it STARTS the section (continuation slices flow headingless); the page-1
+   // title block rides page 1. The running header / footer bands ride EVERY sheet in the margin bands.
+   // Empty for an infinite export.
+   const headerBand = resolveHeader(opts.format)
+   const footerBand = resolveFooterBand(opts.format)
    const pagesHTML = paged
       ? partitionIntoPages(sections, opts.format?.pages ?? []).map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
@@ -846,20 +855,15 @@ ${blocksHTML}
               const blocksHTML   = slice.blocks.map(block => exportBlock(block, { theme, tables })).join('\n')
               return `<div class="doc-section"${idAttr}>${headingHTML}${blocksHTML}</div>`
            }).join('\n')
-           const numberText = numbering
-              ? esc(formatPageNumber(numbering.style, pageIndex + 1, allPages.length, { page: strings.pageWord, of: strings.ofWord }))
-              : ''
-           const pageNumberHTML = !numbering ? '' :
-                (numbering.top    ? `<div class="doc-page-number doc-page-number-top doc-page-number-${numbering.top.align}">${numberText}</div>` : '')
-              + (numbering.bottom ? `<div class="doc-page-number doc-page-number-bottom doc-page-number-${numbering.bottom.align}">${numberText}</div>` : '')
-           const headerHTML = pageIndex === 0
+           const bandCtx = { pageIndex, pageCount: allPages.length, madeWith: strings.madeWith, pageWord: strings.pageWord, ofWord: strings.ofWord }
+           const headerHtml = renderPageBandHtml(headerBand, bandCtx)
+           const footerHtml = renderPageBandHtml(footerBand, bandCtx)
+           const headerBandHTML = headerHtml ? `<div class="doc-band doc-band-header">${headerHtml}</div>` : ''
+           const footerBandHTML = footerHtml ? `<div class="doc-band doc-band-footer">${footerHtml}</div>` : ''
+           const titleBlockHTML = pageIndex === 0
               ? `<div class="page-header">${renderMetaZone(meta, 'above', accent)}${renderPageTitle(meta, strings.fallback, header)}${renderMetaZone(meta, 'below', accent)}</div>`
               : ''
-           const footerLeft = numbering?.bottom?.align === 'right' ? ' doc-footer-left' : ''
-           const footerHTML = pageIndex === allPages.length - 1
-              ? docFooterHTML.replace('class="doc-footer"', `class="doc-footer${footerLeft}"`)
-              : ''
-           return `<div class="doc-page" data-page-id="${esc(page.id)}">${pageWatermarkHTML}${pageNumberHTML}<div class="doc-render">${headerHTML}${slicesHTML}</div>${footerHTML}</div>`
+           return `<div class="doc-page" data-page-id="${esc(page.id)}">${pageWatermarkHTML}${headerBandHTML}${footerBandHTML}<div class="doc-render">${titleBlockHTML}${slicesHTML}</div></div>`
         }).join('\n')
       : ''
 

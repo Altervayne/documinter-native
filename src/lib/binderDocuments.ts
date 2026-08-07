@@ -12,7 +12,7 @@ import {
 } from './binderDatabase'
 import { buildPreviewSections, extractDocumentText } from './documentPreview'
 import { matchesCriteria, documentComparator, type DocumentListFilter } from './binderSearch'
-import { migrateIds, migrateMeta, migrateFormatPageBreaks } from './documentMigration'
+import { migrateIds, migrateMeta, migrateFormatPageBreaks, migrateFormatBands } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
 import { cloneBlock } from './document'
@@ -143,7 +143,7 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
       presentation: normalizePresentation(content.presentation),
       // format normalizes to a concrete DocFormat even when absent (unlike presentation, which
       // collapses to undefined), see normalizeFormat: absent -> DEFAULT_FORMAT (infinite/normal).
-      format: normalizeFormat(migrateFormatPageBreaks(content.format, migrated.sections)),
+      format: normalizeFormat(migrateFormatBands(migrateFormatPageBreaks(content.format, migrated.sections))),
    }
 }
 

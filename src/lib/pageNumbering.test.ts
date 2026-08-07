@@ -19,36 +19,29 @@ describe('formatPageNumber', () => {
    })
 })
 
-describe('normalizeFormat — pageNumbering', () => {
-   it('keeps a bottom-right slot + style', () => {
-      const format = normalizeFormat({ kind: 'a4-portrait', pageNumbering: { bottom: { align: 'right' }, style: 'pageOf' } })
-      expect(format.pageNumbering).toEqual({ bottom: { align: 'right' }, style: 'pageOf' })
+describe('normalizeFormat, header / footer bands', () => {
+   it('keeps a footer band with a page-number item and a credit', () => {
+      const format = normalizeFormat({ kind: 'a4-portrait', footer: { left: { kind: 'pageNumber', style: 'pageOf' }, right: { kind: 'credit' } } })
+      expect(format.footer).toEqual({ left: { kind: 'pageNumber', style: 'pageOf' }, right: { kind: 'credit' } })
    })
 
-   it('keeps both top and bottom slots independently', () => {
-      const format = normalizeFormat({ kind: 'a4-portrait', pageNumbering: { top: { align: 'left' }, bottom: { align: 'center' }, style: 'plain' } })
-      expect(format.pageNumbering?.top).toEqual({ align: 'left' })
-      expect(format.pageNumbering?.bottom).toEqual({ align: 'center' })
+   it('drops an empty content item and a malformed item, keeps a text item', () => {
+      const format = normalizeFormat({ kind: 'a4-portrait', header: { left: { kind: 'content' }, center: { kind: 'bogus' }, right: { kind: 'content', text: 'Hi' } } })
+      expect(format.header).toEqual({ right: { kind: 'content', text: 'Hi' } })
    })
 
-   it('drops page numbering when neither edge is present', () => {
-      const format = normalizeFormat({ kind: 'a4-portrait', pageNumbering: { style: 'plain' } })
-      expect(format.pageNumbering).toBeUndefined()
+   it('falls back to the plain page-number style when invalid', () => {
+      const format = normalizeFormat({ kind: 'a4-portrait', footer: { center: { kind: 'pageNumber', style: 'bogus' } } })
+      expect(format.footer?.center).toEqual({ kind: 'pageNumber', style: 'plain' })
    })
 
-   it('falls back to the plain style when style is missing / invalid', () => {
-      const format = normalizeFormat({ kind: 'a4-portrait', pageNumbering: { bottom: { align: 'center' }, style: 'bogus' } })
-      expect(format.pageNumbering?.style).toBe('plain')
+   it('keeps a present-but-empty footer as {} (a deliberately cleared footer)', () => {
+      const format = normalizeFormat({ kind: 'a4-portrait', footer: {} })
+      expect(format.footer).toEqual({})
    })
 
-   it('drops a slot whose align is invalid', () => {
-      const format = normalizeFormat({ kind: 'a4-portrait', pageNumbering: { top: { align: 'middle' }, bottom: { align: 'left' }, style: 'plain' } })
-      expect(format.pageNumbering?.top).toBeUndefined()
-      expect(format.pageNumbering?.bottom).toEqual({ align: 'left' })
-   })
-
-   it('a format with only page numbering is not the default format', () => {
-      const format = normalizeFormat({ kind: 'infinite', pageNumbering: { bottom: { align: 'right' }, style: 'plain' } })
+   it('a format with a header band is not the default format', () => {
+      const format = normalizeFormat({ kind: 'infinite', header: { center: { kind: 'pageNumber', style: 'plain' } } })
       expect(isDefaultFormat(format)).toBe(false)
    })
 })

@@ -100,10 +100,13 @@
 .blank-page-drop-label { font-size: 0.95rem; font-weight: 600; }
 .blank-page-drop-hint  { font-size: 0.82rem; }
 
-/* Configured printed page number (Page setup), positioned inline in the sheet's margin band.
-   Mirrors the paged HTML export's .doc-page-number; muted chrome, non-interactive. */
-.doc-page-number {
+/* Running header / footer bands (Page setup), positioned inline in the sheet's margin band. Mirrors
+   the paged HTML export's .doc-band rules; muted chrome, non-interactive. The absolute position + the
+   left/right margin insets are applied inline per sheet (WysiwygArea); this owns only the look. */
+.doc-band {
   z-index: 2;
+  display: flex;
+  align-items: center;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.7rem;
   letter-spacing: 0.03em;
@@ -111,7 +114,15 @@
   pointer-events: none;
   user-select: none;
 }
-.doc-dark .doc-page-number { color: #9ca3af; }
+.doc-dark .doc-band { color: #9ca3af; }
+.doc-band-cell { flex: 1 1 0; display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.doc-band-left   { justify-content: flex-start; }
+.doc-band-center { justify-content: center; }
+.doc-band-right  { justify-content: flex-end; }
+.doc-band-credit { display: inline-flex; align-items: center; gap: 0.35rem; opacity: 0.55; }
+.doc-band-logo { height: 1rem; width: auto; flex-shrink: 0; }
+.doc-band-img  { max-height: 1.6rem; width: auto; flex-shrink: 0; }
+.doc-band-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Remove-break affordance (pages 2..N), pinned top-left just inside the sheet; reveals on sheet
    hover so it doesn't clutter the reading view. App-chrome-ish, tinted with the doc accent. */
 .doc-page-break-remove {
@@ -1402,6 +1413,15 @@
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   color: var(--color-accent);
+}
+.segmented-icon-toggle-option.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.segmented-icon-toggle-option.is-disabled:hover {
+  border-color: var(--color-border);
+  background: var(--color-el);
+  color: var(--color-muted);
 }
 .segmented-icon-toggle-icon { display: inline-flex; }
 .segmented-icon-toggle-label { white-space: nowrap; }

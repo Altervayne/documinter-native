@@ -206,6 +206,39 @@ export function migrateFormatPageBreaks(rawFormat: unknown, sections: Section[])
    return { ...format, pages }
 }
 
+/**
+ * Convert a legacy `pageNumbering` ({ top?, bottom?, style }) into the header / footer band model:
+ * the top edge becomes a header page-number item at its align, the bottom edge a footer one, and the
+ * credit is placed in a free footer position so a migrated document keeps showing it. Runs on a raw
+ * stored format before normalizeFormat (which no longer understands `pageNumbering`, so an unconverted
+ * one would silently drop). Documents without `pageNumbering` pass through untouched (an absent footer
+ * renders the default credit anyway).
+ */
+export function migrateFormatBands(rawFormat: unknown): unknown {
+   if (!rawFormat || typeof rawFormat !== 'object') return rawFormat
+   const format = rawFormat as Record<string, unknown>
+   if (!('pageNumbering' in format)) return rawFormat
+   const { pageNumbering, ...rest } = format
+   if (!pageNumbering || typeof pageNumbering !== 'object') return rest
+
+   const numbering = pageNumbering as Record<string, unknown>
+   const style = typeof numbering.style === 'string' ? numbering.style : 'plain'
+   const header: Record<string, unknown> = { ...(typeof format.header === 'object' && format.header ? format.header as object : {}) }
+   const footer: Record<string, unknown> = { ...(typeof format.footer === 'object' && format.footer ? format.footer as object : {}) }
+
+   // The top edge becomes a header page number; the bottom edge a footer page number. The credit is no
+   // longer stored (the footer always shows it, auto-placed), so it is not carried here.
+   const top    = numbering.top    as Record<string, unknown> | undefined
+   const bottom = numbering.bottom as Record<string, unknown> | undefined
+   if (top    && typeof top.align    === 'string') header[top.align]    = { kind: 'pageNumber', style }
+   if (bottom && typeof bottom.align === 'string') footer[bottom.align] = { kind: 'pageNumber', style }
+
+   const result: Record<string, unknown> = { ...rest }
+   if (Object.keys(header).length > 0) result.header = header
+   if (Object.keys(footer).length > 0) result.footer = footer
+   return result
+}
+
 export function migrateIds(state: DocState): DocState {
    return {
       ...state,

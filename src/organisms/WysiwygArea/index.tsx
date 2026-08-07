@@ -38,8 +38,8 @@ import { findBlockOnCanvas, type BlockLoc } from '../../lib/document'
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
 import { buildDocumentMenuEntries } from '../../lib/documentMenuEntries'
 import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
-import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins, type PageNumberAlign } from '../../lib/format'
-import { formatPageNumber } from '../../lib/pageNumbering'
+import { resolveDocumentSheetWidthPx, normalizeFormat, resolveHeader, resolveFooterBand, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins } from '../../lib/format'
+import { renderPageBandHtml } from '../../lib/pageBands'
 import {
    partitionIntoPages, reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
@@ -822,27 +822,23 @@ export function WysiwygArea({
       )
    }
 
-   // The printed page number(s) for one sheet: an absolutely-positioned element per enabled edge,
-   // centered in that edge's margin band and aligned to the content column (left/right margin) or
-   // centered. Matches the paged HTML export's `.doc-page-number` element, so editor and export read
-   // the same. Absent pageNumbering means nothing renders.
-   function renderPageNumbers(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
-      const numbering = format?.pageNumbering
-      if (!numbering) return null
-      const text = formatPageNumber(numbering.style, pageIndex + 1, total, { page: t.pageNumberWordPage, of: t.pageNumberWordOf })
-      const slotStyle = (vertical: 'top' | 'bottom', align: PageNumberAlign): React.CSSProperties => {
-         const style: React.CSSProperties = { position: 'absolute' }
-         if (vertical === 'top') { style.top = millimetresToPx(margins.top) / 2; style.transform = 'translateY(-50%)' }
+   // The running header / footer bands for one sheet: absolutely positioned rows in the top / bottom
+   // margin band, on every page. Rendered from the SAME `renderPageBandHtml` the export uses (via
+   // dangerouslySetInnerHTML) so editor and export never drift; the per-doc margin positions are inline.
+   function renderBands(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
+      const bandCtx = { pageIndex, pageCount: total, madeWith: t.madeWithDocuminter, pageWord: t.pageNumberWordPage, ofWord: t.pageNumberWordOf }
+      const headerHtml = renderPageBandHtml(resolveHeader(format), bandCtx)
+      const footerHtml = renderPageBandHtml(resolveFooterBand(format), bandCtx)
+      const bandStyle = (edge: 'header' | 'footer'): React.CSSProperties => {
+         const style: React.CSSProperties = { position: 'absolute', left: millimetresToPx(margins.left), right: millimetresToPx(margins.right) }
+         if (edge === 'header') { style.top = millimetresToPx(margins.top) / 2; style.transform = 'translateY(-50%)' }
          else { style.bottom = millimetresToPx(margins.bottom) / 2; style.transform = 'translateY(50%)' }
-         if (align === 'left')       style.left  = millimetresToPx(margins.left)
-         else if (align === 'right') style.right = millimetresToPx(margins.right)
-         else { style.left = millimetresToPx(margins.left); style.right = millimetresToPx(margins.right); style.textAlign = 'center' }
          return style
       }
       return (
          <>
-            {numbering.top    && <div className="doc-page-number" style={slotStyle('top',    numbering.top.align)}>{text}</div>}
-            {numbering.bottom && <div className="doc-page-number" style={slotStyle('bottom', numbering.bottom.align)}>{text}</div>}
+            {headerHtml && <div className="doc-band doc-band-header" style={bandStyle('header')} dangerouslySetInnerHTML={{ __html: headerHtml }} />}
+            {footerHtml && <div className="doc-band doc-band-footer" style={bandStyle('footer')} dangerouslySetInnerHTML={{ __html: footerHtml }} />}
          </>
       )
    }
@@ -879,7 +875,7 @@ export function WysiwygArea({
          >
             {renderWatermarkLayer(`${watermarkPatternId}-${pageIndex}`)}
             <div className="doc-page-label">{t.formatPageLabel} {pageIndex + 1} / {total}</div>
-            {renderPageNumbers(pageIndex, total, margins)}
+            {renderBands(pageIndex, total, margins)}
             {pageIndex > 0 && !readOnly && onFormatChange && (
                <button
                   type="button"

@@ -47,22 +47,33 @@ export interface PageBreak {
    orientationOverride?: 'a4-portrait' | 'a4-landscape'
 }
 
-/** Horizontal placement of a printed page number within its margin band. */
+/** Horizontal placement within a header/footer band. The three positions ARE the alignment. */
 export type PageNumberAlign = 'left' | 'center' | 'right'
+export type BandPosition = PageNumberAlign
 
-/** How the page number reads. `plain` = `1`; `page` = `Page 1`; `slash` = `1 / N`;
+/** How a page number reads. `plain` = `1`; `page` = `Page 1`; `slash` = `1 / N`;
  *  `pageOf` = `Page 1 of N`; `dashes` = `- 1 -` (N = total page count). */
 export type PageNumberStyle = 'plain' | 'page' | 'slash' | 'pageOf' | 'dashes'
 
-/** One page-number placement. Presence of the slot = that edge shows a number; `align` positions it. */
-export interface PageNumberSlot { align: PageNumberAlign }
+/** A logo image placed in a header/footer slot: a base64 data URI plus its natural dims (for aspect). */
+export interface BandImage {
+   src:     string
+   width?:  number
+   height?: number
+}
 
-/** Paged-only page numbering. `top` and `bottom` are independent (either, both, or neither present);
- *  `style` is shared. Absent means no page numbers are shown. */
-export interface PageNumbering {
-   top?:    PageNumberSlot
-   bottom?: PageNumberSlot
-   style:   PageNumberStyle
+/** One header/footer slot's content. `pageNumber` prints the live page number in the given style;
+ *  `credit` is the "Made with Documinter" mark; `content` is custom, a logo image and/or text inline. */
+export type BandItem =
+   | { kind: 'pageNumber'; style: PageNumberStyle }
+   | { kind: 'credit' }
+   | { kind: 'content'; text?: string; image?: BandImage }
+
+/** A running header or footer band: up to three positioned items (left / center / right). */
+export interface PageBand {
+   left?:   BandItem
+   center?: BandItem
+   right?:  BandItem
 }
 
 export interface DocFormat {
@@ -73,8 +84,11 @@ export interface DocFormat {
    margins?: PageMargins
    /** paged only: the ordered discrete pages (break-marker model). */
    pages?: PageBreak[]
-   /** paged only: where and how the page number prints. Absent means none. */
-   pageNumbering?: PageNumbering
+   /** paged only: the running header band (top margin, every page). Absent means no header. */
+   header?: PageBand
+   /** paged only: the running footer band (bottom margin, every page). Absent means the default
+    *  credit; an empty band ({}) is a deliberately cleared footer. */
+   footer?: PageBand
 }
 
 // #############
@@ -98,7 +112,6 @@ export const INFINITE_WIDTH_CUSTOM_MAX_PX = 1600
 
 const PAGE_KINDS: ReadonlySet<PageKind> = new Set(['infinite', 'a4-portrait', 'a4-landscape'])
 const INFINITE_WIDTH_KEYWORDS: ReadonlySet<string> = new Set(['narrow', 'normal', 'wide'])
-const PAGE_NUMBER_ALIGNS: ReadonlySet<string> = new Set(['left', 'center', 'right'])
 const PAGE_NUMBER_STYLES_SET: ReadonlySet<string> = new Set(['plain', 'page', 'slash', 'pageOf', 'dashes'])
 
 // ###########
@@ -170,27 +183,51 @@ function normalizePageBreak(raw: unknown): PageBreak | undefined {
    return result
 }
 
-/** A single page-number slot, or undefined when its align is missing/invalid (that edge is off). */
-function normalizePageNumberSlot(raw: unknown): PageNumberSlot | undefined {
-   if (!raw || typeof raw !== 'object') return undefined
-   const align = (raw as Record<string, unknown>).align
-   return typeof align === 'string' && PAGE_NUMBER_ALIGNS.has(align) ? { align: align as PageNumberAlign } : undefined
-}
-
-/** Defensive read-time normalization of stored PageNumbering, or undefined when neither edge is on
- *  (no page numbers). Style falls back to 'plain' when missing/invalid. */
-function normalizePageNumbering(raw: unknown): PageNumbering | undefined {
+/** A logo image in a band slot, or undefined when its src is missing. */
+function normalizeBandImage(raw: unknown): BandImage | undefined {
    if (!raw || typeof raw !== 'object') return undefined
    const source = raw as Record<string, unknown>
-   const top    = normalizePageNumberSlot(source.top)
-   const bottom = normalizePageNumberSlot(source.bottom)
-   if (!top && !bottom) return undefined
-   const style: PageNumberStyle = typeof source.style === 'string' && PAGE_NUMBER_STYLES_SET.has(source.style)
-      ? source.style as PageNumberStyle
-      : 'plain'
-   const result: PageNumbering = { style }
-   if (top)    result.top = top
-   if (bottom) result.bottom = bottom
+   const src = typeof source.src === 'string' ? source.src : ''
+   if (src.trim() === '') return undefined
+   const result: BandImage = { src }
+   if (typeof source.width === 'number'  && source.width  > 0) result.width  = source.width
+   if (typeof source.height === 'number' && source.height > 0) result.height = source.height
+   return result
+}
+
+/** A single header/footer item, or undefined when malformed or empty (an empty content slot is no
+ *  item). Page-number style falls back to 'plain' when missing/invalid. */
+function normalizeBandItem(raw: unknown): BandItem | undefined {
+   if (!raw || typeof raw !== 'object') return undefined
+   const source = raw as Record<string, unknown>
+   if (source.kind === 'pageNumber') {
+      const style: PageNumberStyle = typeof source.style === 'string' && PAGE_NUMBER_STYLES_SET.has(source.style)
+         ? source.style as PageNumberStyle
+         : 'plain'
+      return { kind: 'pageNumber', style }
+   }
+   if (source.kind === 'credit') return { kind: 'credit' }
+   if (source.kind === 'content') {
+      const text  = typeof source.text === 'string' && source.text.trim() !== '' ? source.text : undefined
+      const image = normalizeBandImage(source.image)
+      if (text === undefined && image === undefined) return undefined
+      return { kind: 'content', ...(text !== undefined ? { text } : {}), ...(image !== undefined ? { image } : {}) }
+   }
+   return undefined
+}
+
+/** A header/footer band. Undefined only when the raw is absent; a present-but-empty band normalizes to
+ *  {} (a deliberately cleared band, distinct from absent, which shows the default footer credit). */
+function normalizeBand(raw: unknown): PageBand | undefined {
+   if (!raw || typeof raw !== 'object') return undefined
+   const source = raw as Record<string, unknown>
+   const result: PageBand = {}
+   const left   = normalizeBandItem(source.left)
+   const center = normalizeBandItem(source.center)
+   const right  = normalizeBandItem(source.right)
+   if (left)   result.left = left
+   if (center) result.center = center
+   if (right)  result.right = right
    return result
 }
 
@@ -214,13 +251,15 @@ export function normalizeFormat(raw: unknown): DocFormat {
       ? source.pages.map(normalizePageBreak).filter((page): page is PageBreak => page !== undefined)
       : undefined
 
-   const pageNumbering = normalizePageNumbering(source.pageNumbering)
+   const header = normalizeBand(source.header)
+   const footer = normalizeBand(source.footer)
 
    const result: DocFormat = { kind }
    if (width !== undefined) result.width = width
    if (margins !== undefined) result.margins = margins
    if (pages !== undefined && pages.length > 0) result.pages = pages
-   if (pageNumbering !== undefined) result.pageNumbering = pageNumbering
+   if (header !== undefined) result.header = header
+   if (footer !== undefined) result.footer = footer
    return result
 }
 
@@ -235,7 +274,35 @@ export function isDefaultFormat(format: DocFormat): boolean {
       && (format.width === undefined || format.width === 'normal')
       && format.margins === undefined
       && (format.pages === undefined || format.pages.length === 0)
-      && format.pageNumbering === undefined
+      && format.header === undefined
+      && format.footer === undefined
+}
+
+/** The header band to render: the configured one, or an empty band (no header by default). Header items
+ *  are user content (page number, text, logo); the header never carries the credit. */
+export function resolveHeader(format: DocFormat | undefined): PageBand {
+   return format?.header ?? {}
+}
+
+/**
+ * The footer band to render, DERIVED. The Documinter credit ALWAYS shows and is never stored; the only
+ * user control in the footer is an optional page number (the first `pageNumber` item found in
+ * `format.footer`). The credit auto-places to avoid it: bottom-right normally, bottom-left when the page
+ * number sits right. Any stray non-page-number footer item is ignored.
+ */
+export function resolveFooterBand(format: DocFormat | undefined): PageBand {
+   const stored = format?.footer ?? {}
+   let pageNumberPosition: BandPosition | undefined
+   let pageNumberItem: BandItem | undefined
+   for (const position of ['left', 'center', 'right'] as const) {
+      const item = stored[position]
+      if (item && item.kind === 'pageNumber') { pageNumberPosition = position; pageNumberItem = item; break }
+   }
+   const creditPosition: BandPosition = pageNumberPosition === 'right' ? 'left' : 'right'
+   const band: PageBand = {}
+   if (pageNumberItem && pageNumberPosition) band[pageNumberPosition] = pageNumberItem
+   band[creditPosition] = { kind: 'credit' }
+   return band
 }
 
 // ############
