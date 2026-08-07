@@ -33,6 +33,11 @@ export type PageKind = 'infinite' | 'a4-portrait' | 'a4-landscape'
  *  the exported @page rule. */
 export interface PageMargins { top: number; right: number; bottom: number; left: number }
 
+/** How the Page setup window edits the four PageMargins values. Purely a UI concern, never stored:
+ *  the model always carries four independent values, this only picks how many inputs the user sees
+ *  and which sides move together when one of them changes. */
+export type MarginMode = 'allEqual' | 'verticalHorizontal' | 'eachSide'
+
 /**
  * A page is defined by WHERE it starts in the flat block flow (a break marker), plus its own id and
  * optional per-page overrides. Read by `partitionIntoPages` to split the flow into discrete pages.
@@ -329,4 +334,16 @@ export function resolveInfiniteWidthPx(width: InfiniteWidth | undefined): number
 export function resolveDocumentSheetWidthPx(format: DocFormat | undefined): number {
    if (!format || format.kind === 'infinite') return resolveInfiniteWidthPx(format?.width)
    return INFINITE_WIDTH_NORMAL_PX
+}
+
+/** Picks the margin-editing mode that best fits a set of four margin values, so the Page setup
+ *  window opens on the simplest view that still reproduces them exactly: all four equal collapses to
+ *  a single input, a matching top/bottom and left/right pair (that aren't all four equal) collapses
+ *  to the vertical/horizontal pair, anything else needs the four independent inputs. */
+export function deriveMarginMode(margins: PageMargins): MarginMode {
+   const allEqual = margins.top === margins.right && margins.top === margins.bottom && margins.top === margins.left
+   if (allEqual) return 'allEqual'
+   const axisPaired = margins.top === margins.bottom && margins.left === margins.right
+   if (axisPaired) return 'verticalHorizontal'
+   return 'eachSide'
 }

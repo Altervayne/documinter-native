@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react'
 
 // -- Library Imports --
-import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal, Ban, AlignLeft, AlignCenter, AlignRight, Upload, Trash2 } from 'lucide-react'
+import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal, Ban, AlignLeft, AlignCenter, AlignRight, Upload, Trash2, SquareEqual, Move, Frame } from 'lucide-react'
 
 // -- Component / Hook Imports --
 import { BlockEditorWindow } from './BlockEditorWindow'
@@ -15,6 +15,7 @@ import {
    normalizeFormat,
    resolveInfiniteWidthPx,
    resolveHeader,
+   deriveMarginMode,
    DEFAULT_A4_MARGINS,
    INFINITE_WIDTH_CUSTOM_MIN_PX,
    INFINITE_WIDTH_CUSTOM_MAX_PX,
@@ -25,6 +26,8 @@ import {
    type PageBand,
    type BandPosition,
    type BandImage,
+   type MarginMode,
+   type PageMargins,
 } from '../lib/format'
 import { PAGE_NUMBER_STYLES } from '../lib/pageNumbering'
 import { downscaleImageToDataUrl } from '../lib/imageDownscale'
@@ -48,8 +51,7 @@ interface FormatWindowProps {
 
 type WidthChoice = 'narrow' | 'normal' | 'wide' | 'custom'
 
-// A uniform-margin slider window (all four sides equal), the common case. Per-side margins are
-// carried on the model but a per-side editor is deferred.
+// Shared clamp for every margin slider, regardless of editing mode.
 const MARGIN_MIN_MM = 0
 const MARGIN_MAX_MM = 40
 
@@ -64,6 +66,10 @@ const MARGIN_MAX_MM = 40
  * MARGINS (A4 only). Switching kind is non-destructive: the section/block content is untouched, and
  * any page breaks (format.pages) ride along across a kind switch (they simply aren't rendered in
  * infinite mode), so an A4 -> infinite -> A4 round-trip preserves the pagination.
+ *
+ * Margins are always four independent values on the model; the window offers three ways to edit them
+ * (all sides at once, vertical/horizontal pairs, or each side on its own), picked up from the current
+ * values on open and held as local UI state (see deriveMarginMode in lib/format.ts).
  */
 export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWindowProps) {
    const { t } = useLang()
@@ -78,10 +84,13 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
    const isCustom = typeof width === 'object'
    const customWidthPx = isCustom ? width.custom : resolveInfiniteWidthPx(width)
 
-   // Margins default to 20mm on every side; the uniform slider tracks the top side (all four
-   // are kept equal by this control).
+   // Margins default to 20mm on every side. The editing mode (how many inputs the window shows) is
+   // local UI state, derived once from the incoming margins when the window opens, so a document
+   // already using four equal or arbitrary margins opens on the view that matches without forcing a
+   // choice; the model underneath always keeps four independent values regardless of mode.
    const margins = resolved.margins ?? DEFAULT_A4_MARGINS
    const uniformMarginMm = margins.top
+   const [marginMode, setMarginMode] = useState<MarginMode>(() => deriveMarginMode(margins))
 
    function applyWidth(nextWidth: InfiniteWidth): void {
       onChange({ ...resolved, kind: 'infinite', width: nextWidth })
@@ -98,8 +107,31 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
       onChange({ ...resolved, kind: nextKind })
    }
 
-   function handleMarginChange(nextMm: number): void {
+   function applyAllEqualMargin(nextMm: number): void {
       onChange({ ...resolved, margins: { top: nextMm, right: nextMm, bottom: nextMm, left: nextMm } })
+   }
+
+   function applyAxisMargin(axis: 'vertical' | 'horizontal', nextMm: number): void {
+      const next: PageMargins = axis === 'vertical'
+         ? { ...margins, top: nextMm, bottom: nextMm }
+         : { ...margins, left: nextMm, right: nextMm }
+      onChange({ ...resolved, margins: next })
+   }
+
+   function applySideMargin(side: keyof PageMargins, nextMm: number): void {
+      onChange({ ...resolved, margins: { ...margins, [side]: nextMm } })
+   }
+
+   // Switching mode only reshapes how the four values are grouped for editing; it also coalesces
+   // them so the new mode's inputs start from something coherent instead of an arbitrary spread.
+   function handleMarginModeChange(nextMode: MarginMode): void {
+      setMarginMode(nextMode)
+      if (nextMode === 'allEqual') {
+         applyAllEqualMargin(margins.top)
+      } else if (nextMode === 'verticalHorizontal') {
+         onChange({ ...resolved, margins: { top: margins.top, bottom: margins.top, left: margins.left, right: margins.left } })
+      }
+      // eachSide keeps the four values exactly as they are.
    }
 
    // ==========================
@@ -309,20 +341,98 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
                </section>
             )}
 
-            {/* Page margins (A4 only). Uniform: all four sides equal. */}
+            {/* Page margins (A4 only). Three editing modes over the same four stored values: all equal
+                (one input), vertical/horizontal (two paired inputs), or each side independently. */}
             {!isInfinite && (
                <section className="presentation-section">
                   <span className="presentation-section-label">{t.formatMarginsLabel}</span>
                   <p className="presentation-hint">{t.formatMarginsHint}</p>
-                  <SliderWithNumberInput
-                     label={t.formatMarginsValue}
-                     min={MARGIN_MIN_MM}
-                     max={MARGIN_MAX_MM}
-                     step={1}
-                     value={uniformMarginMm}
-                     unit="mm"
-                     onChange={handleMarginChange}
+                  <SegmentedIconToggle<MarginMode>
+                     ariaLabel={t.formatMarginsLabel}
+                     value={marginMode}
+                     onChange={handleMarginModeChange}
+                     options={[
+                        { value: 'allEqual',           label: t.formatMarginModeAllEqual, icon: <SquareEqual size={15} /> },
+                        { value: 'verticalHorizontal', label: t.formatMarginModeAxis,     icon: <Move size={15} /> },
+                        { value: 'eachSide',            label: t.formatMarginModeEachSide, icon: <Frame size={15} /> },
+                     ]}
                   />
+
+                  {marginMode === 'allEqual' && (
+                     <SliderWithNumberInput
+                        label={t.formatMarginsValue}
+                        min={MARGIN_MIN_MM}
+                        max={MARGIN_MAX_MM}
+                        step={1}
+                        value={uniformMarginMm}
+                        unit="mm"
+                        onChange={applyAllEqualMargin}
+                     />
+                  )}
+
+                  {marginMode === 'verticalHorizontal' && (
+                     <>
+                        <SliderWithNumberInput
+                           label={t.formatMarginVertical}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.top}
+                           unit="mm"
+                           onChange={next => applyAxisMargin('vertical', next)}
+                        />
+                        <SliderWithNumberInput
+                           label={t.formatMarginHorizontal}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.left}
+                           unit="mm"
+                           onChange={next => applyAxisMargin('horizontal', next)}
+                        />
+                     </>
+                  )}
+
+                  {marginMode === 'eachSide' && (
+                     <>
+                        <SliderWithNumberInput
+                           label={t.formatMarginTop}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.top}
+                           unit="mm"
+                           onChange={next => applySideMargin('top', next)}
+                        />
+                        <SliderWithNumberInput
+                           label={t.formatMarginRight}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.right}
+                           unit="mm"
+                           onChange={next => applySideMargin('right', next)}
+                        />
+                        <SliderWithNumberInput
+                           label={t.formatMarginBottom}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.bottom}
+                           unit="mm"
+                           onChange={next => applySideMargin('bottom', next)}
+                        />
+                        <SliderWithNumberInput
+                           label={t.formatMarginLeft}
+                           min={MARGIN_MIN_MM}
+                           max={MARGIN_MAX_MM}
+                           step={1}
+                           value={margins.left}
+                           unit="mm"
+                           onChange={next => applySideMargin('left', next)}
+                        />
+                     </>
+                  )}
                </section>
             )}
 

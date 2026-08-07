@@ -12,6 +12,11 @@ import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, mov
 import { getFolder } from './lib/binderFolders'
 import { instantiateTemplate, captureTemplate, type DocumentTemplate } from './lib/documentTemplate'
 import { saveTemplate } from './lib/templateStore'
+import {
+   emptyHistory, recordEdit, applyUndo, applyRedo,
+   COALESCE_MS, HISTORY_DEPTH_CAP,
+   type DocSnapshot, type UndoHistory,
+} from './lib/undoHistory'
 
 // -- Hook Imports --
 import { useSectionMutations } from './hooks/useSectionMutations'
@@ -164,6 +169,75 @@ export default function App() {
    const openDocumentsRef = useRef(openDocuments)
    useEffect(() => { openDocumentsRef.current = openDocuments }, [openDocuments])
 
+   // ############################
+   // # UNDO / REDO (PER-TAB)    #
+   // ############################
+
+   // Each tab keeps its own session-only history, keyed by tabKey and held OUTSIDE OpenDocument so it
+   // can never reach autosave or serialization. Dropped when the tab closes; a new or opened tab
+   // starts empty on first edit. History is never restored across a reload.
+   const historyRef = useRef<Map<string, UndoHistory>>(new Map())
+
+   // The undoable slice of a tab: the fields the binder persists. Holds references to the immutable
+   // model, so it is cheap and shares untouched subtrees with the live state.
+   const takeSnapshot = useCallback((document: OpenDocument): DocSnapshot => ({
+      meta:         document.meta,
+      sections:     document.sections,
+      docTheme:     document.docTheme,
+      docAccent:    document.docAccent,
+      presentation: document.presentation,
+      format:       document.format,
+   }), [])
+
+   // The single choke point every content lever routes through: snapshot the active tab's pre-edit
+   // slice into its history, then apply the edit. `kind` groups a burst of like edits into one entry
+   // (see recordEdit's coalescing). produceNext runs inside the functional update so it composes on the
+   // freshest state, which matters when two levers commit in the same tick (a page op writes sections
+   // then format). Bookkeeping writes (save status, tab promotion, tab open/close) never come here.
+   const commitActiveEdit = useCallback((kind: string, produceNext: (document: OpenDocument) => OpenDocument) => {
+      const tabKey = activeTabKeyRef.current
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (!activeTab) return
+      const previous = historyRef.current.get(tabKey) ?? emptyHistory()
+      historyRef.current.set(tabKey, recordEdit(previous, takeSnapshot(activeTab), kind, Date.now(), COALESCE_MS, HISTORY_DEPTH_CAP))
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === tabKey ? produceNext(document) : document))
+   }, [takeSnapshot])
+
+   // Write a restored slice back onto a tab, leaving its identity + save bookkeeping untouched. Goes
+   // through the same setOpenDocuments path as a live edit, so autosave and the pure paged reflow
+   // re-derive on their own; it deliberately does NOT record history (undo/redo drive the stacks).
+   const applySnapshotToTab = useCallback((tabKey: string, snapshot: DocSnapshot) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === tabKey
+            ? { ...document, meta: snapshot.meta, sections: snapshot.sections, docTheme: snapshot.docTheme, docAccent: snapshot.docAccent, presentation: snapshot.presentation, format: snapshot.format }
+            : document))
+   }, [])
+
+   const undo = useCallback(() => {
+      const tabKey = activeTabKeyRef.current
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (!activeTab) return
+      const history = historyRef.current.get(tabKey)
+      if (!history) return
+      const result = applyUndo(history, takeSnapshot(activeTab))
+      if (!result) return
+      historyRef.current.set(tabKey, result.history)
+      applySnapshotToTab(tabKey, result.snapshot)
+   }, [takeSnapshot, applySnapshotToTab])
+
+   const redo = useCallback(() => {
+      const tabKey = activeTabKeyRef.current
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (!activeTab) return
+      const history = historyRef.current.get(tabKey)
+      if (!history) return
+      const result = applyRedo(history, takeSnapshot(activeTab), HISTORY_DEPTH_CAP)
+      if (!result) return
+      historyRef.current.set(tabKey, result.history)
+      applySnapshotToTab(tabKey, result.snapshot)
+   }, [takeSnapshot, applySnapshotToTab])
+
    // The active document and the content + identity the render + effects below read, derived from the
    // list. documentId / saveStatus are per-tab; the active tab's values drive the UI.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
@@ -177,33 +251,30 @@ export default function App() {
    // The setter lever: hands the mutation hooks a Section[] setter that updates only
    // the active tab. The hooks stay oblivious to tabs, they still receive a plain Dispatch<SetStateAction<Section[]>>.
    const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current
-            ? { ...document, sections: typeof updater === 'function' ? updater(document.sections) : updater }
-            : document))
-   }, [])
+      commitActiveEdit('sections', document =>
+         ({ ...document, sections: typeof updater === 'function' ? updater(document.sections) : updater }))
+   }, [commitActiveEdit])
    const setActiveDocTheme = useCallback((nextTheme: 'light' | 'dark') => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current ? { ...document, docTheme: nextTheme } : document))
-   }, [])
+      // Clicking the already-active theme is a no-op, so it must not spawn a dead undo entry.
+      if (openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)?.docTheme === nextTheme) return
+      commitActiveEdit('docTheme', document => ({ ...document, docTheme: nextTheme }))
+   }, [commitActiveEdit])
    const setActiveDocAccent = useCallback((nextAccent: string) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current ? { ...document, docAccent: nextAccent } : document))
-   }, [])
-   // Patch the active tab's presentation extras (watermark, ...). Mirrors setActiveDocTheme; a real
-   // document change, so it flows through autosave + persist like any other edit. `undefined` clears
-   // the extras entirely.
+      // Re-selecting the current accent changes nothing, so skip the history entry.
+      if (openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)?.docAccent === nextAccent) return
+      commitActiveEdit('docAccent', document => ({ ...document, docAccent: nextAccent }))
+   }, [commitActiveEdit])
+   // Patch the active tab's presentation extras (watermark, ...). A real document change, so it flows
+   // through autosave + persist like any other edit. `undefined` clears the extras entirely.
    const setActivePresentation = useCallback((next: DocPresentationExtras | undefined) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current ? { ...document, presentation: next } : document))
-   }, [])
-   // Patch the active tab's page format (infinite width, later paged A4). Mirrors setActivePresentation;
-   // a real document change, so it flows through autosave + persist like any other edit. `undefined`
-   // clears it entirely, reverting to the infinite/normal default.
+      commitActiveEdit('presentation', document => ({ ...document, presentation: next }))
+   }, [commitActiveEdit])
+   // Patch the active tab's page format (infinite width, later paged A4). A real document change, so it
+   // flows through autosave + persist like any other edit. `undefined` clears it entirely, reverting to
+   // the infinite/normal default.
    const setActiveFormat = useCallback((next: DocFormat | undefined) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
-   }, [])
+      commitActiveEdit('format', document => ({ ...document, format: next }))
+   }, [commitActiveEdit])
    // Per-tab save-status setter. Status lives on each OpenDocument, so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
    // the captured originating tab for an async save's resolution.
@@ -435,6 +506,9 @@ export default function App() {
       if (index === -1) return
       const wasActive = activeTabKeyRef.current === tabKey
       const remaining = documentsBefore.filter(document => document.tabKey !== tabKey)
+
+      // Drop the closed tab's history: it is session-only and must not outlive the tab.
+      historyRef.current.delete(tabKey)
 
       // Update the refs synchronously, not just via the post-render effects, so a batch of closes
       // (a recursive folder delete removing several open docs) chains off fresh state instead of
@@ -766,17 +840,39 @@ export default function App() {
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [togglePanel])
 
+   // Document-history shortcuts: Ctrl+Z = undo, Ctrl+Shift+Z / Ctrl+Y = redo. Focus decides ownership:
+   // while a text field is focused the browser's native in-field undo runs untouched, so the global
+   // handler bails when the active element is editable. Only active in document mode.
+   useEffect(() => {
+      if (binderOpen) return
+      function isEditableTarget(element: Element | null): boolean {
+         if (!element) return false
+         if ((element as HTMLElement).isContentEditable) return true
+         const tag = element.tagName
+         return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      }
+      function handleKeyDown(event: KeyboardEvent): void {
+         if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+         const key = event.key.toLowerCase()
+         if (key !== 'z' && key !== 'y') return
+         if (isEditableTarget(document.activeElement)) return
+         event.preventDefault()
+         const isRedo = key === 'y' || (key === 'z' && event.shiftKey)
+         if (isRedo) redo()
+         else undo()
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+   }, [binderOpen, undo, redo])
+
    // ############################
    // # DOCUMENT-LEVEL CALLBACKS #
    // ############################
 
    // Commit from the MarkdownPanel back into document state (live edit, autosaves normally).
    const handleMarkdownCommit = useCallback((newSections: Section[], newMeta: DocMeta) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current
-            ? { ...document, sections: newSections, meta: newMeta }
-            : document))
-   }, [])
+      commitActiveEdit('markdown', document => ({ ...document, sections: newSections, meta: newMeta }))
+   }, [commitActiveEdit])
 
    // Open freshly-loaded content (File -> Open: JSON backup / Markdown / Mintdown) in a NEW tab,
    // activating it. Discards nothing (it never replaces another tab). The new tab is NOT yet a binder
@@ -819,11 +915,8 @@ export default function App() {
    }, [openLoadedInNewTab])
 
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {
-      setOpenDocuments(documents => documents.map(document =>
-         document.tabKey === activeTabKeyRef.current
-            ? { ...document, meta: { ...document.meta, ...patch } }
-            : document))
-   }, [])
+      commitActiveEdit('meta', document => ({ ...document, meta: { ...document.meta, ...patch } }))
+   }, [commitActiveEdit])
 
    // Load state from JSON (restoring its saved theme + accent) into a new tab. Opening lands in the
    // editor. Not added to the binder (Open is not Import); closeTab warns before it is lost unsaved.

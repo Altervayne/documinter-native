@@ -4,6 +4,7 @@ import {
    isDefaultFormat,
    resolveInfiniteWidthPx,
    resolveDocumentSheetWidthPx,
+   deriveMarginMode,
    DEFAULT_FORMAT,
    INFINITE_WIDTH_NARROW_PX,
    INFINITE_WIDTH_NORMAL_PX,
@@ -136,5 +137,21 @@ describe('resolveDocumentSheetWidthPx', () => {
    it('ignores width for an A4 kind this phase, falling back to normal (paged rendering is Phase 2)', () => {
       expect(resolveDocumentSheetWidthPx({ kind: 'a4-portrait', width: 'wide' })).toBe(INFINITE_WIDTH_NORMAL_PX)
       expect(resolveDocumentSheetWidthPx({ kind: 'a4-landscape', width: { custom: 1500 } })).toBe(INFINITE_WIDTH_NORMAL_PX)
+   })
+})
+
+describe('deriveMarginMode', () => {
+   it('picks allEqual when all four sides match', () => {
+      expect(deriveMarginMode({ top: 20, right: 20, bottom: 20, left: 20 })).toBe('allEqual')
+      expect(deriveMarginMode({ top: 0, right: 0, bottom: 0, left: 0 })).toBe('allEqual')
+   })
+
+   it('picks verticalHorizontal when top/bottom and left/right pair up but are not all equal', () => {
+      expect(deriveMarginMode({ top: 25, right: 15, bottom: 25, left: 15 })).toBe('verticalHorizontal')
+   })
+
+   it('picks eachSide when no pairing reproduces the values', () => {
+      expect(deriveMarginMode({ top: 10, right: 20, bottom: 30, left: 40 })).toBe('eachSide')
+      expect(deriveMarginMode({ top: 10, right: 20, bottom: 10, left: 30 })).toBe('eachSide')
    })
 })
