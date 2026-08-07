@@ -2,8 +2,9 @@
 // # DOCUMENT TEMPLATE MODEL                                                                     #
 // #                                                                                             #
 // # A template captures a document's CHROME (meta scaffold, theme, accent, presentation extras, #
-// # page format) so a new document starts pre-styled instead of blank. It never captures        #
-// # content (sections/blocks) nor the content-position-dependent `format.pages` array.          #
+// # page format including the header / footer bands) so a new document starts pre-styled instead #
+// # of blank. It never captures content (sections/blocks) nor the content-position-dependent     #
+// # `format.pages` array.                                                                        #
 // # Everything here is pure and JSON-serializable, tested in isolation; the IndexedDB store     #
 // # (lib/templateStore.ts) and the App wiring build on it.                                      #
 // ###############################################################################################
@@ -104,7 +105,10 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
       docTheme:  template.docTheme,
       docAccent: template.docAccent,
       presentation: template.presentation ? structuredClone(template.presentation) : undefined,
-      format:       template.format ? { ...template.format } : undefined,
+      // Deep-clone: the format nests margins plus the header / footer bands (whose items can hold a
+      // base64 logo), so a shallow spread would alias every instantiated document back to the stored
+      // template. structuredClone severs all of it.
+      format:       template.format ? structuredClone(template.format) : undefined,
    }
 }
 

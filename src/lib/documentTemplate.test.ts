@@ -58,6 +58,17 @@ describe('captureTemplate', () => {
       const template = captureTemplate('T', chrome({ presentation: {} }), 'id', 0)
       expect(template.presentation).toBeUndefined()
    })
+
+   it('keeps the header / footer bands configured on the format (including a header logo)', () => {
+      const format: DocFormat = {
+         kind: 'a4-portrait',
+         header: { left: { kind: 'content', text: 'Acme', image: { src: 'data:image/png;base64,AAAA', width: 40, height: 20 } } },
+         footer: { right: { kind: 'pageNumber', style: 'plain' } },
+      }
+      const template = captureTemplate('T', chrome({ format }), 'id', 0)
+      expect(template.format?.header).toEqual({ left: { kind: 'content', text: 'Acme', image: { src: 'data:image/png;base64,AAAA', width: 40, height: 20 } } })
+      expect(template.format?.footer).toEqual({ right: { kind: 'pageNumber', style: 'plain' } })
+   })
 })
 
 describe('instantiateTemplate', () => {
@@ -77,6 +88,30 @@ describe('instantiateTemplate', () => {
       const seed = instantiateTemplate(template, makeIdFactory())
       expect(seed.format).toEqual({ kind: 'a4-landscape', margins: { top: 5, right: 5, bottom: 5, left: 5 } })
       expect(seed.format).not.toBe(template.format)
+      // Nested objects must be cloned too, else editing the new document mutates the stored template.
+      expect(seed.format?.margins).not.toBe(template.format?.margins)
+   })
+
+   it('deep-clones the header / footer bands and the header logo (no shared references)', () => {
+      const format: DocFormat = {
+         kind: 'a4-portrait',
+         header: { left: { kind: 'content', text: 'Acme', image: { src: 'data:image/png;base64,AAAA', width: 40, height: 20 } } },
+         footer: { right: { kind: 'pageNumber', style: 'plain' } },
+      }
+      const template = captureTemplate('T', chrome({ format }), 'id', 0)
+      const seed = instantiateTemplate(template, makeIdFactory())
+      expect(seed.format?.header).toEqual(template.format?.header)
+      expect(seed.format?.footer).toEqual(template.format?.footer)
+      expect(seed.format?.header).not.toBe(template.format?.header)
+      expect(seed.format?.footer).not.toBe(template.format?.footer)
+      expect(seed.format?.header?.left).not.toBe(template.format?.header?.left)
+      // The base64 logo is the heaviest shared payload a shallow copy would leak; it must be its own object.
+      const seedImage     = seed.format?.header?.left
+      const templateImage = template.format?.header?.left
+      const seedLogo     = seedImage?.kind === 'content' ? seedImage.image : undefined
+      const templateLogo = templateImage?.kind === 'content' ? templateImage.image : undefined
+      expect(seedLogo).toBeDefined()
+      expect(seedLogo).not.toBe(templateLogo)
    })
 })
 
