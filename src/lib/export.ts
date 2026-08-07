@@ -572,8 +572,10 @@ function buildPagedStyles(
       : ''
 
    return `
-            /* Paged (A4) layout */
-            @page { size: A4 ${orientation}; margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; }
+            /* Paged (A4) layout. @page carries only the physical A4 size; the margins are owned by the
+               sheet's .doc-render padding (see @media print), because browsers honor @page margins
+               inconsistently and drop the top band. */
+            @page { size: A4 ${orientation}; margin: 0; }
             .doc-pages { display: flex; flex-direction: column; align-items: center; gap: 2rem; }
             .doc-page {
                   box-sizing: border-box;
@@ -607,16 +609,24 @@ function buildPagedStyles(
             .doc-render .doc-diagram, .doc-render .table-wrap, .doc-render .doc-math,
             .doc-render .callout, .doc-render pre { page-break-inside: avoid; break-inside: avoid; }
             @media print {
-                  body { background: #ffffff; }
-                  .sidebar { display: none; }
-                  .main { margin-left: 0; padding: 0; }
-                  .doc-pages { gap: 0; padding: 0; }
+                  /* Margins stay as the sheet's .doc-render padding (reliable CSS px, 96dpi -> mm), so
+                     the top band never collapses the way an @page margin does. The sheets become plain
+                     full-width blocks (no centering flex) so the left edge is not shaved. print-color-
+                     adjust: exact (an inherited property) makes the accent, callout fills, code blocks,
+                     and watermark print without the reader toggling "Background graphics". The page
+                     background follows the document's sheet colour so a dark document does not print
+                     white below a short page. The floating sidebar and back-to-top are position:fixed,
+                     which repeats them on every sheet, so both are hidden. */
+                  html, body { background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                  .sidebar, #toTopBtn { display: none !important; }
+                  .main { margin: 0; padding: 0; }
+                  .doc-pages { display: block; gap: 0; margin: 0; padding: 0; }
                   .doc-page {
-                        box-shadow: none; border-radius: 0; width: auto; min-height: 0;
+                        box-shadow: none; border-radius: 0; width: 100%; min-height: 0; margin: 0;
                         page-break-after: always; break-after: page;
+                        -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
                   .doc-page:last-child { page-break-after: auto; break-after: auto; }
-                  .doc-page > .doc-render { padding: 0 !important; }
             }${watermarkPaged}`
 }
 
@@ -930,4 +940,43 @@ export function downloadHTML(meta: DocMeta, sections: Section[], opts: ExportOpt
    anchor.download = slug + '.html'
    anchor.click()
    URL.revokeObjectURL(anchor.href)
+}
+
+/**
+ * Open the browser print dialog ("Save as PDF") over the exact paged export HTML. The document is
+ * written into a hidden iframe and only that iframe is printed, so no app chrome leaks in and the PDF
+ * matches the HTML export sheet for sheet. Printing waits for fonts so the print engine lays out the
+ * final page, not a fallback-font first pass. Intended for paged documents (the caller gates on paged
+ * mode); an infinite document would print as one long page.
+ */
+export function printDocument(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): void {
+   const html = generateExportHTML(meta, sections, opts)
+
+   const iframe = document.createElement('iframe')
+   iframe.setAttribute('aria-hidden', 'true')
+   // Kept in the layout (not display:none, which suppresses printing in some engines) but out of sight.
+   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+   document.body.appendChild(iframe)
+
+   const frameWindow = iframe.contentWindow
+   const frameDoc    = frameWindow?.document
+   if (!frameWindow || !frameDoc) { iframe.remove(); return }
+
+   const printThenClean = (): void => {
+      frameWindow.focus()
+      frameWindow.print()
+      // Leave the frame up briefly so the dialog can hold the document, then drop it.
+      window.setTimeout(() => iframe.remove(), 1000)
+   }
+   const whenFontsReady = (): void => {
+      const fonts = frameDoc.fonts
+      if (fonts && fonts.ready) fonts.ready.then(printThenClean).catch(printThenClean)
+      else printThenClean()
+   }
+
+   frameDoc.open()
+   frameDoc.write(html)
+   frameDoc.close()
+   if (frameDoc.readyState === 'complete') whenFontsReady()
+   else frameWindow.addEventListener('load', whenFontsReady, { once: true })
 }

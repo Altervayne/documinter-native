@@ -31,6 +31,7 @@ import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
+import { printDocument } from './lib/export'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
 import type { DockPanelToggle } from './molecules/ViewMenu'
@@ -691,6 +692,12 @@ export default function App() {
    const handleOpenExport  = useCallback(() => setExportOpen(true), [])
    const handleCloseExport = useCallback(() => setExportOpen(false), [])
 
+   // Save as PDF from the Pages panel: the browser print dialog over the paged export HTML, using the
+   // document's own theme / accent / presentation / format. The Pages panel exists only for paged docs.
+   const handleSaveAsPdf = useCallback(() => {
+      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
+   }, [meta, sections, docTheme, docAccent, lang, presentation, format])
+
    // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
    // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
    // background context menu; it renders inside WysiwygArea (which owns the doc-theme sheet the
@@ -864,6 +871,7 @@ export default function App() {
             onDelete={pagesData.onDelete}
             onInsertAfter={pagesData.onInsertAfter}
             onAddPage={pagesData.onAddPage}
+            onSaveAsPdf={handleSaveAsPdf}
             onJump={pagesData.onJump}
          />
       ),

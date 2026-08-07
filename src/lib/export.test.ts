@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { generateExportHTML } from './export'
+import { millimetresToPx } from './pageModel'
 import type { DocMeta, Block, Section } from '../types'
 import type { GraphSpec } from './graph'
 import type { Watermark, Header } from './presentation'
@@ -550,9 +551,12 @@ describe('generateExportHTML, paged (A4) export', () => {
       blocks: [{ id: 'b1', type: 'hr' }, { id: 'b2', type: 'hr' }],
    }]
 
-   it('emits an @page rule (portrait, default 20mm margins), .doc-page sheets, and print break rules', () => {
+   it('emits an @page rule (portrait, zero page margin), .doc-page sheets, padding margins, and print break rules', () => {
       const html = generateExportHTML(meta, sections, { theme: 'light', accent: '#f97316', format: { kind: 'a4-portrait' } })
-      expect(html).toContain('@page { size: A4 portrait; margin: 20mm 20mm 20mm 20mm; }')
+      expect(html).toContain('@page { size: A4 portrait; margin: 0; }')
+      // Default 20mm margins live as sheet padding now, not on @page.
+      expect(html).toContain(`padding: ${millimetresToPx(20)}px ${millimetresToPx(20)}px ${millimetresToPx(20)}px ${millimetresToPx(20)}px`)
+      expect(html).toContain('print-color-adjust: exact')
       expect(html).toContain('<div class="doc-pages">')
       expect(html).toContain('class="doc-page"')
       expect(html).toContain('page-break-after: always')
@@ -561,12 +565,15 @@ describe('generateExportHTML, paged (A4) export', () => {
       expect(html).not.toContain('<div class="doc-card">')
    })
 
-   it('uses landscape orientation and custom margins', () => {
+   it('uses landscape orientation, with margins owned by the sheet padding (not @page)', () => {
       const html = generateExportHTML(meta, sections, {
          theme: 'light', accent: '#f97316',
          format: { kind: 'a4-landscape', margins: { top: 10, right: 15, bottom: 12, left: 15 } },
       })
-      expect(html).toContain('@page { size: A4 landscape; margin: 10mm 15mm 12mm 15mm; }')
+      // @page carries only the physical size; browsers honor @page margins poorly, so the margin band
+      // is real .doc-render padding (CSS px at 96dpi) instead.
+      expect(html).toContain('@page { size: A4 landscape; margin: 0; }')
+      expect(html).toContain(`padding: ${millimetresToPx(10)}px ${millimetresToPx(15)}px ${millimetresToPx(12)}px ${millimetresToPx(15)}px`)
    })
 
    it('splits at a break marker into discrete pages, section heading only on the section-start slice', () => {

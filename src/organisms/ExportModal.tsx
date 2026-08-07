@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { X, Download, Copy, Image, Sun, Moon } from 'lucide-react'
+import { X, Download, Copy, Image, Sun, Moon, Printer } from 'lucide-react'
 import { Button } from '../atoms/Button'
 import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOption } from '../molecules/AccentSwatchGrid'
 import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
-import { generateExportHTML, downloadHTML, type ExportOptions } from '../lib/export'
+import { generateExportHTML, downloadHTML, printDocument, type ExportOptions } from '../lib/export'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
 import { downloadJSON } from '../lib/documentBackupFile'
@@ -19,7 +19,7 @@ import { ACCENT_PRESETS, accentPresetName } from '../lib/constants'
 // # TYPES #
 // #########
 
-type ExportFormat = 'html' | 'mintdown' | 'markdown' | 'json'
+type ExportFormat = 'html' | 'pdf' | 'mintdown' | 'markdown' | 'json'
 
 interface ExportModalProps {
    meta: DocMeta
@@ -93,6 +93,14 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       })
    }
 
+   // PDF: the browser print dialog over the same rendered export HTML (paged documents only). Awaits
+   // Temml like HTML so equations lay out before the print engine sees the page.
+   async function handlePdf() {
+      await ensureTemmlReady()
+      printDocument(meta, sections, opts)
+      onClose()
+   }
+
    // Mintdown / Markdown: pure serialize + download, no async asset to await.
    function handleMintdownDownload() {
       exportMintdownFile(sections, meta)
@@ -125,13 +133,23 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    //  Render
    // =======
 
-   // Extension-only labels (see i18n exportFormat*); the explanation lives in the hover tooltip
-   // instead, so the buttons stay short enough for four of them to breathe at once.
-   const FORMAT_OPTIONS: { value: ExportFormat; label: string; tooltip: string }[] = [
-      { value: 'html',     label: t.exportFormatHtml,     tooltip: t.exportFormatHtmlTooltip },
-      { value: 'mintdown', label: t.exportFormatMintdown, tooltip: t.exportFormatMintdownTooltip },
-      { value: 'markdown', label: t.exportFormatMarkdown, tooltip: t.exportFormatMarkdownTooltip },
-      { value: 'json',     label: t.exportFormatJson,     tooltip: t.exportFormatJsonTooltip },
+   // PDF prints the paged export, so it is only available for a paged document; on an infinite canvas
+   // the option is greyed out with an explanatory tooltip.
+   const isPagedDocument = !!docFormat && docFormat.kind !== 'infinite'
+
+   // Extension-only labels (see i18n exportFormat*); the explanation lives in the hover tooltip. Two
+   // rows: the content serializers (JSON / Mintdown / Markdown) above the rendered exports (HTML / PDF).
+   type FormatOption = { value: ExportFormat; label: string; tooltip: string; disabled?: boolean }
+   const FORMAT_ROWS: FormatOption[][] = [
+      [
+         { value: 'json',     label: t.exportFormatJson,     tooltip: t.exportFormatJsonTooltip },
+         { value: 'mintdown', label: t.exportFormatMintdown, tooltip: t.exportFormatMintdownTooltip },
+         { value: 'markdown', label: t.exportFormatMarkdown, tooltip: t.exportFormatMarkdownTooltip },
+      ],
+      [
+         { value: 'html', label: t.exportFormatHtml, tooltip: t.exportFormatHtmlTooltip },
+         { value: 'pdf',  label: t.exportFormatPdf,  tooltip: isPagedDocument ? t.exportFormatPdfTooltip : t.exportPdfNeedsPaged, disabled: !isPagedDocument },
+      ],
    ]
 
    // Accent grid data, built locally the same way buildDocumentMenuEntries does for the document
@@ -180,25 +198,33 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
 
             <div className="flex flex-col gap-2">
                <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.exportFormat}</span>
-               <div className="flex flex-wrap gap-2">
-                  {FORMAT_OPTIONS.map(formatOption => (
-                     <button
-                        key={formatOption.value}
-                        title={formatOption.tooltip}
-                        onClick={() => setFormat(formatOption.value)}
-                        className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors
-                           ${format === formatOption.value
-                              ? 'bg-accent/10 border-accent/50 text-accent'
-                              : 'border-border text-muted hover:text-text'
-                           }`}
-                     >
-                        {formatOption.label}
-                     </button>
+               <div className="flex flex-col gap-2">
+                  {FORMAT_ROWS.map((row, rowIndex) => (
+                     <div key={rowIndex} className="flex gap-2">
+                        {row.map(formatOption => (
+                           <button
+                              key={formatOption.value}
+                              title={formatOption.tooltip}
+                              // aria-disabled (not the `disabled` attribute) so the hover tooltip still
+                              // shows on a greyed-out PDF option (disabled elements swallow title hovers).
+                              aria-disabled={formatOption.disabled || undefined}
+                              onClick={() => { if (!formatOption.disabled) setFormat(formatOption.value) }}
+                              className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors
+                                 ${format === formatOption.value
+                                    ? 'bg-accent/10 border-accent/50 text-accent'
+                                    : 'border-border text-muted hover:text-text'
+                                 }
+                                 ${formatOption.disabled ? ' opacity-40 cursor-not-allowed hover:text-muted' : ''}`}
+                           >
+                              {formatOption.label}
+                           </button>
+                        ))}
+                     </div>
                   ))}
                </div>
             </div>
 
-            {format === 'html' && (
+            {(format === 'html' || format === 'pdf') && (
                <>
                   <div className="flex flex-col gap-2">
                      <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.theme}</span>
@@ -262,6 +288,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                         <Download size={13} />{t.download}
                      </Button>
                   </>
+               )}
+               {format === 'pdf' && (
+                  <Button variant="primary" className="flex-1" onClick={handlePdf}>
+                     <Printer size={13} />{t.saveAsPdf}
+                  </Button>
                )}
                {format === 'mintdown' && (
                   <Button variant="primary" className="flex-1" onClick={handleMintdownDownload}>

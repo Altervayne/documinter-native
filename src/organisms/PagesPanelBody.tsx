@@ -8,7 +8,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 
 // -- Icon Imports --
-import { Copy, Trash2, FilePlus2, Plus } from 'lucide-react'
+import { Copy, Trash2, FilePlus2, Plus, Printer } from 'lucide-react'
 
 // -- Lib / Context Imports --
 import { renderPagePreviewHtml } from '../lib/export'
@@ -44,6 +44,7 @@ interface PagesPanelBodyProps {
    onDelete:      (pageIndex: number) => void
    onInsertAfter: (pageIndex: number) => void
    onAddPage:     () => void
+   onSaveAsPdf:   () => void
    onJump:        (pageId: string) => void
 }
 
@@ -178,7 +179,7 @@ function PageThumbnail({
  */
 export function PagesPanelBody({
    pages, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   onReorder, onDuplicate, onDelete, onInsertAfter, onAddPage, onJump,
+   onReorder, onDuplicate, onDelete, onInsertAfter, onAddPage, onSaveAsPdf, onJump,
 }: PagesPanelBodyProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -254,6 +255,10 @@ export function PagesPanelBody({
          <button type="button" className="page-add-button" onClick={onAddPage}>
             <Plus size={14} />
             <span>{t.formatAddPage}</span>
+         </button>
+         <button type="button" className="page-add-button" onClick={onSaveAsPdf}>
+            <Printer size={14} />
+            <span>{t.saveAsPdf}</span>
          </button>
       </div>
    )

@@ -29,7 +29,7 @@ interface FileMenuProps {
    onSaveAs:         () => void
    /** Save the active document's chrome as a reusable template, document mode only. */
    onSaveAsTemplate: () => void
-   /** Single, format-aware Export dialog (HTML / Mintdown / Markdown), document mode only. */
+   /** Single, format-aware Export dialog (HTML / PDF / Mintdown / Markdown / JSON), document mode only. */
    onExport:         () => void
    // Binder mode only:
    onImportDocumint: () => void
@@ -120,7 +120,7 @@ export function FileMenu({
                      <MenuItem icon={<SaveAll size={13} />}       label={t.fileSaveAs}       onClick={() => handleItemClick(onSaveAs)} />
                      <MenuItem icon={<LayoutTemplate size={13} />} label={t.saveAsTemplate}  onClick={() => handleItemClick(onSaveAsTemplate)} />
                      <MenuSeparator />
-                     {/* One format-aware Export dialog (HTML / Mintdown / Markdown) */}
+                     {/* One format-aware Export dialog (HTML / PDF / Mintdown / Markdown / JSON) */}
                      <MenuItem icon={<Download size={13} />} label={t.menuExport} onClick={() => handleItemClick(onExport)} />
                   </>
                )}
