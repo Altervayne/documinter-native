@@ -60,11 +60,14 @@ interface WysiwygSectionProps {
    /** Disable canvas section drag-reorder (paged mode routes section reorder through the sidebar /
     *  the section context menu instead, since a split section can't drag across sheets). Default false. */
    sectionDragDisabled?: boolean
+   /** Hide the end-of-section block drop zone (paged mode uses a per-page end zone instead, so a page
+    *  that ends mid-section still has an append target). The add-block row is kept. Default false. */
+   suppressEndDropZone?: boolean
 }
 
 export function WysiwygSection({
    section, index, isLastSection, activeSectionId, activeBlockId, readOnly,
-   renderBlocks, showTitle = true, showAddRow = true, sortableId, sectionDragDisabled,
+   renderBlocks, showTitle = true, showAddRow = true, sortableId, sectionDragDisabled, suppressEndDropZone,
 }: WysiwygSectionProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
@@ -243,7 +246,7 @@ export function WysiwygSection({
                         )
                      })}
                   </SortableContext>
-                  {activeBlockId != null && showAddRow && <BottomDropZone id={bottomZoneId} data={{ type: 'block-zone', loc: sectionLoc }} />}
+                  {activeBlockId != null && showAddRow && !suppressEndDropZone && <BottomDropZone id={bottomZoneId} data={{ type: 'block-zone', loc: sectionLoc }} />}
                </div>
             )}
 

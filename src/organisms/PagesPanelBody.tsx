@@ -8,7 +8,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 
 // -- Icon Imports --
-import { Copy, Trash2 } from 'lucide-react'
+import { Copy, Trash2, FilePlus2, Plus } from 'lucide-react'
 
 // -- Lib / Context Imports --
 import { renderPagePreviewHtml } from '../lib/export'
@@ -42,6 +42,8 @@ interface PagesPanelBodyProps {
    onReorder:     (fromIndex: number, toIndex: number) => void
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
+   onInsertAfter: (pageIndex: number) => void
+   onAddPage:     () => void
    onJump:        (pageId: string) => void
 }
 
@@ -64,11 +66,12 @@ interface PageThumbnailProps {
    onJump:        (pageId: string) => void
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
+   onInsertAfter: (pageIndex: number) => void
 }
 
 function PageThumbnail({
    page, pageIndex, pageCount, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   canDelete, onJump, onDuplicate, onDelete,
+   canDelete, onJump, onDuplicate, onDelete, onInsertAfter,
 }: PageThumbnailProps) {
    const { t } = useLang()
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id })
@@ -128,6 +131,16 @@ function PageThumbnail({
                <button
                   type="button"
                   className="page-thumb-action"
+                  title={t.formatInsertPageAfter}
+                  aria-label={t.formatInsertPageAfter}
+                  onPointerDown={event => event.stopPropagation()}
+                  onClick={event => { event.stopPropagation(); onInsertAfter(pageIndex) }}
+               >
+                  <FilePlus2 size={13} />
+               </button>
+               <button
+                  type="button"
+                  className="page-thumb-action"
                   title={t.pageSorterDuplicate}
                   aria-label={t.pageSorterDuplicate}
                   onPointerDown={event => event.stopPropagation()}
@@ -165,8 +178,9 @@ function PageThumbnail({
  */
 export function PagesPanelBody({
    pages, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   onReorder, onDuplicate, onDelete, onJump,
+   onReorder, onDuplicate, onDelete, onInsertAfter, onAddPage, onJump,
 }: PagesPanelBodyProps) {
+   const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
 
@@ -216,6 +230,7 @@ export function PagesPanelBody({
                      onJump={onJump}
                      onDuplicate={onDuplicate}
                      onDelete={onDelete}
+                     onInsertAfter={onInsertAfter}
                   />
                ))}
             </SortableContext>
@@ -235,6 +250,11 @@ export function PagesPanelBody({
                )}
             </DragOverlay>
          </DndContext>
+
+         <button type="button" className="page-add-button" onClick={onAddPage}>
+            <Plus size={14} />
+            <span>{t.formatAddPage}</span>
+         </button>
       </div>
    )
 }

@@ -21,6 +21,8 @@ import { usePageOverflow } from '../../hooks/usePageOverflow'
 // -- Component Imports --
 import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Scissors, TriangleAlert } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
+import { BlankPageDropZone } from '../../atoms/BlankPageDropZone'
+import { BottomDropZone } from '../../atoms/BottomDropZone'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
 import { ContextMenu } from '../../molecules/ContextMenu'
@@ -39,7 +41,7 @@ import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatte
 import { resolveDocumentSheetWidthPx, normalizeFormat, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins, type PageNumberAlign } from '../../lib/format'
 import { formatPageNumber } from '../../lib/pageNumbering'
 import {
-   partitionIntoPages, reconcilePages, reanchorMovedBlocks, millimetresToPx,
+   partitionIntoPages, reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
@@ -73,6 +75,8 @@ interface WysiwygAreaProps {
    onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Commit the document's page format (infinite width, later paged A4); undefined clears it. */
    onFormatChange?: (next: DocFormat | undefined) => void
+   /** Replace the whole section flow (paged blank-page drops commit sections + breaks together). */
+   onReplaceSections?: (sections: Section[]) => void
    /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
@@ -108,7 +112,7 @@ interface WysiwygAreaProps {
 
 export function WysiwygArea({
    meta, sections, docTheme, docAccent, presentation, format, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onOpenExport, onManualSave, onSaveAs,
+   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onReplaceSections, onOpenExport, onManualSave, onSaveAs,
    presentationOpen, onOpenPresentation, onClosePresentation,
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
@@ -526,8 +530,8 @@ export function WysiwygArea({
       const droppableContainers = args.droppableContainers.filter(container => {
          const targetType = container.data.current?.type
          return activeType === 'section'
-            ? targetType === 'section'
-            : targetType === 'block' || targetType === 'block-zone'
+            ? targetType === 'section' || targetType === 'section-zone'
+            : targetType === 'block' || targetType === 'block-zone' || targetType === 'blank-page' || targetType === 'page-end'
       })
       return closestCenter({ ...args, droppableContainers })
    }
@@ -552,31 +556,88 @@ export function WysiwygArea({
       resetDrag()
       if (!over || active.id === over.id) return
 
-      // Section reorder (unchanged behavior): the collision filter guarantees `over` is a section.
+      // Section reorder: the collision filter guarantees `over` is a section or the end zone.
       if (active.data.current?.type === 'section') {
          const oldIdx = sections.findIndex(section => section.id === active.id)
+         if (oldIdx === -1) return
+         // The end zone drops the section at the very last slot (otherwise unreachable by drag).
+         if (over.data.current?.type === 'section-zone') {
+            if (oldIdx !== sections.length - 1) reorderSections(oldIdx, sections.length - 1)
+            return
+         }
          const newIdx = sections.findIndex(section => section.id === over.id)
-         if (oldIdx !== -1 && newIdx !== -1) {
+         if (newIdx !== -1) {
             const adjustedIdx = oldIdx < newIdx ? newIdx - 1 : newIdx
             reorderSections(oldIdx, adjustedIdx)
          }
          return
       }
 
-      // Block move: read the source location off the dragged block, and the destination off whatever
-      // it was dropped on (a block means insert before it; a bottom zone means append to that array).
+      // Drop onto a blank page: the dragged block becomes that page's only content (sections + breaks
+      // commit together). Handled before the normal move since a blank page carries no BlockLoc.
+      if (over.data.current?.type === 'blank-page' && paged && onFormatChange && onReplaceSections && derivedPages) {
+         const pageId = String(over.data.current.pageId)
+         const targetIndex = derivedPages.findIndex(page => page.id === pageId)
+         if (targetIndex !== -1) {
+            const result = placeBlockOnBlankPage(sections, pageBreaks, targetIndex, String(active.id))
+            if (result.sections !== sections) {
+               onReplaceSections(result.sections)
+               commitPageBreaks(result.pages)
+            }
+         }
+         return
+      }
+
+      // Block move: read the source location off the dragged block.
       const from = active.data.current?.loc as BlockLoc | undefined
       if (!from) return
       const overType = over.data.current?.type
+      const movedBlockId = String(active.id)
+
+      // Drop onto a page-end zone: append the block after that page's last block (whether the page ends
+      // mid-section or at a section end), and move the page boundary onto the appended block so it stays
+      // on THIS page. This is the only append target for a page that ends inside a section.
+      if (overType === 'page-end' && paged && onFormatChange && derivedPages) {
+         const pageId     = String(over.data.current?.pageId)
+         const targetPage = derivedPages.find(page => page.id === pageId)
+         let anchorBlockId: string | null = null
+         let anchorSectionId: string | null = null
+         for (let index = (targetPage?.slices.length ?? 0) - 1; index >= 0 && anchorBlockId === null; index--) {
+            const slice = targetPage!.slices[index]
+            if (slice.blocks.length > 0) {
+               anchorBlockId   = slice.blocks[slice.blocks.length - 1].id
+               anchorSectionId = slice.section.id
+            }
+         }
+         if (anchorBlockId && anchorSectionId && anchorBlockId !== movedBlockId) {
+            const anchorSection = sections.find(section => section.id === anchorSectionId)
+            const anchorIndex   = anchorSection ? anchorSection.blocks.findIndex(block => block.id === anchorBlockId) : -1
+            // Insert right after the page's last block (before its section successor, or appended when
+            // the block ends the section).
+            const successorId = anchorSection && anchorIndex >= 0 && anchorIndex < anchorSection.blocks.length - 1
+               ? anchorSection.blocks[anchorIndex + 1].id : null
+            let nextPages = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
+            if (hasPageBreakAfter(nextPages, anchorBlockId)) {
+               nextPages = nextPages.map(pageBreak =>
+                  pageBreak.after && pageBreak.after.blockId === anchorBlockId
+                     ? { ...pageBreak, after: { sectionId: anchorSectionId!, blockId: movedBlockId } }
+                     : pageBreak)
+            }
+            if (nextPages !== pageBreaks) commitPageBreaks(nextPages)
+            moveBlockAcross(from, movedBlockId, { kind: 'section', sectionId: anchorSectionId }, successorId)
+         }
+         return
+      }
+
+      // A block means insert before it; a bottom zone means append to that array.
       const to = over.data.current?.loc as BlockLoc | undefined
       if (!to) return
       // Containers are one level deep: never drop a container block into a container column.
       if (active.data.current?.blockType === 'container' && to.kind === 'column') return
       const beforeBlockId = overType === 'block' ? String(over.id) : null
-      const movedBlockId = String(active.id)
-      // If the dragged block ends a page (a break's anchor), keep that boundary where the page ended
-      // rather than letting it follow the block across the document. Commit before the move so both
-      // land together; the moved block that STARTS a page is not an anchor, so it needs no handling.
+      // Keep a boundary where the page ended when its own anchor block is dragged away, rather than
+      // letting it follow the block across the document (the moved block that STARTS a page is not an
+      // anchor, so it needs no handling here).
       if (paged && onFormatChange) {
          const reanchored = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
          if (reanchored !== pageBreaks) commitPageBreaks(reanchored)
@@ -729,6 +790,11 @@ export function WysiwygArea({
                   <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={activeSectionId} activeBlockId={activeBlockId} />
                </div>
             ))}
+            {/* The last-slot target for section reorder: without it the noopStrategy + newIdx-1
+                compensation can only land a dragged section BEFORE the last one. */}
+            {activeSectionId != null && sections.length > 1 && (
+               <BottomDropZone id="section-end-zone" data={{ type: 'section-zone' }} />
+            )}
          </SortableContext>
       )
    }
@@ -751,6 +817,7 @@ export function WysiwygArea({
             showAddRow={slice.isSectionEnd}
             sortableId={`${slice.section.id}::${page.id}`}
             sectionDragDisabled
+            suppressEndDropZone
          />
       )
    }
@@ -789,6 +856,11 @@ export function WysiwygArea({
       const sheetWidth  = isLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
       const sheetHeight = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
       const isLastPage  = pageIndex === total - 1
+      // A page with no slices is an intentional blank page (a stacked / trailing break), EXCEPT the
+      // empty document's sole page, which keeps its add-section empty state. So a slice-less page shows
+      // the blank-page drop target whenever the document holds content or there is more than one page.
+      const hasContent    = sections.some(section => section.blocks.length > 0)
+      const showBlankDrop = page.slices.length === 0 && (hasContent || total > 1) && !readOnly && !!onFormatChange
       // This sheet's measured overflow verdict (absent means it fits). Only surfaced with a mutating
       // onFormatChange, matching the hook's `enabled` gate, so the ribbon can always act.
       const overflow    = onFormatChange ? overflowByPageId.get(page.id) : undefined
@@ -829,8 +901,23 @@ export function WysiwygArea({
                }}
             >
                {pageIndex === 0 && renderPageHeader()}
-               {page.slices.map(slice => renderPageSlice(slice, page))}
-               {isLastPage && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
+               {showBlankDrop
+                  ? <BlankPageDropZone
+                       id={`blank-${page.id}`}
+                       pageId={page.id}
+                       label={t.blankPageLabel}
+                       hint={t.blankPageDropHint}
+                       dragging={activeBlockId != null}
+                    />
+                  : page.slices.map(slice => renderPageSlice(slice, page))}
+               {/* The page's append target: dropping a block here puts it at the end of THIS page, even
+                   when the page ends inside a section (the section bottom zone is suppressed in paged
+                   mode). Only mounted mid block-drag on a page that holds content. */}
+               {!showBlankDrop && !readOnly && onFormatChange && activeBlockId != null
+                  && page.slices.some(slice => slice.blocks.length > 0) && (
+                  <BottomDropZone id={`page-end-${page.id}`} data={{ type: 'page-end', pageId: page.id }} />
+               )}
+               {isLastPage && !showBlankDrop && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
             {/* Overflow assist ribbon, pinned to the page's bottom-margin line (the A4
                 boundary the spill crosses). Absolutely positioned so it never alters page flow, hence

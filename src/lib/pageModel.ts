@@ -401,15 +401,25 @@ function buildFromPageGroups(pageGroups: PageSlice[][]): { sections: Section[]; 
    return { sections, pages }
 }
 
-/** Deep-clone a page's slice group for duplication: fresh block ids (via `cloneBlock`) and one fresh
- *  section id per distinct source section (so the clone never collides / merges with the original). */
+/** Deep-clone a page's slice group for duplication: fresh block ids (via `cloneBlock`) always, and a
+ *  fresh section id ONLY for a section wholly contained on the duplicated page (an independent copy). A
+ *  section that SPANS onto another page keeps its id so the copy merges back into it, rather than
+ *  splitting the section and stranding a phantom titled fragment on the neighbouring page. */
 function cloneSliceGroup(slices: PageSlice[]): PageSlice[] {
    const cloneSectionIdByOriginalId = new Map<string, string>()
    return slices.map(slice => {
-      let cloneSectionId = cloneSectionIdByOriginalId.get(slice.section.id)
-      if (cloneSectionId === undefined) {
-         cloneSectionId = crypto.randomUUID()
-         cloneSectionIdByOriginalId.set(slice.section.id, cloneSectionId)
+      const wholeSectionOnPage = slice.isSectionStart && slice.isSectionEnd
+      let cloneSectionId: string
+      if (wholeSectionOnPage) {
+         const existing = cloneSectionIdByOriginalId.get(slice.section.id)
+         if (existing !== undefined) {
+            cloneSectionId = existing
+         } else {
+            cloneSectionId = crypto.randomUUID()
+            cloneSectionIdByOriginalId.set(slice.section.id, cloneSectionId)
+         }
+      } else {
+         cloneSectionId = slice.section.id
       }
       return {
          section:        { ...slice.section, id: cloneSectionId, blocks: [] },
@@ -483,4 +493,36 @@ export function insertBlankPageAfter(
    const groups     = derived.map(page => page.slices)
    const pageGroups = [...groups.slice(0, pageIndex + 1), [], ...groups.slice(pageIndex + 1)]
    return buildFromPageGroups(pageGroups)
+}
+
+/**
+ * Move a top-level block onto the blank page at `pageIndex`, making it that page's only content. The
+ * block is pulled from wherever it lives (its old slice is dropped if the move empties it) and becomes
+ * a lone slice on the target page. No-op (same references) when the target is not a blank page or the
+ * block is not a top-level block (a container inner block is not a page-level target).
+ */
+export function placeBlockOnBlankPage(
+   sections: Section[], pages: PageBreak[], pageIndex: number, blockId: string,
+): { sections: Section[]; pages: PageBreak[] } {
+   const derived = partitionIntoPages(sections, pages)
+   if (pageIndex < 0 || pageIndex >= derived.length) return { sections, pages }
+   if (derived[pageIndex].slices.length !== 0) return { sections, pages }   // only onto a blank page
+
+   let owner: Section | undefined
+   let moved: Block | undefined
+   for (const section of sections) {
+      const block = section.blocks.find(candidate => candidate.id === blockId)
+      if (block) { owner = section; moved = block; break }
+   }
+   if (!owner || !moved) return { sections, pages }
+
+   // Pull the block from its slice; drop that slice if the removal empties it (only the block's own
+   // slice ever changes, so original empty-section slices are untouched).
+   const groups = derived.map(page => page.slices.flatMap(slice => {
+      if (!slice.blocks.some(candidate => candidate.id === blockId)) return [slice]
+      const remaining = slice.blocks.filter(candidate => candidate.id !== blockId)
+      return remaining.length > 0 ? [{ ...slice, blocks: remaining }] : []
+   }))
+   groups[pageIndex] = [{ section: owner, blocks: [moved], isSectionStart: true, isSectionEnd: true }]
+   return buildFromPageGroups(groups)
 }

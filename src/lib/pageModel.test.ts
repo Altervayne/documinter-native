@@ -14,6 +14,7 @@ import {
    duplicatePage,
    deletePage,
    insertBlankPageAfter,
+   placeBlockOnBlankPage,
    FIRST_PAGE_ID,
 } from './pageModel'
 
@@ -365,6 +366,26 @@ describe('duplicatePage', () => {
       expect(result.sections).toBe(SECTIONS)
       expect(result.pages).toBe(THREE_PAGE_BREAKS)
    })
+
+   it('does not split a spanning section or strand phantom titles when duplicating its start page', () => {
+      // s1[a,b,c] spans page 0 [a] and page 1 [b,c] (break after a). Duplicating page 0 must NOT tear
+      // s1 into titled fragments: the copy merges back into s1, which stays ONE section.
+      const result = duplicatePage(SECTIONS, [breakAfter('brk', 's1', 'a')], 0)
+      expect(result.sections.map(section => section.title)).toEqual(['s1', 's2'])
+      expect(result.sections.filter(section => section.title === 's1')).toHaveLength(1)
+      const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
+      expect(new Set(allBlockIds).size).toBe(allBlockIds.length)   // clone blocks are fresh, unique
+      expect(allBlockIds).toHaveLength(6)                          // 5 originals + 1 cloned (a')
+   })
+
+   it('makes an independent titled copy when duplicating a page that holds a whole section', () => {
+      // Break at the section boundary: page 0 = whole s1 [a,b,c], page 1 = whole s2 [d,e].
+      const result = duplicatePage(SECTIONS, [breakAfter('brk', 's1', 'c')], 0)
+      const ids = result.sections.map(section => section.id)
+      expect(new Set(ids).size).toBe(ids.length)                  // clone section id is fresh + unique
+      expect(result.sections.filter(section => section.title === 's1')).toHaveLength(2)  // original + copy
+      expect(resultGrid(result).map(page => page.length)).toEqual([3, 3, 2])   // original s1, copy, s2
+   })
 })
 
 describe('deletePage', () => {
@@ -411,5 +432,34 @@ describe('insertBlankPageAfter', () => {
       const result = insertBlankPageAfter(SECTIONS, THREE_PAGE_BREAKS, 9)
       expect(result.sections).toBe(SECTIONS)
       expect(result.pages).toBe(THREE_PAGE_BREAKS)
+   })
+})
+
+describe('placeBlockOnBlankPage', () => {
+   // [a,b][blank][c,d,e]: breaks stacked after b.
+   const WITH_BLANK = [breakAfter('b1', 's1', 'b'), breakAfter('b2', 's1', 'b')]
+
+   it('moves a block onto the blank page, making it that page content', () => {
+      // Drop 'a' onto the blank middle page: page 1 keeps b, the blank becomes [a].
+      const result = placeBlockOnBlankPage(SECTIONS, WITH_BLANK, 1, 'a')
+      expect(resultGrid(result)).toEqual([['b'], ['a'], ['c', 'd', 'e']])
+   })
+
+   it('keeps every block exactly once', () => {
+      const result = placeBlockOnBlankPage(SECTIONS, WITH_BLANK, 1, 'd')
+      const allBlockIds = result.sections.flatMap(section => section.blocks.map(block => block.id))
+      expect(allBlockIds.sort()).toEqual(['a', 'b', 'c', 'd', 'e'])
+   })
+
+   it('is a no-op when the target page is not blank (same references)', () => {
+      const result = placeBlockOnBlankPage(SECTIONS, WITH_BLANK, 0, 'a')
+      expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toBe(WITH_BLANK)
+   })
+
+   it('is a no-op for an unknown block (same references)', () => {
+      const result = placeBlockOnBlankPage(SECTIONS, WITH_BLANK, 1, 'nope')
+      expect(result.sections).toBe(SECTIONS)
+      expect(result.pages).toBe(WITH_BLANK)
    })
 })

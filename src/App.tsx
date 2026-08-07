@@ -862,6 +862,8 @@ export default function App() {
             onReorder={pagesData.onReorder}
             onDuplicate={pagesData.onDuplicate}
             onDelete={pagesData.onDelete}
+            onInsertAfter={pagesData.onInsertAfter}
+            onAddPage={pagesData.onAddPage}
             onJump={pagesData.onJump}
          />
       ),
@@ -996,6 +998,7 @@ export default function App() {
                               onDocAccentChange={setActiveDocAccent}
                               onPresentationChange={setActivePresentation}
                               onFormatChange={setActiveFormat}
+                              onReplaceSections={setActiveSections}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}

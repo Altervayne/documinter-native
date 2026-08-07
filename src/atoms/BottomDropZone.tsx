@@ -18,14 +18,18 @@ interface BottomDropZoneProps {
 
 export function BottomDropZone({ id, data }: BottomDropZoneProps) {
    const { setNodeRef, isOver } = useDroppable({ id, data })
+   // A generous hit area (only mounted mid-drag, so the extra height costs nothing at rest), with a
+   // resting dashed guide so the end-of-list target reads clearly for a block coming from elsewhere.
    return (
-      <div ref={setNodeRef} className="h-3 relative">
-         {isOver && (
-            <div
-               className="absolute inset-x-0 top-0 h-0.5 rounded-sm opacity-70 pointer-events-none"
-               style={{ background: 'var(--doc-accent, var(--color-accent))' }}
-            />
-         )}
-      </div>
+      <div
+         ref={setNodeRef}
+         className="h-7 my-0.5 rounded-md border border-dashed transition-colors"
+         style={{
+            borderColor: isOver ? 'transparent' : 'color-mix(in srgb, var(--color-border) 60%, transparent)',
+            background:  isOver ? 'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 14%, transparent)' : undefined,
+            outline:     isOver ? '2px solid var(--doc-accent, var(--color-accent))' : undefined,
+            outlineOffset: '-2px',
+         }}
+      />
    )
 }
