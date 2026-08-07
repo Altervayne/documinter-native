@@ -38,7 +38,7 @@ import { findBlockOnCanvas, type BlockLoc } from '../../lib/document'
 import { collectTableSources, collectLinkableTables } from '../../lib/graphTableData'
 import { buildDocumentMenuEntries } from '../../lib/documentMenuEntries'
 import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform, headerJustifyContent, resolveHeaderBesideLayout, type DocPresentationExtras } from '../../lib/presentation'
-import { resolveDocumentSheetWidthPx, normalizeFormat, resolveHeader, resolveFooterBand, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins } from '../../lib/format'
+import { resolveDocumentSheetWidthPx, normalizeFormat, resolveHeader, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins } from '../../lib/format'
 import { renderPageBandHtml } from '../../lib/pageBands'
 import {
    partitionIntoPages, reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
@@ -828,7 +828,10 @@ export function WysiwygArea({
    function renderBands(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
       const bandCtx = { pageIndex, pageCount: total, madeWith: t.madeWithDocuminter, pageWord: t.pageNumberWordPage, ofWord: t.pageNumberWordOf }
       const headerHtml = renderPageBandHtml(resolveHeader(format), bandCtx)
-      const footerHtml = renderPageBandHtml(resolveFooterBand(format), bandCtx)
+      // The editor shows only what the author placed (the optional footer page number); the Documinter
+      // credit is stamped in on export only, so the editor reads the raw stored footer, not the derived
+      // band that injects the credit.
+      const footerHtml = renderPageBandHtml(format?.footer ?? {}, bandCtx)
       const bandStyle = (edge: 'header' | 'footer'): React.CSSProperties => {
          const style: React.CSSProperties = { position: 'absolute', left: millimetresToPx(margins.left), right: millimetresToPx(margins.right) }
          if (edge === 'header') { style.top = millimetresToPx(margins.top) / 2; style.transform = 'translateY(-50%)' }

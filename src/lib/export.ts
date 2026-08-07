@@ -623,19 +623,18 @@ function buildPagedStyles(
                      background follows the document's sheet colour so a dark document does not print
                      white below a short page. The floating sidebar and back-to-top are position:fixed,
                      which repeats them on every sheet, so both are hidden. */
-                  html, body { background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                  html, body { margin: 0; background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                   .sidebar, #toTopBtn { display: none !important; }
                   .main { margin: 0; padding: 0; }
                   .doc-pages { display: block; gap: 0; margin: 0; padding: 0; }
-                  /* Each sheet fills one physical page (height: 100vh) so the footer band pins to the
-                     real page bottom instead of floating under short content; overflow: hidden clips any
-                     sub-pixel spill that would otherwise leak a blank page. */
+                  /* Each sheet fills exactly one physical page (height: 100vh) so the footer band pins to
+                     the real page bottom; the full-height boxes then paginate NATURALLY (one per page),
+                     so NO page-break-after is used, an explicit break there plus a full-height box would
+                     emit an empty page after every sheet. overflow: hidden clips any sub-pixel spill. */
                   .doc-page {
                         box-shadow: none; border-radius: 0; width: 100%; height: 100vh; margin: 0; overflow: hidden;
-                        page-break-after: always; break-after: page;
                         -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
-                  .doc-page:last-child { page-break-after: auto; break-after: auto; }
             }${watermarkPaged}`
 }
 

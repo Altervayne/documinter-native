@@ -559,7 +559,10 @@ describe('generateExportHTML, paged (A4) export', () => {
       expect(html).toContain('print-color-adjust: exact')
       expect(html).toContain('<div class="doc-pages">')
       expect(html).toContain('class="doc-page"')
-      expect(html).toContain('page-break-after: always')
+      // Full-height sheets paginate naturally; a forced page-break-after would emit a blank page after
+      // every sheet, so it must be absent.
+      expect(html).toContain('height: 100vh')
+      expect(html).not.toContain('page-break-after: always')
       expect(html).toContain('page-break-inside: avoid')
       // The infinite single-card path is NOT used.
       expect(html).not.toContain('<div class="doc-card">')
