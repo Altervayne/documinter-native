@@ -1,5 +1,8 @@
+// -- React Imports --
+import { useRef, useState } from 'react'
+
 // -- Library Imports --
-import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal, Ban, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { Ruler, Infinity as InfinityIcon, RectangleVertical, RectangleHorizontal, Ban, AlignLeft, AlignCenter, AlignRight, Upload, Trash2 } from 'lucide-react'
 
 // -- Component / Hook Imports --
 import { BlockEditorWindow } from './BlockEditorWindow'
@@ -21,8 +24,11 @@ import {
    type PageNumberStyle,
    type PageBand,
    type BandPosition,
+   type BandImage,
 } from '../lib/format'
 import { PAGE_NUMBER_STYLES } from '../lib/pageNumbering'
+import { downscaleImageToDataUrl } from '../lib/imageDownscale'
+import { HEADER_LOGO_MAX_EDGE } from '../lib/presentation'
 
 // #########
 // # TYPES #
@@ -61,6 +67,7 @@ const MARGIN_MAX_MM = 40
  */
 export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWindowProps) {
    const { t } = useLang()
+   const logoInputRef = useRef<HTMLInputElement>(null)
    // Normalize defensively so the controls always read a concrete, valid format, mirroring how
    // PresentationWindow reads straight off the (already-optional) presentation prop.
    const resolved = normalizeFormat(format)
@@ -126,22 +133,40 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
       for (const position of positions) if (band[position]?.kind === 'pageNumber') return { position, style: (band[position] as { style: PageNumberStyle }).style }
       return { position: 'off', style: 'plain' }
    }
-   function readText(band: PageBand): { position: PositionChoice; text: string } {
-      for (const position of positions) if (band[position]?.kind === 'content') return { position, text: (band[position] as { text?: string }).text ?? '' }
+   function readText(band: PageBand): { position: PositionChoice; text: string; image?: BandImage } {
+      for (const position of positions) {
+         const item = band[position]
+         if (item?.kind === 'content') return { position, text: item.text ?? '', image: item.image }
+      }
       return { position: 'off', text: '' }
    }
 
-   const header       = resolveHeader(resolved)
-   const headerNumber = readNumber(header)
-   const headerText   = readText(header)
-   const footerNumber = readNumber(resolved.footer ?? {})
+   const header          = resolveHeader(resolved)
+   const headerNumber    = readNumber(header)
+   const modelHeaderText = readText(header)
+   const footerNumber    = readNumber(resolved.footer ?? {})
 
-   // Rebuild the whole header from its two controls, so setting one never disturbs the other.
-   function commitHeader(number: { position: PositionChoice; style: PageNumberStyle }, text: { position: PositionChoice; text: string }): void {
+   // An empty text/brand slot has no persistent model form (an item with neither text nor logo normalizes
+   // away), so a freshly picked position would snap straight back to "None". Hold that intent in local UI
+   // state until real text or a logo fills the slot; once the model carries content, the model wins.
+   const [localTextPosition, setLocalTextPosition] = useState<PositionChoice>(modelHeaderText.position)
+   const headerTextPosition = modelHeaderText.position !== 'off' ? modelHeaderText.position : localTextPosition
+   const headerText = { position: headerTextPosition, text: modelHeaderText.text, image: modelHeaderText.image }
+
+   // Rebuild the whole header from its two controls, so setting one never disturbs the other. The text
+   // slot can carry text AND / OR a logo image.
+   function commitHeader(number: { position: PositionChoice; style: PageNumberStyle }, text: { position: PositionChoice; text: string; image?: BandImage }): void {
       const next: PageBand = {}
       if (number.position !== 'off') next[number.position] = { kind: 'pageNumber', style: number.style }
-      if (text.position !== 'off')   next[text.position]   = { kind: 'content', text: text.text }
+      if (text.position !== 'off')   next[text.position]   = { kind: 'content', ...(text.text ? { text: text.text } : {}), ...(text.image ? { image: text.image } : {}) }
       onChange({ ...resolved, header: next })
+   }
+   // Pick a logo image for the header text/brand slot: downscale to base64 (capped small for a margin
+   // band), keeping whatever text is already there.
+   async function handleLogoFile(file: File | undefined): Promise<void> {
+      if (!file || !file.type.startsWith('image/')) return
+      const image = await downscaleImageToDataUrl(file, HEADER_LOGO_MAX_EDGE)
+      commitHeader(headerNumber, { position: headerText.position, text: headerText.text, image })
    }
    // Footer: the credit always shows (auto-placed); the only control is an optional page number.
    function setFooterNumber(position: PositionChoice, style: PageNumberStyle): void {
@@ -168,15 +193,41 @@ export function FormatWindow({ format, anchorRect, onChange, onClose }: FormatWi
             {renderNumberControl(headerNumber, headerText.position, position => commitHeader({ ...headerNumber, position }, headerText), style => commitHeader({ position: headerNumber.position, style }, headerText))}
             <div className="flex flex-col gap-1.5 mt-1">
                <span className="presentation-field-label">{t.formatBandText}</span>
-               <SegmentedIconToggle<PositionChoice> ariaLabel={t.formatBandText} value={headerText.position} onChange={position => commitHeader(headerNumber, { ...headerText, position })} options={positionOptions(headerNumber.position)} />
+               <SegmentedIconToggle<PositionChoice> ariaLabel={t.formatBandText} value={headerText.position} onChange={position => { setLocalTextPosition(position); commitHeader(headerNumber, { ...headerText, position }) }} options={positionOptions(headerNumber.position)} />
                {headerText.position !== 'off' && (
-                  <input
-                     type="text"
-                     className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm text-text"
-                     value={headerText.text}
-                     placeholder={t.formatBandTextPlaceholder}
-                     onChange={event => commitHeader(headerNumber, { position: headerText.position, text: event.target.value })}
-                  />
+                  <>
+                     <input
+                        type="text"
+                        className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-sm text-text"
+                        value={headerText.text}
+                        placeholder={t.formatBandTextPlaceholder}
+                        onChange={event => commitHeader(headerNumber, { position: headerText.position, text: event.target.value, image: headerText.image })}
+                     />
+                     <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={event => { void handleLogoFile(event.target.files?.[0]); event.target.value = '' }}
+                     />
+                     {headerText.image ? (
+                        <div className="presentation-thumb-row">
+                           <span className="presentation-thumb" style={{ backgroundImage: `url("${headerText.image.src}")` }} aria-hidden="true" />
+                           <div className="presentation-thumb-actions">
+                              <button type="button" className="presentation-btn" onClick={() => logoInputRef.current?.click()}>
+                                 <Upload size={13} /> {t.formatBandLogoReplace}
+                              </button>
+                              <button type="button" className="presentation-btn presentation-btn-danger" onClick={() => commitHeader(headerNumber, { position: headerText.position, text: headerText.text, image: undefined })}>
+                                 <Trash2 size={13} /> {t.formatBandLogoRemove}
+                              </button>
+                           </div>
+                        </div>
+                     ) : (
+                        <button type="button" className="presentation-btn" onClick={() => logoInputRef.current?.click()}>
+                           <Upload size={13} /> {t.formatBandLogoAdd}
+                        </button>
+                     )}
+                  </>
                )}
             </div>
          </section>
