@@ -16,7 +16,7 @@ import { DocThemeProvider } from '../../contexts/DocThemeContext'
 import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
-import { usePageOverflow } from '../../hooks/usePageOverflow'
+import { usePagedLayout } from '../../hooks/usePagedLayout'
 
 // -- Component Imports --
 import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Scissors, TriangleAlert } from 'lucide-react'
@@ -41,7 +41,7 @@ import { resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatte
 import { resolveDocumentSheetWidthPx, normalizeFormat, resolveHeader, DEFAULT_A4_MARGINS, type DocFormat, type PageBreak, type PageMargins } from '../../lib/format'
 import { renderPageBandHtml } from '../../lib/pageBands'
 import {
-   partitionIntoPages, reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
+   reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
    canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
@@ -426,18 +426,15 @@ export function WysiwygArea({
    // byte-identical. The Section/Block model is never restructured, pages are derived.
    const paged        = !!format && format.kind !== 'infinite'
    const pageBreaks   = useMemo<PageBreak[]>(() => format?.pages ?? [], [format])
-   const derivedPages = useMemo<Page[] | null>(
-      () => paged ? partitionIntoPages(sections, pageBreaks) : null,
-      [paged, sections, pageBreaks],
-   )
 
    // ==========================================================
-   //  Measured page-overflow detection + the "Split here" assist
+   //  Measured pagination: automatic reflow of splittable blocks
    // ==========================================================
-   // Paged geometry, resolved once for the overflow measurement (the per-sheet render below resolves
-   // the same values locally). The available content height is the A4 sheet height minus the top +
-   // bottom margins (uniform across pages); a page whose measured block content spills past it gets an
-   // overflow ribbon offering a one-click assisted break. MEASURED from the DOM, never predicted.
+   // Paged geometry (the per-sheet render below resolves the same values locally). The available
+   // content height is the A4 sheet height minus the top + bottom margins (uniform across pages). The
+   // hook measures the rendered sheets and reflows the layout so a list runs across sheets at an item
+   // boundary instead of jumping whole to the next page. MEASURED from the DOM, never predicted; the
+   // reflow is a pure render derivation that never touches the serialized model.
    const pagedMargins            = format?.margins ?? DEFAULT_A4_MARGINS
    const pagedIsLandscape        = format?.kind === 'a4-landscape'
    const pagedSheetHeightPx      = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
@@ -445,14 +442,13 @@ export function WysiwygArea({
       - millimetresToPx(pagedMargins.top)
       - millimetresToPx(pagedMargins.bottom)
 
-   // Overflow is an editor-only affordance: only in paged EDIT mode (readOnly/preview never shows the
-   // ribbon, and infinite mode has no overflow concept at all). The hook measures the rendered sheets
-   // inside the container it hands back a ref for; its verdict never touches the serialized model.
-   const { containerRef: pagesContainerRef, overflowByPageId } = usePageOverflow({
-      enabled:           paged && !readOnly && !!onFormatChange,
-      pages:             derivedPages,
-      availableHeightPx: availableContentHeightPx,
+   const { containerRef: pagesContainerRef, pages: laidOutPages, tooTallPageIds } = usePagedLayout({
+      enabled:         paged && !readOnly && !!onFormatChange,
+      sections,
+      forcedBreaks:    pageBreaks,
+      availableHeight: availableContentHeightPx,
    })
+   const derivedPages: Page[] | null = paged ? laidOutPages : null
 
    // Commit a new page-break list back through onFormatChange, preserving kind/width/margins. An empty
    // list drops the `pages` key entirely (an untouched, non-default format stays clean).
@@ -860,9 +856,9 @@ export function WysiwygArea({
       // the blank-page drop target whenever the document holds content or there is more than one page.
       const hasContent    = sections.some(section => section.blocks.length > 0)
       const showBlankDrop = page.slices.length === 0 && (hasContent || total > 1) && !readOnly && !!onFormatChange
-      // This sheet's measured overflow verdict (absent means it fits). Only surfaced with a mutating
-      // onFormatChange, matching the hook's `enabled` gate, so the ribbon can always act.
-      const overflow    = onFormatChange ? overflowByPageId.get(page.id) : undefined
+      // The one overflow auto-reflow cannot resolve: a single atomic block taller than the whole sheet.
+      // Surfaced only in edit mode (matching the hook's `enabled` gate) as a note, never a break.
+      const showTooTall = !readOnly && !!onFormatChange && tooTallPageIds.has(page.id)
       return (
          <div
             key={page.id}
@@ -918,12 +914,11 @@ export function WysiwygArea({
                )}
                {isLastPage && !showBlankDrop && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
-            {/* Overflow assist ribbon, pinned to the page's bottom-margin line (the A4
-                boundary the spill crosses). Absolutely positioned so it never alters page flow, hence
-                never feeds a measurement back into itself. A splittable overflow offers a one-click
-                "Split here" (assisted, never automatic); a first-block-too-tall overflow shows a note
-                instead, since no break can make that block fit. */}
-            {!readOnly && onFormatChange && overflow && (
+            {/* The one overflow auto-reflow cannot resolve: a single atomic block (figure, table, code)
+                taller than the whole sheet. Pinned to the bottom-margin line and absolutely positioned
+                so it never alters page flow. Splittable blocks (paragraphs, lists) reflow automatically
+                and never reach here. */}
+            {showTooTall && (
                <div
                   className="doc-page-overflow"
                   style={{
@@ -932,25 +927,10 @@ export function WysiwygArea({
                      right: `${millimetresToPx(margins.right)}px`,
                   }}
                >
-                  {overflow.blockTooTall || overflow.cutAfterBlockId === null ? (
-                     <div className="doc-page-overflow-pill doc-page-overflow-pill-note">
-                        <TriangleAlert size={13} />
-                        <span>{t.formatOverflowTooTall}</span>
-                     </div>
-                  ) : (
-                     <div className="doc-page-overflow-pill">
-                        <span className="doc-page-overflow-msg">{t.formatOverflowMessage}</span>
-                        <button
-                           type="button"
-                           className="doc-page-overflow-split"
-                           title={t.formatSplitHere}
-                           onClick={() => commitPageBreaks(addPageBreakAfter(pageBreaks, sections, overflow.cutAfterBlockId!))}
-                        >
-                           <Scissors size={13} />
-                           <span>{t.formatSplitHere}</span>
-                        </button>
-                     </div>
-                  )}
+                  <div className="doc-page-overflow-pill doc-page-overflow-pill-note">
+                     <TriangleAlert size={13} />
+                     <span>{t.formatOverflowTooTall}</span>
+                  </div>
                </div>
             )}
          </div>
