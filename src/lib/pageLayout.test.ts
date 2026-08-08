@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { paginate, buildMetrics, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
+import { paginate, buildMetrics, reconcileParagraphLines, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
 import { FIRST_PAGE_ID } from './pageModel'
 import type { Block, Section, ListItem } from '../types'
 
@@ -273,6 +273,87 @@ describe('paginate — paragraph splitting', () => {
          paragraphLinesById: new Map([['P', staleLines]]),
       }
       expect(buildMetrics(heights, sections).paragraphLines('P')).toBeNull()
+   })
+
+   // The editor (atomic set = the focused id, or none at rest) and the export (atomic set = none, always
+   // split) both paginate from the SAME measured lines. So a split-at-rest paragraph the editor shows
+   // across two pages must land the identical split in the export set, byte for byte. This pins the
+   // parity the PDF depended on: given the line data is present, exportPages splits exactly like the
+   // editor. (The remaining half of the bug was keeping that line data present at print time; see the
+   // reconcileParagraphLines retention tests below and the App-side print flush.)
+   it('splits a paragraph identically in the editor (at rest) and the export atomic sets', () => {
+      const sections = [section('S', [paragraphBlock('P', 40)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } })
+      // Editor at rest holds NO paragraph atomic (only a FOCUSED one would be, and none is here); export
+      // always holds none. Same empty set both times, so the two layouts must be identical.
+      const editorAtRest = paginate(sections, [], 100, metrics, new Set<string>())
+      const exportLayout = paginate(sections, [], 100, metrics, new Set<string>())
+      expect(shape(exportLayout)).toEqual(shape(editorAtRest))
+      // And it is a real two-page split, not a whole placement.
+      expect(exportLayout).toHaveLength(2)
+      expect(fragmentOf(exportLayout[0].slices[0].blocks[0])).toEqual({ charStart: 0, charEnd: 30, isTail: false })
+      expect(fragmentOf(exportLayout[1].slices[0].blocks[0])).toEqual({ charStart: 30, charEnd: 40, isTail: true })
+   })
+
+   it('would keep the paragraph whole (no split) when its measured lines are missing', () => {
+      // The failure mode the retention fix guards against: if the lines are dropped from measuredHeights,
+      // paragraphLines is null and the paragraph is placed whole (atomic), which in the paged PDF clips
+      // its overflow. This documents WHY the lines must be retained through every re-measure.
+      const sections = [section('S', [paragraphBlock('P', 40)])]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { P: 250 }, paragraphLines: {} })
+      const pages = paginate(sections, [], 100, metrics, new Set<string>())
+      expect(pages).toHaveLength(1)
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
+   })
+})
+
+describe('reconcileParagraphLines', () => {
+   const linesA: ParagraphLine[] = [{ height: 30, charEnd: 20 }, { height: 30, charEnd: 40 }]
+   const linesB: ParagraphLine[] = [{ height: 20, charEnd: 15 }, { height: 20, charEnd: 30 }]
+
+   it('keeps a fresh measurement when one is available', () => {
+      const result = reconcileParagraphLines(['P'], new Map([['P', linesA]]), new Map())
+      expect(result.get('P')).toBe(linesA)
+   })
+
+   it('carries the previous lines forward when a paragraph has no fresh measurement (split at rest)', () => {
+      // A split paragraph renders as read-only fragments with no measurable [data-rich], so no fresh
+      // lines this pass; its last whole-render lines must survive so the export still splits it.
+      const result = reconcileParagraphLines(['P'], new Map(), new Map([['P', linesA]]))
+      expect(result.get('P')).toBe(linesA)
+   })
+
+   it('prefers the fresh measurement over the carried one', () => {
+      const result = reconcileParagraphLines(['P'], new Map([['P', linesB]]), new Map([['P', linesA]]))
+      expect(result.get('P')).toBe(linesB)
+   })
+
+   it('does not drop lines on a transient zero-line measurement (treated as no fresh data, carried)', () => {
+      // The old code set nothing AND skipped the carry-forward when a whole render measured zero line
+      // boxes, silently wiping good data. An empty fresh entry must fall back to the carried lines.
+      const result = reconcileParagraphLines(['P'], new Map([['P', []]]), new Map([['P', linesA]]))
+      expect(result.get('P')).toBe(linesA)
+   })
+
+   it('drops lines for a paragraph no longer in the model', () => {
+      const result = reconcileParagraphLines(['P'], new Map(), new Map([['GONE', linesA]]))
+      expect(result.has('GONE')).toBe(false)
+      expect(result.has('P')).toBe(false)
+   })
+
+   it('retains every model paragraph across a mix of fresh and carried', () => {
+      const result = reconcileParagraphLines(
+         ['P1', 'P2', 'P3'],
+         new Map([['P1', linesA]]),
+         new Map([['P2', linesB]]),
+      )
+      expect(result.get('P1')).toBe(linesA)   // fresh
+      expect(result.get('P2')).toBe(linesB)   // carried
+      expect(result.has('P3')).toBe(false)    // never measured, nothing to carry
    })
 })
 

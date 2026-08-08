@@ -1,8 +1,8 @@
 // -- React Imports --
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 
 // -- Lib Imports --
-import { paginate, buildMetrics, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
+import { paginate, buildMetrics, reconcileParagraphLines, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
 import { caretCharOffsetAtPoint } from '../lib/inlineFormatting'
 import type { Page } from '../lib/pageModel'
 import type { PageBreak } from '../lib/format'
@@ -33,6 +33,12 @@ interface UsePagedLayoutOptions {
     *  the editable from the stale committed model, and discard the in-progress text. Measurement freezes
     *  while this is set; the focus reflow itself is driven by `atomicBlockIds` and keeps working. */
    focusedParagraphId: string | null
+   /** Assigned the current measure function, so the App can force a SYNCHRONOUS re-measure right before
+    *  printing / exporting. Re-measurement is otherwise debounced (and frozen while a paragraph is
+    *  focused), so a "Save as PDF" fired inside that window would paginate the export from a pre-settle
+    *  snapshot and drop a paragraph's page split. The App commits any active edit (blur) and waits for
+    *  the focus freeze to lift before calling this, so it runs unfrozen. */
+   flushMeasureRef?: MutableRefObject<(() => void) | null>
 }
 
 interface UsePagedLayoutResult {
@@ -189,7 +195,7 @@ function findTooTallPages(pages: Page[], heights: MeasuredHeights, availableHeig
  * derivation: nothing here touches the serialized model.
  */
 export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutResult {
-   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId } = options
+   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId, flushMeasureRef } = options
 
    const containerElementRef = useRef<HTMLElement | null>(null)
    const heightsRef = useRef(heights)
@@ -241,32 +247,44 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
          if (itemId && !next.listItemById.has(itemId)) next.listItemById.set(itemId, outerHeight(itemElement))
       }
       // Paragraph line boxes: for each top-level `p` block, measure the rendered lines of its rich-text
-      // element. A paragraph the editor is splitting at rest renders as read-only fragments (no
-      // [data-rich]) and so cannot be measured; carry its last whole-render lines forward instead. The
-      // lines are width-stable, and any text edit forces the paragraph whole (focused) before it commits,
-      // which re-measures fresh, so a carried-over value is only stale after a width change (the
-      // buildMetrics length guard then keeps the paragraph whole until it is measured again). First
+      // element WHEN it is rendered whole (a live [data-rich]). A paragraph the editor is splitting at
+      // rest renders as read-only fragments (no [data-rich]) and so cannot be measured, and a whole
+      // render can momentarily report zero line boxes before layout settles; either way the paragraph
+      // has no fresh measurement this pass and must retain its last whole-render lines. reconcile does
+      // exactly that (fresh when available, else carried), so a split paragraph's line data survives
+      // every re-measure and the export paginates the same split the editor shows. The lines are
+      // width-stable, and the buildMetrics length guard keeps a just-edited paragraph whole until a
+      // fresh measurement lands, so a carried value is never sliced at a stale offset. First measurable
       // occurrence wins for the same id across sheets.
       const paragraphCharCounts = collectParagraphCharCounts(sections)
-      const previousParagraphLines = heightsRef.current.paragraphLinesById
+      const freshParagraphLines = new Map<string, ParagraphLine[]>()
       for (const blockElement of container.querySelectorAll<HTMLElement>('[data-block-id]')) {
          const blockId = blockElement.getAttribute('data-block-id')
-         if (!blockId || !paragraphCharCounts.has(blockId) || next.paragraphLinesById.has(blockId)) continue
+         if (!blockId || !paragraphCharCounts.has(blockId) || freshParagraphLines.has(blockId)) continue
          const textElement = blockElement.querySelector<HTMLElement>('[data-rich]')
-         if (textElement) {
-            const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
-            if (lines.length > 0) next.paragraphLinesById.set(blockId, lines)
-         } else {
-            const carried = previousParagraphLines.get(blockId)
-            if (carried) next.paragraphLinesById.set(blockId, carried)
-         }
+         if (!textElement) continue
+         const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
+         if (lines.length > 0) freshParagraphLines.set(blockId, lines)
       }
+      next.paragraphLinesById = reconcileParagraphLines(
+         paragraphCharCounts.keys(), freshParagraphLines, heightsRef.current.paragraphLinesById,
+      )
 
       if (!sameHeights(heightsRef.current, next)) onHeightsChange(next)
    }
 
    const measureRef = useRef(measure)
    measureRef.current = measure
+
+   // Expose a synchronous flush for the print / export path. It runs the CURRENT measure (which reads
+   // the latest `focusedParagraphId`), so the App clears any active edit and waits for the focus freeze
+   // to lift before calling it, letting the export paginate from freshly settled heights instead of a
+   // pre-debounce snapshot.
+   useEffect(() => {
+      if (!flushMeasureRef) return
+      flushMeasureRef.current = () => measureRef.current()
+      return () => { flushMeasureRef.current = null }
+   }, [flushMeasureRef])
 
    // Re-measurement is DEBOUNCED: while the author types, the pagination stays frozen (the sheet grows
    // by min-height, no clipping) and the reflow lands once typing pauses. Measuring on every keystroke

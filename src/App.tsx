@@ -822,9 +822,45 @@ export default function App() {
 
    // Save as PDF from the Pages panel: the browser print dialog over the paged export HTML, using the
    // document's own theme / accent / presentation / format. The Pages panel exists only for paged docs.
+   //
+   // exportPages is derived from `measuredHeights`, which the editor re-measures on a debounce and
+   // freezes entirely while a paragraph is focused. Printing straight from the current value could
+   // paginate the export from a pre-settle snapshot where a just-grown paragraph is still whole (its
+   // measured lines predate the edit, so the length guard holds it atomic), so the PDF would drop that
+   // paragraph's page split and clip its overflow. To match exactly what the editor shows: commit any
+   // active edit (blur), wait for the focus freeze to lift, flush a synchronous re-measure, then print
+   // from the freshly settled pages. `flushLayoutMeasureRef` is assigned by usePagedLayout (via
+   // WysiwygArea); `exportPagesRef` hands the deferred print the latest pages without widening effect
+   // deps (which could cancel the pending print frame mid-flight).
+   const flushLayoutMeasureRef = useRef<(() => void) | null>(null)
+   const exportPagesRef = useRef(exportPages)
+   exportPagesRef.current = exportPages
+   const pdfPrintPendingRef = useRef(false)
+   const [pdfPrintRequest, setPdfPrintRequest] = useState(0)
+
+   const printPdfNow = useCallback(() => {
+      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: exportPagesRef.current })
+   }, [meta, sections, docTheme, docAccent, lang, presentation, format])
+   const printPdfNowRef = useRef(printPdfNow)
+   printPdfNowRef.current = printPdfNow
+
    const handleSaveAsPdf = useCallback(() => {
-      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: exportPages })
-   }, [meta, sections, docTheme, docAccent, lang, presentation, format, exportPages])
+      const active = document.activeElement as HTMLElement | null
+      if (active && active.isContentEditable) active.blur()
+      pdfPrintPendingRef.current = true
+      setPdfPrintRequest(request => request + 1)
+   }, [])
+
+   useEffect(() => {
+      if (!pdfPrintPendingRef.current || focusedParagraphId) return
+      // Focus has cleared (the edit committed): flush a fresh measure so exportPages reflects the settled
+      // model, then print on the next frame once that re-render has committed. Single-shot via the ref
+      // flag so the flush's own re-render cannot re-enter this.
+      pdfPrintPendingRef.current = false
+      flushLayoutMeasureRef.current?.()
+      const frame = requestAnimationFrame(() => printPdfNowRef.current())
+      return () => cancelAnimationFrame(frame)
+   }, [pdfPrintRequest, focusedParagraphId])
 
    // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
    // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
@@ -1180,6 +1216,7 @@ export default function App() {
                               atomicBlockIds={editorAtomicIds}
                               focusedParagraphId={focusedParagraphId}
                               onParagraphFocusChange={setFocusedParagraphId}
+                              flushMeasureRef={flushLayoutMeasureRef}
                            />
                         ),
                         mintdown: (

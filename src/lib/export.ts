@@ -654,10 +654,15 @@ function buildPagedStyles(
                   /* Each sheet fills exactly one physical page (height: 100vh) so the footer band pins to
                      the real page bottom; the full-height boxes then paginate NATURALLY (one per page),
                      so NO page-break-after is used, an explicit break there plus a full-height box would
-                     emit an empty page after every sheet. overflow: hidden clips any sub-pixel spill. */
+                     emit an empty page after every sheet. overflow: hidden clips any sub-pixel spill. The
+                     base rule's min-height (the A4 px floor) is KEPT, not reset: it is what pins a sheet
+                     to a whole physical page when the print engine's "100vh" resolves a hair short, so
+                     the sheets stay aligned to the page boundaries instead of flowing continuously into
+                     one another. The sheet colour is restated here so a SHORT last page's blank tail
+                     prints in the document background rather than the un-themed paper canvas. */
                   .doc-page {
                         box-shadow: none; border-radius: 0; width: 100%; height: 100vh; margin: 0; overflow: hidden;
-                        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                        background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
             }${watermarkPaged}`
 }

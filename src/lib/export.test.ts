@@ -681,4 +681,19 @@ describe('generateExportHTML, paged (A4) export', () => {
       })
       expect(twoPages).toContain('height: calc(2 * 100vh); overflow: hidden;')
    })
+
+   // Each printed SHEET must own the document sheet colour outright: the last page can be short (its
+   // content ends well above the fold), and its blank tail has to print in the document background, not
+   // the un-themed paper canvas. The print `.doc-page` rule sets `background` explicitly. It KEEPS the
+   // base A4 px `min-height` floor (does NOT reset it), because that floor is what pins each sheet to a
+   // whole physical page when the print engine's "100vh" resolves a hair short; dropping it let sheets
+   // shrink below a page and flow continuously into one another.
+   it('themes the print sheet and keeps the A4 min-height floor so sheets stay page-aligned', () => {
+      const html = generateExportHTML(meta, sections, { theme: 'dark', accent: '#f97316', format: { kind: 'a4-portrait' } })
+      // The print .doc-page override: full-page height, the sheet colour, and NO min-height reset. The
+      // `box-shadow: none` opener is unique to the print override, so it never matches the base rule.
+      expect(html).toContain('height: 100vh; margin: 0; overflow: hidden;')
+      expect(html).not.toMatch(/\.doc-page \{[^}]*min-height: 0;/)
+      expect(html).toMatch(/\.doc-page \{\s*box-shadow: none; border-radius: 0; width: 100%; height: 100vh; margin: 0; overflow: hidden;\s*background: #161b22; -webkit-print-color-adjust: exact; print-color-adjust: exact;/)
+   })
 })

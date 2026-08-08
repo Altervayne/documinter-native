@@ -129,6 +129,9 @@ interface WysiwygAreaProps {
    focusedParagraphId?: string | null
    /** Set / clear the focused paragraph: a fragment press sets it, a blur clears it. */
    onParagraphFocusChange?: (blockId: string | null) => void
+   /** Assigned the measure function so the App can force a synchronous re-measure before printing /
+    *  exporting (see usePagedLayout `flushMeasureRef`). */
+   flushMeasureRef?: React.MutableRefObject<(() => void) | null>
 }
 
 export function WysiwygArea({
@@ -139,7 +142,7 @@ export function WysiwygArea({
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
    measuredHeights, onMeasuredHeights, atomicBlockIds,
-   focusedParagraphId = null, onParagraphFocusChange,
+   focusedParagraphId = null, onParagraphFocusChange, flushMeasureRef,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections, moveBlockAcross } = useDocumentMutations()
@@ -474,6 +477,7 @@ export function WysiwygArea({
       onHeightsChange: onMeasuredHeights ?? (() => {}),
       atomicBlockIds:  atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
       focusedParagraphId,
+      flushMeasureRef,
    })
    const derivedPages: Page[] | null = paged ? laidOutPages : null
 

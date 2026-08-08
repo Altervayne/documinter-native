@@ -172,6 +172,33 @@ export function allParagraphIds(sections: Section[]): Set<string> {
    return ids
 }
 
+/**
+ * Reconcile a re-measure pass's paragraph line data with the previous pass. For every paragraph still
+ * in the model, keep a freshly measured set when one is available (the paragraph rendered whole with a
+ * live rich-text element and produced at least one line), otherwise CARRY FORWARD the previous pass's
+ * lines. Two cases depend on this: a paragraph split at rest renders as read-only fragments with no
+ * measurable element, so it never has a fresh measurement and must retain its last whole-render lines;
+ * and a whole render can momentarily report zero line boxes (an element not yet laid out), which must
+ * not wipe good data either. Carrying stale lines is safe because the buildMetrics length guard keeps
+ * the paragraph whole until a fresh measurement lands whenever an edit has changed its char count.
+ * Only ids in `paragraphIds` (the current model paragraphs) are carried, so a removed paragraph's lines
+ * are dropped. Pure so the measure hook and its tests share the exact retention rule.
+ */
+export function reconcileParagraphLines(
+   paragraphIds:  Iterable<string>,
+   freshLines:    Map<string, ParagraphLine[]>,
+   previousLines: Map<string, ParagraphLine[]>,
+): Map<string, ParagraphLine[]> {
+   const result = new Map<string, ParagraphLine[]>()
+   for (const blockId of paragraphIds) {
+      const fresh = freshLines.get(blockId)
+      if (fresh && fresh.length > 0) { result.set(blockId, fresh); continue }
+      const carried = previousLines.get(blockId)
+      if (carried && carried.length > 0) result.set(blockId, carried)
+   }
+   return result
+}
+
 /** The A4 content-box height (sheet height minus top/bottom margins) for a format, in CSS px. The
  *  available height every paged consumer feeds `paginate`; shared so the editor, Pages panel, and
  *  export agree to the pixel. */
