@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 
-import { paginate, buildMetrics, reconcileParagraphLines, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
-import { FIRST_PAGE_ID } from './pageModel'
+import { paginate, buildMetrics, reconcileParagraphLines, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, contentBoxWidthPx, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
+import { FIRST_PAGE_ID, A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, millimetresToPx } from './pageModel'
+import { DEFAULT_A4_MARGINS, type DocFormat } from './format'
 import type { Block, Section, ListItem } from '../types'
 
 // ###########
@@ -379,6 +380,46 @@ describe('paginate — explicit breaks still win', () => {
       expect(pages[0].slices).toEqual([])
       expect(pages[1].id).toBe('lead')
       expect(pages[1].slices[0].blocks.map(b => b.id)).toEqual(['A'])
+   })
+})
+
+describe('contentBoxWidthPx — width-parity guard', () => {
+   // The whole editor/export convergence rests on the offscreen export measurement wrapping text at the
+   // SAME width the paged sheet renders at. The real paged sheet is A4_*_WIDTH_PX wide (border-box) with
+   // the left/right margins applied as `.doc-render` padding, so its content box is sheetWidth minus the
+   // horizontal margins. contentBoxWidthPx is the ONE source both the measurement (exportLayout) and this
+   // formula read; if they ever drift, editor and export silently disagree at a seam. These pin them.
+
+   it('returns the a4-portrait sheet width minus the horizontal margins', () => {
+      const margins = { top: 15, right: 25, bottom: 15, left: 30 }
+      const format: DocFormat = { kind: 'a4-portrait', margins }
+      expect(contentBoxWidthPx(format)).toBe(A4_PORTRAIT_WIDTH_PX - millimetresToPx(30) - millimetresToPx(25))
+   })
+
+   it('returns the a4-landscape sheet width minus the horizontal margins', () => {
+      const margins = { top: 10, right: 18, bottom: 10, left: 22 }
+      const format: DocFormat = { kind: 'a4-landscape', margins }
+      expect(contentBoxWidthPx(format)).toBe(A4_LANDSCAPE_WIDTH_PX - millimetresToPx(22) - millimetresToPx(18))
+   })
+
+   it('falls back to the default A4 margins when a paged format sets none', () => {
+      expect(contentBoxWidthPx({ kind: 'a4-portrait' })).toBe(
+         A4_PORTRAIT_WIDTH_PX - millimetresToPx(DEFAULT_A4_MARGINS.left) - millimetresToPx(DEFAULT_A4_MARGINS.right),
+      )
+   })
+
+   it('returns 0 for an infinite or absent format (no fixed sheet width)', () => {
+      expect(contentBoxWidthPx({ kind: 'infinite' })).toBe(0)
+      expect(contentBoxWidthPx(undefined)).toBe(0)
+   })
+
+   it('equals the paged sheet content box the export actually renders at (drift tripwire)', () => {
+      for (const kind of ['a4-portrait', 'a4-landscape'] as const) {
+         const margins = { top: 12, right: 20, bottom: 12, left: 28 }
+         const sheetWidth = kind === 'a4-landscape' ? A4_LANDSCAPE_WIDTH_PX : A4_PORTRAIT_WIDTH_PX
+         const renderedContentBox = sheetWidth - millimetresToPx(margins.left) - millimetresToPx(margins.right)
+         expect(contentBoxWidthPx({ kind, margins })).toBe(renderedContentBox)
+      }
    })
 })
 

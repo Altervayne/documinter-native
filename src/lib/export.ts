@@ -1,5 +1,5 @@
 import type { DocMeta, InlineContent, ListItem, Section, Block } from '../types'
-import { esc, slugify } from './text'
+import { esc } from './text'
 import { renderInlineContent } from './inline'
 import { blockAnchor } from './document'
 import { highlight } from './highlight'
@@ -35,10 +35,10 @@ export interface ExportOptions {
     *  width or a 'normal' width, all resolve to the same 860px `.doc-card` max-width, so output stays
     *  byte-identical (see resolveDocumentSheetWidthPx). */
    format?: DocFormat
-   /** The reflowed pages measured in the editor (splittable lists auto-flowed across sheets). When
-    *  present, the paged export renders these EXACT pages so the PDF matches the editor; when absent
-    *  (an export from a context with no live measurement, e.g. the binder), it falls back to the plain
-    *  forced-break partition, which never splits a block. */
+   /** The reflowed pages to render (splittable lists and paragraphs auto-flowed across sheets). The DOM
+    *  entry points pass the export's own offscreen measurement here (see lib/exportLayout); tests pass a
+    *  deterministic layout. When absent (a DOM-less context, e.g. the binder mini-preview), it falls back
+    *  to the plain forced-break partition, which never splits a block. */
    pagedLayout?: Page[]
 }
 
@@ -579,6 +579,14 @@ function buildPagedStyles(
             .doc-page > .doc-render { position: relative; z-index: 1; }`
       : ''
 
+   // The height the print sheets are floored to, a hair UNDER the true physical A4 page. `sheetHeightPx`
+   // is the ROUNDED constant (1123px); a real A4 page is 297mm = 1122.52px at 96dpi, so a sheet floored to
+   // 1123 is ~0.5px too tall, and over several pages that accumulated overshoot tips a 1-2px sliver onto a
+   // phantom extra page. Flooring to the real page height (truncated just BELOW it, so a sheet is always
+   // <= one page and never overshoots) keeps the sheet stack within a whole number of physical pages: no
+   // phantom trailing page, and the sub-pixel remainder is far too small to drift a footer or show a gap.
+   const printSheetHeightPx = Math.floor(millimetresToPx(orientation === 'landscape' ? 210 : 297) * 100) / 100
+
    return `
             /* Paged (A4) layout. @page carries only the physical A4 size; the margins are owned by the
                sheet's .doc-render padding (see @media print), because browsers honor @page margins
@@ -634,21 +642,20 @@ function buildPagedStyles(
                   html, body { margin: 0; background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                   .sidebar, #toTopBtn { display: none !important; }
                   .main { margin: 0; padding: 0; }
-                  /* The stack is pinned to an EXACT page-count multiple of 100vh instead of being left to
-                     size itself off the summed heights of its .doc-page children. Chrome's print layout
-                     rounds "1 viewport height" to real device pixels on every sheet, and that per-sheet
-                     rounding can drift the stack's auto height a hair short of a whole number of pages;
-                     the shortfall then lands past the LAST sheet, where there is no following sheet to
-                     paint over it, so the printed page shows a sliver of the un-themed paper canvas below
-                     the last sheet instead of the document's own background. Declaring the stack's own
-                     height and background removes the ambiguity: the stack itself now owns every pixel
-                     of all ${pageCount} sheets, drift and all, so that trailing sliver is always painted
-                     in the document's own sheet colour. overflow: hidden clips the opposite case (content
-                     drifting a hair PAST the last page) the same way each .doc-page already clips its own
-                     sub-pixel spill. */
+                  /* The stack owns an EXACT page-count multiple of a sheet's height, so the whole canvas
+                     is painted in the document's sheet colour and no un-themed paper shows through, drift
+                     and all. The multiplier is max(100vh, sheetHeightPx), NOT plain 100vh: each .doc-page
+                     is floored to sheetHeightPx by its min-height, so when the print engine's "100vh"
+                     resolves SHORTER than a real A4 sheet (which happens in an interactive iframe print,
+                     where 100vh does not track the physical page the way it does in headless print-to-pdf),
+                     a plain N*100vh stack comes out shorter than its own children and overflow: hidden then
+                     CLIPS the bottom of the LAST sheet, taking its background fill and its footer band with
+                     it. Matching the stack to the sheets' real floored height keeps it from ever being
+                     shorter than what it contains. overflow: hidden still clips the opposite case (content
+                     drifting a hair PAST the last page) the same way each .doc-page clips its own spill. */
                   .doc-pages {
                         display: block; gap: 0; margin: 0; padding: 0;
-                        height: calc(${pageCount} * 100vh); overflow: hidden;
+                        height: calc(${pageCount} * max(100vh, ${printSheetHeightPx}px)); overflow: hidden;
                         background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
                   /* Each sheet fills exactly one physical page (height: 100vh) so the footer band pins to
@@ -661,7 +668,7 @@ function buildPagedStyles(
                      one another. The sheet colour is restated here so a SHORT last page's blank tail
                      prints in the document background rather than the un-themed paper canvas. */
                   .doc-page {
-                        box-shadow: none; border-radius: 0; width: 100%; height: 100vh; margin: 0; overflow: hidden;
+                        box-shadow: none; border-radius: 0; width: 100%; height: 100vh; min-height: ${printSheetHeightPx}px; margin: 0; overflow: hidden;
                         background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
             }${watermarkPaged}`
@@ -873,8 +880,8 @@ ${blocksHTML}
    // Empty for an infinite export.
    const headerBand = resolveHeader(opts.format)
    const footerBand = resolveFooterBand(opts.format)
-   // exportPages (the editor's measured reflow, falling back to the plain forced-break partition) is
-   // hoisted above the styles block, see the comment there.
+   // exportPages (the supplied pagedLayout, falling back to the plain forced-break partition) is hoisted
+   // above the styles block, see the comment there.
    const pagesHTML = paged
       ? exportPages.map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
@@ -970,51 +977,5 @@ ${mainHTML}
 </html>`
 }
 
-export function downloadHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): void {
-   const html = generateExportHTML(meta, sections, opts)
-   const slug = slugify(meta.title)
-   const anchor = document.createElement('a')
-   anchor.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-   anchor.download = slug + '.html'
-   anchor.click()
-   URL.revokeObjectURL(anchor.href)
-}
-
-/**
- * Open the browser print dialog ("Save as PDF") over the exact paged export HTML. The document is
- * written into a hidden iframe and only that iframe is printed, so no app chrome leaks in and the PDF
- * matches the HTML export sheet for sheet. Printing waits for fonts so the print engine lays out the
- * final page, not a fallback-font first pass. Intended for paged documents (the caller gates on paged
- * mode); an infinite document would print as one long page.
- */
-export function printDocument(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): void {
-   const html = generateExportHTML(meta, sections, opts)
-
-   const iframe = document.createElement('iframe')
-   iframe.setAttribute('aria-hidden', 'true')
-   // Kept in the layout (not display:none, which suppresses printing in some engines) but out of sight.
-   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
-   document.body.appendChild(iframe)
-
-   const frameWindow = iframe.contentWindow
-   const frameDoc    = frameWindow?.document
-   if (!frameWindow || !frameDoc) { iframe.remove(); return }
-
-   const printThenClean = (): void => {
-      frameWindow.focus()
-      frameWindow.print()
-      // Leave the frame up briefly so the dialog can hold the document, then drop it.
-      window.setTimeout(() => iframe.remove(), 1000)
-   }
-   const whenFontsReady = (): void => {
-      const fonts = frameDoc.fonts
-      if (fonts && fonts.ready) fonts.ready.then(printThenClean).catch(printThenClean)
-      else printThenClean()
-   }
-
-   frameDoc.open()
-   frameDoc.write(html)
-   frameDoc.close()
-   if (frameDoc.readyState === 'complete') whenFontsReady()
-   else frameWindow.addEventListener('load', whenFontsReady, { once: true })
-}
+// The DOM entry points `downloadHTML` and `printDocument` live in exportLayout.ts: they self-measure the
+// paged layout before generating HTML. generateExportHTML above stays pure and synchronous.

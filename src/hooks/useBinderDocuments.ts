@@ -6,7 +6,7 @@ import {
 } from '../lib/binderDocuments'
 import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocumentListFilter } from '../lib/binderSearch'
-import { downloadHTML } from '../lib/export'
+import { downloadHTML } from '../lib/exportLayout'
 import { exportMarkdownFile } from '../lib/markdown'
 import { exportMintdownFile } from '../lib/mintdown'
 import { useToast } from '../contexts/ToastContext'
@@ -134,7 +134,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       try {
          const loaded = await loadDocument(id, { touch: false })
          if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
-         downloadHTML(loaded.meta, loaded.sections, { theme: loaded.docTheme, accent: loaded.docAccent, lang })
+         await downloadHTML(loaded.meta, loaded.sections, { theme: loaded.docTheme, accent: loaded.docAccent, lang })
          showToast(t.downloaded, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })

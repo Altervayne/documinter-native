@@ -32,7 +32,7 @@ import type { Block, Section } from '../types'
 import { splitInlineContent } from './inline'
 import { DEFAULT_A4_MARGINS, type DocFormat, type PageBreak } from './format'
 import type { Page, PageSlice } from './pageModel'
-import { FIRST_PAGE_ID, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_HEIGHT_PX, millimetresToPx } from './pageModel'
+import { FIRST_PAGE_ID, A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_HEIGHT_PX, millimetresToPx } from './pageModel'
 
 // #############
 // # CONSTANTS #
@@ -199,13 +199,46 @@ export function reconcileParagraphLines(
    return result
 }
 
-/** The A4 content-box height (sheet height minus top/bottom margins) for a format, in CSS px. The
- *  available height every paged consumer feeds `paginate`; shared so the editor, Pages panel, and
- *  export agree to the pixel. */
+/** The A4 content-box height (sheet height minus top/bottom margins) for a format, in CSS px. The true
+ *  content box; the print sheet's `.doc-render` fills exactly this. */
 export function contentBoxHeightPx(format: DocFormat | undefined): number {
    const sheetHeight = format?.kind === 'a4-landscape' ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
    const margins = format?.margins ?? DEFAULT_A4_MARGINS
    return sheetHeight - millimetresToPx(margins.top) - millimetresToPx(margins.bottom)
+}
+
+/** A slack band left UNFILLED at the bottom of every auto-flowed sheet. A manually placed break (the old
+ *  out-of-bounds "cut here") always left room below its last block, so its page never filled to the brim
+ *  and never clipped in print. The measured paginator instead fills each sheet to the exact content box,
+ *  and in print that razor's-edge packing clips: a printed sheet holds a hair LESS than the CSS math
+ *  says (per-line sub-pixel rounding accumulated over a full page, font-metric drift between the
+ *  off-screen measurement and the print render, Chrome's per-sheet `100vh` rounding), and a page filled
+ *  to the brim spills past the fixed `height:100vh; overflow:hidden` sheet so the tail is silently cut.
+ *  Reserving this band gives every auto page the same breathing room a manual break always had. Sized to
+ *  cover a splittable block's own bottom margin (which the line/item sums omit) plus a line of drift. */
+export const PAGE_FILL_RESERVE_PX = 40
+
+/** The height the paginator may fill on one sheet: the content box minus the slack band, so auto pages
+ *  keep the breathing room manual breaks always had and never pack to the razor's edge the print sheet
+ *  cannot hold. The editor and the export both feed this, so their pagination stays identical. */
+export function paginationBudgetPx(format: DocFormat | undefined): number {
+   return Math.max(0, contentBoxHeightPx(format) - PAGE_FILL_RESERVE_PX)
+}
+
+/**
+ * The A4 content-box WIDTH (sheet width minus left/right margins) for a paged format, in CSS px. This is
+ * the width text wraps at on a paged sheet, and the SAME width the offscreen export measurement renders
+ * its content at, so both the editor sheet and the export measure heights over one width. An infinite (or
+ * absent) format has no fixed sheet width, so it returns 0: the paged measurement never calls it there
+ * (an infinite export is not paginated), and 0 is an explicit "no paged width" sentinel. Kept beside
+ * contentBoxHeightPx so the paged width and height come from one place and the width-parity guard test can
+ * pin the measurement width to the rendered sheet width.
+ */
+export function contentBoxWidthPx(format: DocFormat | undefined): number {
+   if (!format || format.kind === 'infinite') return 0
+   const sheetWidth = format.kind === 'a4-landscape' ? A4_LANDSCAPE_WIDTH_PX : A4_PORTRAIT_WIDTH_PX
+   const margins = format.margins ?? DEFAULT_A4_MARGINS
+   return sheetWidth - millimetresToPx(margins.left) - millimetresToPx(margins.right)
 }
 
 // ##########

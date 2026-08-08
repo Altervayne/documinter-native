@@ -96,15 +96,19 @@ export function countCharsToPosition(
 export function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clientY: number): number {
    let node: Node | null = null
    let offset = 0
-   const withCaretPosition = document as Document & {
+   // Hit-test against the element's OWN document, not the ambient global. A `root` living in a detached
+   // or offscreen document would miss every hit against the top-level `document`; its `ownerDocument` is
+   // the one holding the rendered geometry.
+   const ownerDocument = root.ownerDocument
+   const withCaretPosition = ownerDocument as Document & {
       caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
    }
    if (typeof withCaretPosition.caretPositionFromPoint === 'function') {
       const position = withCaretPosition.caretPositionFromPoint(clientX, clientY)
       if (position) { node = position.offsetNode; offset = position.offset }
    }
-   if (!node && typeof document.caretRangeFromPoint === 'function') {
-      const range = document.caretRangeFromPoint(clientX, clientY)
+   if (!node && typeof ownerDocument.caretRangeFromPoint === 'function') {
+      const range = ownerDocument.caretRangeFromPoint(clientX, clientY)
       if (range) { node = range.startContainer; offset = range.startOffset }
    }
    if (!node || !root.contains(node)) return -1

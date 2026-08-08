@@ -36,8 +36,8 @@ import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
-import { printDocument } from './lib/export'
-import { paginate, buildMetrics, contentBoxHeightPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
+import { printDocument } from './lib/exportLayout'
+import { paginate, buildMetrics, paginationBudgetPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
 import type { Page } from './lib/pageModel'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
@@ -803,14 +803,11 @@ export default function App() {
    const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
    useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
    // The atomic set the editor + Pages panel paginate against: only the focused paragraph is held whole,
-   // so every other overflowing paragraph splits at rest. Export paginates with an empty set (below), so
-   // it always splits every paragraph.
+   // so every other overflowing paragraph splits at rest. The export does NOT read this; it self-measures
+   // its own offscreen render (see lib/exportLayout), so its pagination is independent of editor state.
    const editorAtomicIds = focusedParagraphId ? new Set([focusedParagraphId]) : new Set<string>()
    const laidOutPages: Page[] = pagedDocument
-      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, editorAtomicIds)
-      : []
-   const exportPages: Page[] = pagedDocument
-      ? paginate(sections, format?.pages ?? [], contentBoxHeightPx(format), layoutMetrics, new Set<string>())
+      ? paginate(sections, format?.pages ?? [], paginationBudgetPx(format), layoutMetrics, editorAtomicIds)
       : []
 
    // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
@@ -820,47 +817,15 @@ export default function App() {
    const handleOpenExport  = useCallback(() => setExportOpen(true), [])
    const handleCloseExport = useCallback(() => setExportOpen(false), [])
 
-   // Save as PDF from the Pages panel: the browser print dialog over the paged export HTML, using the
-   // document's own theme / accent / presentation / format. The Pages panel exists only for paged docs.
-   //
-   // exportPages is derived from `measuredHeights`, which the editor re-measures on a debounce and
-   // freezes entirely while a paragraph is focused. Printing straight from the current value could
-   // paginate the export from a pre-settle snapshot where a just-grown paragraph is still whole (its
-   // measured lines predate the edit, so the length guard holds it atomic), so the PDF would drop that
-   // paragraph's page split and clip its overflow. To match exactly what the editor shows: commit any
-   // active edit (blur), wait for the focus freeze to lift, flush a synchronous re-measure, then print
-   // from the freshly settled pages. `flushLayoutMeasureRef` is assigned by usePagedLayout (via
-   // WysiwygArea); `exportPagesRef` hands the deferred print the latest pages without widening effect
-   // deps (which could cancel the pending print frame mid-flight).
-   const flushLayoutMeasureRef = useRef<(() => void) | null>(null)
-   const exportPagesRef = useRef(exportPages)
-   exportPagesRef.current = exportPages
-   const pdfPrintPendingRef = useRef(false)
-   const [pdfPrintRequest, setPdfPrintRequest] = useState(0)
-
-   const printPdfNow = useCallback(() => {
-      printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format, pagedLayout: exportPagesRef.current })
-   }, [meta, sections, docTheme, docAccent, lang, presentation, format])
-   const printPdfNowRef = useRef(printPdfNow)
-   printPdfNowRef.current = printPdfNow
-
+   // Save as PDF: the browser print dialog over the paged export HTML, using the document's own theme /
+   // accent / presentation / format. printDocument self-measures the paged layout offscreen, so the PDF
+   // is the same whether the app is in Preview or Edit and regardless of what the editor has measured.
+   // Commit any active edit first (blur) so the print sees the committed model.
    const handleSaveAsPdf = useCallback(() => {
       const active = document.activeElement as HTMLElement | null
       if (active && active.isContentEditable) active.blur()
-      pdfPrintPendingRef.current = true
-      setPdfPrintRequest(request => request + 1)
-   }, [])
-
-   useEffect(() => {
-      if (!pdfPrintPendingRef.current || focusedParagraphId) return
-      // Focus has cleared (the edit committed): flush a fresh measure so exportPages reflects the settled
-      // model, then print on the next frame once that re-render has committed. Single-shot via the ref
-      // flag so the flush's own re-render cannot re-enter this.
-      pdfPrintPendingRef.current = false
-      flushLayoutMeasureRef.current?.()
-      const frame = requestAnimationFrame(() => printPdfNowRef.current())
-      return () => cancelAnimationFrame(frame)
-   }, [pdfPrintRequest, focusedParagraphId])
+      void printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
+   }, [meta, sections, docTheme, docAccent, lang, presentation, format])
 
    // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
    // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
@@ -1110,7 +1075,6 @@ export default function App() {
             onOpenPresentation={handleOpenPresentation}
             onOpenNav={handleOpenNav}
             format={format}
-            pagedLayout={exportPages}
             onOpenFormat={handleOpenFormat}
          />
 
@@ -1216,7 +1180,6 @@ export default function App() {
                               atomicBlockIds={editorAtomicIds}
                               focusedParagraphId={focusedParagraphId}
                               onParagraphFocusChange={setFocusedParagraphId}
-                              flushMeasureRef={flushLayoutMeasureRef}
                            />
                         ),
                         mintdown: (

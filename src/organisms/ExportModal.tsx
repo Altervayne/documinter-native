@@ -5,8 +5,8 @@ import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOptio
 import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
-import type { Page } from '../lib/pageModel'
-import { generateExportHTML, downloadHTML, printDocument, type ExportOptions } from '../lib/export'
+import { generateExportHTML, type ExportOptions } from '../lib/export'
+import { downloadHTML, printDocument, computeExportPages } from '../lib/exportLayout'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
 import { downloadJSON } from '../lib/documentBackupFile'
@@ -32,9 +32,6 @@ interface ExportModalProps {
    /** Active document's page format (infinite width or paged A4), baked into the exported HTML's
     *  `.doc-card` width. */
    format?: DocFormat
-   /** The editor's measured reflow (splittable lists auto-flowed across sheets), so the HTML / PDF
-    *  export matches what the author sees. Absent falls back to the plain forced-break partition. */
-   pagedLayout?: Page[]
    lang: Lang
    onClose: () => void
    /** Opens the document-level Presentation window (watermark / header / nav editing). */
@@ -56,7 +53,7 @@ interface ExportModalProps {
  *   - Markdown, documentToMarkdown -> download (via exportMarkdownFile). Lean, no options.
  *   - JSON    , downloadJSON, a lossless snapshot of the document's own state. Lean, no options.
  */
-export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, pagedLayout, lang, onClose, onOpenPresentation }: ExportModalProps) {
+export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
@@ -71,8 +68,9 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    // Presentation extras + document format ride into the HTML export via ExportOptions; the .mint /
    // .md paths never see them (they serialize content only). Aliased to docFormat above to avoid
    // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
-   // markdown, a separate concept from the document's page format).
-   const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat, pagedLayout }
+   // markdown, a separate concept from the document's page format). The paged layout is not threaded in:
+   // downloadHTML / printDocument / computeExportPages self-measure it from the model.
+   const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
    // =========
    //  Actions
@@ -83,14 +81,16 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    // equations rather than emitting "still loading" errors.
    async function handleHtmlDownload() {
       await ensureTemmlReady()
-      downloadHTML(meta, sections, opts)
+      await downloadHTML(meta, sections, opts)
       showToast(t.downloaded, { type: 'success' })
       onClose()
    }
 
    async function handleHtmlCopy() {
       await ensureTemmlReady()
-      const html = generateExportHTML(meta, sections, opts)
+      // Self-measure the paged layout so the copied HTML paginates from the model, not editor state.
+      const pages = await computeExportPages(meta, sections, opts)
+      const html = generateExportHTML(meta, sections, pages.length > 0 ? { ...opts, pagedLayout: pages } : opts)
       navigator.clipboard.writeText(html).then(() => {
          showToast(t.htmlCopied, { type: 'success' })
          onClose()
@@ -101,7 +101,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    // Temml like HTML so equations lay out before the print engine sees the page.
    async function handlePdf() {
       await ensureTemmlReady()
-      printDocument(meta, sections, opts)
+      await printDocument(meta, sections, opts)
       onClose()
    }
 

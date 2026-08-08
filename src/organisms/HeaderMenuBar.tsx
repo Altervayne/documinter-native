@@ -27,7 +27,6 @@ import { importMarkdownFile } from '../lib/markdown'
 import { importMintdownFile } from '../lib/mintdown'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
-import type { Page } from '../lib/pageModel'
 
 // -- Icon Imports --
 import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck, Undo2, Redo2 } from 'lucide-react'
@@ -161,8 +160,6 @@ interface HeaderMenuBarProps {
    /** Document page format (infinite width or paged A4) of the active document, threaded into
     *  the Export dialog's ExportOptions so a non-default width bakes into the exported HTML. */
    format?:    DocFormat
-   /** The editor's measured reflow, threaded into the Export dialog so HTML / PDF match the editor. */
-   pagedLayout?: Page[]
    /** Opens the document-level Page setup window (the Document menu's "Page setup..." entry). */
    onOpenFormat?: () => void
 }
@@ -177,7 +174,7 @@ export function HeaderMenuBar({
    onUndo, onRedo, canUndo, canRedo, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
-   format, pagedLayout, onOpenFormat,
+   format, onOpenFormat,
 }: HeaderMenuBarProps) {
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
@@ -406,7 +403,6 @@ export function HeaderMenuBar({
                defaultAccent={docAccent}
                presentation={presentation}
                format={format}
-               pagedLayout={pagedLayout}
                lang={lang}
                onClose={onCloseExport}
                onOpenPresentation={onOpenPresentation}

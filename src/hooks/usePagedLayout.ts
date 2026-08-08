@@ -1,9 +1,9 @@
 // -- React Imports --
-import { useEffect, useRef, type MutableRefObject } from 'react'
+import { useEffect, useRef } from 'react'
 
 // -- Lib Imports --
-import { paginate, buildMetrics, reconcileParagraphLines, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
-import { caretCharOffsetAtPoint } from '../lib/inlineFormatting'
+import { paginate, buildMetrics, EMPTY_HEIGHTS, type MeasuredHeights, type ParagraphLine } from '../lib/pageLayout'
+import { measureHeightsFromContainer } from '../lib/domMeasure'
 import type { Page } from '../lib/pageModel'
 import type { PageBreak } from '../lib/format'
 import type { Section } from '../types'
@@ -33,12 +33,6 @@ interface UsePagedLayoutOptions {
     *  the editable from the stale committed model, and discard the in-progress text. Measurement freezes
     *  while this is set; the focus reflow itself is driven by `atomicBlockIds` and keeps working. */
    focusedParagraphId: string | null
-   /** Assigned the current measure function, so the App can force a SYNCHRONOUS re-measure right before
-    *  printing / exporting. Re-measurement is otherwise debounced (and frozen while a paragraph is
-    *  focused), so a "Save as PDF" fired inside that window would paginate the export from a pre-settle
-    *  snapshot and drop a paragraph's page split. The App commits any active edit (blur) and waits for
-    *  the focus freeze to lift before calling this, so it runs unfrozen. */
-   flushMeasureRef?: MutableRefObject<(() => void) | null>
 }
 
 interface UsePagedLayoutResult {
@@ -62,16 +56,6 @@ const REFLOW_DEBOUNCE_MS = 180
 // ###########
 // # HELPERS #
 // ###########
-
-/** An element's consumed vertical space: border-box height plus its own top + bottom margin, rounded
- *  to a whole px so sub-pixel jitter never churns state or loops the measure effect. */
-function outerHeight(element: HTMLElement): number {
-   const rect = element.getBoundingClientRect()
-   const style = getComputedStyle(element)
-   const marginTop = Number.parseFloat(style.marginTop) || 0
-   const marginBottom = Number.parseFloat(style.marginBottom) || 0
-   return Math.round(rect.height + marginTop + marginBottom)
-}
 
 function sameNumberMap(left: Map<string, number>, right: Map<string, number>): boolean {
    if (left.size !== right.size) return false
@@ -101,66 +85,6 @@ function sameHeights(left: MeasuredHeights, right: MeasuredHeights): boolean {
       && sameNumberMap(left.blockById, right.blockById)
       && sameNumberMap(left.listItemById, right.listItemById)
       && sameParagraphLinesMap(left.paragraphLinesById, right.paragraphLinesById)
-}
-
-/** The paragraph block ids in the flow paired with their model richText length (char count, `\n`
- *  counted once), so a measured line's end offset can be clamped to the paragraph's own length. Only
- *  top-level `p` blocks are measured (only those can be split by the paginator). */
-function collectParagraphCharCounts(sections: Section[]): Map<string, number> {
-   const counts = new Map<string, number>()
-   for (const section of sections)
-      for (const block of section.blocks)
-         if (block.type === 'p')
-            counts.set(block.id, (block.richText ?? []).reduce((sum, run) => sum + run.text.length, 0))
-   return counts
-}
-
-/**
- * Measure the rendered visual lines of a paragraph's text element. Uses `Range.getClientRects()` over
- * the element content (one rect per line box, though rich runs split a line into several boxes, so the
- * rects are grouped back into lines by vertical band). Each line's END char offset comes from a
- * point-to-caret hit-test at the line's right edge, mapped to a flat offset; the last line is pinned to
- * the paragraph's own char length so a trailing-edge miss never drops the final characters.
- */
-function measureParagraphLines(element: HTMLElement, totalChars: number): ParagraphLine[] {
-   const range = document.createRange()
-   range.selectNodeContents(element)
-   const rects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 || rect.height > 0)
-   if (rects.length === 0) return []
-
-   // Group rects into visual lines: a rect on the same line vertically overlaps the current band; a
-   // rect that drops below the band's bottom starts a new line.
-   interface Band { top: number; bottom: number; right: number }
-   const bands: Band[] = []
-   for (const rect of rects) {
-      const current = bands[bands.length - 1]
-      if (current && rect.top < current.bottom - 1) {
-         current.bottom = Math.max(current.bottom, rect.bottom)
-         current.right  = Math.max(current.right, rect.right)
-      } else {
-         bands.push({ top: rect.top, bottom: rect.bottom, right: rect.right })
-      }
-   }
-
-   const lines: ParagraphLine[] = []
-   let previousCharEnd = 0
-   for (let index = 0; index < bands.length; index += 1) {
-      const band   = bands[index]
-      const height = Math.round(band.bottom - band.top)
-      const isLast = index === bands.length - 1
-      let charEnd: number
-      if (isLast) {
-         charEnd = totalChars
-      } else {
-         const mapped = caretCharOffsetAtPoint(element, band.right, (band.top + band.bottom) / 2)
-         charEnd = mapped < 0 ? previousCharEnd : mapped
-      }
-      // Keep offsets strictly increasing so no fragment is empty, and never past the paragraph length.
-      if (charEnd <= previousCharEnd) charEnd = Math.min(previousCharEnd + 1, totalChars)
-      lines.push({ height, charEnd })
-      previousCharEnd = charEnd
-   }
-   return lines
 }
 
 /** Pages that hold a single atomic block taller than the whole content area: auto-reflow cannot help
@@ -195,7 +119,7 @@ function findTooTallPages(pages: Page[], heights: MeasuredHeights, availableHeig
  * derivation: nothing here touches the serialized model.
  */
 export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutResult {
-   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId, flushMeasureRef } = options
+   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId } = options
 
    const containerElementRef = useRef<HTMLElement | null>(null)
    const heightsRef = useRef(heights)
@@ -224,67 +148,16 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
       // so it keeps working while frozen.
       if (focusedParagraphId) return
 
-      const headerElement = container.querySelector<HTMLElement>('.page-header')
-      const next: MeasuredHeights = {
-         header:             headerElement ? outerHeight(headerElement) : 0,
-         titleBySection:     new Map(),
-         blockById:          new Map(),
-         listItemById:       new Map(),
-         paragraphLinesById: new Map(),
-      }
-      for (const sectionElement of container.querySelectorAll<HTMLElement>('[data-section-id]')) {
-         const sectionId = sectionElement.getAttribute('data-section-id')
-         const titleElement = sectionElement.querySelector<HTMLElement>('h2')
-         if (sectionId && titleElement && !next.titleBySection.has(sectionId))
-            next.titleBySection.set(sectionId, outerHeight(titleElement))
-      }
-      for (const blockElement of container.querySelectorAll<HTMLElement>('[data-block-id]')) {
-         const blockId = blockElement.getAttribute('data-block-id')
-         if (blockId && !next.blockById.has(blockId)) next.blockById.set(blockId, outerHeight(blockElement))
-      }
-      for (const itemElement of container.querySelectorAll<HTMLElement>('[data-list-item-id]')) {
-         const itemId = itemElement.getAttribute('data-list-item-id')
-         if (itemId && !next.listItemById.has(itemId)) next.listItemById.set(itemId, outerHeight(itemElement))
-      }
-      // Paragraph line boxes: for each top-level `p` block, measure the rendered lines of its rich-text
-      // element WHEN it is rendered whole (a live [data-rich]). A paragraph the editor is splitting at
-      // rest renders as read-only fragments (no [data-rich]) and so cannot be measured, and a whole
-      // render can momentarily report zero line boxes before layout settles; either way the paragraph
-      // has no fresh measurement this pass and must retain its last whole-render lines. reconcile does
-      // exactly that (fresh when available, else carried), so a split paragraph's line data survives
-      // every re-measure and the export paginates the same split the editor shows. The lines are
-      // width-stable, and the buildMetrics length guard keeps a just-edited paragraph whole until a
-      // fresh measurement lands, so a carried value is never sliced at a stale offset. First measurable
-      // occurrence wins for the same id across sheets.
-      const paragraphCharCounts = collectParagraphCharCounts(sections)
-      const freshParagraphLines = new Map<string, ParagraphLine[]>()
-      for (const blockElement of container.querySelectorAll<HTMLElement>('[data-block-id]')) {
-         const blockId = blockElement.getAttribute('data-block-id')
-         if (!blockId || !paragraphCharCounts.has(blockId) || freshParagraphLines.has(blockId)) continue
-         const textElement = blockElement.querySelector<HTMLElement>('[data-rich]')
-         if (!textElement) continue
-         const lines = measureParagraphLines(textElement, paragraphCharCounts.get(blockId) ?? 0)
-         if (lines.length > 0) freshParagraphLines.set(blockId, lines)
-      }
-      next.paragraphLinesById = reconcileParagraphLines(
-         paragraphCharCounts.keys(), freshParagraphLines, heightsRef.current.paragraphLinesById,
-      )
+      // Split-at-rest paragraphs have no fresh line measurement this pass, so carry forward the current
+      // paragraph lines: the pure measure reconciles fresh boxes against them and a split paragraph's
+      // line data survives every re-measure.
+      const next = measureHeightsFromContainer(container, sections, heightsRef.current.paragraphLinesById)
 
       if (!sameHeights(heightsRef.current, next)) onHeightsChange(next)
    }
 
    const measureRef = useRef(measure)
    measureRef.current = measure
-
-   // Expose a synchronous flush for the print / export path. It runs the CURRENT measure (which reads
-   // the latest `focusedParagraphId`), so the App clears any active edit and waits for the focus freeze
-   // to lift before calling it, letting the export paginate from freshly settled heights instead of a
-   // pre-debounce snapshot.
-   useEffect(() => {
-      if (!flushMeasureRef) return
-      flushMeasureRef.current = () => measureRef.current()
-      return () => { flushMeasureRef.current = null }
-   }, [flushMeasureRef])
 
    // Re-measurement is DEBOUNCED: while the author types, the pagination stays frozen (the sheet grows
    // by min-height, no clipping) and the reflow lands once typing pauses. Measuring on every keystroke
