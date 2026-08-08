@@ -559,6 +559,8 @@ ${watermarkStyles}${headerStyles}${navStyles}${pagedStyles}   `
  * plus `page-break-after: always` and `@media print` overrides make browser print-to-PDF emit one true
  * A4 page per sheet at the right orientation and margins, with `page-break-inside: avoid` keeping
  * self-contained figures (SVG graphs / diagrams, images, tables, math, callouts, code) off a page seam.
+ * `pageCount` (the number of derived sheets) pins the sheet stack's own printed height to an exact
+ * page-count multiple, see the `.doc-pages` rule in `@media print` for why that matters.
  */
 function buildPagedStyles(
    accent:        string,
@@ -568,6 +570,7 @@ function buildPagedStyles(
    sheetWidthPx:  number,
    sheetHeightPx: number,
    hasWatermark:  boolean,
+   pageCount:     number,
 ): string {
    // Per-sheet watermark clipping, the paged analogue of the `.doc-card` rules; only when present.
    const watermarkPaged = hasWatermark
@@ -631,7 +634,23 @@ function buildPagedStyles(
                   html, body { margin: 0; background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                   .sidebar, #toTopBtn { display: none !important; }
                   .main { margin: 0; padding: 0; }
-                  .doc-pages { display: block; gap: 0; margin: 0; padding: 0; }
+                  /* The stack is pinned to an EXACT page-count multiple of 100vh instead of being left to
+                     size itself off the summed heights of its .doc-page children. Chrome's print layout
+                     rounds "1 viewport height" to real device pixels on every sheet, and that per-sheet
+                     rounding can drift the stack's auto height a hair short of a whole number of pages;
+                     the shortfall then lands past the LAST sheet, where there is no following sheet to
+                     paint over it, so the printed page shows a sliver of the un-themed paper canvas below
+                     the last sheet instead of the document's own background. Declaring the stack's own
+                     height and background removes the ambiguity: the stack itself now owns every pixel
+                     of all ${pageCount} sheets, drift and all, so that trailing sliver is always painted
+                     in the document's own sheet colour. overflow: hidden clips the opposite case (content
+                     drifting a hair PAST the last page) the same way each .doc-page already clips its own
+                     sub-pixel spill. */
+                  .doc-pages {
+                        display: block; gap: 0; margin: 0; padding: 0;
+                        height: calc(${pageCount} * 100vh); overflow: hidden;
+                        background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+                  }
                   /* Each sheet fills exactly one physical page (height: 100vh) so the footer band pins to
                      the real page bottom; the full-height boxes then paginate NATURALLY (one per page),
                      so NO page-break-after is used, an explicit break there plus a full-height box would
@@ -758,8 +777,12 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    const pagedMargins       = opts.format?.margins ?? DEFAULT_A4_MARGINS
    const pagedSheetWidthPx  = pagedIsLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
    const pagedSheetHeightPx = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
+   // Derived pages are needed here already (not just further down where the sheet markup is built) so
+   // the print stylesheet can pin the sheet stack's total height to an exact page-count multiple of
+   // 100vh, see buildPagedStyles for why.
+   const exportPages = opts.pagedLayout ?? partitionIntoPages(sections, opts.format?.pages ?? [])
    const pagedStyles = paged
-      ? buildPagedStyles(accent, colors, pagedIsLandscape ? 'landscape' : 'portrait', pagedMargins, pagedSheetWidthPx, pagedSheetHeightPx, hasWatermark)
+      ? buildPagedStyles(accent, colors, pagedIsLandscape ? 'landscape' : 'portrait', pagedMargins, pagedSheetWidthPx, pagedSheetHeightPx, hasWatermark, exportPages.length)
       : ''
 
    const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx, pagedStyles)
@@ -845,9 +868,8 @@ ${blocksHTML}
    // Empty for an infinite export.
    const headerBand = resolveHeader(opts.format)
    const footerBand = resolveFooterBand(opts.format)
-   // Prefer the editor's measured reflow (splittable lists auto-flowed across sheets) so the PDF matches
-   // what the author saw; fall back to the plain forced-break partition when no measurement was supplied.
-   const exportPages = opts.pagedLayout ?? partitionIntoPages(sections, opts.format?.pages ?? [])
+   // exportPages (the editor's measured reflow, falling back to the plain forced-break partition) is
+   // hoisted above the styles block, see the comment there.
    const pagesHTML = paged
       ? exportPages.map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark

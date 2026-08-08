@@ -13,7 +13,7 @@ import { getFolder } from './lib/binderFolders'
 import { instantiateTemplate, captureTemplate, type DocumentTemplate } from './lib/documentTemplate'
 import { saveTemplate } from './lib/templateStore'
 import {
-   emptyHistory, recordEdit, applyUndo, applyRedo,
+   emptyHistory, recordEdit, applyUndo, applyRedo, canUndo, canRedo,
    COALESCE_MS, HISTORY_DEPTH_CAP,
    type DocSnapshot, type UndoHistory,
 } from './lib/undoHistory'
@@ -178,6 +178,16 @@ export default function App() {
    // starts empty on first edit. History is never restored across a reload.
    const historyRef = useRef<Map<string, UndoHistory>>(new Map())
 
+   // History lives in a ref (never in serializable state), so the toolbar's Undo / Redo enabled state
+   // is mirrored into React state and refreshed after every history change and on tab switch.
+   const [canUndoActive, setCanUndoActive] = useState(false)
+   const [canRedoActive, setCanRedoActive] = useState(false)
+   const refreshHistoryFlags = useCallback(() => {
+      const history = historyRef.current.get(activeTabKeyRef.current)
+      setCanUndoActive(!!history && canUndo(history))
+      setCanRedoActive(!!history && canRedo(history))
+   }, [])
+
    // The undoable slice of a tab: the fields the binder persists. Holds references to the immutable
    // model, so it is cheap and shares untouched subtrees with the live state.
    const takeSnapshot = useCallback((document: OpenDocument): DocSnapshot => ({
@@ -200,9 +210,10 @@ export default function App() {
       if (!activeTab) return
       const previous = historyRef.current.get(tabKey) ?? emptyHistory()
       historyRef.current.set(tabKey, recordEdit(previous, takeSnapshot(activeTab), kind, Date.now(), COALESCE_MS, HISTORY_DEPTH_CAP))
+      refreshHistoryFlags()
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === tabKey ? produceNext(document) : document))
-   }, [takeSnapshot])
+   }, [takeSnapshot, refreshHistoryFlags])
 
    // Write a restored slice back onto a tab, leaving its identity + save bookkeeping untouched. Goes
    // through the same setOpenDocuments path as a live edit, so autosave and the pure paged reflow
@@ -223,8 +234,9 @@ export default function App() {
       const result = applyUndo(history, takeSnapshot(activeTab))
       if (!result) return
       historyRef.current.set(tabKey, result.history)
+      refreshHistoryFlags()
       applySnapshotToTab(tabKey, result.snapshot)
-   }, [takeSnapshot, applySnapshotToTab])
+   }, [takeSnapshot, applySnapshotToTab, refreshHistoryFlags])
 
    const redo = useCallback(() => {
       const tabKey = activeTabKeyRef.current
@@ -235,8 +247,12 @@ export default function App() {
       const result = applyRedo(history, takeSnapshot(activeTab), HISTORY_DEPTH_CAP)
       if (!result) return
       historyRef.current.set(tabKey, result.history)
+      refreshHistoryFlags()
       applySnapshotToTab(tabKey, result.snapshot)
-   }, [takeSnapshot, applySnapshotToTab])
+   }, [takeSnapshot, applySnapshotToTab, refreshHistoryFlags])
+
+   // Switching tabs shows a different history, so refresh the toolbar's enabled state for the new tab.
+   useEffect(() => { refreshHistoryFlags() }, [activeTabKey, refreshHistoryFlags])
 
    // The active document and the content + identity the render + effects below read, derived from the
    // list. documentId / saveStatus are per-tab; the active tab's values drive the UI.
@@ -274,6 +290,11 @@ export default function App() {
    // the infinite/normal default.
    const setActiveFormat = useCallback((next: DocFormat | undefined) => {
       commitActiveEdit('format', document => ({ ...document, format: next }))
+   }, [commitActiveEdit])
+   // Commit new sections AND a new format in one edit, so a page operation (which changes both the
+   // block flow and the break markers) records a single undo entry rather than two.
+   const commitSectionsAndFormat = useCallback((nextSections: Section[], nextFormat: DocFormat | undefined) => {
+      commitActiveEdit('page-op', document => ({ ...document, sections: nextSections, format: nextFormat }))
    }, [commitActiveEdit])
    // Per-tab save-status setter. Status lives on each OpenDocument, so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
@@ -547,6 +568,13 @@ export default function App() {
    // The folder the binder should open into, the current document's folder, resolved before the
    // binder mounts so it lands there directly (no root-then-folder flash). null = root.
    const [binderInitialFolder, setBinderInitialFolder] = useState<BinderFolderRecord | null>(null)
+   // Bumped after File -> Import... adds a record straight to IndexedDB, behind the mounted
+   // Binder's back (the write happens in HeaderMenuBar, which owns no list state of its own).
+   // Binder watches this and re-reads its list, the same shared-refresh shape as its own dataVersion.
+   const [binderRefreshToken, setBinderRefreshToken] = useState(0)
+   const handleDocumentImported = useCallback(() => {
+      setBinderRefreshToken(token => token + 1)
+   }, [])
 
    // Open the binder, flush any pending changes first so the current document appears up-to-date
    // in the list, resolve which folder it lives in, then mount the binder in place of the editor.
@@ -959,7 +987,7 @@ export default function App() {
    // here so the App-level dock can host the body directly, without WysiwygArea owning it.
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
-   const pagesData = usePagesPanelData(sections, format, setActiveSections, setActiveFormat, t, laidOutPages)
+   const pagesData = usePagesPanelData(sections, format, commitSectionsAndFormat, t, laidOutPages)
 
    // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
    // wires each body's data + handlers here; the dock hosts only the chrome.
@@ -1027,11 +1055,16 @@ export default function App() {
             onManualSave={handleManualSave}
             onSaveAs={handleSaveAs}
             onSaveAsTemplate={handleOpenSaveAsTemplate}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndoActive}
+            canRedo={canRedoActive}
             onNew={handleHeaderNew}
             onAddSection={sectionMutations.addSection}
             onToggleBinder={handleToggleBinder}
             onImportMarkdownFile={handleImportMarkdown}
             onImportMintdownFile={handleImportMintdown}
+            onDocumentImported={handleDocumentImported}
             onDocThemeChange={setActiveDocTheme}
             onDocAccentChange={setActiveDocAccent}
             exportOpen={exportOpen}
@@ -1050,6 +1083,7 @@ export default function App() {
                openDocumentIds={openDocumentIds}
                activeDocumentId={documentId}
                initialFolder={binderInitialFolder}
+               refreshToken={binderRefreshToken}
                onOpenDocument={handleOpenDocument}
                onNewDocument={folderId => handleOpenNewDocument(folderId ?? null)}
                onNewFromTemplate={handleNewFromTemplate}

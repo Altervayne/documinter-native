@@ -21,13 +21,16 @@ import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
 import { parseDocumentBackup } from '../lib/documentBackupFile'
-import type { DocPresentation } from '../lib/binderDocuments'
+import { saveDocument, type DocPresentation } from '../lib/binderDocuments'
+import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
+import { importMarkdownFile } from '../lib/markdown'
+import { importMintdownFile } from '../lib/mintdown'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 import type { Page } from '../lib/pageModel'
 
 // -- Icon Imports --
-import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck } from 'lucide-react'
+import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck, Undo2, Redo2 } from 'lucide-react'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
@@ -53,6 +56,10 @@ function detectOpenFormat(fileName: string, text: string): OpenFormat {
    if (trimmed.startsWith('---')) return 'mintdown'
    return 'markdown'
 }
+
+// The picker accepts everything detectOpenFormat knows how to route, shared by Open (lands in a
+// new tab) and Import (lands as a new binder record).
+const OPEN_FILE_ACCEPT = '.json,.documint,.mint,.mintd,.mintdown,.md,.markdown,.txt'
 
 // #########################
 // # SAVE STATUS INDICATOR #
@@ -121,12 +128,21 @@ interface HeaderMenuBarProps {
    onSaveAs:         () => void
    /** Save the active document's chrome as a reusable template (File -> Save as template). */
    onSaveAsTemplate: () => void
+   /** Document history: step back / forward through the active tab's committed edits. Enabled state
+    *  follows the tab's undo / redo stacks; the same actions bind to Ctrl+Z / Ctrl+Y in App. */
+   onUndo:           () => void
+   onRedo:           () => void
+   canUndo:          boolean
+   canRedo:          boolean
    onNew:            () => void
    /** Add a section to the active document, the Document menu's "Add section" entry. */
    onAddSection:     () => void
    onToggleBinder:   () => void
    onImportMarkdownFile: (file: File) => Promise<void>
    onImportMintdownFile: (file: File) => Promise<void>
+   /** Notifies the binder (File -> Import... just added a record behind its back) so its list
+    *  picks up the new card without waiting on an unrelated action to refresh it. Binder mode only. */
+   onDocumentImported: () => void
    onDocThemeChange: (theme: 'light' | 'dark') => void
    onDocAccentChange:(hex: string) => void
    /** Export dialog open state, lifted to App.tsx so the document background context menu's
@@ -157,8 +173,9 @@ interface HeaderMenuBarProps {
 
 export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
-   onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate, onNew, onAddSection, onToggleBinder,
-   onImportMarkdownFile, onImportMintdownFile, onDocThemeChange, onDocAccentChange,
+   onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate,
+   onUndo, onRedo, canUndo, canRedo, onNew, onAddSection, onToggleBinder,
+   onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
    format, pagedLayout, onOpenFormat,
 }: HeaderMenuBarProps) {
@@ -182,7 +199,7 @@ export function HeaderMenuBar({
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [isDocumentMode, onOpenExport])
 
-   // Placeholder for features not yet implemented (Tin, binder-mode imports).
+   // Placeholder for features not yet implemented (Tin).
    function comingSoon() {
       showToast(t.comingSoon, { type: 'neutral' })
    }
@@ -197,7 +214,7 @@ export function HeaderMenuBar({
    function handleOpen() {
       const input  = document.createElement('input')
       input.type   = 'file'
-      input.accept = '.json,.documint,.mint,.mintd,.mintdown,.md,.markdown,.txt'
+      input.accept = OPEN_FILE_ACCEPT
       input.onchange = async () => {
          const file = input.files?.[0]
          if (!file) return
@@ -216,6 +233,38 @@ export function HeaderMenuBar({
                await onImportMarkdownFile(file)
                showToast(t.markdownImported, { type: 'success' })
             }
+         } catch {
+            showToast(t.importFailed, { type: 'error' })
+         }
+      }
+      input.click()
+   }
+
+   // The unified binder Import: the same picker + format-detecting pipeline as handleOpen, but the
+   // loaded document becomes a new binder record (saveDocument with no existingId, landing in the
+   // binder root) instead of a tab. Never touches the open tabs or leaves binder mode; the caller
+   // bumps the binder's list so the new card shows up right away.
+   function handleImport() {
+      const input  = document.createElement('input')
+      input.type   = 'file'
+      input.accept = OPEN_FILE_ACCEPT
+      input.onchange = async () => {
+         const file = input.files?.[0]
+         if (!file) return
+         try {
+            const text   = await file.text()
+            const format = detectOpenFormat(file.name, text)
+            if (format === 'backup') {
+               const parsed = parseDocumentBackup(text)
+               if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
+               await saveDocument(parsed.state, parsed.presentation)
+            } else {
+               const loaded = format === 'mintdown' ? await importMintdownFile(file) : await importMarkdownFile(file)
+               const state: DocState = { meta: loaded.meta, sections: loaded.sections }
+               await saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
+            }
+            onDocumentImported()
+            showToast(t.binderImportSuccess, { type: 'success' })
          } catch {
             showToast(t.importFailed, { type: 'error' })
          }
@@ -246,15 +295,13 @@ export function HeaderMenuBar({
             <FileMenu
                mode={mode}
                onNewDocument={onNew}
-               onOpenTin={comingSoon}
                onOpen={handleOpen}
                onSave={onManualSave}
                onSaveAs={onSaveAs}
                onSaveAsTemplate={onSaveAsTemplate}
                onExport={onOpenExport}
-               onImportDocumint={comingSoon}
-               onImportMarkdown={comingSoon}
-               onImportMintdown={comingSoon}
+               onImport={handleImport}
+               onOpenTin={comingSoon}
                t={t}
             />
             {isDocumentMode && <ViewMenu paneLayout={paneLayout} onTogglePanel={onTogglePanel} dockPanels={dockPanels} t={t} />}
@@ -301,6 +348,33 @@ export function HeaderMenuBar({
                   labelSaved={t.saved}
                />
             </div>
+
+            {/* Document history: Undo / Redo, disabled at the ends of the stack. Keyboard equivalents
+                (Ctrl+Z / Ctrl+Y) live in App and keep working regardless of these buttons. */}
+            {isDocumentMode && (
+               <>
+                  <Button
+                     variant="ghost"
+                     size="icon"
+                     onClick={onUndo}
+                     disabled={!canUndo}
+                     title={`${t.undoAction} (Ctrl+Z)`}
+                     aria-label={t.undoAction}
+                  >
+                     <Undo2 size={14} />
+                  </Button>
+                  <Button
+                     variant="ghost"
+                     size="icon"
+                     onClick={onRedo}
+                     disabled={!canRedo}
+                     title={`${t.redoAction} (Ctrl+Y)`}
+                     aria-label={t.redoAction}
+                  >
+                     <Redo2 size={14} />
+                  </Button>
+               </>
+            )}
 
             {/* Standalone binder toggle, always visible; label reflects mode */}
             <Button

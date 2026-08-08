@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, File, FilePlus, Archive, FolderOpen, FileUp, Download, Save, SaveAll, Upload, LayoutTemplate } from 'lucide-react'
+import { ChevronDown, File, FilePlus, Archive, FolderOpen, Download, Save, SaveAll, Upload, LayoutTemplate } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #############
@@ -21,8 +21,7 @@ interface FileMenuProps {
    mode: 'binder' | 'document'
    // Available in both modes:
    onNewDocument:    () => void
-   onOpenTin:        () => void
-   /** Single, format-detecting Open (JSON backup / Mintdown / Markdown), both modes. */
+   /** Single, format-detecting Open (JSON backup / Mintdown / Markdown), document mode only. */
    onOpen:           () => void
    // Document mode only:
    onSave:           () => void
@@ -32,9 +31,10 @@ interface FileMenuProps {
    /** Single, format-aware Export dialog (HTML / PDF / Mintdown / Markdown / JSON), document mode only. */
    onExport:         () => void
    // Binder mode only:
-   onImportDocumint: () => void
-   onImportMarkdown: () => void
-   onImportMintdown: () => void
+   /** Single, format-detecting Import (JSON backup / Mintdown / Markdown), lands as a new binder
+    *  record without opening a tab. Binder mode only. */
+   onImport:         () => void
+   onOpenTin:        () => void
    t: T
 }
 
@@ -44,9 +44,9 @@ interface FileMenuProps {
 
 export function FileMenu({
    mode,
-   onNewDocument, onOpenTin, onOpen,
+   onNewDocument, onOpen,
    onSave, onSaveAs, onSaveAsTemplate, onExport,
-   onImportDocumint, onImportMarkdown, onImportMintdown,
+   onImport, onOpenTin,
    t,
 }: FileMenuProps) {
    const [open, setOpen] = useState(false)
@@ -104,17 +104,14 @@ export function FileMenu({
          {/* Dropdown */}
          {open && (
             <div className={`absolute top-full mt-1.5 min-w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
-               {/* New (opens the New Document dialog) + Tin (both modes) */}
+               {/* New (opens the New Document dialog), both modes */}
                <MenuItem icon={<FilePlus size={13} />} label={t.fileNewDocument} onClick={() => handleItemClick(onNewDocument)} />
-               <MenuItem icon={<Archive size={13} />}  label={t.fileOpenTin}     onClick={() => handleItemClick(onOpenTin)} />
-               <MenuSeparator />
 
-               {/* Open into the editor, one format-detecting entry (both modes) */}
-               <MenuItem icon={<FolderOpen size={13} />} label={t.menuOpen} onClick={() => handleItemClick(onOpen)} />
-
-               {/* Save + Export groups, document mode only (not mounted in binder mode) */}
+               {/* Document mode: Open into the editor, then Save + Export groups. Open is
+                   workspace-only, the binder has no active document to replace it with. */}
                {isDocumentMode && (
                   <>
+                     <MenuItem icon={<FolderOpen size={13} />} label={t.menuOpen} onClick={() => handleItemClick(onOpen)} />
                      <MenuSeparator />
                      <MenuItem icon={<Save size={13} />}          label={t.fileSave}         onClick={() => handleItemClick(onSave)} />
                      <MenuItem icon={<SaveAll size={13} />}       label={t.fileSaveAs}       onClick={() => handleItemClick(onSaveAs)} />
@@ -125,13 +122,13 @@ export function FileMenu({
                   </>
                )}
 
-               {/* Import group, binder mode only (not mounted in document mode) */}
+               {/* Binder mode: the unified Import (lands as a new binder record, no tab opens) and
+                   the Tin placeholder, not mounted in document mode. */}
                {!isDocumentMode && (
                   <>
                      <MenuSeparator />
-                     <MenuItem icon={<Upload size={13} />} label={t.fileImportDocumint} onClick={() => handleItemClick(onImportDocumint)} />
-                     <MenuItem icon={<FileUp size={13} />} label={t.fileImportMarkdown} onClick={() => handleItemClick(onImportMarkdown)} />
-                     <MenuItem icon={<FileUp size={13} />} label={t.fileImportMintdown} onClick={() => handleItemClick(onImportMintdown)} />
+                     <MenuItem icon={<Upload size={13} />} label={t.fileImport}  onClick={() => handleItemClick(onImport)} />
+                     <MenuItem icon={<Archive size={13} />} label={t.fileOpenTin} onClick={() => handleItemClick(onOpenTin)} />
                   </>
                )}
             </div>

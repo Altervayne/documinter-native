@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { DndContext, DragOverlay, pointerWithin, useDndMonitor } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { Folder, ArrowDown, ArrowUp, FilePlus, FileJson } from 'lucide-react'
@@ -45,6 +45,9 @@ export interface BinderProps {
    initialFolder:     BinderFolderRecord | null
    /** Which top-level view to open into (Documents by default; Templates from "New from template"). */
    initialView?:      'documents' | 'templates'
+   /** Bumped by the caller after adding a record straight to IndexedDB from outside the binder
+    *  (File -> Import...), so the list picks up the new card without an in-binder action to trigger it. */
+   refreshToken:      number
    /** Open a stored document in the editor (adds or focuses its tab). */
    onOpenDocument:    (id: string) => void
    /** Create a blank document and open it. With a folderId, the new document is filed there. */
@@ -61,7 +64,7 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', onOpenDocument, onNewDocument, onNewFromTemplate, onDocumentDeleted }: BinderProps) {
+export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
    const { showToast } = useToast()
 
@@ -74,6 +77,15 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    const [view, setView]                       = useState<'documents' | 'templates'>(initialView)
    const [dataVersion, setDataVersion]         = useState(0)
    const bumpData = useCallback(() => setDataVersion(version => version + 1), [])
+
+   // File -> Import... writes a new document straight to IndexedDB from outside this component
+   // (HeaderMenuBar owns no list state), then bumps refreshToken. Skip the mount-time firing, the
+   // initial list read below already covers it.
+   const isFirstRefreshTokenRef = useRef(true)
+   useEffect(() => {
+      if (isFirstRefreshTokenRef.current) { isFirstRefreshTokenRef.current = false; return }
+      bumpData()
+   }, [refreshToken, bumpData])
 
    // =======================================================================================
    //  Search + sort (session-local; an active search is global, escaping the current folder).

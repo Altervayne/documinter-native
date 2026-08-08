@@ -51,12 +51,11 @@ export interface PagesPanelData {
  * returns an empty page list; the dock only shows the Pages panel for a paged document anyway.
  */
 export function usePagesPanelData(
-   sections:          Section[],
-   format:            DocFormat | undefined,
-   onReplaceSections: (sections: Section[]) => void,
-   onFormatChange:    (format: DocFormat | undefined) => void,
-   t:                 T,
-   laidOutPages:      Page[],
+   sections:                 Section[],
+   format:                   DocFormat | undefined,
+   onCommitSectionsAndFormat: (sections: Section[], format: DocFormat | undefined) => void,
+   t:                        T,
+   laidOutPages:             Page[],
 ): PagesPanelData {
    const { showToast, dismissToast } = useToast()
 
@@ -80,16 +79,18 @@ export function usePagesPanelData(
    const sheetHeightPx = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
 
    // Commit a page operation's result: the moved block ranges AND the re-derived break markers, in one
-   // event. An empty break list drops the `pages` key so an untouched, non-default format stays clean.
+   // history entry (the combined lever records sections + format together). An empty break list drops
+   // the `pages` key so an untouched, non-default format stays clean.
    function commitPageOperation(result: { sections: Section[]; pages: DocFormat['pages'] }): void {
-      onReplaceSections(result.sections)
       const base = normalizeFormat(format)
+      let nextFormat: DocFormat | undefined
       if (!result.pages || result.pages.length === 0) {
          const { pages: _dropped, ...rest } = base
-         onFormatChange(rest)
+         nextFormat = rest
       } else {
-         onFormatChange({ ...base, pages: result.pages })
+         nextFormat = { ...base, pages: result.pages }
       }
+      onCommitSectionsAndFormat(result.sections, nextFormat)
    }
 
    function onReorder(fromIndex: number, toIndex: number): void {
@@ -119,8 +120,7 @@ export function usePagesPanelData(
          action: {
             label:   t.undo,
             onClick: () => {
-               onReplaceSections(previousSections)
-               onFormatChange(previousFormat)
+               onCommitSectionsAndFormat(previousSections, previousFormat)
                dismissToast(toastId)
             },
          },

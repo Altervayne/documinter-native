@@ -662,4 +662,23 @@ describe('generateExportHTML, paged (A4) export', () => {
       expect(infinite).not.toContain('class="doc-page"')
       expect(infinite).toContain('<div class="doc-card">')
    })
+
+   // Regression: the sheet stack's printed height used to be left to the browser's own summed-child
+   // layout, which could drift a hair short of a whole number of pages and leave an un-themed sliver
+   // of paper canvas below the LAST sheet (nothing painted it). The stack now declares its own height
+   // as an exact page-count multiple of 100vh and its own themed background, so that trailing sliver
+   // (whichever page it lands on) is always the document's sheet colour, not the browser default.
+   it('pins the sheet stack print height to an exact page-count multiple of 100vh, themed with the sheet background', () => {
+      const singlePage = generateExportHTML(meta, sections, { theme: 'dark', accent: '#f97316', format: { kind: 'a4-portrait' } })
+      // The stack's own print rule carries both the exact height (one sheet) and the dark theme's
+      // sheet colour together, so nothing un-themed can show through below the last sheet.
+      expect(singlePage).toContain('height: calc(1 * 100vh); overflow: hidden;')
+      expect(singlePage).toContain('background: #161b22; -webkit-print-color-adjust: exact; print-color-adjust: exact;\n                  }')
+
+      const twoPages = generateExportHTML(meta, sections, {
+         theme: 'light', accent: '#f97316',
+         format: { kind: 'a4-portrait', pages: [{ id: 'brk', after: { sectionId: 's', blockId: 'b1' } }] },
+      })
+      expect(twoPages).toContain('height: calc(2 * 100vh); overflow: hidden;')
+   })
 })
