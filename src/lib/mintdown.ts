@@ -1,5 +1,5 @@
-import type { Block, CalloutStyle, CodeLang, DocMeta, Section } from '../types'
-import { serializeBlock, buildListTree, buildTableBlock } from './markdown'
+import type { Block, CalloutStyle, CodeLang, DocMeta, ListMarker, Section } from '../types'
+import { serializeBlock, buildListTree, buildListBlockFromLines, buildTableBlock, parseListMarkerComment } from './markdown'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { fenceToGraphSpec } from './graphFence'
@@ -256,8 +256,9 @@ function parseCalloutLines(strippedLines: string[]): Block {
 function parseBodyBlocks(lines: string[]): Block[] {
    const blocks: Block[] = []
 
-   let pendingHandle:     string | null = null
-   let pendingImageBlock: Block  | null = null
+   let pendingHandle:      string     | null = null
+   let pendingListMarker:  ListMarker | null = null
+   let pendingImageBlock:  Block      | null = null
 
    type AccumKind = 'p' | 'blockquote' | 'list' | 'checklist' | 'table'
    let accumKind:  AccumKind | null = null
@@ -284,8 +285,11 @@ function parseBodyBlocks(lines: string[]): Block[] {
             }
          case 'blockquote':
             return parseCalloutLines(capturedLines.map(line => line.replace(/^> ?/, '')))
-         case 'list':
-            return { id: crypto.randomUUID(), type: 'list', items: buildListTree(capturedLines) }
+         case 'list': {
+            const rootMarker = pendingListMarker
+            pendingListMarker = null
+            return buildListBlockFromLines(capturedLines, rootMarker ?? undefined)
+         }
          case 'checklist':
             return { id: crypto.randomUUID(), type: 'checklist', items: buildListTree(capturedLines, true) }
          case 'table':
@@ -307,6 +311,7 @@ function parseBodyBlocks(lines: string[]): Block[] {
       commitBlock(flushAccum())
       accumKind  = kind
       accumLines = [firstLine]
+      if (kind !== 'list') pendingListMarker = null
       pendingImageBlock = null
    }
 
@@ -367,8 +372,16 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
-      if (/^\s*- /.test(line)) {
+      // A nested sub-list's indented `<!-- list-marker -->` comment stays inside the active list
+      // accumulator so buildListBlockFromLines can bind it to the sub-list it precedes.
+      if ((accumKind as AccumKind | null) === 'list' && parseListMarkerComment(line) !== null) {
+         accumLines.push(line)
+         continue
+      }
+
+      // List item: unordered (`- `), GFM task-list (checklist), or ordered (`1. `). See the main
+      // scanner for the mixed-sub-list rationale (numbers outside, bullets inside stay one list).
+      if (/^\s*- /.test(line) || /^\s*\d+\. /.test(line)) {
          const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
          if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
@@ -402,8 +415,16 @@ function parseBodyBlocks(lines: string[]): Block[] {
          continue
       }
 
-      // HTML comments (image metadata round-trip)
+      // HTML comments (image metadata + list-marker round-trip)
       if (line.startsWith('<!--')) {
+         const listMarkerFromComment = parseListMarkerComment(line)
+         if (listMarkerFromComment) {
+            commitBlock(flushAccum())
+            pendingListMarker = listMarkerFromComment
+            pendingImageBlock = null
+            continue
+         }
+
          const captionTarget = pendingImageBlock as Block | null
          const captionMatch  = line.match(/^<!-- image-caption: (.+) -->$/)
          if (captionMatch && captionTarget !== null) { captionTarget.caption = captionMatch[1]; continue }
@@ -660,9 +681,10 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
    //  Body scan
    // ===================
 
-   let currentSection:    Section | null = null
-   let pendingHandle:     string  | null = null
-   let pendingImageBlock: Block   | null = null
+   let currentSection:     Section    | null = null
+   let pendingHandle:      string     | null = null
+   let pendingListMarker:  ListMarker | null = null
+   let pendingImageBlock:  Block      | null = null
 
    type AccumKind = 'p' | 'blockquote' | 'list' | 'checklist' | 'table'
    let accumKind:  AccumKind | null = null
@@ -697,8 +719,11 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
             }
          case 'blockquote':
             return parseCalloutLines(capturedLines.map(line => line.replace(/^> ?/, '')))
-         case 'list':
-            return { id: crypto.randomUUID(), type: 'list', items: buildListTree(capturedLines) }
+         case 'list': {
+            const rootMarker = pendingListMarker
+            pendingListMarker = null
+            return buildListBlockFromLines(capturedLines, rootMarker ?? undefined)
+         }
          case 'checklist':
             return { id: crypto.randomUUID(), type: 'checklist', items: buildListTree(capturedLines, true) }
          case 'table':
@@ -721,6 +746,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       commitBlock(flushAccum())
       accumKind  = kind
       accumLines = [firstLine]
+      if (kind !== 'list') pendingListMarker = null
       pendingImageBlock = null
    }
 
@@ -769,6 +795,7 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
       if (sectionMatch) {
          commitBlock(flushAccum())
          pendingHandle     = null
+         pendingListMarker = null
          pendingImageBlock = null
          currentSection    = {
             id:        crypto.randomUUID(),
@@ -822,8 +849,17 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
-      if (/^\s*- /.test(line)) {
+      // A nested sub-list's indented `<!-- list-marker -->` comment stays inside the active list
+      // accumulator so buildListBlockFromLines can bind it to the sub-list it precedes.
+      if ((accumKind as AccumKind | null) === 'list' && parseListMarkerComment(line) !== null) {
+         accumLines.push(line)
+         continue
+      }
+
+      // List item: unordered (`- `), GFM task-list (checklist), or ordered (`1. `). A per-sub-list mix
+      // (ordered outside, bullets inside, say) accumulates as one `list` block; the checkbox marker
+      // is the only thing that routes a line to the separate checklist path.
+      if (/^\s*- /.test(line) || /^\s*\d+\. /.test(line)) {
          const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
          if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
@@ -891,8 +927,16 @@ export function mintdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // HTML comments (image metadata round-trip)
+      // HTML comments (image metadata + list-marker round-trip)
       if (line.startsWith('<!--')) {
+         const listMarkerFromComment = parseListMarkerComment(line)
+         if (listMarkerFromComment) {
+            commitBlock(flushAccum())
+            pendingListMarker = listMarkerFromComment
+            pendingImageBlock = null
+            continue
+         }
+
          const captionTarget = pendingImageBlock as Block | null
          const captionMatch  = line.match(/^<!-- image-caption: (.+) -->$/)
          if (captionMatch && captionTarget !== null) { captionTarget.caption = captionMatch[1]; continue }

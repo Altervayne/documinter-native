@@ -15,8 +15,14 @@ import { GripVertical, CirclePlus } from 'lucide-react'
 import { ContentEditable } from '../../../atoms/ContentEditable'
 import { useLang } from '../../../contexts/LangContext'
 
+// -- Component Imports --
+import { ListMarkerControl } from './ListMarkerControl'
+
+// -- Library Imports (pure) --
+import { markerOrDefault, isOrderedMarker, formatOrderedMarker } from '../../../lib/listMarkers'
+
 // -- Type Imports --
-import type { Block, InlineContent, ListItem } from '../../../types'
+import type { Block, InlineContent, ListItem, ListMarker } from '../../../types'
 
 // #############
 // # UTILITIES #
@@ -61,7 +67,15 @@ function isCursorAtStart(element: HTMLElement): boolean {
 interface ListItemRowProps {
    item:           ListItem
    depth:          number
+   /** This row's 0-based position among its siblings, used to number an ordered marker. */
+   index:          number
    itemOps:        ListItemOperations
+   /** THIS sub-list's marker (list only): the root sub-list uses `block.listMarker`, a nested one
+    *  the owning parent item's `childMarker`. Default `dot`. Ignored in checklist mode. */
+   marker:         ListMarker
+   /** Root-item offset of a page-split list fragment, so an ordered top level keeps counting across
+    *  sheets. Only applied at depth 0 (children never split). Default 0 for a whole list. */
+   itemOffset?:    number
    /** Render a checkbox marker (checklist) instead of a bullet (list). */
    checklist?:     boolean
    readOnly?:      boolean
@@ -69,9 +83,16 @@ interface ListItemRowProps {
    gripSide?:      'left' | 'right'
 }
 
-const BULLETS = ['•', '◦', '▸', '▹']
+/** The glyph drawn for each unordered marker in the editor's custom list rows. */
+const UNORDERED_MARKER_GLYPH: Record<'dot' | 'circle' | 'square' | 'dash' | 'arrow', string> = {
+   dot:    '•',
+   circle: '◦',
+   square: '▪',
+   dash:   '–',
+   arrow:  '▸',
+}
 
-function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
+function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, checklist, readOnly, isDragOverlay, gripSide = 'left' }: ListItemRowProps) {
    const { t } = useLang()
    const [hovered, setHovered] = useState(false)
 
@@ -84,7 +105,16 @@ function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay,
       ? undefined
       : { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
 
-   const bullet = BULLETS[Math.min(depth, BULLETS.length - 1)]
+   // The marker shown before the row, drawn from THIS sub-list's marker (default dot). An ordered
+   // marker renders the item's ordinal (the top level continues numbering across a page-split via
+   // itemOffset); an unordered marker renders its glyph.
+   let bullet: string
+   if (isOrderedMarker(marker)) {
+      const ordinal = (depth === 0 ? itemOffset : 0) + index + 1
+      bullet = `${formatOrderedMarker(marker, ordinal)}.`
+   } else {
+      bullet = UNORDERED_MARKER_GLYPH[marker as 'dot' | 'circle' | 'square' | 'dash' | 'arrow']
+   }
 
    function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
       const element = event.currentTarget
@@ -189,7 +219,8 @@ function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay,
             />
          </div>
 
-         {/* Children, recursive, indented */}
+         {/* Children, recursive, indented. Their sub-list draws THIS item's childMarker (default dot).
+             Children never page-split, so their itemOffset stays 0. */}
          {item.children.length > 0 && (
             <div style={{ paddingLeft: 20 }}>
                <ListLevel
@@ -197,6 +228,7 @@ function ListItemRow({ item, depth, itemOps, checklist, readOnly, isDragOverlay,
                   parentItemId={item.id}
                   depth={depth + 1}
                   itemOps={itemOps}
+                  marker={checklist ? 'dot' : markerOrDefault(item.childMarker)}
                   checklist={checklist}
                   readOnly={readOnly}
                   gripSide={gripSide}
@@ -216,12 +248,16 @@ interface ListLevelProps {
    parentItemId: string | null
    depth:        number
    itemOps:      ListItemOperations
+   /** This sub-list's marker (default dot). Ignored in checklist mode. */
+   marker:       ListMarker
+   /** Root-item offset of a page-split fragment; only meaningful at depth 0. Default 0. */
+   itemOffset?:  number
    checklist?:   boolean
    readOnly?:    boolean
    gripSide?:    'left' | 'right'
 }
 
-function ListLevel({ items, parentItemId, depth, itemOps, checklist, readOnly, gripSide = 'left' }: ListLevelProps) {
+function ListLevel({ items, parentItemId, depth, itemOps, marker, itemOffset = 0, checklist, readOnly, gripSide = 'left' }: ListLevelProps) {
    const [activeDragId, setActiveDragId] = useState<string | null>(null)
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
    const activeItem = activeDragId ? items.find(item => item.id === activeDragId) ?? null : null
@@ -244,12 +280,15 @@ function ListLevel({ items, parentItemId, depth, itemOps, checklist, readOnly, g
    if (readOnly) {
       return (
          <>
-            {items.map(item => (
+            {items.map((item, index) => (
                <ListItemRow
                   key={item.id}
                   item={item}
                   depth={depth}
+                  index={index}
                   itemOps={itemOps}
+                  marker={marker}
+                  itemOffset={itemOffset}
                   checklist={checklist}
                   readOnly
                   gripSide={gripSide}
@@ -268,12 +307,15 @@ function ListLevel({ items, parentItemId, depth, itemOps, checklist, readOnly, g
          onDragCancel={() => setActiveDragId(null)}
       >
          <SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
-            {items.map(item => (
+            {items.map((item, index) => (
                <ListItemRow
                   key={item.id}
                   item={item}
                   depth={depth}
+                  index={index}
                   itemOps={itemOps}
+                  marker={marker}
+                  itemOffset={itemOffset}
                   checklist={checklist}
                   gripSide={gripSide}
                />
@@ -286,7 +328,10 @@ function ListLevel({ items, parentItemId, depth, itemOps, checklist, readOnly, g
                   <ListItemRow
                      item={activeItem}
                      depth={depth}
+                     index={items.findIndex(candidate => candidate.id === activeItem.id)}
                      itemOps={itemOps}
+                     marker={marker}
+                     itemOffset={itemOffset}
                      checklist={checklist}
                      readOnly
                      isDragOverlay
@@ -309,15 +354,22 @@ interface ListBlockProps {
    onAddItem: () => void
    /** Render checkbox markers + enable the toggle (checklist block). */
    checklist?: boolean
+   /** Block-level mutation lever (see WysiwygBlock's `patch`), used to commit `listMarker` /
+    *  per-item `childMarker`. Only wired up for `list` blocks; a checklist never shows the marker
+    *  picker so it never needs this. Optional so ChecklistBlock's prop spread stays untouched. */
+   patch?:    (partialBlock: Partial<Block>) => void
    readOnly?: boolean
    gripSide?: 'left' | 'right'
    /** Whether this render holds the list's last root item. False only for a non-tail fragment of a
     *  list split across a page boundary (see pageLayout.ts), which shows no add-item button of its
     *  own since the button belongs on the last page the list spans. Default true. */
    isListTail?: boolean
+   /** Root-item offset of a page-split list fragment, so an ordered top level keeps numbering across
+    *  sheets (see pageLayout.ts sliceListBlock). 0 for a whole list. Ignored by checklists. */
+   itemOffset?: number
 }
 
-export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, gripSide = 'left', isListTail = true }: ListBlockProps) {
+export function ListBlock({ block, itemOps, onAddItem, checklist, patch, readOnly, gripSide = 'left', isListTail = true, itemOffset = 0 }: ListBlockProps) {
    const { t } = useLang()
    const rootItems = block.items ?? []
 
@@ -328,16 +380,19 @@ export function ListBlock({ block, itemOps, onAddItem, checklist, readOnly, grip
             parentItemId={null}
             depth={0}
             itemOps={itemOps}
+            marker={checklist ? 'dot' : markerOrDefault(block.listMarker)}
+            itemOffset={itemOffset}
             checklist={checklist}
             readOnly={readOnly}
             gripSide={gripSide}
          />
 
          {!readOnly && isListTail && (
-            <div className="mt-4 p-2">
+            <div className="mt-4 p-2 flex items-center gap-2">
+               {!checklist && patch && <ListMarkerControl block={block} patch={patch} />}
                <button
                   onClick={onAddItem}
-                  className="doc-add-btn w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm border border-dashed cursor-pointer"
+                  className="doc-add-btn flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm border border-dashed cursor-pointer"
                >
                   <CirclePlus size={14} />
                   <span>{t.addItem}</span>

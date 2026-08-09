@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { documentToMintdown, mintdownToDocument } from './mintdown'
 import { buildFixtureDocument } from '../test/fixtures'
 import { normalizeIds } from '../test/normalizeIds'
+import type { Section } from '../types'
 
 // Mintdown is the lossless format: every construct, including containers with their ratio, must
 // survive serialize -> parse -> serialize unchanged. The string round-trip is the workhorse; a few
@@ -322,5 +323,96 @@ describe('Mintdown, image block with markup overlay', () => {
       const text = documentToMintdown(sections, meta)
       expect(text).not.toContain('imagemarkup')
       expect(text).toContain('<!-- image:')
+   })
+})
+
+describe('Mintdown, custom list markers', () => {
+   const meta = { title: 'Doc', fields: [] }
+
+   // A 5-item root list (decimal). Item 2 owns a lower-alpha child sub-list, item 4 owns a dash
+   // child sub-list: two SIBLING sub-lists at the same nesting, with DIFFERENT markers. The old
+   // per-depth model forced them to share one setting; the per-sub-list model keeps them independent.
+   function siblingSubListSection(): Section[] {
+      return [{
+         id: 's', title: 'Section', collapsed: false, blocks: [{
+            id: 'list', type: 'list',
+            listMarker: 'decimal',
+            items: [
+               { id: 'i1', richText: [{ text: 'one' }], children: [] },
+               { id: 'i2', richText: [{ text: 'two' }], childMarker: 'lower-alpha', children: [
+                  { id: 'i2a', richText: [{ text: 'alpha child' }], children: [] },
+               ] },
+               { id: 'i3', richText: [{ text: 'three' }], children: [] },
+               { id: 'i4', richText: [{ text: 'four' }], childMarker: 'dash', children: [
+                  { id: 'i4a', richText: [{ text: 'dash child' }], children: [] },
+               ] },
+               { id: 'i5', richText: [{ text: 'five' }], children: [] },
+            ],
+         }],
+      }]
+   }
+
+   it('emits a per-sub-list <!-- list-marker --> comment at each sub-list indent', () => {
+      const text = documentToMintdown(siblingSubListSection(), meta)
+      expect(text).toContain('<!-- list-marker: decimal -->')      // root, column 0
+      expect(text).toContain('  <!-- list-marker: lower-alpha -->') // item 2's child sub-list, indented
+      expect(text).toContain('  <!-- list-marker: dash -->')        // item 4's child sub-list, indented
+      expect(text).toContain('1. one')
+      expect(text).toContain('  1. alpha child')  // ordered child emits digits
+      expect(text).toContain('  - dash child')    // unordered child emits a dash
+   })
+
+   it('restores each sub-list marker independently on parse (siblings do not share)', () => {
+      const text  = documentToMintdown(siblingSubListSection(), meta)
+      const block = mintdownToDocument(text).sections[0].blocks[0]
+      expect(block.type).toBe('list')
+      expect(block.listMarker).toBe('decimal')
+      const items = block.items ?? []
+      expect(items.map(item => item.richText?.[0]?.text)).toEqual(['one', 'two', 'three', 'four', 'five'])
+      expect(items[1].childMarker).toBe('lower-alpha')
+      expect(items[3].childMarker).toBe('dash')
+      // Untouched siblings carry no marker.
+      expect(items[0].childMarker).toBeUndefined()
+      expect(items[2].childMarker).toBeUndefined()
+   })
+
+   it('round-trips the sibling sub-lists (serialize → parse → serialize) unchanged', () => {
+      const text1    = documentToMintdown(siblingSubListSection(), meta)
+      const reparsed = mintdownToDocument(text1)
+      const text2    = documentToMintdown(reparsed.sections, reparsed.meta)
+      expect(text2).toBe(text1)
+      const items = reparsed.sections[0].blocks[0].items ?? []
+      expect(items[1].childMarker).toBe('lower-alpha')
+      expect(items[3].childMarker).toBe('dash')
+   })
+
+   // Byte-identical invariant: a plain dot list carries no comment and no numbering, and an explicit
+   // all-`dot` configuration serializes to the very same bytes (and normalises back to absent fields).
+   it('keeps a plain (dot) list byte-identical, with and without explicit dot markers', () => {
+      const plainItems = [
+         { id: 'a', richText: [{ text: 'one' }], children: [
+            { id: 'a1', richText: [{ text: 'child' }], children: [] },
+         ] },
+         { id: 'b', richText: [{ text: 'two' }], children: [] },
+      ]
+      const dotItems = [
+         { id: 'a', richText: [{ text: 'one' }], childMarker: 'dot' as const, children: [
+            { id: 'a1', richText: [{ text: 'child' }], children: [] },
+         ] },
+         { id: 'b', richText: [{ text: 'two' }], children: [] },
+      ]
+      const withoutMarkers: Section[] = [{ id: 's', title: 'Section', collapsed: false, blocks: [{ id: 'list', type: 'list', items: plainItems }] }]
+      const withDotMarkers: Section[] = [{ id: 's', title: 'Section', collapsed: false, blocks: [{ id: 'list', type: 'list', listMarker: 'dot', items: dotItems }] }]
+
+      const textPlain = documentToMintdown(withoutMarkers, meta)
+      const textDot   = documentToMintdown(withDotMarkers, meta)
+      expect(textDot).toBe(textPlain)
+      expect(textPlain).not.toContain('list-marker')
+      expect(textPlain).toContain('- one')
+
+      const reparsed = mintdownToDocument(textPlain)
+      const block = reparsed.sections[0].blocks[0]
+      expect(block.listMarker).toBeUndefined()
+      expect(block.items?.[0].childMarker).toBeUndefined()
    })
 })

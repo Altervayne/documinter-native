@@ -9,6 +9,16 @@ export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
 
+/** One list-marker style, chosen per SUB-LIST of a `list` block (never a `checklist`). A sub-list is
+ *  one `<ul>`/`<ol>`: the root items form one, and every item's non-empty `children` form another.
+ *  The first five render an unordered list (`<ul>`), the last five an ordered list (`<ol>`). `dot`,
+ *  `circle` and `square` map to the native CSS list-style-types; `dash` and `arrow` are drawn via
+ *  a `::marker` content override (see lib/listMarkers.ts). See `Block.listMarker` (the root
+ *  sub-list's marker) and `ListItem.childMarker` (an item's own child sub-list's marker). */
+export type ListMarker =
+   | 'dot' | 'circle' | 'square' | 'dash' | 'arrow'
+   | 'decimal' | 'lower-alpha' | 'upper-alpha' | 'lower-roman' | 'upper-roman'
+
 // ########################
 // # INLINE CONTENT MODEL #
 // ########################
@@ -62,6 +72,10 @@ export interface ListItem {
    richText?: InlineContent
    children:  ListItem[]
    checked?:  boolean   // checklist items only; absent = unchecked
+   /** `list` only (never `checklist`): the marker style for THIS item's `children` sub-list. Only
+    *  meaningful when the item has children; absent means that child sub-list renders `dot`, so an
+    *  untouched list stays byte-identical (the field is never stored as `dot`). */
+   childMarker?: ListMarker
 }
 
 /**
@@ -93,6 +107,14 @@ export interface Block {
    diagram?: DiagramSpec // diagram: nodes + edges + options (rendered to inline SVG)
    imageMarkup?: ImageMarkupOverlay // image: optional annotation overlay; presence = markup mode (SVG render + imagemarkup fence)
    items?: ListItem[]    // list, checklist
+   /** `list` only (never `checklist`): the marker style of the ROOT sub-list (the top-level items).
+    *  Each item's own child sub-list carries its marker on `ListItem.childMarker`, so two sibling
+    *  sub-lists at the same nesting are independent. Absent means the root sub-list renders a `dot`
+    *  (the historical behaviour), so an untouched document stays byte-identical; a `dot` value is
+    *  never stored (normalised to absent). The field IS serialized to the lossless JSON backup and,
+    *  in Mintdown, to a `<!-- list-marker -->` comment before the list; portable Markdown keeps only
+    *  the ordered/unordered distinction each sub-list already carries positionally. */
+   listMarker?: ListMarker
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
    src?: string          // image: base64 data URL

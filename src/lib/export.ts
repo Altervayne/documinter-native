@@ -10,6 +10,7 @@ import { renderImageMarkupToSvg } from './imageMarkup'
 import { imageBlockToMarkupSpec } from './imageMarkupBlock'
 import { collectTableSources, resolveGraphSpec } from './graphTableData'
 import type { GraphTableCatalog } from './graphTableData'
+import { markerOrDefault, isOrderedMarker, markerListStyleType, markerMarkerClass } from './listMarkers'
 import {
    resolveWatermarkLayout, effectiveWatermarkOpacity, renderWatermarkPatternSvg, watermarkTransform,
    headerJustifyContent, resolveHeaderBesideLayout, reconcileNav, reconcileNavEntries,
@@ -116,13 +117,45 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       return withHandle(block, `<div class="doc-diagram">${svg}</div>`)
    }
    if (block.type === 'list') {
-      function exportListItem(item: ListItem): string {
-         const childHtml = item.children.length > 0
-            ? `<ul>${item.children.map(exportListItem).join('')}</ul>`
-            : ''
-         return `<li>${richToHtml(item.richText)}${childHtml}</li>`
+      // Any non-`dot` marker anywhere in the tree (root or an item's child sub-list) switches the
+      // list to the per-sub-list `<ol>`/`<ul>` render with its list-style-type / marker class. An
+      // all-`dot` list keeps the historical bare `<ul>`, byte-identical, so an untouched document
+      // exports the same HTML as before (and the browser's own defaults still vary the bullet).
+      function subListHasCustomMarker(items: ListItem[]): boolean {
+         return items.some(item =>
+            (item.childMarker !== undefined && item.childMarker !== 'dot') ||
+            subListHasCustomMarker(item.children),
+         )
       }
-      return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
+      const rootMarker       = markerOrDefault(block.listMarker)
+      const hasCustomMarkers = rootMarker !== 'dot' || subListHasCustomMarker(block.items ?? [])
+      if (!hasCustomMarkers) {
+         function exportListItem(item: ListItem): string {
+            const childHtml = item.children.length > 0
+               ? `<ul>${item.children.map(exportListItem).join('')}</ul>`
+               : ''
+            return `<li>${richToHtml(item.richText)}${childHtml}</li>`
+         }
+         return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
+      }
+      // Each sub-list renders its OWN marker: the root sub-list from block.listMarker, a nested
+      // sub-list from the owning parent item's childMarker (default dot). The marker travels down
+      // per item, never a depth index, so two sibling sub-lists stay independent.
+      function renderMarkedSubList(items: ListItem[], marker: ReturnType<typeof markerOrDefault>): string {
+         const tag         = isOrderedMarker(marker) ? 'ol' : 'ul'
+         const styleType   = markerListStyleType(marker)
+         const markerClass = markerMarkerClass(marker)
+         const classAttr   = markerClass ? ` class="${markerClass}"` : ''
+         const styleAttr   = styleType ? ` style="list-style-type:${styleType}"` : ''
+         const itemsHtml   = items.map(item => {
+            const childHtml = item.children.length > 0
+               ? renderMarkedSubList(item.children, markerOrDefault(item.childMarker))
+               : ''
+            return `<li>${richToHtml(item.richText)}${childHtml}</li>`
+         }).join('')
+         return `<${tag}${classAttr}${styleAttr}>${itemsHtml}</${tag}>`
+      }
+      return withHandle(block, renderMarkedSubList(block.items ?? [], rootMarker))
    }
    if (block.type === 'checklist') {
       // Real, interactive checkboxes: a reader of the exported file can tick items (native
@@ -483,6 +516,9 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
             .doc-render li             { margin-bottom: 0.3rem; color: ${colors.textP}; }
             .doc-render li::marker     { color: ${colors.inlineCodeText}; }
+            /* Non-native list markers: the dash and arrow styles draw their glyph as ::marker content. */
+            .doc-render .doc-list-marker-dash > li::marker  { content: "\\2013\\00a0"; }
+            .doc-render .doc-list-marker-arrow > li::marker { content: "\\25B8\\00a0"; }
             .doc-render ul.doc-checklist { list-style: none; padding-left: 0.5rem; }
             .doc-render ul.doc-checklist ul.doc-checklist { padding-left: 1.5rem; margin-bottom: 0; }
             .doc-render .doc-check-item { display: flex; align-items: flex-start; gap: 0.5rem; }

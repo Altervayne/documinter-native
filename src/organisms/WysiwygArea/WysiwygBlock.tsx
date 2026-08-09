@@ -293,7 +293,7 @@ export function WysiwygBlock({
       if (block.type === 'diagram')
          return <DiagramBlock block={block} patch={patch} readOnly={readOnly} />
       if (block.type === 'list')
-         return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} isListTail={isListTail} />
+         return <ListBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} patch={patch} readOnly={readOnly} gripSide={gripSide} isListTail={isListTail} itemOffset={itemOffset} />
       if (block.type === 'checklist')
          return <ChecklistBlock block={block} itemOps={listItemOps} onAddItem={handleListAdd} readOnly={readOnly} gripSide={gripSide} isListTail={isListTail} />
       if (block.type === 'table')

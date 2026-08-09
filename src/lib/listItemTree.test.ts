@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { indentListItem, unindentListItem, moveListItemUp, moveListItemDown } from './listItemTree'
+import { indentListItem, unindentListItem, moveListItemUp, moveListItemDown, setItemChildMarker } from './listItemTree'
 import type { ListItem } from '../types'
 
 // Hand-built trees with constant ids (no crypto.randomUUID needed here). Assertions read each
@@ -100,5 +100,45 @@ describe('unindentListItem', () => {
          { id: 'B', children: [] },
       ]
       expect(unindentListItem(tree, 'A').map(item => item.id)).toEqual(['A', 'B'])
+   })
+})
+
+describe('setItemChildMarker', () => {
+   it('sets the child marker on the named item only', () => {
+      const tree: ListItem[] = [
+         { id: 'A', children: [{ id: 'A1', children: [] }] },
+         { id: 'B', children: [{ id: 'B1', children: [] }] },
+      ]
+      const result = setItemChildMarker(tree, 'A', 'lower-alpha')
+      expect(result.find(item => item.id === 'A')?.childMarker).toBe('lower-alpha')
+      expect(result.find(item => item.id === 'B')?.childMarker).toBeUndefined()
+   })
+
+   it('leaves two sibling sub-lists independent', () => {
+      const tree: ListItem[] = [
+         { id: 'A', children: [{ id: 'A1', children: [] }] },
+         { id: 'B', children: [{ id: 'B1', children: [] }] },
+      ]
+      const withA = setItemChildMarker(tree, 'A', 'lower-alpha')
+      const withBoth = setItemChildMarker(withA, 'B', 'dash')
+      expect(withBoth.find(item => item.id === 'A')?.childMarker).toBe('lower-alpha')
+      expect(withBoth.find(item => item.id === 'B')?.childMarker).toBe('dash')
+   })
+
+   it('clears the child marker when passed undefined', () => {
+      const tree: ListItem[] = [
+         { id: 'A', childMarker: 'square', children: [{ id: 'A1', children: [] }] },
+      ]
+      const result = setItemChildMarker(tree, 'A', undefined)
+      expect(result[0].childMarker).toBeUndefined()
+      expect('childMarker' in result[0]).toBe(false)
+   })
+
+   it('reaches a nested item', () => {
+      const tree: ListItem[] = [
+         { id: 'A', children: [{ id: 'A1', children: [{ id: 'A1a', children: [] }] }] },
+      ]
+      const result = setItemChildMarker(tree, 'A1', 'decimal')
+      expect(result[0].children[0].childMarker).toBe('decimal')
    })
 })

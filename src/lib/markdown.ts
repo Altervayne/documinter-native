@@ -1,4 +1,5 @@
-import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, Section } from '../types'
+import type { Block, CalloutStyle, CodeLang, DocMeta, InlineContent, ListItem, ListMarker, Section } from '../types'
+import { ALL_LIST_MARKERS, markerOrDefault, isOrderedMarker } from './listMarkers'
 import { inlineContentToMintdown, mintdownToInlineContent } from './inline'
 import { parseMathScaleToken } from './mathScale'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
@@ -53,17 +54,37 @@ function serializeInline(content: InlineContent | undefined): string {
 }
 
 /** Renders list items recursively with two-space indentation per level. In checklist mode each
- *  item carries a GFM task-list marker (`[x]` checked / `[ ]` unchecked) right after the dash. */
-function serializeListItems(items: ListItem[], depth: number, checklist = false): string {
+ *  item carries a GFM task-list marker (`[x]` checked / `[ ]` unchecked) right after the dash.
+ *  For a plain list, `marker` is the CURRENT sub-list's marker: an ORDERED marker emits the
+ *  1-based sibling index as `${n}. `, an unordered marker emits `- ` (the historical default, so a
+ *  sub-list with no marker stays byte-identical). The alpha/roman refinement is carried only by the
+ *  Mintdown `<!-- list-marker -->` comment. Under `mintdown`, each nested sub-list whose owning
+ *  item's `childMarker` is non-`dot` gets its own comment line at the child indent, right before
+ *  its first item; the root sub-list's comment is emitted by the caller (serializeBlock). */
+function serializeListItems(
+   items: ListItem[],
+   depth: number,
+   options: { checklist?: boolean; mintdown?: boolean; marker?: ListMarker },
+): string {
+   const { checklist = false, mintdown = false, marker = 'dot' } = options
    const lines: string[] = []
    const indent = '  '.repeat(depth)
-   for (const item of items) {
-      const marker = checklist ? `[${item.checked ? 'x' : ' '}] ` : ''
-      lines.push(`${indent}- ${marker}${serializeInline(item.richText)}`)
+   const ordered = !checklist && isOrderedMarker(marker)
+   items.forEach((item, index) => {
+      const bullet = checklist
+         ? `- [${item.checked ? 'x' : ' '}] `
+         : ordered
+            ? `${index + 1}. `
+            : '- '
+      lines.push(`${indent}${bullet}${serializeInline(item.richText)}`)
       if (item.children.length > 0) {
-         lines.push(serializeListItems(item.children, depth + 1, checklist))
+         const childMarker = checklist ? 'dot' : markerOrDefault(item.childMarker)
+         if (!checklist && mintdown && childMarker !== 'dot') {
+            lines.push(`${'  '.repeat(depth + 1)}<!-- list-marker: ${childMarker} -->`)
+         }
+         lines.push(serializeListItems(item.children, depth + 1, { checklist, mintdown, marker: childMarker }))
       }
-   }
+   })
    return lines.join('\n')
 }
 
@@ -155,13 +176,22 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
       case 'list': {
          const items = block.items ?? []
          if (items.length === 0) return ''
-         return serializeListItems(items, 0)
+         const rootMarker = markerOrDefault(block.listMarker)
+         const body = serializeListItems(items, 0, { mintdown: options?.mintdown, marker: rootMarker })
+         // Byte-identical guard: a list whose root sub-list is `dot` emits no root token and plain
+         // `- ` bullets, exactly as before. The `<!-- list-marker -->` refinement rides ONLY the
+         // Mintdown flavour, and only for a non-`dot` sub-list; portable Markdown keeps just the
+         // native ordered/unordered distinction each sub-list already carries positionally.
+         if (options?.mintdown && rootMarker !== 'dot') {
+            return `<!-- list-marker: ${rootMarker} -->\n${body}`
+         }
+         return body
       }
 
       case 'checklist': {
          const items = block.items ?? []
          if (items.length === 0) return ''
-         return serializeListItems(items, 0, true)
+         return serializeListItems(items, 0, { checklist: true })
       }
 
       case 'table': {
@@ -379,6 +409,121 @@ export function buildListTree(lines: string[], checklist = false): ListItem[] {
    return roots
 }
 
+/** Parses a `<!-- list-marker: lower-alpha -->` comment into its single sub-list marker, or null
+ *  when the line is not that comment. Leading indentation is allowed (a nested sub-list's comment
+ *  sits at the child indent). An unknown token degrades to `'dot'` rather than throw, so a
+ *  hand-authored or future-versioned token can never break a load. */
+export function parseListMarkerComment(line: string): ListMarker | null {
+   const match = line.match(/^\s*<!-- list-marker: (.+?) -->\s*$/)
+   if (!match) return null
+   const trimmed = match[1].trim() as ListMarker
+   return ALL_LIST_MARKERS.includes(trimmed) ? trimmed : 'dot'
+}
+
+/**
+ * Builds a `list` Block from accumulated list lines, recognising both unordered (`- `) and ordered
+ * (`1. `) items plus interleaved `<!-- list-marker -->` comment lines, rebuilding the nested tree.
+ *
+ * Each sub-list gets its own marker. A comment sits immediately before a sub-list's first item, at
+ * that sub-list's indent, and is AUTHORITATIVE for it: the root sub-list's comment (arriving as
+ * `rootMarkerOverride` from the scanner, since it is a column-0 line before the list) sets
+ * `block.listMarker`; a nested sub-list's comment sets the owning parent item's `childMarker`. With
+ * no comment, the marker is derived from the base syntax, an ordered sub-list becomes `'decimal'`,
+ * an unordered one stays `dot`. A `dot` marker is never stored (absent field), so a plain list
+ * round-trips back byte-identical.
+ */
+export function buildListBlockFromLines(lines: string[], rootMarkerOverride?: ListMarker): Block {
+   interface StackEntry { depth: number; item: ListItem }
+
+   const roots: ListItem[]   = []
+   const stack: StackEntry[]  = []
+   const childOrderedByParent = new WeakMap<ListItem, boolean>()
+   const childCommentByParent = new WeakMap<ListItem, ListMarker>()
+   let rootOrdered            = false
+   let rootCommentFromLines: ListMarker | undefined
+   // A marker comment buffers here until the sub-list it precedes begins at the same indent.
+   let pendingComment: { marker: ListMarker; depth: number } | null = null
+
+   for (const line of lines) {
+      const commentMarker = parseListMarkerComment(line)
+      if (commentMarker) {
+         const indentLength = line.match(/^(\s*)/)?.[1].length ?? 0
+         pendingComment = { marker: commentMarker, depth: Math.floor(indentLength / 2) }
+         continue
+      }
+
+      const orderedMatch   = line.match(/^(\s*)\d+\. (.*)$/)
+      const unorderedMatch = line.match(/^(\s*)- (.*)$/)
+
+      let indentText: string
+      let rawText:    string
+      let ordered:    boolean
+      if (orderedMatch) {
+         indentText = orderedMatch[1]; rawText = orderedMatch[2]; ordered = true
+      } else if (unorderedMatch) {
+         indentText = unorderedMatch[1]; rawText = unorderedMatch[2]; ordered = false
+      } else {
+         continue
+      }
+
+      const depth = Math.floor(indentText.length / 2)
+
+      // Clamp depth: cannot exceed (parent depth + 1).
+      const parentDepth    = stack.length > 0 ? stack[stack.length - 1].depth : -1
+      const effectiveDepth = Math.min(depth, parentDepth + 1)
+
+      // Pop the stack until its top is a valid parent for this depth.
+      while (stack.length > 0 && stack[stack.length - 1].depth >= effectiveDepth) {
+         stack.pop()
+      }
+
+      const parent = stack.length > 0 ? stack[stack.length - 1].item : null
+
+      // Record this sub-list's ordered-ness (siblings share one marker; last write wins).
+      if (effectiveDepth === 0) rootOrdered = ordered
+      else if (parent)          childOrderedByParent.set(parent, ordered)
+
+      // A buffered comment at this same indent belongs to the sub-list this item opens.
+      if (pendingComment && pendingComment.depth === effectiveDepth) {
+         if (effectiveDepth === 0)  rootCommentFromLines = pendingComment.marker
+         else if (parent)           childCommentByParent.set(parent, pendingComment.marker)
+      }
+      pendingComment = null
+
+      const item: ListItem = {
+         id:       crypto.randomUUID(),
+         richText: mintdownToInlineContent(rawText),
+         children: [],
+      }
+
+      if (parent) parent.children.push(item)
+      else        roots.push(item)
+
+      stack.push({ depth: effectiveDepth, item })
+   }
+
+   // Resolve each item's child sub-list marker: an explicit comment wins, else the derived
+   // ordered-ness (decimal / dot). A `dot` result is never stored.
+   function resolveChildMarkers(items: ListItem[]): void {
+      for (const item of items) {
+         if (item.children.length > 0) {
+            const marker = childCommentByParent.get(item)
+               ?? (childOrderedByParent.get(item) ? 'decimal' : 'dot')
+            if (marker !== 'dot') item.childMarker = marker
+            resolveChildMarkers(item.children)
+         }
+      }
+   }
+   resolveChildMarkers(roots)
+
+   const block: Block = { id: crypto.randomUUID(), type: 'list', items: roots }
+
+   const rootMarker = rootMarkerOverride ?? rootCommentFromLines ?? (rootOrdered ? 'decimal' : 'dot')
+   if (rootMarker !== 'dot') block.listMarker = rootMarker
+
+   return block
+}
+
 /** Builds a table Block from accumulated pipe-table lines (header, separator, body rows). */
 export function buildTableBlock(lines: string[]): Block {
    const tableLines = lines.filter(line => line.trimStart().startsWith('|'))
@@ -512,6 +657,8 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
    let currentSection:    Section | null = null
    let pendingSectionId:  string  | null = null
    let pendingHandle:     string  | null = null
+   // Root sub-list marker from a `<!-- list-marker -->` comment, applied to the next list flush.
+   let pendingListMarker: ListMarker | null = null
    // Last committed image block, set so that caption/attrs comments can patch it.
    let pendingImageBlock: Block   | null = null
 
@@ -582,11 +729,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          }
 
          case 'list': {
-            return {
-               id:    crypto.randomUUID(),
-               type:  'list',
-               items: buildListTree(capturedLines),
-            }
+            const rootMarker = pendingListMarker
+            pendingListMarker = null
+            return buildListBlockFromLines(capturedLines, rootMarker ?? undefined)
          }
 
          case 'checklist': {
@@ -633,7 +778,9 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       commitBlock(flushAccum())
       accumKind  = kind
       accumLines = [firstLine]
-      // Starting any new block breaks the image metadata chain.
+      // Starting any new block breaks the image metadata chain. A marker comment only ever
+      // precedes a list, so any pending marker not consumed by a list start is stale here.
+      if (kind !== 'list') pendingListMarker = null
       pendingImageBlock = null
    }
 
@@ -668,6 +815,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          const sectionId  = pendingSectionId ?? crypto.randomUUID()
          pendingSectionId = null
          pendingHandle    = null   // handles before ## don't attach to the section
+         pendingListMarker = null
          pendingImageBlock = null
          currentSection   = {
             id:        sectionId,
@@ -747,8 +895,18 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
          continue
       }
 
-      // List item, or GFM task-list item (checklist). The checkbox marker selects which.
-      if (/^\s*- /.test(line)) {
+      // A nested sub-list's `<!-- list-marker -->` comment is indented, so it falls through the
+      // column-0 comment branch below; keep it inside the active list accumulator so
+      // buildListBlockFromLines can bind it to the sub-list it precedes.
+      if ((accumKind as AccumKind | null) === 'list' && parseListMarkerComment(line) !== null) {
+         accumLines.push(line)
+         continue
+      }
+
+      // List item: unordered (`- `), GFM task-list (`- [ ] `, checklist), or ordered (`1. `).
+      // The checkbox marker selects checklist; ordered and plain unordered both accumulate as one
+      // `list` block so a per-sub-list mix (numbers outside, bullets inside) stays a single list.
+      if (/^\s*- /.test(line) || /^\s*\d+\. /.test(line)) {
          const kind: AccumKind = /^\s*- \[[ xX]\] /.test(line) ? 'checklist' : 'list'
          if ((accumKind as AccumKind | null) === kind) {
             accumLines.push(line)
@@ -770,6 +928,16 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 
       // HTML comment lines
       if (line.startsWith('<!--')) {
+
+         // list-marker: the following list's ROOT sub-list adopts this marker style (Mintdown
+         // refinement; harmless in Markdown, which never emits it but can round-trip an authored one).
+         const listMarkerFromComment = parseListMarkerComment(line)
+         if (listMarkerFromComment) {
+            commitBlock(flushAccum())
+            pendingListMarker = listMarkerFromComment
+            pendingImageBlock = null
+            continue
+         }
 
          // section-id: preserve UUID for the next ## heading.
          const sectionIdMatch = line.match(/^<!-- section-id: ([0-9a-f-]+) -->$/)

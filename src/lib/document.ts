@@ -121,8 +121,8 @@ function blockPlainText(block: Block): string {
    return block.richText.map(run => run.text).join('').replace(/\n/g, ' ')
 }
 
-/** Extract plain text from a list item. */
-function listItemPlainText(item: { richText?: { text: string }[] }): string {
+/** Extract plain text from a list item (inline formatting stripped, newlines flattened to spaces). */
+export function listItemPlainText(item: { richText?: { text: string }[] }): string {
    if (!item.richText || item.richText.length === 0) return ''
    return item.richText.map(run => run.text).join('').replace(/\n/g, ' ')
 }

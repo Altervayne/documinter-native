@@ -155,3 +155,64 @@ describe('Markdown math block', () => {
       expect(block.mathScale).toBeUndefined()
    })
 })
+
+describe('Markdown, custom list markers degrade', () => {
+   const meta: DocMeta = { title: 'Doc', fields: [] }
+
+   // Root decimal; item 2 owns a lower-alpha child sub-list, item 4 owns a dash child sub-list.
+   // The two sibling child sub-lists carry INDEPENDENT markers (childMarker per item).
+   function markedListSection(): Section[] {
+      return [{
+         id: '00000000-0000-4000-8000-00000000000b', title: 'Section', collapsed: false,
+         blocks: [{
+            id: 'list', type: 'list',
+            listMarker: 'decimal',
+            items: [
+               { id: 'i1', richText: [{ text: 'one' }], children: [] },
+               { id: 'i2', richText: [{ text: 'two' }], childMarker: 'lower-alpha', children: [
+                  { id: 'i2a', richText: [{ text: 'alpha child' }], children: [] },
+               ] },
+               { id: 'i3', richText: [{ text: 'three' }], children: [] },
+               { id: 'i4', richText: [{ text: 'four' }], childMarker: 'dash', children: [
+                  { id: 'i4a', richText: [{ text: 'dash child' }], children: [] },
+               ] },
+               { id: 'i5', richText: [{ text: 'five' }], children: [] },
+            ],
+         }],
+      }]
+   }
+
+   it('emits native numbering per sub-list but NO list-marker token in portable Markdown', () => {
+      const text = documentToMarkdown(markedListSection(), meta)
+      expect(text).not.toContain('list-marker')
+      expect(text).toContain('1. one')
+      expect(text).toContain('2. two')
+      expect(text).toContain('  1. alpha child')  // ordered child sub-list keeps its digits
+      expect(text).toContain('  - dash child')    // unordered child sub-list keeps its dash
+   })
+
+   it('re-imports keeping each sub-list ordered-ness, degrading style to decimal/dot', () => {
+      const text  = documentToMarkdown(markedListSection(), meta)
+      const block = markdownToDocument(text).sections[0].blocks[0]
+      expect(block.type).toBe('list')
+      // Root was ordered -> decimal; item 2's ordered child -> decimal; item 4's dash child -> dot.
+      expect(block.listMarker).toBe('decimal')
+      const items = block.items ?? []
+      expect(items[1].childMarker).toBe('decimal')
+      expect(items[3].childMarker).toBeUndefined()
+   })
+
+   it('keeps a plain (dot) list free of numbering and tokens', () => {
+      const sections: Section[] = [{
+         id: '00000000-0000-4000-8000-00000000000c', title: 'Section', collapsed: false,
+         blocks: [{ id: 'list', type: 'list', items: [
+            { id: 'a', richText: [{ text: 'one' }], children: [] },
+            { id: 'b', richText: [{ text: 'two' }], children: [] },
+         ] }],
+      }]
+      const text = documentToMarkdown(sections, meta)
+      expect(text).not.toContain('list-marker')
+      expect(text).toContain('- one')
+      expect(markdownToDocument(text).sections[0].blocks[0].listMarker).toBeUndefined()
+   })
+})

@@ -1994,6 +1994,11 @@
 .doc-render ul, .doc-render ol { padding-left: 1.5rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
 .doc-render li             { margin-bottom: 0.3rem; color: #374151; }
 .doc-render li::marker     { color: var(--doc-accent, var(--color-accent)); }
+/* Non-native list markers (dash / arrow) draw their glyph as ::marker content. The WYSIWYG rows
+   render their own marker span, so these rules mainly back the native lists in the HTML export;
+   they are kept here so the doc stylesheet and the export's inlined CSS stay in step. */
+.doc-render .doc-list-marker-dash > li::marker  { content: "\2013\00a0"; }
+.doc-render .doc-list-marker-arrow > li::marker { content: "\25B8\00a0"; }
 
 /* Contenteditable hover/focus */
 .doc-render [contenteditable] { outline: none; border-radius: 3px; transition: background 0.1s, box-shadow 0.1s; }
@@ -2170,6 +2175,34 @@
 }
 .doc-dark .doc-add-btn:hover {
   color: #e6edf3;
+}
+
+/* List-style trigger button (ListMarkerControl), sits beside "Add item" on a `list` block's
+   controls row. Square icon button, same dashed-adjacent grammar as doc-add-btn but compact and
+   never full-width. The popover it opens is app chrome (unscoped), this trigger is document
+   content chrome, so it stays `.doc-render`-scoped and themes with --doc-accent like doc-add-btn. */
+.doc-render .doc-list-marker-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 2.1rem; height: 2.1rem; padding: 0; box-sizing: border-box;
+  border-radius: 8px; cursor: pointer;
+  color:        #6b7280;
+  border: 1px solid color-mix(in srgb, #6b7280 35%, transparent);
+  background: transparent;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.doc-render .doc-list-marker-btn:hover,
+.doc-render .doc-list-marker-btn.is-open {
+  color:        var(--doc-accent, var(--color-accent));
+  background:   color-mix(in srgb, var(--doc-accent, var(--color-accent)) 8%, transparent);
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 40%, transparent);
+}
+.doc-dark .doc-render .doc-list-marker-btn {
+  color:        #8b949e;
+  border-color: color-mix(in srgb, #8b949e 35%, transparent);
+}
+.doc-dark .doc-render .doc-list-marker-btn:hover,
+.doc-dark .doc-render .doc-list-marker-btn.is-open {
+  color: var(--doc-accent, var(--color-accent));
 }
 
 /* Empty states */

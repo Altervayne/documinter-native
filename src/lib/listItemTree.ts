@@ -14,10 +14,11 @@
  *   reorderListItemsUnderParent , DnD reorder of siblings under a parent (null = root)
  *   insertListItemAfter         , insert a new item immediately after a given item
  *   getListItemContext          , an item's depth / index / sibling count (for the context menu)
+ *   setItemChildMarker          , set / clear the marker of one item's child sub-list (marker picker)
  */
 
 import { arrayMove } from '@dnd-kit/sortable'
-import type { ListItem } from '../types'
+import type { ListItem, ListMarker } from '../types'
 
 /** Walk the tree and apply a transform to the matching item. Returning null removes the item. */
 export function mutateListItem(
@@ -174,4 +175,20 @@ export function getListItemContext(items: ListItem[], targetId: string, depth = 
       if (found) return found
    }
    return null
+}
+
+/**
+ * Set (or clear, when `marker` is undefined) the `childMarker` of the named item, returning a new
+ * tree. Only the path down to that item is copied; every untouched subtree keeps its reference.
+ * `childMarker` styles the item's child sub-list, so the picker calls this for any row but the root.
+ */
+export function setItemChildMarker(items: ListItem[], itemId: string, marker: ListMarker | undefined): ListItem[] {
+   return mutateListItem(items, itemId, item => {
+      if (marker === undefined) {
+         const { childMarker, ...rest } = item
+         void childMarker
+         return rest as ListItem
+      }
+      return { ...item, childMarker: marker }
+   })
 }
