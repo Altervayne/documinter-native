@@ -58,20 +58,37 @@
   box-sizing: border-box;
   max-width: 100%;
 }
-/* Page number badge, pinned top-right just inside the sheet, muted so it reads as chrome. */
-.doc-page-label {
+/* Top-right corner chrome: an optional muted "type" caption sitting just left of the page number.
+   Pinned inside the sheet, non-interactive, so it reads as chrome rather than an action. */
+.doc-page-corner {
   position: absolute;
   top: 0.55rem;
   right: 0.7rem;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  pointer-events: none;
+  user-select: none;
+}
+/* Page number badge, muted so it reads as chrome. */
+.doc-page-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.66rem;
   letter-spacing: 0.04em;
   color: #9ca3af;
-  pointer-events: none;
-  user-select: none;
 }
 .doc-dark .doc-page-label { color: #6b7280; }
+/* The page-type caption. Quieter than the number (smaller, dimmer) so it never dominates the corner,
+   echoing the Pages panel's .page-thumb-badge register. */
+.doc-page-type-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+  color: #9ca3af;
+  opacity: 0.7;
+}
+.doc-dark .doc-page-type-label { color: #6b7280; }
 
 /* The fill-the-sheet target on an intentional blank page. Rests as a faint centered hint, gains a
    dashed outline while a block is being dragged, and lights up in the accent while hovered. */
@@ -260,13 +277,66 @@
    content (doc-themed via `.doc-render` / `.doc-dark`), while the frame + bar chrome around it is app
    chrome. Editor-only, never exported.
    ############################################################ */
+/* One page card. position:relative anchors the "..." kebab into its top-right corner; the drag itself
+   is owned by the enclosing .page-thumb-group, so a touch-drag from anywhere on the card must beat the
+   scroll gesture (touch-action:none). */
 .page-thumb {
+  position: relative;
   width: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.3rem;
-  touch-action: none;   /* let a touch-drag reorder beat the scroll gesture */
+  touch-action: none;
+}
+/* Continuation-group container: the sortable drag unit wrapping a block's start page + its overflow
+   sheets. A lone page stays flush; a genuine multi-sheet span gains a faint border + fill so the
+   grouping is obvious and the drop indicator reads as landing between blocks. */
+.page-thumb-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  touch-action: none;
+}
+.page-thumb-group-multi {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-muted) 8%, transparent);
+}
+/* The "..." actions trigger, tucked over the sheet's top-right corner so it never displaces the layout.
+   Hidden at rest, revealed on card hover / focus, and always shown while focused for keyboard reach. */
+.page-thumb-kebab {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--color-border);
+  background: var(--color-raised);
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.page-thumb:hover .page-thumb-kebab,
+.page-thumb:focus-within .page-thumb-kebab { opacity: 1; }
+.page-thumb-kebab:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--doc-accent, var(--color-accent));
+  outline-offset: 1px;
+}
+.page-thumb-kebab:hover {
+  background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, var(--color-raised));
+  color: var(--doc-accent, var(--color-accent));
+  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 45%, var(--color-border));
 }
 /* The clickable/draggable thumbnail: a bordered mini-sheet. Click = jump-to-page; drag = reorder
    (a 5px PointerSensor threshold keeps a plain click from starting a drag). */
@@ -347,38 +417,6 @@
   opacity: 0.75;
   user-select: none;
 }
-.page-thumb-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-.page-thumb:hover .page-thumb-actions,
-.page-thumb:focus-within .page-thumb-actions { opacity: 1; }
-.page-thumb-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.4rem;
-  height: 1.4rem;
-  padding: 0;
-  border-radius: 5px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-muted);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-.page-thumb-action:hover {
-  background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 12%, transparent);
-  color: var(--doc-accent, var(--color-accent));
-}
-.page-thumb-action-danger:hover {
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
-  color: var(--color-red);
-}
-.page-thumb-action:disabled { opacity: 0.35; cursor: default; background: transparent; color: var(--color-muted); }
 /* The dnd DragOverlay clone: a simple accent-tinted placeholder carrying the dragged page number, so
    the drag reads clearly without re-rendering a full (heavy) thumbnail. */
 .page-thumb-frame-overlay {
@@ -398,12 +436,23 @@
   color: var(--doc-accent, var(--color-accent));
 }
 
-/* The Pages-panel "Add page" button under the thumbnail column: appends a blank page. */
+/* The Pages-panel action buttons under the thumbnail column ("Add page" + "Save as PDF"). The wrapper
+   spans the panel content width and stretches both buttons to a shared width, so they don't each size to
+   their own label and end up mismatched. */
+.page-add-actions {
+  width: 100%;
+  margin-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 .page-add-button {
+  width: 100%;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
-  margin-top: 0.25rem;
   padding: 0.4rem 0.8rem;
   border-radius: 6px;
   border: 1px dashed var(--color-border);

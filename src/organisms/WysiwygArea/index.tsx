@@ -50,6 +50,7 @@ import {
    type Page, type PageSlice,
 } from '../../lib/pageModel'
 import { EMPTY_HEIGHTS, isAutoPageId, type MeasuredHeights } from '../../lib/pageLayout'
+import type { T } from '../../lib/i18n'
 import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
@@ -57,6 +58,16 @@ import './doc.css'
 // A stable empty set for the atomic-ids fallback, so a missing prop never allocates a fresh Set per
 // render (which would churn the pagination memo needlessly).
 const EMPTY_ATOMIC_BLOCK_IDS: Set<string> = new Set()
+
+// The quiet corner "type" caption a paged sheet wears beside its number: it names how the sheet came to
+// be, mirroring the Pages panel's wording. Page 1 (origin 'first', or an unstamped page) reads as no
+// particular type, so it gets none.
+function pageTypeLabel(origin: Page['origin'], t: T): string | null {
+   if (origin === 'manual')       return t.pageSorterManualBreak
+   if (origin === 'continuation') return t.pageSorterContinuation
+   if (origin === 'auto-start')   return t.pageSorterAutoPage
+   return null
+}
 
 interface WysiwygAreaProps {
    meta:      DocMeta
@@ -983,6 +994,9 @@ export function WysiwygArea({
       // The one overflow auto-reflow cannot resolve: a single atomic block taller than the whole sheet.
       // Surfaced only in edit mode (matching the hook's `enabled` gate) as a note, never a break.
       const showTooTall = !readOnly && !!onFormatChange && tooTallPageIds.has(page.id)
+      // A quiet corner label naming HOW this sheet came to be (a manual break, a block continuation, a
+      // paginator push). Page 1 has no meaningful "type", so it gets none.
+      const typeLabel = pageTypeLabel(page.origin, t)
       return (
          <div
             key={page.id}
@@ -997,7 +1011,10 @@ export function WysiwygArea({
             } as React.CSSProperties}
          >
             {renderWatermarkLayer(`${watermarkPatternId}-${pageIndex}`)}
-            <div className="doc-page-label">{t.formatPageLabel} {pageIndex + 1} / {total}</div>
+            <div className="doc-page-corner">
+               {typeLabel && <span className="doc-page-type-label">{typeLabel}</span>}
+               <span className="doc-page-label">{t.formatPageLabel} {pageIndex + 1} / {total}</span>
+            </div>
             {renderBands(pageIndex, total, margins)}
             {pageIndex > 0 && !readOnly && onFormatChange && !isAutoPageId(page.id) && (
                <button
