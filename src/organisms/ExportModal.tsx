@@ -6,7 +6,7 @@ import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 import { generateExportHTML, type ExportOptions } from '../lib/export'
-import { downloadHTML, printDocument, computeExportPages } from '../lib/exportLayout'
+import { downloadHTML, printDocument, computeDocumentPages } from '../lib/exportLayout'
 import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
 import { downloadJSON } from '../lib/documentBackupFile'
@@ -69,7 +69,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    // .md paths never see them (they serialize content only). Aliased to docFormat above to avoid
    // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
    // markdown, a separate concept from the document's page format). The paged layout is not threaded in:
-   // downloadHTML / printDocument / computeExportPages self-measure it from the model.
+   // downloadHTML / printDocument / computeDocumentPages self-measure it from the model.
    const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
    // =========
@@ -89,7 +89,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    async function handleHtmlCopy() {
       await ensureTemmlReady()
       // Self-measure the paged layout so the copied HTML paginates from the model, not editor state.
-      const pages = await computeExportPages(meta, sections, opts)
+      const { pages } = await computeDocumentPages(meta, sections, opts)
       const html = generateExportHTML(meta, sections, pages.length > 0 ? { ...opts, pagedLayout: pages } : opts)
       navigator.clipboard.writeText(html).then(() => {
          showToast(t.htmlCopied, { type: 'success' })

@@ -36,9 +36,8 @@ import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
-import { printDocument } from './lib/exportLayout'
-import { paginate, buildMetrics, paginationBudgetPx, EMPTY_HEIGHTS, type MeasuredHeights } from './lib/pageLayout'
-import type { Page } from './lib/pageModel'
+import { printDocument, computeDocumentPages } from './lib/exportLayout'
+import { paginateDocument, EMPTY_HEIGHTS, type DocumentPages, type MeasuredHeights } from './lib/pageLayout'
 import { applicablePanels, PANEL_REGISTRY, type PanelContext } from './lib/panelRegistry'
 import { isPanelVisible } from './lib/dockPolicy'
 import type { DockPanelToggle } from './molecules/ViewMenu'
@@ -66,13 +65,19 @@ import type { DocFormat } from './lib/format'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { title: '', fields: [] }
-// Pagination never holds a block atomic on account of editor focus, so the editor + Pages panel always
-// paginate against this one shared empty set. Module-level so it is a stable reference (a fresh Set per
-// render would needlessly churn the pagination inputs).
-const EMPTY_EDITOR_ATOMIC_IDS: Set<string> = new Set()
+// How long to wait after the last height-affecting edit before re-running the offscreen height measure.
+// Long enough that a burst of keystrokes measures once, on the pause, not per character; short enough that
+// the heights re-settle promptly. The canvas paginates SYNCHRONOUSLY from the cached heights every render,
+// so structural edits reflow instantly; only the measured heights settle a beat later (see the effect below).
+const PAGINATION_DEBOUNCE_MS = 180
 const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'   // legacy single-pointer (migrated away)
 const OPEN_DOCUMENTS_KEY      = 'documinter-open-documents'        // the open-tab set + active, for reload restore
 const DEFAULT_DOC_ACCENT = '#2dcea8'
+
+// An empty layout, used before the first measure and for non-paged documents. paginateDocument with
+// EMPTY_HEIGHTS yields exactly the forced-break-only placeholder (zero heights never trigger an auto-break),
+// so an unmeasured paged canvas shows its explicit breaks and nothing overflows until the heights land.
+const EMPTY_DOCUMENT_PAGES: DocumentPages = { pages: [], tooTallPageIds: new Set(), heights: EMPTY_HEIGHTS }
 
 // Which documents had open tabs last session, in tab order, plus which was active. Only tabs with a
 // binder id are listed; pristine never-saved tabs aren't persisted (consistent with autosave).
@@ -808,30 +813,79 @@ export default function App() {
       setMode(newMode)
    }
 
-   // Measured paged layout, OWNED here so all three consumers agree: the editor (WysiwygArea) measures
-   // its rendered sheets and reports the heights up through `setMeasuredHeights`; the Pages panel and
-   // export then paginate from this same source. Reset on tab switch so a new document never paginates
-   // against the previous one's item heights (ids never match, and the map stays free of stale entries).
-   const [measuredHeights, setMeasuredHeights] = useState<MeasuredHeights>(EMPTY_HEIGHTS)
-   useEffect(() => { setMeasuredHeights(EMPTY_HEIGHTS) }, [activeTabKey])
    const pagedDocument = !!format && format.kind !== 'infinite'
-   const layoutMetrics = buildMetrics(measuredHeights, sections)
+
    // Which paragraph the editor is currently editing through its out-of-flow overlay (see WysiwygArea).
-   // A render-only signal now: a fragment press sets it, its blur clears it. It NO LONGER feeds pagination
-   // (that would move the layout on focus); it only selects which split paragraph gets the edit overlay and
-   // drives the measurement freeze while typing. Reset on tab switch, since the id belongs to the outgoing
-   // document's flow.
+   // A render-only signal: a fragment press sets it, its blur clears it. It never feeds pagination (that
+   // would move the layout on focus); it selects which split paragraph gets the edit overlay AND holds the
+   // page recompute steady while typing (see the documentPages effect below), so the visible pages stay put
+   // mid-edit and re-settle deterministically on blur. Reset on tab switch, since the id belongs to the
+   // outgoing document's flow.
    const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
    useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
-   // Pagination is a pure function of (model, format): the editor + Pages panel always paginate against an
-   // EMPTY atomic set, so a paragraph splits identically whether or not it is focused and clicking a block
-   // never reflows the page layout. keepTogether / keepWithNext / forced breaks still hold blocks whole,
-   // since paginate reads those from the model (isHeldAtomic reads block.keepTogether), not from this set.
-   // The export already self-measures its own offscreen render (see lib/exportLayout), independent of it.
-   const editorAtomicIds = EMPTY_EDITOR_ATOMIC_IDS
-   const laidOutPages: Page[] = pagedDocument
-      ? paginate(sections, format?.pages ?? [], paginationBudgetPx(format), layoutMetrics, editorAtomicIds)
-      : []
+
+   // The offscreen measurement pass's HEIGHTS, refreshed on a typing pause by the debounced effect below.
+   // Heights are the only thing that inherently needs the DOM; pagination itself is pure arithmetic, so the
+   // canvas paginates from these cached heights SYNCHRONOUSLY every render (see documentPages just below).
+   // Heights are per-block, id-keyed, and width-stable, so after a structural edit the surviving blocks keep
+   // their correct heights and re-paginate instantly; a brand-new block measures 0 until the next pass lands.
+   const [measuredHeights, setMeasuredHeights] = useState<MeasuredHeights>(EMPTY_HEIGHTS)
+
+   // Reset the heights the instant the active tab OR the page kind changes, DURING render (React's "adjust
+   // state when a prop changes" pattern), so the new tab paginates from scratch (forced breaks only) until
+   // it is measured, and the canvas never flashes the outgoing document's heights for a frame. The kind is
+   // in the key because turning an infinite document paged (Page setup) leaves the tab key alone yet suddenly
+   // needs pages. Also clear the frozen-layout cache so the freeze branch below can never hold a stale
+   // cross-tab snapshot. A render-phase reset (not an effect) means no blank frame.
+   const paginationResetKey = `${activeTabKey}::${format?.kind ?? 'infinite'}`
+   const lastPaginationResetKeyRef = useRef(paginationResetKey)
+
+   // The document's ONE page layout, fed identically to the editor canvas, the Pages panel, and Preview.
+   // Computed SYNCHRONOUSLY during render from (sections, format, measuredHeights) through the pure
+   // paginateDocument (lib/pageLayout): the single budgeted, empty-atomic-set pagination the Save-as-PDF /
+   // HTML export also runs, so all five surfaces render identical pages by construction. This is a plain
+   // render-phase computation with a ref cache (NOT useMemo): paginateDocument is pure arithmetic
+   // (microseconds even for large docs), so recomputing per render is free and matches the pre-unification
+   // editor. It is FROZEN while a paragraph is focused: an in-progress edit lives only in the contentEditable
+   // until blur, so re-paginating now would move the break under the caret. The freeze holds the last
+   // non-focused layout through the ref below.
+   const lastDocumentPagesRef = useRef<DocumentPages>(EMPTY_DOCUMENT_PAGES)
+   if (lastPaginationResetKeyRef.current !== paginationResetKey) {
+      lastPaginationResetKeyRef.current = paginationResetKey
+      setMeasuredHeights(EMPTY_HEIGHTS)
+      lastDocumentPagesRef.current = EMPTY_DOCUMENT_PAGES
+   }
+
+   let documentPages: DocumentPages
+   if (!pagedDocument) {
+      documentPages = EMPTY_DOCUMENT_PAGES
+   } else if (focusedParagraphId) {
+      // Hold the layout steady while a paragraph is being typed: its in-progress length lives only in the
+      // contentEditable until blur, so re-paginating now would move the break under the caret.
+      documentPages = lastDocumentPagesRef.current
+   } else {
+      documentPages = paginateDocument(sections, format, measuredHeights)
+      lastDocumentPagesRef.current = documentPages
+   }
+
+   // Refresh the measured HEIGHTS on a typing pause. The offscreen pass is debounced and off the critical
+   // path: the canvas keeps paginating synchronously from the last heights while the author types, and the
+   // fresh heights land ~180ms after the last height-affecting change (the layout re-settles on the next
+   // render). HELD while a paragraph is focused: an in-progress edit lives only in the contentEditable until
+   // blur, and its length is not yet in the model, so measuring now would read a half-typed paragraph.
+   // Clearing focusedParagraphId on blur re-runs this and settles the heights exactly where the export also
+   // reads them. A superseded run (deps changed, or a newer pass scheduled) is cancelled so a stale promise
+   // never overwrites fresher heights.
+   useEffect(() => {
+      if (!pagedDocument) return          // infinite: nothing to measure, keep the empty heights
+      if (focusedParagraphId) return      // hold the heights steady while a paragraph is being edited
+      let cancelled = false
+      const timer = window.setTimeout(() => {
+         void computeDocumentPages(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
+            .then(result => { if (!cancelled) setMeasuredHeights(result.heights) })
+      }, PAGINATION_DEBOUNCE_MS)
+      return () => { cancelled = true; clearTimeout(timer) }
+   }, [pagedDocument, focusedParagraphId, meta, sections, docTheme, docAccent, lang, presentation, format])
 
    // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
    // File -> Export... / Ctrl+E path AND the document background context menu's "Export..." item
@@ -1011,7 +1065,7 @@ export default function App() {
    // here so the App-level dock can host the body directly, without WysiwygArea owning it.
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
-   const pagesData = usePagesPanelData(sections, format, commitSectionsAndFormat, t, laidOutPages)
+   const pagesData = usePagesPanelData(sections, format, commitSectionsAndFormat, t, documentPages.pages)
 
    // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
    // wires each body's data + handlers here; the dock hosts only the chrome.
@@ -1201,9 +1255,8 @@ export default function App() {
                               onCloseFormat={handleCloseFormat}
                               previewMode={mode}
                               onSetMode={handleSetMode}
-                              measuredHeights={measuredHeights}
-                              onMeasuredHeights={setMeasuredHeights}
-                              atomicBlockIds={editorAtomicIds}
+                              pages={documentPages.pages}
+                              tooTallPageIds={documentPages.tooTallPageIds}
                               focusedParagraphId={focusedParagraphId}
                               onParagraphFocusChange={setFocusedParagraphId}
                            />

@@ -85,9 +85,9 @@ export interface LayoutMetrics {
 /**
  * The rendered heights read from the DOM (CSS px), keyed by stable model id so they survive
  * re-pagination (a split changes which sheet a unit sits on, never its width, hence never its height).
- * The measuring hook (`usePagedLayout`) produces this; `buildMetrics` turns it into a `LayoutMetrics`.
- * Kept here (pure) so both the editor hook and the App-level consumers (Pages panel, export) build the
- * SAME metrics and so paginate identically.
+ * The offscreen measurement pass (`measureHeightsFromContainer`, driven by `computeDocumentPages` in
+ * lib/exportLayout) produces this; `buildMetrics` turns it into a `LayoutMetrics`. Kept here (pure) so
+ * the one paginator that every surface draws from builds the SAME metrics and paginates identically.
  */
 export interface MeasuredHeights {
    header:             number
@@ -220,7 +220,8 @@ export const PAGE_FILL_RESERVE_PX = 40
 
 /** The height the paginator may fill on one sheet: the content box minus the slack band, so auto pages
  *  keep the breathing room manual breaks always had and never pack to the razor's edge the print sheet
- *  cannot hold. The editor and the export both feed this, so their pagination stays identical. */
+ *  cannot hold. There is now exactly ONE paginator (computeDocumentPages), so this single budget shapes
+ *  every surface at once: editor, Pages panel, Preview, and the PDF/HTML export can never disagree. */
 export function paginationBudgetPx(format: DocFormat | undefined): number {
    return Math.max(0, contentBoxHeightPx(format) - PAGE_FILL_RESERVE_PX)
 }
@@ -570,4 +571,54 @@ export function paginate(
          }
       }
    }
+}
+
+// ####################
+// # DOCUMENT LAYOUT  #
+// ####################
+
+/** One deterministic layout result: the paginated pages, the ids of pages whose single atomic block is
+ *  taller than the physical sheet, and the measured heights the layout came from. Pages and too-tall ids
+ *  are computed from the SAME heights, so a caller reading the too-tall note can never disagree with the
+ *  pages it is annotating. `heights` is carried so App can cache the offscreen measurement pass's heights
+ *  and re-paginate synchronously from them on every render. */
+export interface DocumentPages { pages: Page[]; tooTallPageIds: Set<string>; heights: MeasuredHeights }
+
+/**
+ * The ids of pages whose ENTIRE content is a single atomic block taller than the physical content box:
+ * auto-reflow cannot help (the block is not splittable and nothing above it can be pushed up), so the
+ * editor notes it. Measured against the TRUE `contentBoxHeightPx`, not the smaller pagination budget:
+ * too-tall is about whether a block fits the real sheet, so the reserved slack band must not count
+ * against it. A page whose sole non-list/checklist block measures taller than the content box is flagged,
+ * against the SAME heights that produced `pages`, so the editor's too-tall note can never disagree with
+ * the layout it annotates.
+ */
+export function findTooTallPageIds(pages: Page[], heights: MeasuredHeights, contentBoxHeight: number): Set<string> {
+   const tooTall = new Set<string>()
+   if (!(contentBoxHeight > 0)) return tooTall
+   for (const page of pages) {
+      const blocks = page.slices.flatMap(slice => slice.blocks)
+      if (blocks.length !== 1) continue
+      const only = blocks[0]
+      if (only.type === 'list' || only.type === 'checklist') continue   // splittable, handled by reflow
+      const height = heights.blockById.get(only.id)
+      if (height !== undefined && height > contentBoxHeight) tooTall.add(page.id)
+   }
+   return tooTall
+}
+
+/**
+ * Paginate a whole document from cached measured heights: the ONE budgeted, empty-atomic-set pagination
+ * every on-screen surface and the export share. Pure arithmetic (no DOM, microseconds even for large
+ * docs), so App calls it synchronously during render and the export calls it right after measuring fresh
+ * heights; both go through this single call site, so the editor canvas, Pages panel, Preview, and the
+ * PDF/HTML export can never diverge. Heights are per-block and width-stable, so after a structural edit
+ * the surviving blocks keep their correct heights and re-paginate instantly; a brand-new block measures
+ * 0 until the next measure lands (buildMetrics estimates/guards these), which is the optimism we want.
+ */
+export function paginateDocument(sections: Section[], format: DocFormat | undefined, heights: MeasuredHeights): DocumentPages {
+   const metrics        = buildMetrics(heights, sections)
+   const pages          = paginate(sections, format?.pages ?? [], paginationBudgetPx(format), metrics, new Set())
+   const tooTallPageIds = findTooTallPageIds(pages, heights, contentBoxHeightPx(format))
+   return { pages, tooTallPageIds, heights }
 }

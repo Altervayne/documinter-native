@@ -17,7 +17,6 @@ import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowConte
 import { ParagraphFocusProvider } from '../../contexts/ParagraphFocusContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
-import { usePagedLayout } from '../../hooks/usePagedLayout'
 
 // -- Component Imports --
 import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, SeparatorHorizontal, TriangleAlert } from 'lucide-react'
@@ -50,15 +49,14 @@ import {
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
-import { EMPTY_HEIGHTS, isAutoPageId, paginationBudgetPx, contentBoxWidthPx, type MeasuredHeights } from '../../lib/pageLayout'
+import { isAutoPageId, contentBoxWidthPx } from '../../lib/pageLayout'
 import type { T } from '../../lib/i18n'
 import type { Block, DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
 
-// A stable empty set for the atomic-ids fallback, so a missing prop never allocates a fresh Set per
-// render (which would churn the pagination memo needlessly).
-const EMPTY_ATOMIC_BLOCK_IDS: Set<string> = new Set()
+// A stable empty set for the too-tall default, so a missing prop never allocates a fresh Set per render.
+const EMPTY_TOO_TALL_PAGE_IDS: Set<string> = new Set()
 
 // The quiet corner "type" caption a paged sheet wears beside its number: it names how the sheet came to
 // be, mirroring the Pages panel's wording. Page 1 (origin 'first', or an unstamped page) reads as no
@@ -137,16 +135,18 @@ interface WysiwygAreaProps {
    previewMode?: Mode
    onSetMode?:   (mode: Mode) => void
    // ==========================================================
-   //  Measured paged layout (App-owned). The editor measures its rendered sheets and reports the
-   //  heights up so the Pages panel and export paginate from the identical source.
+   //  Deterministic paged layout (App-owned). App computes ONE page layout from the document via the
+   //  offscreen paginator (computeDocumentPages) and feeds it here, so the canvas, the Pages panel, Preview,
+   //  and the PDF/HTML export all render the identical pages. The editor no longer measures anything.
    // ==========================================================
-   measuredHeights?:   MeasuredHeights
-   onMeasuredHeights?: (heights: MeasuredHeights) => void
-   /** Block ids kept whole during pagination. App feeds the single focused paragraph's id (or none), so
-    *  overflowing paragraphs split at rest and the focused one reflows whole; the Pages panel paginates
-    *  from the same set. */
-   atomicBlockIds?:    Set<string>
-   /** The paragraph currently held whole for editing (App-owned so editor + Pages panel agree). */
+   /** The paginated pages to render in paged mode (empty in infinite mode, where the canvas renders one
+    *  continuous sheet instead). */
+   pages?:          Page[]
+   /** Pages whose sole atomic block is taller than the physical sheet, computed alongside `pages` from the
+    *  same measurement so the "block too tall" note never disagrees with the layout it annotates. */
+   tooTallPageIds?: Set<string>
+   /** The paragraph currently held whole for editing through the out-of-flow overlay (App-owned so it
+    *  survives a tab switch). A render-only signal: it never feeds pagination. */
    focusedParagraphId?: string | null
    /** Set / clear the focused paragraph: a fragment press sets it, a blur clears it. */
    onParagraphFocusChange?: (blockId: string | null) => void
@@ -159,7 +159,7 @@ export function WysiwygArea({
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
    previewMode, onSetMode,
-   measuredHeights, onMeasuredHeights, atomicBlockIds,
+   pages = [], tooTallPageIds = EMPTY_TOO_TALL_PAGE_IDS,
    focusedParagraphId = null, onParagraphFocusChange,
 }: WysiwygAreaProps) {
    const { t } = useLang()
@@ -472,37 +472,13 @@ export function WysiwygArea({
    const pageBreaks   = useMemo<PageBreak[]>(() => format?.pages ?? [], [format])
 
    // ==========================================================
-   //  Measured pagination: automatic reflow of splittable blocks
+   //  Deterministic pagination (App-owned, offscreen)
    // ==========================================================
-   // Paged geometry (the per-sheet render below resolves the same values locally). The content box is the
-   // A4 sheet height minus the top + bottom margins (uniform across pages). The hook measures the rendered
-   // sheets and reflows the layout so a list runs across sheets at an item boundary instead of jumping
-   // whole to the next page. MEASURED from the DOM, never predicted; the reflow is a pure render derivation
-   // that never touches the serialized model.
-   //
-   // Two heights, one physical sheet: pagination fills only `paginationBudgetPx` (the content box minus the
-   // slack band) so the canvas packs each sheet exactly as the Pages panel and the PDF/HTML export do,
-   // giving all four the same page count. The too-tall check keeps the TRUE content box, because a block
-   // being taller than the sheet is about the physical page, not the reflow budget.
-   const pagedMargins            = format?.margins ?? DEFAULT_A4_MARGINS
-   const pagedIsLandscape        = format?.kind === 'a4-landscape'
-   const pagedSheetHeightPx      = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
-   const contentBoxHeightPx = pagedSheetHeightPx
-      - millimetresToPx(pagedMargins.top)
-      - millimetresToPx(pagedMargins.bottom)
-
-   const { containerRef: pagesContainerRef, pages: laidOutPages, tooTallPageIds } = usePagedLayout({
-      enabled:          paged && !!onFormatChange,
-      sections,
-      forcedBreaks:     pageBreaks,
-      availableHeight:  paginationBudgetPx(format),
-      contentBoxHeight: contentBoxHeightPx,
-      heights:          measuredHeights ?? EMPTY_HEIGHTS,
-      onHeightsChange:  onMeasuredHeights ?? (() => {}),
-      atomicBlockIds:   atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
-      focusedParagraphId,
-   })
-   const derivedPages: Page[] | null = paged ? laidOutPages : null
+   // The canvas no longer measures its own sheets. App runs ONE offscreen paginator (computeDocumentPages)
+   // that is a pure function of (model, format, theme, ...) and feeds the resulting pages + too-tall ids in
+   // as props, so the editor, the Pages panel, Preview, and the PDF/HTML export render byte-identical pages.
+   // In infinite mode there are no pages, so the canvas renders one continuous sheet (`derivedPages` null).
+   const derivedPages: Page[] | null = paged ? pages : null
 
    // ==========================================================
    //  Paragraph focus: an out-of-flow edit overlay
@@ -577,9 +553,10 @@ export function WysiwygArea({
    // a paragraph split into 2+ fragments across sheets floats one. Reads live rects because block heights
    // vary, so the fragments' on-stack positions cannot be predicted without measuring them.
    useLayoutEffect(() => {
-      // The paged canvas container. `pagesContainerRef` is a callback ref (owned by usePagedLayout), so the
-      // element is reached through the DOM; `.doc-pages` is unique to the editor canvas (the Pages panel
-      // renders an HTML string, not these [data-block-id] nodes), matching the caret effect's own query.
+      // The paged canvas container, reached through the DOM: `.doc-pages` is unique to the editor canvas
+      // (the Pages panel renders an HTML string, not these [data-block-id] nodes), matching the caret
+      // effect's own query. This overlay geometry reads the LIVE rendered fragments to position itself; it
+      // is independent of where the pages themselves came from (App's offscreen paginator).
       const container = document.querySelector<HTMLElement>('.doc-pages')
       if (!focusedParagraphId || !container) { setParagraphOverlay(null); return }
       const fragments = Array.from(container.querySelectorAll<HTMLElement>('[data-block-id]'))
@@ -1253,7 +1230,7 @@ export function WysiwygArea({
                // context below (so a drag can cross sections and, in paged mode, sheets).
                const canvasBody = paged && derivedPages ? (
                   // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets.
-                  <div className="doc-pages" ref={pagesContainerRef}>
+                  <div className="doc-pages">
                      {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
                      {/* The focused split paragraph's edit overlay + tail scrims, mounted as a peer of the
                          sheets (not inside one) so the overlay floats above every sheet it spans instead of

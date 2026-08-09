@@ -1,8 +1,10 @@
 /*
- * The export's own deterministic pagination pass. The paged export must lay out from the document
- * itself, not from whatever the live editor happened to have measured, so pagination becomes a pure
- * function of (model, format, theme) independent of Preview vs Edit, interaction order, and debounce
- * timing.
+ * The document's single deterministic pagination pass, shared by every surface. Pagination must lay out
+ * from the document itself, not from whatever the live editor happened to have measured, so it becomes a
+ * pure function of (model, format, theme) independent of Preview vs Edit, interaction order, and debounce
+ * timing. This started as the export-only self-measure; it is now the ONE paginator every surface draws
+ * from: the editor canvas, the Pages panel, Preview, and the PDF/HTML export (unified_pagination_study.md,
+ * step 2). App owns the resulting page layout and feeds it to all four, so they agree by construction.
  *
  * The pass renders the document UNPAGINATED into an offscreen iframe, at the true A4 content-box width,
  * with the same export CSS and markup the real export emits, then measures every height with the same
@@ -10,7 +12,12 @@
  * carries no measurement anchors, so the rendered DOM is decorated in place (data-block-id / data-rich /
  * data-list-item-id / data-section-id) before measuring; the export string builders stay untouched.
  *
- * This is the only export-side code that touches the DOM. downloadHTML and printDocument live here (both
+ * Because the editor will call this on every typing pause, the measurement iframe is WARM: one hidden
+ * frame is created once and reused, fonts load once, and each pass swaps the render container's content
+ * in place rather than rewriting the whole document (see WARM FRAME below). A single measurement yields
+ * BOTH the paginated pages and the too-tall page ids, off the same heights, so the two can never disagree.
+ *
+ * This is the only pagination code that touches the DOM. downloadHTML and printDocument live here (both
  * self-measure); generateExportHTML stays a pure synchronous string builder in export.ts, with its
  * partitionIntoPages fallback intact for DOM-less callers (binder mini-preview, tests).
  */
@@ -18,7 +25,7 @@
 // -- Lib Imports --
 import { generateExportHTML, renderBlocksToDocHtml, type ExportOptions } from './export'
 import { measureHeightsFromContainer } from './domMeasure'
-import { buildMetrics, paginate, paginationBudgetPx, contentBoxWidthPx } from './pageLayout'
+import { paginateDocument, contentBoxWidthPx, EMPTY_HEIGHTS } from './pageLayout'
 import { slugify } from './text'
 import {
    A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, millimetresToPx, type Page,
@@ -81,22 +88,32 @@ function buildMeasurementHtml(meta: DocMeta, sections: Section[], opts: ExportOp
    return baseHtml.replace('</head>', `<style>${override}</style></head>`)
 }
 
-/** Resolve the frame's own animation-frame scheduler, falling back to the global one. */
-function nextFrame(frameWindow: Window | null): Promise<void> {
-   const raf = frameWindow?.requestAnimationFrame ?? window.requestAnimationFrame
-   return new Promise(resolve => raf.call(frameWindow ?? window, () => resolve()))
-}
-
-/** Wait until the frame's geometry is final to measure: fonts loaded, first layout settled over two
- *  frames, then every image decoded. MathML and inline SVG render synchronously, so they need no wait. */
-async function whenFrameReadyToMeasure(frameDocument: Document): Promise<void> {
-   const frameWindow = frameDocument.defaultView
-   const fonts = frameDocument.fonts
-   if (fonts && fonts.ready) { try { await fonts.ready } catch { /* measure with fallback metrics */ } }
-   await nextFrame(frameWindow)
-   await nextFrame(frameWindow)
+/**
+ * Settle the frame's geometry after a content change, then wait for images. I do NOT wait animation
+ * frames here: the measurement frame is hidden and off-screen, and Chrome throttles requestAnimationFrame
+ * in a hidden iframe to roughly 1fps (or pauses it), so awaiting a frame stalls close to a second on every
+ * pass, which the editor's per-pause recompute cannot afford. The rAF wait was also redundant: setting
+ * innerHTML applies the DOM and styles synchronously, and reading a layout property forces a synchronous
+ * layout, which is exactly what the measurement primitive does anyway (getBoundingClientRect). So I flush
+ * layout once by reading an offsetHeight, then keep only the genuinely-async image decode (which resolves
+ * immediately when there are no images). Fonts are already loaded on the warm frame, so text metrics are
+ * final without a frame wait. MathML and inline SVG render synchronously, so they need no wait either.
+ */
+async function settleFrameLayout(frameDocument: Document): Promise<void> {
+   // Read a layout property to force a synchronous reflow now, so the heights read next are final.
+   const docRender = frameDocument.querySelector<HTMLElement>('.doc-render')
+   void (docRender ?? frameDocument.documentElement).offsetHeight
    const images = Array.from(frameDocument.querySelectorAll('img'))
    await Promise.all(images.map(image => (image.decode ? image.decode().catch(() => {}) : Promise.resolve())))
+}
+
+/** Wait until a freshly written frame is final to measure: fonts loaded, then the layout settled. Only the
+ *  first write into the warm frame (or a head-changing rewrite) pays the font load; later content swaps
+ *  reuse the already-loaded fonts and settle through settleFrameLayout alone. */
+async function whenFrameReadyToMeasure(frameDocument: Document): Promise<void> {
+   const fonts = frameDocument.fonts
+   if (fonts && fonts.ready) { try { await fonts.ready } catch { /* measure with fallback metrics */ } }
+   await settleFrameLayout(frameDocument)
 }
 
 // ############
@@ -176,26 +193,35 @@ function decorateForMeasurement(docRender: Element, sections: Section[], theme: 
  * and never on the model, so it needs no invalidation, only overwriting.
  */
 
-interface PagesMemoEntry { signature: string; pages: Page[] }
+// The deterministic layout result (pages + too-tall ids + the heights they came from) lives in
+// pageLayout.ts now, since the pure paginateDocument builds it and App paginates from it synchronously.
+// Re-exported here so the existing exportLayout importers keep resolving unchanged.
+export type { DocumentPages } from './pageLayout'
+import type { DocumentPages } from './pageLayout'
+
+interface PagesMemoEntry { signature: string; result: DocumentPages }
 
 let lastPagesMemo: PagesMemoEntry | null = null
 
 /** A deterministic signature of the measurement inputs. pagedLayout is excluded on purpose: it is a
- *  caller-supplied override, not a measurement input (the measurement always re-paginates from scratch). */
-function exportPagesSignature(meta: DocMeta, sections: Section[], opts: ExportOptions): string {
+ *  caller-supplied override, not a measurement input (the measurement always re-paginates from scratch).
+ *  Exported so the determinism test can pin that identical inputs share a key (and height-affecting edits
+ *  do not) without needing real layout, which jsdom cannot provide. */
+export function exportPagesSignature(meta: DocMeta, sections: Section[], opts: ExportOptions): string {
    return JSON.stringify([
       meta, sections, opts.format ?? null, opts.theme, opts.accent, opts.lang ?? 'en', opts.presentation ?? null,
    ])
 }
 
-/** The memoized pages for this signature, or null on a miss. */
-function memoizedPages(signature: string): Page[] | null {
-   return lastPagesMemo && lastPagesMemo.signature === signature ? lastPagesMemo.pages : null
+/** The memoized result (pages + too-tall ids) for this signature, or null on a miss. */
+function memoizedPages(signature: string): DocumentPages | null {
+   return lastPagesMemo && lastPagesMemo.signature === signature ? lastPagesMemo.result : null
 }
 
-/** Replace the single memo entry with this signature's pages. */
-function storePages(signature: string, pages: Page[]): void {
-   lastPagesMemo = { signature, pages }
+/** Replace the single memo entry with this signature's result. Holds the too-tall set alongside the pages
+ *  so a memo hit returns both, exactly as a fresh measurement would. */
+function storePages(signature: string, result: DocumentPages): void {
+   lastPagesMemo = { signature, result }
 }
 
 // ########
@@ -210,60 +236,170 @@ function measurementFrameStyle(format: DocFormat | undefined): string {
    return `position:fixed;left:-10000px;top:0;width:${width}px;height:1200px;border:0;visibility:hidden;`
 }
 
-/**
- * Write the measurement document into `frameDocument`, wait for it to settle, decorate it, and return
- * the paginated pages for the paged export. Drives measurement on the passed frame so a caller holding
- * an iframe (the print path) can reuse it for the final render.
+// ##############
+// # WARM FRAME #
+// ##############
+
+/*
+ * A single hidden measurement iframe, created once and kept attached for the life of the page. The editor
+ * will call the paginator on every typing pause, so tearing the frame down per call (and cold-loading
+ * fonts each time) is not affordable. Instead the frame is warm: fonts load once, and each pass swaps only
+ * the render container's contents in place, then re-decorates and re-pins the width, so the measured DOM
+ * is byte-for-byte what a throwaway frame would have produced for the same inputs. The head (all the export
+ * CSS, the font links, the width override) is rewritten only when a head-affecting input actually changes
+ * (theme / accent / language / presentation / format), keyed by headStyleSignature; a content-only edit
+ * never rewrites the head, so it never reloads fonts.
  */
-async function measurePagesInFrame(
-   frameDocument: Document, meta: DocMeta, sections: Section[], opts: ExportOptions,
-): Promise<Page[]> {
+
+interface WarmMeasurementFrame { iframe: HTMLIFrameElement; headSignature: string }
+
+let warmFrame: WarmMeasurementFrame | null = null
+
+/** The signature of everything that shapes the measurement document's HEAD (its CSS, fonts, and the
+ *  width override) but NOT its body content. When this is unchanged, the already-loaded head is correct
+ *  and only the render container's contents need swapping. The model (meta / sections) is deliberately
+ *  absent: a content edit must take the fast swap path, not a head rewrite. */
+function headStyleSignature(opts: ExportOptions): string {
+   return JSON.stringify([
+      opts.format ?? null, opts.theme, opts.accent, opts.lang ?? 'en', opts.presentation ?? null,
+   ])
+}
+
+/** The inner HTML of the measurement document's `.doc-render` for `(meta, sections, opts)`, parsed out of
+ *  the freshly built measurement HTML. This is exactly the content the swap path drops into the warm
+ *  frame's existing `.doc-render`, so the swapped DOM matches a full write's body. */
+function buildRenderInnerHtml(meta: DocMeta, sections: Section[], opts: ExportOptions): string {
    const html = buildMeasurementHtml(meta, sections, opts)
-   frameDocument.open()
-   frameDocument.write(html)
-   frameDocument.close()
+   const parsed = new DOMParser().parseFromString(html, 'text/html')
+   const docRender = parsed.querySelector('.doc-render')
+   return docRender ? docRender.innerHTML : ''
+}
 
-   await whenFrameReadyToMeasure(frameDocument)
+/** Re-pin the render container to the paged content box after a content swap. The head's width override
+ *  already targets `.doc-render` (and the format, hence that override, is unchanged on the swap path), but
+ *  re-applying the width and vertical padding inline guarantees the measured wrap width even if the head
+ *  ever drifts. Matches buildMeasurementHtml's override values exactly. */
+function reapplyMeasurementWidth(docRender: HTMLElement, opts: ExportOptions): void {
+   const contentWidth = contentBoxWidthPx(opts.format)
+   const margins      = opts.format?.margins ?? DEFAULT_A4_MARGINS
+   docRender.style.width   = `${contentWidth}px`
+   docRender.style.padding = `${millimetresToPx(margins.top)}px 0 ${millimetresToPx(margins.bottom)}px 0`
+}
 
-   const docRender = frameDocument.querySelector<HTMLElement>('.doc-render')
-   if (!docRender) return []
-   decorateForMeasurement(docRender, sections, opts.theme)
-
-   const heights = measureHeightsFromContainer(docRender, sections)
-   const metrics = buildMetrics(heights, sections)
-   return paginate(sections, opts.format?.pages ?? [], paginationBudgetPx(opts.format), metrics, new Set())
+/** The warm frame's live document, creating and attaching the iframe on first use. Returns null only when
+ *  the frame cannot host a document (no contentWindow), which the caller treats as "cannot measure". */
+function ensureWarmFrameDocument(opts: ExportOptions): Document | null {
+   if (!warmFrame || !warmFrame.iframe.isConnected) {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.style.cssText = measurementFrameStyle(opts.format)
+      document.body.appendChild(iframe)
+      // A fresh iframe has no head yet, so force the first pass down the full-write branch.
+      warmFrame = { iframe, headSignature: '' }
+   }
+   // Keep the frame wide enough for the current format's sheet even if the format changed since creation.
+   warmFrame.iframe.style.cssText = measurementFrameStyle(opts.format)
+   return warmFrame.iframe.contentWindow?.document ?? null
 }
 
 /**
- * The export's deterministic page layout for `(meta, sections, opts)`. Renders the document into a
- * throwaway offscreen iframe, measures it, and paginates. Returns `[]` for a non-paged (infinite)
- * document, so callers keep their own `partitionIntoPages` fallback. Never reads live editor state.
+ * Render `(meta, sections, opts)` into the warm frame and return the paginated pages plus too-tall ids.
+ * Full-writes the whole measurement document only when the head signature changed (or the frame is brand
+ * new), paying the one font load; otherwise swaps just the render container's contents and settles without
+ * reloading fonts. Either way the DOM is decorated in place before measuring, so both paths measure the
+ * same geometry a throwaway frame would have. Returns an empty result when the frame cannot be measured.
  */
-export async function computeExportPages(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): Promise<Page[]> {
-   const paged = !!opts.format && opts.format.kind !== 'infinite'
-   if (!paged) return []
-   if (typeof document === 'undefined') return []
+async function measureDocumentInWarmFrame(meta: DocMeta, sections: Section[], opts: ExportOptions): Promise<DocumentPages> {
+   const empty: DocumentPages = { pages: [], tooTallPageIds: new Set(), heights: EMPTY_HEIGHTS }
+   const frameDocument = ensureWarmFrameDocument(opts)
+   if (!frameDocument || !warmFrame) return empty
 
-   // An unchanged document skips the offscreen layout entirely (no iframe built). Infinite documents
-   // returned above without a signature, so the memo only ever holds a paged layout.
+   const headSignature = headStyleSignature(opts)
+   const needsFullWrite = warmFrame.headSignature !== headSignature
+
+   if (needsFullWrite) {
+      // A head-affecting input changed (or the frame is new): rewrite the whole document and reload fonts.
+      // The full write already carries this call's body, so no swap is needed on this pass.
+      frameDocument.open()
+      frameDocument.write(buildMeasurementHtml(meta, sections, opts))
+      frameDocument.close()
+      await whenFrameReadyToMeasure(frameDocument)
+      warmFrame.headSignature = headSignature
+   } else {
+      // Content-only edit: swap the render container's contents, re-pin the width, and settle without
+      // touching the already-loaded fonts. This is the hot path the editor's per-pause recompute takes.
+      const docRender = frameDocument.querySelector<HTMLElement>('.doc-render')
+      if (!docRender) return empty
+      docRender.innerHTML = buildRenderInnerHtml(meta, sections, opts)
+      reapplyMeasurementWidth(docRender, opts)
+      await settleFrameLayout(frameDocument)
+   }
+
+   const docRender = frameDocument.querySelector<HTMLElement>('.doc-render')
+   if (!docRender) return empty
+   decorateForMeasurement(docRender, sections, opts.theme)
+
+   // The offscreen pass supplies fresh heights; the pure paginateDocument turns them into pages + too-tall
+   // ids through the one budgeted, empty-atomic-set pagination every surface shares. Export paginates the
+   // same way App does, so all surfaces agree by construction.
+   const heights = measureHeightsFromContainer(docRender, sections)
+   return paginateDocument(sections, opts.format, heights)
+}
+
+// #############
+// # SEQUENCE  #
+// #############
+
+/*
+ * The warm frame is a single shared surface, so two overlapping measurements (a recompute racing an
+ * export, say) must not interleave their innerHTML swaps and settle waits. Every measurement runs through
+ * this one-at-a-time chain: each waits for the previous to finish before touching the frame, so the last
+ * caller's write is the one that measures. Callers still each receive their own result; only the frame's
+ * mutation is serialized.
+ */
+
+let measurementChain: Promise<unknown> = Promise.resolve()
+
+function runExclusive<Result>(task: () => Promise<Result>): Promise<Result> {
+   const result = measurementChain.then(task, task)
+   // Keep the chain alive whether this task resolved or rejected, so one failure never wedges the queue.
+   measurementChain = result.then(() => undefined, () => undefined)
+   return result
+}
+
+// ########
+// # CORE #
+// ########
+
+/**
+ * The document's deterministic page layout for `(meta, sections, opts)`: renders it into the warm
+ * offscreen frame, measures it, and paginates, returning BOTH the pages and the too-tall page ids off the
+ * one measurement. Returns an empty result for a non-paged (infinite) document, so callers keep their own
+ * `partitionIntoPages` fallback. Never reads live editor state. This is the single paginator every surface
+ * draws from: the export/print calls here, and App's documentPages that feeds the canvas, panel, + Preview.
+ */
+export async function computeDocumentPages(
+   meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS,
+): Promise<DocumentPages> {
+   const paged = !!opts.format && opts.format.kind !== 'infinite'
+   if (!paged) return { pages: [], tooTallPageIds: new Set(), heights: EMPTY_HEIGHTS }
+   if (typeof document === 'undefined') return { pages: [], tooTallPageIds: new Set(), heights: EMPTY_HEIGHTS }
+
+   // An unchanged document skips the offscreen layout entirely. Infinite documents returned above without
+   // a signature, so the memo only ever holds a paged layout. The memo is checked once here for the common
+   // repeat-call fast path and again inside the serialized section so identical concurrent calls collapse
+   // to one measurement.
    const signature = exportPagesSignature(meta, sections, opts)
    const cached = memoizedPages(signature)
    if (cached) return cached
 
-   const iframe = document.createElement('iframe')
-   iframe.setAttribute('aria-hidden', 'true')
-   iframe.style.cssText = measurementFrameStyle(opts.format)
-   document.body.appendChild(iframe)
-
-   const frameDocument = iframe.contentWindow?.document
-   if (!frameDocument) { iframe.remove(); return [] }
-   try {
-      const pages = await measurePagesInFrame(frameDocument, meta, sections, opts)
-      storePages(signature, pages)
-      return pages
-   } finally {
-      iframe.remove()
-   }
+   return runExclusive(async () => {
+      const hit = memoizedPages(signature)
+      if (hit) return hit
+      const result = await measureDocumentInWarmFrame(meta, sections, opts)
+      storePages(signature, result)
+      return result
+   })
 }
 
 // #############
@@ -276,7 +412,7 @@ export async function computeExportPages(meta: DocMeta, sections: Section[], opt
  * any editor state.
  */
 export async function downloadHTML(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): Promise<void> {
-   const pages = await computeExportPages(meta, sections, opts)
+   const { pages } = await computeDocumentPages(meta, sections, opts)
    const finalOpts = pages.length > 0 ? { ...opts, pagedLayout: pages } : opts
    const html = generateExportHTML(meta, sections, finalOpts)
 
@@ -300,13 +436,20 @@ async function whenFontsReady(frameDocument: Document): Promise<void> {
 }
 
 /**
- * Open the browser print dialog ("Save as PDF") over the paged export HTML. Uses ONE hidden iframe in
- * two passes: pass 1 writes the unpaginated measurement document and measures it; pass 2 rewrites the
- * same frame with the final paginated export and prints it. One font load (cached after the first pass),
- * one iframe. Intended for paged documents (the caller gates on paged mode); an infinite document falls
- * through to the plain forced-break partition inside generateExportHTML.
+ * Open the browser print dialog ("Save as PDF") over the paged export HTML. Measurement runs through the
+ * shared warm frame (computeDocumentPages, reusing the memo so a Save-as-PDF right after an HTML export of
+ * the same document skips the offscreen pass), then a SEPARATE short-lived iframe renders and prints the
+ * final paginated export. The print render needs its own frame the dialog can hold, so it stays here; only
+ * the measurement moved to the warm frame. A measurement failure falls back to the forced-break partition
+ * inside generateExportHTML rather than aborting the print. An infinite document measures to no pages and
+ * falls through to that same forced-break partition.
  */
 export async function printDocument(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): Promise<void> {
+   let pages: Page[] = []
+   try {
+      pages = (await computeDocumentPages(meta, sections, opts)).pages
+   } catch { pages = [] }
+
    const iframe = document.createElement('iframe')
    iframe.setAttribute('aria-hidden', 'true')
    iframe.style.cssText = measurementFrameStyle(opts.format)
@@ -316,25 +459,7 @@ export async function printDocument(meta: DocMeta, sections: Section[], opts: Ex
    const frameDocument = frameWindow?.document
    if (!frameWindow || !frameDocument) { iframe.remove(); return }
 
-   const paged = !!opts.format && opts.format.kind !== 'infinite'
-   let pages: Page[] | undefined
-   if (paged) {
-      // Reuse the memo so a Save-as-PDF right after an HTML export of the same document skips pass 1 and
-      // goes straight to writing the final print HTML. A measurement failure falls back to the forced-break
-      // partition rather than aborting the print.
-      const signature = exportPagesSignature(meta, sections, opts)
-      const cached = memoizedPages(signature)
-      if (cached) {
-         pages = cached
-      } else {
-         try {
-            pages = await measurePagesInFrame(frameDocument, meta, sections, opts)
-            storePages(signature, pages)
-         } catch { pages = undefined }
-      }
-   }
-
-   const finalOpts = pages && pages.length > 0 ? { ...opts, pagedLayout: pages } : opts
+   const finalOpts = pages.length > 0 ? { ...opts, pagedLayout: pages } : opts
    const html = generateExportHTML(meta, sections, finalOpts)
    frameDocument.open()
    frameDocument.write(html)
