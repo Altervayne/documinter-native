@@ -109,6 +109,13 @@ export interface Block {
     *  `false`), so an untouched document stays byte-identical and the JSON backup carries only the flag
     *  when set. Layout chrome, JSON-only: read inside `paginate`, never emitted to `.mint` / `.md`. */
    keepTogether?: true
+   /** Paged-format keep-with-next: never let a page break fall AFTER this block, so it stays on the same
+    *  sheet as the block that follows it (a caption pinned to the chart under it, say). Extends the
+    *  automatic keep-with-next the paginator already gives headings to any block the author opts in. Only
+    *  ever `true` or absent (never `false`), same as `keepTogether`, so an untouched document stays
+    *  byte-identical and the JSON backup carries the field only when set. Layout chrome, JSON-only: read
+    *  inside `paginate`, never emitted to `.mint` / `.md`. */
+   keepWithNext?: true
    /** RENDER-ONLY, set by the paginator on a shallow-copied `p` fragment when a paragraph is split
     *  across page sheets. Names the fragment's char range within the model richText and whether it is
     *  the final piece, so a renderer can identify a fragment and its offset (paragraphs carry no item

@@ -39,6 +39,10 @@ interface UseBlockContextMenuOptions {
    /** Paged-format keep-together toggle, computed by the caller (present only in paged mode for an
     *  outer splittable block). `active` reflects the current `keepTogether` state. */
    keepTogether?: { active: boolean; onSelect: () => void }
+   /** Paged-format keep-with-next toggle, computed by the caller (present only in paged mode for an
+    *  outer block that has a following top-level block). `active` reflects the current `keepWithNext`
+    *  state. */
+   keepWithNext?: { active: boolean; onSelect: () => void }
 }
 
 interface UseBlockContextMenuResult {
@@ -61,7 +65,7 @@ export function useBlockContextMenu({
    onRequestInsertBefore, onRequestInsertAfter,
    onMoveListItemUp, onMoveListItemDown, onIndentListItem, onUnindentListItem, onRemoveListItem,
    onInsertTableRowAt, onDeleteTableRowAt, onInsertTableColAt, onDeleteTableColAt,
-   pageBreak, keepTogether,
+   pageBreak, keepTogether, keepWithNext,
 }: UseBlockContextMenuOptions): UseBlockContextMenuResult {
    const [contextMenu,           setContextMenu]           = useState<{ x: number; y: number } | null>(null)
    const [contextMenuListItemId, setContextMenuListItemId] = useState<string | null>(null)
@@ -171,6 +175,7 @@ export function useBlockContextMenu({
          tableCell:  tableCellActions,
          pageBreak,
          keepTogether,
+         keepWithNext,
       }
    }
 

@@ -6,7 +6,7 @@ import {
    IndentIncrease, IndentDecrease,
    BetweenHorizontalStart, BetweenHorizontalEnd,
    BetweenVerticalStart, BetweenVerticalEnd,
-   SeparatorHorizontal, Magnet,
+   SeparatorHorizontal, Magnet, Link2,
 } from 'lucide-react'
 
 // -- Context Imports --
@@ -68,6 +68,10 @@ export interface BlockContextMenuProps {
    /** Paged-format keep-together toggle. Present only in paged mode for an outer splittable block.
     *  `active` = the block is currently held whole; the label / action swaps on it. */
    keepTogether?:  { active: boolean; onSelect: () => void }
+   /** Paged-format keep-with-next toggle. Present only in paged mode for an outer block that has a
+    *  following top-level block. `active` = a break is currently forbidden after this block; the label /
+    *  action swaps on it. */
+   keepWithNext?:  { active: boolean; onSelect: () => void }
 }
 
 // #############
@@ -91,6 +95,7 @@ export function BlockContextMenu({
    tableCell,
    pageBreak,
    keepTogether,
+   keepWithNext,
 }: BlockContextMenuProps) {
    const { t } = useLang()
 
@@ -141,6 +146,20 @@ export function BlockContextMenu({
             label:    keepTogether.active ? t.blockAllowSplit : t.blockKeepTogether,
             icon:     <Magnet size={13} />,
             onSelect: keepTogether.onSelect,
+         },
+      )
+   }
+
+   // ============ Keep-with-next toggle (paged format only) ============
+   // Distinct from keep-together: this forbids a break AFTER the block (pinning it to its follower), not
+   // a split WITHIN it. The state reads from the label + verb swap, same as keep-together above.
+   if (keepWithNext) {
+      entries.push(
+         { type: 'separator' },
+         {
+            label:    keepWithNext.active ? t.blockAllowBreakAfter : t.blockKeepWithNext,
+            icon:     <Link2 size={13} />,
+            onSelect: keepWithNext.onSelect,
          },
       )
    }

@@ -425,7 +425,7 @@ export function paginate(
             if (isStart) used += metrics.sectionTitleHeight(section.id)
          }
 
-         const keepWith = (isHeadingType(block) && !breaksAfterBlockId.has(block.id))
+         const keepWith = ((isHeadingType(block) || block.keepWithNext === true) && !breaksAfterBlockId.has(block.id))
             ? trailingKeepHeight(section.blocks, blockIndex + 1)
             : 0
          placeBlock(block, keepWith)
@@ -447,8 +447,8 @@ export function paginate(
 
    // Place one block on the current page, auto-breaking (and, for a splittable list or paragraph,
    // splitting) so it fits. `openSlice` is guaranteed non-null on entry. `keepWith` is the height that
-   // must stay on this sheet with `block` (its keep-with-next companion): non-zero only for a heading the
-   // section loop hands a companion reservation, 0 for every other caller, so non-heading placement is
+   // must stay on this sheet with `block` (its keep-with-next companion): non-zero for a heading or a
+   // block the author flagged keepWithNext, 0 for every other block, so unflagged non-heading placement is
    // byte-identical to before.
    function placeBlock(block: Block, keepWith: number): void {
       const itemHeights    = metrics.listItemHeights(block.id)
@@ -457,6 +457,19 @@ export function paginate(
       // panel pass every paragraph id as atomic so they render whole; export passes none; a keepTogether
       // paragraph is held whole in both).
       const splitParagraph = !!paragraphLines && paragraphLines.length > 0 && !isHeldAtomic(block)
+
+      // Manual keep-with-next for a SPLITTABLE keeper (a paragraph or list the user pinned to travel with
+      // the block after it; the atomic branch already handles atomic keepers). The common case is a short
+      // block that fits whole but whose companion would not fit after it: break so the pair starts a fresh
+      // page together. Uses the block's whole height, so a block long enough to actually split still spans
+      // pages (its tail is best-effort, I never manufacture a widow to force it). keepWith is 0 for any
+      // block without the flag, and used > 0 gates the loop, so this is inert otherwise. After autoBreak
+      // resets used to 0 the used > 0 guard is false, so it can never double-break.
+      const isSplittableList = !!itemHeights && itemHeights.length > 0
+      if (keepWith > 0 && used > 0 && !isHeldAtomic(block) && (splitParagraph || isSplittableList)) {
+         const wholeHeight = metrics.blockHeight(block.id)
+         if (wholeHeight + keepWith > remaining() && wholeHeight + keepWith <= availableHeight) autoBreak(block.id, true)
+      }
 
       if (splitParagraph) {
          // Splittable paragraph: fill rendered lines across pages, cutting the richText at the char

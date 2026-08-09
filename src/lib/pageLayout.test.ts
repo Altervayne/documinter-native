@@ -698,3 +698,101 @@ describe('paginate — keep-together', () => {
       expect(pages[1]?.id).not.toBe(`${AUTO_PAGE_PREFIX}H`)
    })
 })
+
+describe('paginate — keep-with-next (manual flag)', () => {
+   // A splittable `p` flagged keepWithNext: it fits whole but is pinned to whatever follows it.
+   function keeperParagraph(id: string, length: number): Block {
+      return { id, type: 'p', richText: [{ text: 'x'.repeat(length) }], keepWithNext: true }
+   }
+   const shortLines: ParagraphLine[] = [{ height: 10, charEnd: 5 }, { height: 10, charEnd: 10 }]
+
+   // 1. A short flagged paragraph fits under existing content, but its companion would not follow it there,
+   // so the pre-check moves the paragraph WHOLE (untagged) to a fresh page where the pair fits together.
+   it('moves a flagged short paragraph whole to a fresh page so its companion can follow', () => {
+      const sections = [section('S', [block('F'), keeperParagraph('P', 10), block('C')])]
+      // page 1: F(60), remaining 40. P fits whole (20), but P(20) + firstAtom(C)=30 => 50 > 40, so the pair
+      // moves: P starts an auto:P page, C follows on the same sheet.
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, P: 20, C: 30 }, paragraphLines: { P: shortLines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}P`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P', 'C'])
+      // Moved whole, not split: the original block is placed untagged with its full richText.
+      expect(pages[1].slices[0].blocks[0].paragraphFragment).toBeUndefined()
+      expect(pages[1].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(10) }])
+   })
+
+   // 2. A flagged ATOMIC block (no line / item channel) reserves its companion through the atomic branch,
+   // not the pre-check: the same pinning result, but via `need = height + keepWith` in the atomic path.
+   it('reserves a companion for a flagged atomic block through the atomic branch', () => {
+      const flaggedTable: Block = { id: 'A', type: 'table', keepWithNext: true }
+      const sections = [section('S', [block('F'), flaggedTable, block('C')])]
+      // page 1: F(60), remaining 40. A is atomic (20); A + firstAtom(C)=30 => 50 > 40, so the atomic branch
+      // breaks and the pair starts an auto:A page together.
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, A: 20, C: 30 } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}A`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['A', 'C'])
+   })
+
+   // 3. An explicit break pinned right after the flagged block wins: the call-site short-circuit sets
+   // keepWith to 0, so keep-with-next reserves nothing and the author break fires as written.
+   it('is inert when an explicit break sits after the flagged block', () => {
+      const sections = [section('S', [block('F'), keeperParagraph('P', 10), block('C')])]
+      const forced = [{ id: 'brk', after: { sectionId: 'S', blockId: 'P' } }]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, P: 20, C: 30 }, paragraphLines: { P: shortLines } })
+      const pages = paginate(sections, forced, 100, metrics)
+      // Without the short-circuit P would move with C; the break on P zeroes keepWith, so P stays beside F
+      // and C starts the explicit `brk` page.
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F', 'P'])
+      expect(pages[1].id).toBe('brk')
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['C'])
+      expect(isAutoPageId(pages[1].id)).toBe(false)
+   })
+
+   // 4. The flag on the flow's LAST block is inert: trailingKeepHeight past the end is 0, so keepWith is 0.
+   it('is inert on the last block of the flow (nothing follows to keep with)', () => {
+      const sections = [section('S', [block('F'), keeperParagraph('P', 10)])]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, P: 20 }, paragraphLines: { P: shortLines } })
+      const pages = paginate(sections, [], 100, metrics)
+      // P fits under F (60 + 20 = 80 <= 100) and has no successor, so it simply stays on page 1.
+      expect(pages).toHaveLength(1)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F', 'P'])
+   })
+
+   // 5. Regression: the SAME layout without the flag leaves the paragraph where it fits, so C alone spills.
+   it('leaves the same paragraph unaffected without the flag', () => {
+      const plain: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(10) }] }
+      const sections = [section('S', [block('F'), plain, block('C')])]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, P: 20, C: 30 }, paragraphLines: { P: shortLines } })
+      const pages = paginate(sections, [], 100, metrics)
+      // No flag: P stays beside F (fits at remaining 40), and only C is pushed onto its own auto page.
+      expect(shape(pages)).toEqual([
+         { id: FIRST_PAGE_ID,          slices: [{ section: 'S', blocks: ['F', 'P'], start: true,  end: false }] },
+         { id: `${AUTO_PAGE_PREFIX}C`, slices: [{ section: 'S', blocks: ['C'],      start: false, end: true  }] },
+      ])
+   })
+
+   // 6. A flagged paragraph long enough to genuinely split still splits (best-effort): when the whole block
+   // plus its companion cannot fit ANY fresh page, the pre-check declines and the split loop runs as usual.
+   it('still splits a flagged paragraph too tall to keep with its companion on one page', () => {
+      const longLines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 }, { height: 30, charEnd: 30 },
+         { height: 30, charEnd: 40 }, { height: 30, charEnd: 50 },
+      ]
+      const sections = [section('S', [block('F'), keeperParagraph('P', 50), block('C')])]
+      // P whole is 150 > availableHeight 100, so P(150) + firstAtom(C)=30 can never share a sheet: the
+      // pre-check's `<= availableHeight` guard is false, so it declines and P splits at a line boundary.
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 30, P: 150, C: 30 }, paragraphLines: { P: longLines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages.length).toBeGreaterThan(1)
+      const fragments = pages.flatMap(page => page.slices.flatMap(slice => slice.blocks))
+         .filter(candidate => candidate.id === 'P')
+      expect(fragments.length).toBeGreaterThan(1)
+      expect(fragments.every(candidate => candidate.paragraphFragment !== undefined)).toBe(true)
+   })
+})

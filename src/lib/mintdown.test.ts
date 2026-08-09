@@ -249,6 +249,20 @@ describe('Mintdown, keep-together is layout chrome', () => {
       // The content itself still serializes, so the flag is dropped, not the whole block.
       expect(text).toContain('held whole')
    })
+
+   // keepWithNext is the sibling keep-with-next flag: also paged-layout chrome the paginator reads, so it
+   // must never reach the Mintdown text either (same reasoning as keepTogether above).
+   it('never emits a block keepWithNext flag', () => {
+      const sections = [{
+         id: 's', title: 'Section', collapsed: false, blocks: [
+            { id: 'p1', type: 'p' as const, richText: [{ text: 'pinned caption' }], keepWithNext: true as const },
+            { id: 'p2', type: 'p' as const, richText: [{ text: 'the companion' }] },
+         ],
+      }]
+      const text = documentToMintdown(sections, { title: 'Doc', fields: [] })
+      expect(text).not.toContain('keepWithNext')
+      expect(text).toContain('pinned caption')
+   })
 })
 
 describe('Mintdown, image block with markup overlay', () => {

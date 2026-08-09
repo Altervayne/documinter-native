@@ -21,6 +21,9 @@ export interface PageBreaksApi {
    paged: boolean
    /** Whether this block can be made to start a fresh page (false for the document's first block). */
    canStartOnNewPage: (blockId: string) => boolean
+   /** Whether this block has a following top-level block (false for the document's last block). Gates the
+    *  keep-with-next toggle: a block with no successor has nothing to keep with. */
+   canBreakAfter: (blockId: string) => boolean
    /** Whether a break already sits so this block starts a fresh page (a break after its predecessor). */
    startsFreshPage: (blockId: string) => boolean
    /** Make this block start a fresh page (a break after its flat predecessor). */
@@ -32,6 +35,7 @@ export interface PageBreaksApi {
 const NO_PAGE_BREAKS: PageBreaksApi = {
    paged:             false,
    canStartOnNewPage: () => false,
+   canBreakAfter:     () => false,
    startsFreshPage:   () => false,
    startOnNewPage:    () => {},
    mergeWithPrevious: () => {},

@@ -45,7 +45,7 @@ import { renderPageBandHtml } from '../../lib/pageBands'
 import {
    reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
    hasPageBreakAfter, removePageBreak,
-   canStartOnNewPage, blockStartsFreshPage, startBlockOnNewPage, mergeBlockWithPrevious,
+   canStartOnNewPage, canBreakAfter, blockStartsFreshPage, startBlockOnNewPage, mergeBlockWithPrevious,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
@@ -628,6 +628,7 @@ export function WysiwygArea({
    const pageBreaksApi: PageBreaksApi = {
       paged,
       canStartOnNewPage: blockId => canStartOnNewPage(sections, blockId),
+      canBreakAfter:     blockId => canBreakAfter(sections, blockId),
       startsFreshPage:   blockId => blockStartsFreshPage(pageBreaks, sections, blockId),
       startOnNewPage:    blockId => commitPageBreakEdit(startBlockOnNewPage(pageBreaks, sections, blockId)),
       mergeWithPrevious: blockId => commitPageBreakEdit(mergeBlockWithPrevious(pageBreaks, sections, blockId)),

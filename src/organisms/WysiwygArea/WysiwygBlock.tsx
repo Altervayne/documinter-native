@@ -222,6 +222,18 @@ export function WysiwygBlock({
             onSelect: () => patch({ keepTogether: block.keepTogether ? undefined : true }),
          }
          : undefined
+   // Paged-format keep-with-next toggle: for an OUTER, editable block of ANY type that has a following
+   // top-level block to keep with (an atomic block can be pinned to its follower too, so this is not gated
+   // to splittable types). A block with no successor has nothing to keep with, so `canBreakAfter` gates it
+   // out. Toggling routes through patch -> updateBlock -> commitActiveEdit, so it is one undo entry, and
+   // `keepWithNext` is only ever true or absent, so the toggle clears it to undefined rather than false.
+   const keepWithNextOption: { active: boolean; onSelect: () => void } | undefined =
+      (!inner && !readOnly && pageBreaks.paged && pageBreaks.canBreakAfter(block.id))
+         ? {
+            active:   block.keepWithNext === true,
+            onSelect: () => patch({ keepWithNext: block.keepWithNext ? undefined : true }),
+         }
+         : undefined
    const { contextMenuProps, openContextMenu } = useBlockContextMenu({
       block,
       blockDivRef,
@@ -244,6 +256,7 @@ export function WysiwygBlock({
       onDeleteTableColAt: handleDeleteTableColAt,
       pageBreak: pageBreakOption,
       keepTogether: keepTogetherOption,
+      keepWithNext: keepWithNextOption,
    })
 
    // ========================
