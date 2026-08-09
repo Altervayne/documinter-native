@@ -27,7 +27,9 @@ interface ClampedResult<ElementType extends HTMLElement> {
 
 // A small but visible gap kept between a clamped popover's box and every viewport edge, enough
 // that the menu (and its softened drop-shadow) never reads as flush-with / spilling-off the edge.
-const DEFAULT_MARGIN = 12
+// Exported so popovers taller than the viewport (e.g. BlockContextMenu, which can reach roughly
+// 650px) can cap their own height to the same margin instead of hardcoding a second value.
+export const DEFAULT_MARGIN = 12
 
 // ############
 // # INTERNAL #

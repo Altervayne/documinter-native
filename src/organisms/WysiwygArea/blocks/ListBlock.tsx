@@ -108,13 +108,23 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
    // The marker shown before the row, drawn from THIS sub-list's marker (default dot). An ordered
    // marker renders the item's ordinal (the top level continues numbering across a page-split via
    // itemOffset); an unordered marker renders its glyph.
+   const ordered = isOrderedMarker(marker)
    let bullet: string
-   if (isOrderedMarker(marker)) {
+   if (ordered) {
       const ordinal = (depth === 0 ? itemOffset : 0) + index + 1
       bullet = `${formatOrderedMarker(marker, ordinal)}.`
    } else {
       bullet = UNORDERED_MARKER_GLYPH[marker as 'dot' | 'circle' | 'square' | 'dash' | 'arrow']
    }
+
+   // The marker column's width, wide enough that an ordered marker's widest common ordinal
+   // ("viii.", "XVIII.") never clips, right-aligned like a native <ol> so every item's text starts
+   // at the same x regardless of its own marker's width. Bullets are single glyphs and would align
+   // in a 1ch column on their own, but stay on this same column so bullet and number sub-lists share
+   // one layout. `ch` resolves against the marker's own monospace font, so it tracks the glyph width
+   // exactly rather than guessing an em ratio. A marker rarer than the common case (very deep ordered
+   // lists) simply grows the column for that one row instead of clipping.
+   const markerColumnMinWidth = ordered ? '5.5ch' : '1ch'
 
    function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
       const element = event.currentTarget
@@ -203,7 +213,7 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
                   aria-label={t.checklistToggle}
                />
             ) : (
-               <span className="shrink-0 select-none text-muted/50 font-mono text-xs mt-px" style={{ minWidth: '1ch' }}>
+               <span className="shrink-0 select-none text-right text-muted/50 font-mono text-xs mt-px" style={{ minWidth: markerColumnMinWidth }}>
                   {bullet}
                </span>
             )}

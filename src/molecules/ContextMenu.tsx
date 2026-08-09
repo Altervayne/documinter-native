@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 
 // -- Hook Imports --
-import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
+import { DEFAULT_MARGIN, useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
 
 // -- Molecule Imports --
 import { AccentSwatchGrid, type AccentSwatchOption, type AccentCustomSwatchOption } from './AccentSwatchGrid'
@@ -141,10 +141,18 @@ export function ContextMenu({ position, entries, onClose, width, className }: Co
       <div
          ref={ref}
          className={[
-            'fixed z-[9999] rounded-xl border border-border bg-raised shadow-xl overflow-hidden',
+            'fixed z-[9999] rounded-xl border border-border bg-raised shadow-xl overflow-x-hidden overflow-y-auto',
             className ?? 'min-w-[172px]',
          ].join(' ')}
-         style={{ top, left, width, animation: 'menu-in 120ms ease-out both', transformOrigin: '0% 0%' }}
+         style={{
+            top, left, width,
+            // Cap the menu to the viewport minus the same margin the clamp keeps on every edge, so a
+            // menu taller than the screen (BlockContextMenu's pagination + list-item + table-cell
+            // sections can stack past 600px) scrolls internally instead of spilling past the bottom.
+            maxHeight: `calc(100vh - ${2 * DEFAULT_MARGIN}px)`,
+            animation: 'menu-in 120ms ease-out both',
+            transformOrigin: '0% 0%',
+         }}
       >
          {entries.map((entry, entryIndex) => {
             if ('type' in entry) {

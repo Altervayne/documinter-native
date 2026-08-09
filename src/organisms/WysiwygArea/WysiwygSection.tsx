@@ -9,7 +9,7 @@ const noopStrategy: SortingStrategy = () => null
 import {
    GripVertical, SquareDashed, Trash2,
    ArrowUpFromLine, ArrowDownToLine, ChevronUp, ChevronDown,
-   Copy, Pencil,
+   Copy,
 } from 'lucide-react'
 import { BlockTypePicker } from '../../molecules/BlockTypePicker'
 import { ContextMenu } from '../../molecules/ContextMenu'
@@ -130,13 +130,6 @@ export function WysiwygSection({
       setSectionMenu({ x: event.clientX, y: event.clientY })
    }
 
-   /** Focuses the section title for editing, the "Rename" menu action. Queried by the section's
-    *  own data-section-id rather than a ref, since PlainEditable doesn't forward one. */
-   function focusTitle() {
-      const titleEl = document.querySelector<HTMLElement>(`[data-section-id="${section.id}"] h2`)
-      titleEl?.focus()
-   }
-
    function buildSectionMenuEntries(): ContextMenuEntry[] {
       return [
          { label: t.sectionMenuInsertAbove, icon: <ArrowUpFromLine size={13} />, onSelect: () => insertSectionAt(index, mkSection(t.defaultSectionTitle)) },
@@ -145,8 +138,6 @@ export function WysiwygSection({
          { label: t.sectionMenuMoveUp,   icon: <ChevronUp size={13} />,   disabled: index === 0, onSelect: () => moveSecUp(section.id) },
          { label: t.sectionMenuMoveDown, icon: <ChevronDown size={13} />, disabled: !!isLastSection, onSelect: () => moveSecDown(section.id) },
          { label: t.sectionMenuDuplicate, icon: <Copy size={13} />, onSelect: () => duplicateSec(section.id) },
-         { type: 'separator' },
-         { label: t.sectionMenuRename, icon: <Pencil size={13} />, onSelect: focusTitle },
          { type: 'separator' },
          { label: t.sectionMenuDelete, icon: <Trash2 size={13} />, danger: true, onSelect: () => removeSection(section.id) },
       ]

@@ -99,16 +99,15 @@ export function BlockContextMenu({
 }: BlockContextMenuProps) {
    const { t } = useLang()
 
-   // ============ Base block section ============
+   // ============ Block section ============
    const entries: ContextMenuEntry[] = [
+      { type: 'header', label: t.blockSection },
       { label: t.insertBefore, icon: <ArrowUpFromLine size={13} />, onSelect: onInsertBefore },
       { label: t.insertAfter,  icon: <ArrowDownToLine size={13} />, onSelect: onInsertAfter },
       { type: 'separator' },
       { label: t.moveUp,   icon: <ChevronUp size={13} />,   disabled: !canMoveUp,   onSelect: () => onMoveUp?.() },
       { label: t.moveDown, icon: <ChevronDown size={13} />, disabled: !canMoveDown, onSelect: () => onMoveDown?.() },
-      { type: 'separator' },
       { label: t.duplicateBlock, icon: <Copy size={13} />, onSelect: onDuplicate },
-      { type: 'separator' },
       {
          label: hasAnchor
             ? (isAnchorDupe ? `${t.duplicateAnchor}` : t.editAnchor)
@@ -122,46 +121,46 @@ export function BlockContextMenu({
       { label: t.deleteBlock, icon: <Trash2 size={13} />, danger: true, onSelect: onDelete },
    ]
 
-   // ============ Page-break section (paged format only) ============
+   // ============ Pagination section (paged format only) ============
+   // The three actions below are each conditional on the paged layout having a place for them, so
+   // the header only goes up when at least one is present; the present ones then sit together under
+   // it as one group, no separators between them.
+   if (pageBreak || keepTogether || keepWithNext) {
+      entries.push(
+         { type: 'separator' },
+         { type: 'header', label: t.paginationSection },
+      )
+   }
+
+   // Page-break entry: inserts a break after this block, or (once one is already there) removes it.
    if (pageBreak) {
       const isRemove = pageBreak.mode === 'remove'
-      entries.push(
-         { type: 'separator' },
-         {
-            label:    isRemove ? t.blockRemovePageBreak : t.blockInsertPageBreak,
-            icon:     <SeparatorHorizontal size={13} />,
-            danger:   isRemove,
-            onSelect: pageBreak.onSelect,
-         },
-      )
+      entries.push({
+         label:    isRemove ? t.blockRemovePageBreak : t.blockInsertPageBreak,
+         icon:     <SeparatorHorizontal size={13} />,
+         danger:   isRemove,
+         onSelect: pageBreak.onSelect,
+      })
    }
 
-   // ============ Keep-together toggle (paged format only) ============
-   // The menu has no checkbox affordance, so the state reads from the label + verb swap: held blocks
-   // offer "allow splitting", unheld blocks offer "keep on one page".
+   // Keep-together toggle: the menu has no checkbox affordance, so the state reads from the label +
+   // verb swap: held blocks offer "allow splitting", unheld blocks offer "keep on one page".
    if (keepTogether) {
-      entries.push(
-         { type: 'separator' },
-         {
-            label:    keepTogether.active ? t.blockAllowSplit : t.blockKeepTogether,
-            icon:     <Magnet size={13} />,
-            onSelect: keepTogether.onSelect,
-         },
-      )
+      entries.push({
+         label:    keepTogether.active ? t.blockAllowSplit : t.blockKeepTogether,
+         icon:     <Magnet size={13} />,
+         onSelect: keepTogether.onSelect,
+      })
    }
 
-   // ============ Keep-with-next toggle (paged format only) ============
-   // Distinct from keep-together: this forbids a break AFTER the block (pinning it to its follower), not
-   // a split WITHIN it. The state reads from the label + verb swap, same as keep-together above.
+   // Keep-with-next toggle: distinct from keep-together, this forbids a break AFTER the block
+   // (pinning it to its follower), not a split WITHIN it. Same label + verb swap as above.
    if (keepWithNext) {
-      entries.push(
-         { type: 'separator' },
-         {
-            label:    keepWithNext.active ? t.blockAllowBreakAfter : t.blockKeepWithNext,
-            icon:     <Link2 size={13} />,
-            onSelect: keepWithNext.onSelect,
-         },
-      )
+      entries.push({
+         label:    keepWithNext.active ? t.blockAllowBreakAfter : t.blockKeepWithNext,
+         icon:     <Link2 size={13} />,
+         onSelect: keepWithNext.onSelect,
+      })
    }
 
    // ============ List-item section ============

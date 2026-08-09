@@ -626,9 +626,12 @@ export const translations = {
       newColumn:        'Column',
       // Block actions
       addBlock:         'Add block',
+      blockSection:     'Block',
       insertBefore:     'Insert before',
       insertAfter:      'Insert after',
       duplicateSection: 'Duplicate section',
+      // Pagination actions
+      paginationSection: 'Pagination',
       // List item actions
       listItemSection:  'List item',
       indent:           'Indent',
@@ -1473,9 +1476,12 @@ export const translations = {
       newColumn:        'Colonne',
       // Block actions
       addBlock:         'Ajouter un bloc',
+      blockSection:     'Bloc',
       insertBefore:     'Insérer avant',
       insertAfter:      'Insérer après',
       duplicateSection: 'Dupliquer la section',
+      // Pagination actions
+      paginationSection: 'Pagination',
       // List item actions
       listItemSection:  'Élément de liste',
       indent:           'Indenter',
