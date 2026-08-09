@@ -1051,6 +1051,10 @@ export function WysiwygArea({
                data-para-overlay
                className={`doc-para-edit-overlay ${darkClass}`}
                style={{ top: `${paragraphOverlay.topPx}px`, left: `${paragraphOverlay.leftPx}px`, width: `${contentBoxWidthPx(format)}px`, '--doc-accent': docAccent } as React.CSSProperties}
+               // While the paragraph is being edited in this floating overlay, keep a right-click on the
+               // native browser menu (copy / paste / spellcheck) instead of letting it bubble to the
+               // document background menu. Stop propagation only, no preventDefault (same as the title).
+               onContextMenu={event => event.stopPropagation()}
             >
                <div className="doc-render" style={{ padding: 0 }}>
                   <ContentEditable

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { paginate, buildMetrics, reconcileParagraphLines, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, contentBoxWidthPx, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
-import { FIRST_PAGE_ID, A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, millimetresToPx } from './pageModel'
+import { paginate, buildMetrics, findTooTallPageIds, reconcileParagraphLines, isAutoPageId, AUTO_PAGE_PREFIX, allParagraphIds, contentBoxWidthPx, type LayoutMetrics, type MeasuredHeights, type ParagraphLine } from './pageLayout'
+import { FIRST_PAGE_ID, A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, millimetresToPx, type Page } from './pageModel'
 import { DEFAULT_A4_MARGINS, type DocFormat } from './format'
 import type { Block, Section, ListItem } from '../types'
 
@@ -696,6 +696,67 @@ describe('paginate — keep-together', () => {
       // splits with its head trailing on the same sheet (contrast the held case, where page 1 held only F).
       expect(pages[0].slices[0].blocks.map(candidate => candidate.id).slice(0, 2)).toEqual(['F', 'H'])
       expect(pages[1]?.id).not.toBe(`${AUTO_PAGE_PREFIX}H`)
+   })
+})
+
+describe('findTooTallPageIds', () => {
+   const CONTENT_BOX = 100
+
+   // A measured-height oracle carrying only per-block whole heights (the fields findTooTallPageIds reads).
+   function heightsFor(blockHeights: Record<string, number>): MeasuredHeights {
+      return {
+         header: 0, titleBySection: new Map(), listItemById: new Map(), paragraphLinesById: new Map(),
+         blockById: new Map(Object.entries(blockHeights)),
+      }
+   }
+
+   // A page whose whole content is one slice holding `blocks`.
+   function soleBlockPage(id: string, blocks: Block[]): Page {
+      return { id, origin: 'continuation', slices: [{ section: section('S', []), blocks, isSectionStart: false, isSectionEnd: true }] }
+   }
+
+   // A spanning paragraph renders as same-id fragments; each fragment carries the WHOLE paragraph height in
+   // blockById. It reflows on its own, so no fragment page is ever flagged (the every-page-warning bug).
+   it('never flags a splittable paragraph that spans several pages', () => {
+      const fragment: Block = { id: 'P', type: 'p', paragraphFragment: { charStart: 0, charEnd: 20, isTail: false }, richText: [{ text: 'x'.repeat(20) }] }
+      const pages = [soleBlockPage('page-a', [fragment]), soleBlockPage('page-b', [fragment]), soleBlockPage('page-c', [fragment])]
+      const tooTall = findTooTallPageIds(pages, heightsFor({ P: 260 }), CONTENT_BOX)
+      expect(tooTall.size).toBe(0)
+   })
+
+   // A splittable list splits at an item boundary, so a list-only page is never too tall either.
+   it('never flags a splittable list', () => {
+      const pages = [soleBlockPage('page-a', [listBlock('L', 4)])]
+      const tooTall = findTooTallPageIds(pages, heightsFor({ L: 300 }), CONTENT_BOX)
+      expect(tooTall.size).toBe(0)
+   })
+
+   // The author pinned the paragraph whole with keepTogether: now it is atomic and CAN overflow one sheet,
+   // so a genuinely oversized held paragraph is the one case that still warrants the note.
+   it('flags a keepTogether paragraph taller than the content box', () => {
+      const held: Block = { id: 'P', type: 'p', keepTogether: true, richText: [{ text: 'x'.repeat(40) }] }
+      const tooTall = findTooTallPageIds([soleBlockPage('page-a', [held])], heightsFor({ P: 260 }), CONTENT_BOX)
+      expect([...tooTall]).toEqual(['page-a'])
+   })
+
+   // An inherently atomic block (an image, code, table, ...) taller than the sheet is flagged as before.
+   it('flags an atomic block taller than the content box', () => {
+      const tooTall = findTooTallPageIds([soleBlockPage('page-a', [block('IMG', 'image')])], heightsFor({ IMG: 300 }), CONTENT_BOX)
+      expect([...tooTall]).toEqual(['page-a'])
+   })
+
+   // A page with more than one block is a normal auto-flow seam, never a single-block dead end.
+   it('never flags a page holding more than one block', () => {
+      const held: Block = { id: 'P', type: 'p', keepTogether: true, richText: [{ text: 'x' }] }
+      const pages = [soleBlockPage('page-a', [held, block('B', 'image')])]
+      const tooTall = findTooTallPageIds(pages, heightsFor({ P: 260, B: 260 }), CONTENT_BOX)
+      expect(tooTall.size).toBe(0)
+   })
+
+   // An atomic block that fits the sheet is not flagged.
+   it('does not flag an atomic block that fits', () => {
+      const tooTall = findTooTallPageIds([soleBlockPage('page-a', [block('IMG', 'image')])], heightsFor({ IMG: 80 }), CONTENT_BOX)
+      expect(tooTall.size).toBe(0)
    })
 })
 

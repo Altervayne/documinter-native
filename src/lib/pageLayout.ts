@@ -585,11 +585,15 @@ export function paginate(
 export interface DocumentPages { pages: Page[]; tooTallPageIds: Set<string>; heights: MeasuredHeights }
 
 /**
- * The ids of pages whose ENTIRE content is a single atomic block taller than the physical content box:
- * auto-reflow cannot help (the block is not splittable and nothing above it can be pushed up), so the
- * editor notes it. Measured against the TRUE `contentBoxHeightPx`, not the smaller pagination budget:
- * too-tall is about whether a block fits the real sheet, so the reserved slack band must not count
- * against it. A page whose sole non-list/checklist block measures taller than the content box is flagged,
+ * The ids of pages whose ENTIRE content is a single block that cannot fit the physical sheet and cannot
+ * reflow off it: only then can auto-reflow do nothing, so the editor notes it. A paragraph or list is
+ * splittable, so it spans as many sheets as it needs and is NEVER too tall, UNLESS the author pinned it
+ * whole with keepTogether (then it is atomic and can genuinely overflow one sheet). Every other block
+ * type is inherently atomic. This is why the note no longer fires on each sheet a long paragraph flows
+ * across: a spanning paragraph renders as same-id fragments, and a splittable fragment is skipped here.
+ *
+ * Measured against the TRUE `contentBoxHeightPx`, not the smaller pagination budget: too-tall is about
+ * whether a block fits the real sheet, so the reserved slack band must not count against it. Flagged
  * against the SAME heights that produced `pages`, so the editor's too-tall note can never disagree with
  * the layout it annotates.
  */
@@ -600,7 +604,10 @@ export function findTooTallPageIds(pages: Page[], heights: MeasuredHeights, cont
       const blocks = page.slices.flatMap(slice => slice.blocks)
       if (blocks.length !== 1) continue
       const only = blocks[0]
-      if (only.type === 'list' || only.type === 'checklist') continue   // splittable, handled by reflow
+      // A splittable block (paragraph / list) reflows across sheets on its own, so it is never too tall
+      // unless the author held it whole with keepTogether. Skip the reflowing case entirely.
+      const splittable = only.type === 'p' || only.type === 'list' || only.type === 'checklist'
+      if (splittable && only.keepTogether !== true) continue
       const height = heights.blockById.get(only.id)
       if (height !== undefined && height > contentBoxHeight) tooTall.add(page.id)
    }

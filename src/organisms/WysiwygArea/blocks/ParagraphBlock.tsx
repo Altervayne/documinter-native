@@ -31,6 +31,11 @@ export function ParagraphBlock({ block, patch, readOnly }: ParagraphBlockProps) 
             onCommit={() => {}}
             readOnly
             onMouseDown={event => {
+               // Only a primary (left) press opens the edit overlay. A right press must fall through to
+               // the block wrapper's context menu (useBlockContextMenu): focusing here would mount the
+               // floating overlay, which is a peer of the sheets and swallows the contextmenu into the
+               // document background menu, so a spanning paragraph would lose its own block menu.
+               if (event.button !== 0) return
                // Map the press to a char offset inside the fragment, then shift by the fragment's start
                // to get the model-absolute offset the whole editable will place the caret at.
                const localOffset = caretCharOffsetAtPoint(event.currentTarget, event.clientX, event.clientY)
