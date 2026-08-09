@@ -113,7 +113,9 @@ export function togglePanelVisibility(
  *  1. Any docked panel that is no longer applicable is undocked and remembered (auto), so it can come
  *     back to the same side later.
  *  2. Any applicable panel that is not docked is either auto-restored (if it was auto-undocked),
- *     left closed (if the user closed it deliberately), or first-time auto-docked to its default side.
+ *     left closed (if the user closed it deliberately), first-time auto-docked to its default side
+ *     (default-open panels only), or left closed because it is a default-closed panel that has never
+ *     been placed (a settings editor stays hidden until the user reveals it).
  * Deliberate closes are never overridden. Returns the reconciled layout + updated memory map.
  */
 export function reconcileDock(
@@ -121,6 +123,7 @@ export function reconcileDock(
    closed:      ClosedPanels,
    applicable:  PanelId[],
    defaultSides: Record<PanelId, DockSide>,
+   defaultOpen: Set<PanelId>,
    nextGroupId: GroupIdFactory,
 ): { layout: DockLayout; closed: ClosedPanels } {
    let nextLayout = layout
@@ -145,6 +148,11 @@ export function reconcileDock(
       }
       const memory = nextClosed[panelId]
       if (memory && !memory.auto) continue   // user closed it deliberately, respect that
+
+      // A default-closed panel with no memory has never been placed: never auto-open it, it waits for a
+      // deliberate reveal. A panel with an AUTO memory (was docked, went inapplicable) still restores
+      // below regardless of defaultOpen.
+      if (!memory && !defaultOpen.has(panelId)) continue
 
       const side = memory?.side ?? defaultSides[panelId]
       const newId = nextGroupId()

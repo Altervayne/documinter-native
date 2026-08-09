@@ -10,7 +10,13 @@ function makeIdFactory() {
    return () => `group-${count++}`
 }
 
-const DEFAULT_SIDES: Record<PanelId, DockSide> = { structure: 'left', pages: 'right', anchors: 'left' }
+const DEFAULT_SIDES: Record<PanelId, DockSide> = {
+   structure: 'left', pages: 'right', anchors: 'left', pagesetup: 'right', presentation: 'right', documentnav: 'right',
+}
+
+// The panels that auto-dock the first time they apply. Structure / Pages / Anchors are default-open; the
+// settings-editor panels (pagesetup / presentation / documentnav) are default-closed, so they are absent.
+const DEFAULT_OPEN = new Set<PanelId>(['structure', 'pages', 'anchors'])
 
 function base(): DockLayout {
    return createDefaultDockLayout('group-structure')
@@ -63,36 +69,53 @@ describe('isPanelVisible', () => {
 describe('reconcileDock', () => {
    it('first-time-docks an applicable panel to its default side', () => {
       // Pages becomes applicable (paged mode); it has never been placed
-      const { layout } = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, makeIdFactory())
+      const { layout } = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
       expect(locatePanel(layout, 'pages')?.side).toBe('right')
       expect(isPanelDocked(layout, 'structure')).toBe(true)
    })
 
+   it('does not auto-dock a default-closed panel that has never been placed, but does dock a default-open one', () => {
+      // pagesetup is applicable (edit mode) but default-closed with no memory: it must stay hidden.
+      // anchors is applicable AND default-open with no memory: it first-time-docks.
+      const { layout } = reconcileDock(base(), {}, ['structure', 'anchors', 'pagesetup'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
+      expect(isPanelDocked(layout, 'pagesetup')).toBe(false)
+      expect(isPanelDocked(layout, 'anchors')).toBe(true)
+   })
+
+   it('still auto-restores a default-closed panel that was auto-undocked (it has an auto memory)', () => {
+      // A default-closed panel that WAS docked and went inapplicable keeps its auto memory, so coming back
+      // applicable restores it regardless of defaultOpen (defaultOpen only gates the never-placed case).
+      const closed: ClosedPanels = { pagesetup: { side: 'right', auto: true } }
+      const { layout, closed: next } = reconcileDock(base(), closed, ['structure', 'pagesetup'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
+      expect(locatePanel(layout, 'pagesetup')?.side).toBe('right')
+      expect(next.pagesetup).toBeUndefined()
+   })
+
    it('undocks a panel that stops being applicable and remembers its side (auto)', () => {
       // start with pages docked, then reconcile with pages no longer applicable (infinite mode)
-      const paged = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, makeIdFactory()).layout
-      const { layout, closed } = reconcileDock(paged, {}, ['structure'], DEFAULT_SIDES, makeIdFactory())
+      const paged = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory()).layout
+      const { layout, closed } = reconcileDock(paged, {}, ['structure'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
       expect(isPanelDocked(layout, 'pages')).toBe(false)
       expect(closed.pages).toEqual({ side: 'right', auto: true })
    })
 
    it('auto-restores an auto-undocked panel when it applies again', () => {
       const closed: ClosedPanels = { pages: { side: 'right', auto: true } }
-      const { layout, closed: next } = reconcileDock(base(), closed, ['structure', 'pages'], DEFAULT_SIDES, makeIdFactory())
+      const { layout, closed: next } = reconcileDock(base(), closed, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
       expect(locatePanel(layout, 'pages')?.side).toBe('right')
       expect(next.pages).toBeUndefined()
    })
 
    it('leaves a deliberately-closed panel closed even while applicable', () => {
       const closed: ClosedPanels = { pages: { side: 'right', auto: false } }
-      const { layout, closed: next } = reconcileDock(base(), closed, ['structure', 'pages'], DEFAULT_SIDES, makeIdFactory())
+      const { layout, closed: next } = reconcileDock(base(), closed, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
       expect(isPanelDocked(layout, 'pages')).toBe(false)
       expect(next.pages).toEqual({ side: 'right', auto: false })
    })
 
    it('does not touch panels that are floating (they are reconciled separately)', () => {
       // pages is floating (not docked); reconcileDock should leave the dock alone for it
-      const { layout } = reconcileDock(base(), {}, ['structure'], DEFAULT_SIDES, makeIdFactory())
+      const { layout } = reconcileDock(base(), {}, ['structure'], DEFAULT_SIDES, DEFAULT_OPEN, makeIdFactory())
       expect(isPanelDocked(layout, 'pages')).toBe(false)
    })
 
@@ -103,14 +126,14 @@ describe('reconcileDock', () => {
          return location ? layout[location.side]?.groups[location.groupIndex] : undefined
       }
       // Paged: Pages auto-docks as its own group; the user collapses it.
-      let layout = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, idFactory).layout
+      let layout = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory).layout
       layout = toggleGroupCollapsed(layout, locatePanel(layout, 'pages')!.groupId)
       expect(groupOf(layout, 'pages')?.collapsed).toBe(true)
       // Switch to infinite (Pages undocks, remembering it was collapsed)...
-      const undocked = reconcileDock(layout, {}, ['structure'], DEFAULT_SIDES, idFactory)
+      const undocked = reconcileDock(layout, {}, ['structure'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory)
       expect(undocked.closed.pages).toEqual({ side: 'right', auto: true, collapsed: true })
       // ...then back to paged: Pages re-docks AND is collapsed again (not silently re-expanded).
-      const redocked = reconcileDock(undocked.layout, undocked.closed, ['structure', 'pages'], DEFAULT_SIDES, idFactory)
+      const redocked = reconcileDock(undocked.layout, undocked.closed, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory)
       expect(isPanelDocked(redocked.layout, 'pages')).toBe(true)
       expect(groupOf(redocked.layout, 'pages')?.collapsed).toBe(true)
    })
@@ -118,14 +141,14 @@ describe('reconcileDock', () => {
    it('round-trips: user hides Pages in paged mode, and it stays hidden across a format switch', () => {
       const idFactory = makeIdFactory()
       // paged: Pages auto-docks
-      const layout = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, idFactory).layout
+      const layout = reconcileDock(base(), {}, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory).layout
       expect(isPanelDocked(layout, 'pages')).toBe(true)
       // user hides Pages by hand
       const hiddenState = togglePanelVisibility({ layout, floating: {}, hidden: {} }, 'pages', 'right', idFactory)
       expect(hiddenState.hidden.pages).toEqual({ side: 'right', auto: false })
       // switch to infinite (pages not applicable), then back to paged
-      let reconciled = reconcileDock(hiddenState.layout, hiddenState.hidden, ['structure'], DEFAULT_SIDES, idFactory)
-      reconciled = reconcileDock(reconciled.layout, reconciled.closed, ['structure', 'pages'], DEFAULT_SIDES, idFactory)
+      let reconciled = reconcileDock(hiddenState.layout, hiddenState.hidden, ['structure'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory)
+      reconciled = reconcileDock(reconciled.layout, reconciled.closed, ['structure', 'pages'], DEFAULT_SIDES, DEFAULT_OPEN, idFactory)
       // still hidden, because the user hid it on purpose
       expect(isPanelDocked(reconciled.layout, 'pages')).toBe(false)
    })

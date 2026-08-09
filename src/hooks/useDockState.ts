@@ -22,8 +22,8 @@ import {
    type FloatingPanels,
    type WindowPlacement,
 } from '../lib/dockLayout'
-import { togglePanelVisibility as togglePanelVisibilityPure, reconcileDock, reconcileFloating, type ClosedPanels } from '../lib/dockPolicy'
-import { applicablePanels, DEFAULT_PANEL_SIDES, type PanelContext } from '../lib/panelRegistry'
+import { togglePanelVisibility as togglePanelVisibilityPure, reconcileDock, reconcileFloating, isPanelVisible, type ClosedPanels } from '../lib/dockPolicy'
+import { applicablePanels, DEFAULT_PANEL_SIDES, PANELS_DEFAULT_OPEN, type PanelContext } from '../lib/panelRegistry'
 
 // ##################
 // # STORAGE SCHEMA #
@@ -110,6 +110,10 @@ export interface DockStateResult {
    /** Show or hide a panel, remembering how it was shown (docked-where or floating-at-geometry) so a
     *  later show restores it exactly. Drives the View-menu panel toggles and the panel close controls. */
    togglePanelVisibility: (panelId: PanelId) => void
+   /** Show a panel if it is currently hidden (docked or floating panels are left as they are). Unlike
+    *  togglePanelVisibility this never hides an already-visible panel, so it is safe to drive from a
+    *  "reveal this panel" menu entry that should only ever open. */
+   revealPanel:           (panelId: PanelId) => void
    /** Pop a panel out of the dock into a floating window. */
    floatPanel:            (panelId: PanelId) => void
    /** Return a floating panel to the dock (its remembered or default side). */
@@ -151,7 +155,7 @@ export function useDockState(context: PanelContext): DockStateResult {
          // panels that are neither floating nor already placed (a floating panel must not also auto-dock).
          const floated = reconcileFloating(current.floatingPanels, current.closedPanels, applicable, DEFAULT_PANEL_SIDES)
          const dockApplicable = applicable.filter(panelId => !(panelId in floated.floating))
-         const docked = reconcileDock(current.activeLayout, floated.closed, dockApplicable, DEFAULT_PANEL_SIDES, newGroupId)
+         const docked = reconcileDock(current.activeLayout, floated.closed, dockApplicable, DEFAULT_PANEL_SIDES, PANELS_DEFAULT_OPEN, newGroupId)
          const next: DockStorage = { activeLayout: docked.layout, closedPanels: docked.closed, floatingPanels: floated.floating }
          return sameStorage(current, next) ? current : next
       })
@@ -179,6 +183,18 @@ export function useDockState(context: PanelContext): DockStateResult {
       floatingPanels: storage.floatingPanels,
 
       togglePanelVisibility: panelId => setStorage(current => {
+         const result = togglePanelVisibilityPure(
+            { layout: current.activeLayout, floating: current.floatingPanels, hidden: current.closedPanels },
+            panelId, DEFAULT_PANEL_SIDES[panelId], newGroupId,
+         )
+         return { activeLayout: result.layout, floatingPanels: result.floating, closedPanels: result.hidden }
+      }),
+
+      revealPanel: panelId => setStorage(current => {
+         // Only act when the panel is hidden: a visible panel (docked or floating) is left exactly as it
+         // is. When hidden, reuse the same show path as the toggle, which restores how it was last hidden
+         // (floating at its geometry, or docked at its side) or first-time docks it to its default side.
+         if (isPanelVisible(current.activeLayout, current.floatingPanels, panelId)) return current
          const result = togglePanelVisibilityPure(
             { layout: current.activeLayout, floating: current.floatingPanels, hidden: current.closedPanels },
             panelId, DEFAULT_PANEL_SIDES[panelId], newGroupId,

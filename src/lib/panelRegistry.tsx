@@ -11,7 +11,7 @@
 // ###############################################################################################
 
 // -- Icon Imports --
-import { PanelsTopLeft, BookOpen, Anchor } from 'lucide-react'
+import { PanelsTopLeft, BookOpen, Anchor, Ruler, Image as ImageIcon, PanelLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 // -- Type Imports --
@@ -44,6 +44,11 @@ export interface PanelDescriptor {
    defaultSide: DockSide
    /** Whether the panel may be popped out into a floating window. */
    canFloat: boolean
+   /** Whether the panel auto-docks the first time it applies (Structure / Pages / Anchors do). A
+    *  default-closed panel never auto-opens: it stays hidden until the user reveals it, even though it
+    *  is applicable. The settings-editor panels (Page setup, Presentation, Document nav) are all
+    *  default-closed so they do not clutter a fresh document with three open editors. */
+   defaultOpen: boolean
 }
 
 // ############
@@ -58,6 +63,7 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       isApplicable: () => true,
       defaultSide:  'left',
       canFloat:     true,
+      defaultOpen:  true,
    },
    pages: {
       id:           'pages',
@@ -68,6 +74,7 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       isApplicable: context => context.formatKind !== 'infinite' && !context.readOnly,
       defaultSide:  'right',
       canFloat:     true,
+      defaultOpen:  true,
    },
    anchors: {
       id:           'anchors',
@@ -78,6 +85,36 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       isApplicable: () => true,
       defaultSide:  'left',
       canFloat:     true,
+      defaultOpen:  true,
+   },
+   pagesetup: {
+      id:           'pagesetup',
+      icon:         <Ruler size={16} />,
+      title:        translations => translations.formatWindowTitle,
+      // Editing surface, not a preview aid: the format controls only mean something while the document
+      // is being edited, so it is applicable outside read-only (preview) mode.
+      isApplicable: context => !context.readOnly,
+      defaultSide:  'right',
+      canFloat:     true,
+      defaultOpen:  false,
+   },
+   presentation: {
+      id:           'presentation',
+      icon:         <ImageIcon size={16} />,
+      title:        translations => translations.presentationWindowTitle,
+      isApplicable: context => !context.readOnly,
+      defaultSide:  'right',
+      canFloat:     true,
+      defaultOpen:  false,
+   },
+   documentnav: {
+      id:           'documentnav',
+      icon:         <PanelLeft size={16} />,
+      title:        translations => translations.navigationWindowTitle,
+      isApplicable: context => !context.readOnly,
+      defaultSide:  'right',
+      canFloat:     true,
+      defaultOpen:  false,
    },
 }
 
@@ -91,7 +128,16 @@ export function applicablePanels(context: PanelContext): PanelId[] {
 
 /** The registry's default-side lookup, in the shape the dock policy expects. */
 export const DEFAULT_PANEL_SIDES: Record<PanelId, DockSide> = {
-   structure: PANEL_REGISTRY.structure.defaultSide,
-   pages:     PANEL_REGISTRY.pages.defaultSide,
-   anchors:   PANEL_REGISTRY.anchors.defaultSide,
+   structure:    PANEL_REGISTRY.structure.defaultSide,
+   pages:        PANEL_REGISTRY.pages.defaultSide,
+   anchors:      PANEL_REGISTRY.anchors.defaultSide,
+   pagesetup:    PANEL_REGISTRY.pagesetup.defaultSide,
+   presentation: PANEL_REGISTRY.presentation.defaultSide,
+   documentnav:  PANEL_REGISTRY.documentnav.defaultSide,
 }
+
+/** The panels that auto-dock the first time they apply, derived from each descriptor's `defaultOpen`.
+ *  The dock policy consults this so a default-closed panel with no prior memory is never auto-opened. */
+export const PANELS_DEFAULT_OPEN: Set<PanelId> = new Set(
+   ALL_PANEL_IDS.filter(panelId => PANEL_REGISTRY[panelId].defaultOpen),
+)

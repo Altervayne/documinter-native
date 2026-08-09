@@ -35,6 +35,9 @@ import { DockedWorkspace } from './organisms/DockedWorkspace'
 import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
 import { AnchorsPanelBody } from './organisms/AnchorsPanelBody'
+import { FormatPanelBody } from './organisms/FormatPanelBody'
+import { PresentationPanelBody } from './organisms/PresentationPanelBody'
+import { NavPanelBody } from './organisms/NavPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument, computeDocumentPages } from './lib/exportLayout'
@@ -1104,6 +1107,15 @@ export default function App() {
       ),
       anchors: (
          <AnchorsPanelBody sections={sections} />
+      ),
+      pagesetup: (
+         <FormatPanelBody format={format} onChange={setActiveFormat} />
+      ),
+      presentation: (
+         <PresentationPanelBody presentation={presentation} onChange={setActivePresentation} />
+      ),
+      documentnav: (
+         <NavPanelBody presentation={presentation} sections={sections} onChange={setActivePresentation} />
       ),
    }
 

@@ -1292,6 +1292,12 @@
    carry the content padding instead, so the scrollbar ends up flush with the window's edge. Same
    scrollbar-gutter:auto reset as the palette above (overflow:hidden does NOT release the base gutter). */
 .block-editor-window-body:has(.graph-editor) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+/* The document settings editors (Page setup / Presentation / Document nav) share one body with their
+   docked side panels: the `.doc-settings-panel` scroll wrapper owns the scroll + padding so the panel
+   form is not flush to the edges, and it must be the ONLY scroller. Neutralize the window body the same
+   way as the graph / palette above, including the scrollbar-gutter:auto reset (overflow:hidden does NOT
+   release the base rule's `stable both-edges` gutter, which would otherwise inset the panel scrollbar). */
+.block-editor-window-body:has(.doc-settings-panel) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 
 /* ############################################################
    Presentation editor (hosted in the Block Editor Window)
