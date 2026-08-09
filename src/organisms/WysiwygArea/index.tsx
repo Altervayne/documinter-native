@@ -29,9 +29,6 @@ import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
 import { ContextMenu } from '../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../molecules/ContextMenu'
 import { OverflowNavigator } from '../../molecules/OverflowNavigator'
-import { PresentationWindow } from '../../molecules/PresentationWindow'
-import { NavWindow } from '../../molecules/NavWindow'
-import { FormatWindow } from '../../molecules/FormatWindow'
 import { WysiwygSection } from './WysiwygSection'
 import { WysiwygBlock } from './WysiwygBlock'
 import { findBlockOnCanvas, relocateBlock, type BlockLoc } from '../../lib/document'
@@ -90,10 +87,8 @@ interface WysiwygAreaProps {
    // ==========================================================
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    onDocAccentChange?: (hex: string) => void
-   /** Commit the document's presentation extras (watermark, etc.); undefined clears them. */
-   onPresentationChange?: (next: DocPresentationExtras | undefined) => void
    /** Commit the document's page format (infinite width, later paged A4); undefined clears it. Records a
-    *  'format' undo entry: used by the Page setup window, margins, bands, and the on-sheet remove button. */
+    *  'format' undo entry: used by the Page setup panel, margins, bands, and the on-sheet remove button. */
    onFormatChange?: (next: DocFormat | undefined) => void
    /** Commit a page-break-only format change under its OWN undo kind, so a block-menu break toggle never
     *  coalesces into an adjacent margin / width / band edit. The block context menu's break path uses this. */
@@ -110,28 +105,13 @@ interface WysiwygAreaProps {
    /** Opens the same File -> Save As... dialog owned by App.tsx (fork-and-switch to a copy). */
    onSaveAs?: () => void
    // ==========================================================
-   //  Presentation window (document-level, non-modal), open-state lifted to App.tsx like the export
-   //  modal. Opened from the background context menu here AND the Export dialog's HTML branch.
+   //  Launchers for the document-editor panels (Presentation / Navigation / Page setup), reused by the
+   //  document background context menu here, the same handlers App threads into HeaderMenuBar. Each
+   //  reveals its dockable panel (App wires them to the dock's revealPanel).
    // ==========================================================
-   presentationOpen?:    boolean
-   onOpenPresentation?:  () => void
-   onClosePresentation?: () => void
-   // ==========================================================
-   //  Navigation window (document-level, non-modal), open-state lifted to App.tsx like the
-   //  presentation window. Opened from the background context menu here AND the Document top-bar menu.
-   // ==========================================================
-   navOpen?:      boolean
-   onOpenNav?:    () => void
-   onCloseNav?:   () => void
-   // ==========================================================
-   //  Page setup window (document-level, non-modal), open-state lifted to App.tsx like the
-   //  presentation / navigation windows. Opened from the background context menu here AND the
-   //  Document top-bar menu. Only the infinite-width control is exposed here (kind is implicitly
-   //  infinite).
-   // ==========================================================
-   formatOpen?:      boolean
-   onOpenFormat?:    () => void
-   onCloseFormat?:   () => void
+   onOpenPresentation?: () => void
+   onOpenNav?:          () => void
+   onOpenFormat?:       () => void
    /** Editor/preview toggle, for the background menu's optional "Toggle preview" item. */
    previewMode?: Mode
    onSetMode?:   (mode: Mode) => void
@@ -155,10 +135,8 @@ interface WysiwygAreaProps {
 
 export function WysiwygArea({
    meta, sections, docTheme, docAccent, presentation, format, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onPageBreakChange, onReconcileFormat, onCommitSectionsAndFormat, onOpenExport, onManualSave, onSaveAs,
-   presentationOpen, onOpenPresentation, onClosePresentation,
-   navOpen, onOpenNav, onCloseNav,
-   formatOpen, onOpenFormat, onCloseFormat,
+   onDocThemeChange, onDocAccentChange, onFormatChange, onPageBreakChange, onReconcileFormat, onCommitSectionsAndFormat, onOpenExport, onManualSave, onSaveAs,
+   onOpenPresentation, onOpenNav, onOpenFormat,
    previewMode, onSetMode,
    pages = [], tooTallPageIds = EMPTY_TOO_TALL_PAGE_IDS,
    focusedParagraphId = null, onParagraphFocusChange,
@@ -1185,8 +1163,9 @@ export function WysiwygArea({
       )
    }
 
-   // The document-level windows + the background context menu. Rendered ONCE (portaled / fixed), not
-   // per paged sheet.
+   // The document background context menu. Rendered ONCE (portaled / fixed), not per paged sheet. The
+   // document editors (Presentation / Navigation / Page setup) live as dockable panels now, so no
+   // per-document windows mount here.
    function renderDocWindowsAndMenus(): React.ReactNode {
       return (
          <>
@@ -1195,31 +1174,6 @@ export function WysiwygArea({
                   position={backgroundMenu}
                   entries={buildBackgroundMenuEntries()}
                   onClose={closeBackgroundMenu}
-               />
-            )}
-            {presentationOpen && onPresentationChange && onClosePresentation && (
-               <PresentationWindow
-                  presentation={presentation}
-                  anchorRect={new DOMRect()}
-                  onChange={onPresentationChange}
-                  onClose={onClosePresentation}
-               />
-            )}
-            {navOpen && onPresentationChange && onCloseNav && (
-               <NavWindow
-                  presentation={presentation}
-                  sections={sections}
-                  anchorRect={new DOMRect()}
-                  onChange={onPresentationChange}
-                  onClose={onCloseNav}
-               />
-            )}
-            {formatOpen && onFormatChange && onCloseFormat && (
-               <FormatWindow
-                  format={format}
-                  anchorRect={new DOMRect()}
-                  onChange={onFormatChange}
-                  onClose={onCloseFormat}
                />
             )}
          </>

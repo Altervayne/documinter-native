@@ -908,28 +908,9 @@ export default function App() {
       void printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
    }, [meta, sections, docTheme, docAccent, lang, presentation, format])
 
-   // Presentation editor window: a document-level, non-modal draggable window (open-state lifted
-   // here like the export modal's). Opened from the Export dialog's HTML branch AND the document
-   // background context menu; it renders inside WysiwygArea (which owns the doc-theme sheet the
-   // watermark previews behind). Its CONTROLS mutate the document's presentation (a real doc change).
-   const [presentationOpen, setPresentationOpen] = useState(false)
-   const handleOpenPresentation  = useCallback(() => { setExportOpen(false); setPresentationOpen(true) }, [])
-   const handleClosePresentation = useCallback(() => setPresentationOpen(false), [])
-
-   // Navigation editor window: its own document-level, non-modal draggable window, separate from
-   // the Presentation window (open-state lifted here like the presentation window's). Opened from
-   // the Document top-bar menu and the document background context menu; it renders inside WysiwygArea
-   // and its controls mutate the document's presentation.nav (a real doc change).
-   const [navOpen, setNavOpen] = useState(false)
-   const handleOpenNav  = useCallback(() => setNavOpen(true), [])
-   const handleCloseNav = useCallback(() => setNavOpen(false), [])
-
-   // Page setup window: a document-level, non-modal draggable window with its own launcher
-   // (Document -> Page setup...), like the presentation/nav windows. Its infinite-width toggle
-   // mutates the document's format (a real doc change).
-   const [formatOpen, setFormatOpen] = useState(false)
-   const handleOpenFormat  = useCallback(() => setFormatOpen(true), [])
-   const handleCloseFormat = useCallback(() => setFormatOpen(false), [])
+   // The document editors (Presentation, Navigation, Page setup) are dockable panels now, not bespoke
+   // windows. Their menu launchers reveal the panel (docking it if hidden) through the dock, so they
+   // live just below the dock state (handleOpenPresentation / handleOpenNav / handleOpenFormat).
 
    // ######################
    // # PANE LAYOUT SYSTEM #
@@ -1070,6 +1051,13 @@ export default function App() {
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
    const pagesData = usePagesPanelData(sections, format, commitSectionsAndFormat, t, documentPages.pages)
+
+   // Menu launchers for the document-editor panels: reveal the panel (docking it if hidden) rather
+   // than opening a window. Presentation also closes the Export dialog first, since one of its launch
+   // points is the dialog's HTML branch.
+   const handleOpenPresentation = () => { setExportOpen(false); dock.revealPanel('presentation') }
+   const handleOpenNav          = () => dock.revealPanel('documentnav')
+   const handleOpenFormat       = () => dock.revealPanel('pagesetup')
 
    // The panel bodies fed to the docks, keyed by id (mirrors WorkspaceLayout's `panels` record). App
    // wires each body's data + handlers here; the dock hosts only the chrome.
@@ -1252,7 +1240,6 @@ export default function App() {
                               readOnly={mode === 'preview'}
                               onDocThemeChange={setActiveDocTheme}
                               onDocAccentChange={setActiveDocAccent}
-                              onPresentationChange={setActivePresentation}
                               onFormatChange={setActiveFormat}
                               onPageBreakChange={setActivePageBreak}
                               onReconcileFormat={setActiveFormatSilently}
@@ -1260,15 +1247,9 @@ export default function App() {
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}
-                              presentationOpen={presentationOpen}
                               onOpenPresentation={handleOpenPresentation}
-                              onClosePresentation={handleClosePresentation}
-                              navOpen={navOpen}
                               onOpenNav={handleOpenNav}
-                              onCloseNav={handleCloseNav}
-                              formatOpen={formatOpen}
                               onOpenFormat={handleOpenFormat}
-                              onCloseFormat={handleCloseFormat}
                               previewMode={mode}
                               onSetMode={handleSetMode}
                               pages={documentPages.pages}
