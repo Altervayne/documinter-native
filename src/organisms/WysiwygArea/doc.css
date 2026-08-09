@@ -162,12 +162,15 @@
   line-height: 1;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s, background 0.12s;
 }
 .doc-page:hover .doc-page-break-remove { opacity: 1; }
+/* Removing a break is a destructive edit, so hover reads red (matching the graph icon buttons), not the
+   neutral accent, and fills faintly so the reaction is unmistakable. */
 .doc-page-break-remove:hover {
-  border-color: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 55%, transparent);
-  color: var(--doc-accent, var(--color-accent));
+  border-color: color-mix(in srgb, var(--color-red) 45%, transparent);
+  color: var(--color-red);
+  background: color-mix(in srgb, var(--color-red) 10%, transparent);
 }
 .doc-page-break-remove:focus-visible {
   opacity: 1;

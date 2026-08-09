@@ -589,3 +589,112 @@ describe('paginate — keep-with-next', () => {
       ])
    })
 })
+
+describe('paginate — keep-together', () => {
+   // A `p` block whose richText is `length` chars long, optionally held whole via keepTogether.
+   function paragraph(id: string, length: number, held = false): Block {
+      const base: Block = { id, type: 'p', richText: [{ text: 'x'.repeat(length) }] }
+      return held ? { ...base, keepTogether: true } : base
+   }
+
+   // A held paragraph uses its whole `blockHeight` and never its per-line channel, even in the export
+   // atomic set (empty), so keepTogether alone holds it whole.
+   it('places a keepTogether paragraph whole instead of splitting it', () => {
+      const sections = [section('S', [paragraph('P', 40, true)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { P: 50 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(1)
+      expect(pages[0].slices[0].blocks).toHaveLength(1)
+      // Placed as-is: no fragment tag, full richText.
+      expect(pages[0].slices[0].blocks[0].paragraphFragment).toBeUndefined()
+      expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(40) }])
+   })
+
+   it('moves a keepTogether paragraph whole to the next page when it does not fit', () => {
+      const sections = [section('S', [block('F'), paragraph('P', 40, true)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      // page 1: F(70) fills it, remaining 30. Held P whole = blockHeight 80 > 30, so it moves WHOLE onto an
+      // auto page (keyed on the block id, not a continuation ordinal), carrying no fragment tag.
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 70, P: 80 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}P`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P'])
+      expect(pages[1].slices[0].blocks[0].paragraphFragment).toBeUndefined()
+   })
+
+   it('still splits the same paragraph across pages without the keepTogether flag (regression)', () => {
+      const sections = [section('S', [block('F'), paragraph('P', 40)])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      // Same layout as above but unheld: the paragraph splits at a line boundary rather than moving whole.
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 70, P: 80 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages.length).toBeGreaterThan(1)
+      const fragments = pages.flatMap(page => page.slices.flatMap(slice => slice.blocks))
+         .filter(candidate => candidate.id === 'P')
+      expect(fragments.every(candidate => candidate.paragraphFragment !== undefined)).toBe(true)
+   })
+
+   it('places a keepTogether list whole instead of splitting it at an item boundary', () => {
+      const held: Block = { ...listBlock('L', 4), keepTogether: true }
+      const sections = [section('S', [held])]
+      // The whole-list height is measured on the block itself (blockHeight), so a held list lands via the
+      // atomic path; its per-item heights (which would otherwise split it 3 / 1) are ignored.
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { L: 60 }, listItems: { L: [30, 30, 30, 30] } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(1)
+      expect(pages[0].slices[0].blocks).toHaveLength(1)
+      expect(pages[0].slices[0].blocks[0].items?.map(item => item.id)).toEqual(['L-i0', 'L-i1', 'L-i2', 'L-i3'])
+   })
+
+   it('still splits the same list at an item boundary without the keepTogether flag (regression)', () => {
+      const sections = [section('S', [listBlock('L', 4)])]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { L: 60 }, listItems: { L: [30, 30, 30, 30] } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks[0].items?.length).toBe(3)
+      expect(pages[1].slices[0].blocks[0].items?.length).toBe(1)
+   })
+
+   // A held block that is a heading's companion must reserve its WHOLE height in keep-with-next: a held
+   // block can never be placed in pieces, so a first-line reservation would strand the heading.
+   it('reserves a keepTogether companion whole height in keep-with-next', () => {
+      const held = paragraph('P', 30, true)
+      const sections = [section('S', [block('F'), block('H', 'h3'), held])]
+      const lines: ParagraphLine[] = [{ height: 15, charEnd: 10 }, { height: 15, charEnd: 20 }, { height: 15, charEnd: 30 }]
+      // page 1: title(10) + F(30) = 40, remaining 60. Were P splittable, H + firstAtom(P)=20+30=50 fits, so
+      // H would stay put. Held, firstAtomHeight(P) is its WHOLE 70: H + 70 = 90 > 60, so the heading moves
+      // with the held paragraph to a fresh auto page.
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { F: 30, H: 20, P: 70 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}H`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
+   })
+
+   // The contrast to the test above: the SAME layout with an unheld companion leaves the heading in place
+   // (H + its first two lines fit), proving the whole-height reservation is what moves the cluster.
+   it('leaves the heading in place when the same companion is not held (contrast)', () => {
+      const unheld = paragraph('P', 30)
+      const sections = [section('S', [block('F'), block('H', 'h3'), unheld])]
+      const lines: ParagraphLine[] = [{ height: 15, charEnd: 10 }, { height: 15, charEnd: 20 }, { height: 15, charEnd: 30 }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { F: 30, H: 20, P: 70 }, paragraphLines: { P: lines } })
+      const pages = paginate(sections, [], 100, metrics)
+      // H is NOT moved to its own auto page: it stays on page 1 beside F, and the unheld paragraph then
+      // splits with its head trailing on the same sheet (contrast the held case, where page 1 held only F).
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id).slice(0, 2)).toEqual(['F', 'H'])
+      expect(pages[1]?.id).not.toBe(`${AUTO_PAGE_PREFIX}H`)
+   })
+})

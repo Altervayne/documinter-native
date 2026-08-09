@@ -104,6 +104,11 @@ export interface Block {
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks
    handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" -> href="#my-note")
+   /** Paged-format keep-together: hold this splittable block (`p` / `list` / `checklist`) whole on one
+    *  page instead of letting the paginator split it across sheets. Only ever `true` or absent (never
+    *  `false`), so an untouched document stays byte-identical and the JSON backup carries only the flag
+    *  when set. Layout chrome, JSON-only: read inside `paginate`, never emitted to `.mint` / `.md`. */
+   keepTogether?: true
    /** RENDER-ONLY, set by the paginator on a shallow-copied `p` fragment when a paragraph is split
     *  across page sheets. Names the fragment's char range within the model richText and whether it is
     *  the final piece, so a renderer can identify a fragment and its offset (paragraphs carry no item

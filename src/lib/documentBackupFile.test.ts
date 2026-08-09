@@ -42,3 +42,25 @@ describe('parseDocumentBackup, format persistence', () => {
       expect(parsed!.presentation.format).toEqual({ kind: 'infinite' })
    })
 })
+
+// keepTogether is JSON-only layout chrome: the full-fidelity backup carries it (unlike .mint / .md), and
+// an untouched block never grows the field. These pin that the parse preserves the flag by position, so a
+// re-import restores it, while a block without it stays clean.
+describe('parseDocumentBackup, keepTogether persistence', () => {
+   it('round-trips a block keepTogether flag and leaves an unflagged block clean', () => {
+      const stored = {
+         meta: { title: 'Doc', fields: [] },
+         sections: [{
+            id: 's1', title: 'S', collapsed: false, blocks: [
+               { id: 'b1', type: 'p', richText: [{ text: 'held' }], keepTogether: true },
+               { id: 'b2', type: 'p', richText: [{ text: 'free' }] },
+            ],
+         }],
+      }
+      const parsed = parseDocumentBackup(JSON.stringify(stored))
+      expect(parsed).not.toBeNull()
+      const blocks = parsed!.state.sections[0].blocks
+      expect(blocks[0].keepTogether).toBe(true)
+      expect(blocks[1].keepTogether).toBeUndefined()
+   })
+})

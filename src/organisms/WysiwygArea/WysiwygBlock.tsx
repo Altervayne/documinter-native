@@ -210,6 +210,18 @@ export function WysiwygBlock({
                ? { mode: 'insert', onSelect: () => pageBreaks.startOnNewPage(block.id) }
                : undefined))
          : undefined
+   // Paged-format keep-together toggle: only for an OUTER, editable block of a splittable type (the only
+   // types the paginator ever splits). Toggling routes through patch -> updateBlock -> commitActiveEdit,
+   // so it is one undo entry. `keepTogether` is only ever true or absent, so the toggle clears it to
+   // undefined rather than writing false.
+   const isSplittableType = block.type === 'p' || block.type === 'list' || block.type === 'checklist'
+   const keepTogetherOption: { active: boolean; onSelect: () => void } | undefined =
+      (!inner && !readOnly && pageBreaks.paged && isSplittableType)
+         ? {
+            active:   block.keepTogether === true,
+            onSelect: () => patch({ keepTogether: block.keepTogether ? undefined : true }),
+         }
+         : undefined
    const { contextMenuProps, openContextMenu } = useBlockContextMenu({
       block,
       blockDivRef,
@@ -231,6 +243,7 @@ export function WysiwygBlock({
       onInsertTableColAt: handleInsertTableColAt,
       onDeleteTableColAt: handleDeleteTableColAt,
       pageBreak: pageBreakOption,
+      keepTogether: keepTogetherOption,
    })
 
    // ========================

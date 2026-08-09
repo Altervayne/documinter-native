@@ -299,6 +299,14 @@ export function paginate(
       return block.type === 'h3' || block.type === 'h4'
    }
 
+   // A block that must be placed WHOLE, never split. Two sources feed it: `atomicBlockIds` (the editor
+   // holds the focused paragraph whole while it is being typed) and the persisted `keepTogether` flag
+   // (an author choosing to keep a paragraph / list on one page). Reading both here means editor and
+   // export honour the model flag identically, since the flag rides on the block, not on a caller.
+   function isHeldAtomic(block: Block): boolean {
+      return atomicBlockIds.has(block.id) || block.keepTogether === true
+   }
+
    // The smallest indivisible leading piece of a block that has to travel with a keeper above it. For a
    // splittable list it is the first item, for a splittable paragraph the first line (and I reserve the
    // second line too when it exists, so a heading is never followed by one dangling line then a break),
@@ -306,10 +314,14 @@ export function paginate(
    // atom is enough because the split loops are guaranteed to place at least that atom once its room is
    // held, which keeps the reservation self-consistent with placement.
    function firstAtomHeight(block: Block): number {
+      // A held block (keep-together, or atomic in the editor) is never placed in pieces, so as a keeper's
+      // companion it reserves its WHOLE height, not a first item / line. Checked first so a held list is
+      // held whole too, not reserved by its first item.
+      if (isHeldAtomic(block)) return metrics.blockHeight(block.id)
       const items = metrics.listItemHeights(block.id)
       if (items && items.length > 0) return items[0]
       const lines = metrics.paragraphLines(block.id)
-      if (lines && lines.length > 0 && !atomicBlockIds.has(block.id))
+      if (lines && lines.length > 0)
          return lines.length > 1 ? lines[0].height + lines[1].height : lines[0].height
       return metrics.blockHeight(block.id)
    }
@@ -441,9 +453,10 @@ export function paginate(
    function placeBlock(block: Block, keepWith: number): void {
       const itemHeights    = metrics.listItemHeights(block.id)
       const paragraphLines = metrics.paragraphLines(block.id)
-      // A paragraph splits only when its lines are known AND it is not held atomic (the editor / Pages
-      // panel pass every paragraph id as atomic so they render whole; export passes none).
-      const splitParagraph = !!paragraphLines && paragraphLines.length > 0 && !atomicBlockIds.has(block.id)
+      // A paragraph splits only when its lines are known AND it is not held whole (the editor / Pages
+      // panel pass every paragraph id as atomic so they render whole; export passes none; a keepTogether
+      // paragraph is held whole in both).
+      const splitParagraph = !!paragraphLines && paragraphLines.length > 0 && !isHeldAtomic(block)
 
       if (splitParagraph) {
          // Splittable paragraph: fill rendered lines across pages, cutting the richText at the char
@@ -492,8 +505,10 @@ export function paginate(
          return
       }
 
-      if (!itemHeights || itemHeights.length === 0) {
-         // Atomic block: keep it whole. Move to a fresh page when it (plus any keep-with-next companion)
+      if (!itemHeights || itemHeights.length === 0 || isHeldAtomic(block)) {
+         // Atomic block: keep it whole. A splittable list held whole (keepTogether) also lands here, so it
+         // is placed via its whole-list `blockHeight` instead of the item-split loop below. Move to a fresh
+         // page when it (plus any keep-with-next companion)
          // does not fit under existing content; if it does not fit even on an empty page it is simply
          // taller than the page, place it anyway (the sheet clips it in print, exactly the pre-reflow
          // "too tall" case). I only break for a companion when the pair could fit a fresh page at all,

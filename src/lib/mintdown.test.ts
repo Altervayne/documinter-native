@@ -233,6 +233,24 @@ describe('Mintdown math block scale', () => {
 // ```imagemarkup fence (dims + alt/caption on the info string, one overlay element per body line,
 // NEVER any base64), while a plain image keeps its own convention byte-identical. Legacy standalone
 // `image-markup` fences still parse back into an `image` block carrying the overlay.
+describe('Mintdown, keep-together is layout chrome', () => {
+   // keepTogether is a paged-layout flag read only by the paginator, so it must never reach the
+   // content-only Mintdown text (exactly as format / presentation never do).
+   it('never emits a block keepTogether flag', () => {
+      const sections = [{
+         id: 's', title: 'Section', collapsed: false, blocks: [
+            { id: 'p1', type: 'p' as const, richText: [{ text: 'held whole' }], keepTogether: true as const },
+            { id: 'l1', type: 'list' as const, keepTogether: true as const,
+               items: [{ id: 'i1', richText: [{ text: 'one' }], children: [] }] },
+         ],
+      }]
+      const text = documentToMintdown(sections, { title: 'Doc', fields: [] })
+      expect(text).not.toContain('keepTogether')
+      // The content itself still serializes, so the flag is dropped, not the whole block.
+      expect(text).toContain('held whole')
+   })
+})
+
 describe('Mintdown, image block with markup overlay', () => {
    const meta = { title: 'Doc', fields: [] }
 

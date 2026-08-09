@@ -6,7 +6,7 @@ import {
    IndentIncrease, IndentDecrease,
    BetweenHorizontalStart, BetweenHorizontalEnd,
    BetweenVerticalStart, BetweenVerticalEnd,
-   SeparatorHorizontal,
+   SeparatorHorizontal, Magnet,
 } from 'lucide-react'
 
 // -- Context Imports --
@@ -65,6 +65,9 @@ export interface BlockContextMenuProps {
     *  to break (or already has a break) after it. `insert` adds a break after this block, `remove`
     *  drops the one already there. */
    pageBreak?:     { mode: 'insert' | 'remove'; onSelect: () => void }
+   /** Paged-format keep-together toggle. Present only in paged mode for an outer splittable block.
+    *  `active` = the block is currently held whole; the label / action swaps on it. */
+   keepTogether?:  { active: boolean; onSelect: () => void }
 }
 
 // #############
@@ -87,6 +90,7 @@ export function BlockContextMenu({
    listItem,
    tableCell,
    pageBreak,
+   keepTogether,
 }: BlockContextMenuProps) {
    const { t } = useLang()
 
@@ -123,6 +127,20 @@ export function BlockContextMenu({
             icon:     <SeparatorHorizontal size={13} />,
             danger:   isRemove,
             onSelect: pageBreak.onSelect,
+         },
+      )
+   }
+
+   // ============ Keep-together toggle (paged format only) ============
+   // The menu has no checkbox affordance, so the state reads from the label + verb swap: held blocks
+   // offer "allow splitting", unheld blocks offer "keep on one page".
+   if (keepTogether) {
+      entries.push(
+         { type: 'separator' },
+         {
+            label:    keepTogether.active ? t.blockAllowSplit : t.blockKeepTogether,
+            icon:     <Magnet size={13} />,
+            onSelect: keepTogether.onSelect,
          },
       )
    }
