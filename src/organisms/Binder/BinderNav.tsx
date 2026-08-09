@@ -53,32 +53,19 @@ export function BinderNav({
 
    return (
       <div ref={rootRef} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-border bg-raised/40">
-         {/* Documents anchor: a Back button when drilled into a folder (also an up-drop target),
-             otherwise the "All Documents" root label, which doubles as the Documents-view toggle. */}
-         {!isTemplates && currentFolder ? (
-            <button
-               ref={backRef}
-               type="button"
-               onClick={onNavigateUp}
-               className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
-                  isUpTarget ? 'bg-accent/15 ring-1 ring-inset ring-accent text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
-               }`}
-            >
-               <ChevronLeft size={14} className="shrink-0" />
-               <span className="truncate">{currentFolder.name}</span>
-            </button>
-         ) : (
-            <button
-               type="button"
-               onClick={onSelectDocuments}
-               className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
-                  !isTemplates ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
-               }`}
-            >
-               <Files size={14} className="shrink-0" />
-               <span className="truncate">{t.binderAllDocuments}</span>
-            </button>
-         )}
+         {/* "All Documents" toggles to the Documents view, keeping whichever folder was open (so a trip
+             to Templates and back returns to it), and stays highlighted while in the Documents view; the
+             up-one-level Back affordance now lives inside the folder tree below. */}
+         <button
+            type="button"
+            onClick={onSelectDocuments}
+            className={`flex w-full items-center gap-1.5 px-3 py-2.5 border-b border-border text-xs font-semibold transition-colors cursor-pointer ${
+               !isTemplates ? 'bg-accent/10 text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
+            }`}
+         >
+            <Files size={14} className="shrink-0" />
+            <span className="truncate">{t.binderAllDocuments}</span>
+         </button>
 
          {/* Templates-view toggle: a sibling top-level destination to the documents folder tree. */}
          <button
@@ -95,6 +82,21 @@ export function BinderNav({
          {/* Folder tree belongs to the Documents view; hidden while browsing templates. */}
          {!isTemplates && (
          <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+            {/* Back row: the up-one-level affordance, shown as the first folder-list row when drilled
+                into a folder. Doubles as the up-drop target (backRef + isUpTarget) for a dragged card. */}
+            {currentFolder && (
+               <button
+                  ref={backRef}
+                  type="button"
+                  onClick={onNavigateUp}
+                  className={`flex w-full items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer mb-0.5 ${
+                     isUpTarget ? 'bg-accent/15 ring-1 ring-inset ring-accent text-accent' : 'text-muted hover:text-text hover:bg-accent/10'
+                  }`}
+               >
+                  <ChevronLeft size={14} className="shrink-0" />
+                  <span className="truncate">{currentFolder.name}</span>
+               </button>
+            )}
             <SortableContext items={subfolders.map(folder => `folder:${folder.id}`)} strategy={noopStrategy}>
                {subfolders.map(folder => {
                   const isFolderTarget = folderDropTarget?.id === folder.id

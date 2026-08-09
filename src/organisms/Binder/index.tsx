@@ -10,6 +10,7 @@ import { useBinderDocuments } from '../../hooks/useBinderDocuments'
 import { useBinderNav } from '../../hooks/useBinderNav'
 import { useBinderSearch } from '../../hooks/useBinderSearch'
 import { useBinderDragAndDrop, SPRING_HOLD_MS } from '../../hooks/useBinderDragAndDrop'
+import { useBinderFileImport } from '../../hooks/useBinderFileImport'
 import { useTemplates } from '../../hooks/useTemplates'
 import { useLang } from '../../contexts/LangContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -225,15 +226,14 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    const manualSortActive = sortBy === 'manual' && !search.hasActiveCriteria
    const clearDocumentSelection = useCallback(() => setSelectedDocumentId(null), [])
 
-   // The whole drag-and-drop subsystem (puck morph, spring folder-nav, back/cancel hit-tests, and
-   // native file-drop import) lives in useBinderDragAndDrop. The root binds its handlers to the
-   // DndContext and renders the overlay + nav drop targets from its returned state and refs.
+   // The whole drag-and-drop subsystem (puck morph, spring folder-nav, back/cancel hit-tests) lives
+   // in useBinderDragAndDrop. The root binds its handlers to the DndContext and renders the overlay +
+   // nav drop targets from its returned state and refs.
    const {
       sensors, onDragStart, onDragEnd, onDragCancel, setIsOverFolder,
       navRef, backRef, cancelRef,
       activeDrag, isDocDragging, isFolderDragging, isOverNav, overBack, overCancel, folderTarget,
       overlayCardRef, clusterRef, puckVisible, puckIntent, springActive, springRunId,
-      isFileDragOver, handleFileDragOver, handleFileDragLeave, handleFileDrop,
    } = useBinderDragAndDrop({
       docs,
       nav,
@@ -243,6 +243,11 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       manualSortActive,
       clearDocumentSelection,
    })
+
+   // Native file-drop import covers the whole binder body (nav + templates pane + document grid) and
+   // routes each dropped file by its content: a template export becomes a stored template, a document
+   // backup becomes a new document in the current folder. Orthogonal to dnd-kit's pointer dragging.
+   const fileImport = useBinderFileImport({ currentFolderId, onImported: bumpData })
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
@@ -256,9 +261,30 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
             onDragCancel={onDragCancel}
          >
          <FolderOverWatcher onChange={setIsOverFolder} />
-         <div className="flex flex-1 min-h-0">
+         <div
+            className="relative flex flex-1 min-h-0"
+            onDragOver={fileImport.handleFileDragOver}
+            onDragLeave={fileImport.handleFileDragLeave}
+            onDrop={fileImport.handleFileDrop}
+         >
+            {fileImport.isFileDragOver && (
+               <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
+                  {/* Shadow only on the icon + label so they stay legible over whatever content the
+                      translucent overlay sits on top of (the drop zone spans the whole binder body). */}
+                  <div
+                     className="flex flex-col items-center gap-2.5"
+                     style={{ filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45))' }}
+                  >
+                     <FileJson size={34} />
+                     <span className="text-sm font-medium">{t.binderDropToImport}</span>
+                  </div>
+               </div>
+            )}
             <BinderNav
                view={view}
+               // Toggle back to the Documents view WITHOUT touching the current folder, so leaving for
+               // Templates and returning lands on the same folder. Going up / to the root is the Back
+               // row's and the breadcrumb's job.
                onSelectDocuments={() => setView('documents')}
                onSelectTemplates={() => setView('templates')}
                currentFolder={currentFolder}
@@ -316,18 +342,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
                   />
                </div>
 
-               <div
-                  className="relative flex-1 overflow-y-auto p-6"
-                  onDragOver={handleFileDragOver}
-                  onDragLeave={handleFileDragLeave}
-                  onDrop={handleFileDrop}
-               >
-                  {isFileDragOver && (
-                     <div className="absolute inset-3 z-10 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
-                        <FileJson size={34} />
-                        <span className="text-sm font-medium">{t.binderDropToImport}</span>
-                     </div>
-                  )}
+               <div className="relative flex-1 overflow-y-auto p-6">
                   {docs.isLoading ? (
                      <div className="text-muted text-sm">…</div>
                   ) : docs.documents.length === 0 ? (

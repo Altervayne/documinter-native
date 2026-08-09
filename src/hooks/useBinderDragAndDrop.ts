@@ -49,45 +49,16 @@ interface UseBinderDragAndDropOptions {
 /**
  * Owns the binder's entire drag-and-drop subsystem: the dnd-kit sensors + drag handlers, the
  * cursor-"puck" morph driven by a window pointermove listener (direct DOM writes), back/cancel/
- * folder hit-testing via refs, spring-loaded folder navigation (dwell timer + ring), and native
- * file-drop import. State stays local to the binder subtree; the root binds the returned handlers
- * to DndContext and renders the overlay/nav from the returned state + refs.
+ * folder hit-testing via refs, and spring-loaded folder navigation (dwell timer + ring). State
+ * stays local to the binder subtree; the root binds the returned handlers to DndContext and renders
+ * the overlay/nav from the returned state + refs. Native file-drop import is a separate concern
+ * living in useBinderFileImport.
  */
 export function useBinderDragAndDrop({
    docs, nav, navigateTo, currentFolder, currentFolderId, manualSortActive, clearDocumentSelection,
 }: UseBinderDragAndDropOptions) {
-   const { documents, handleMove, handleReorder, handleImportJSON } = docs
+   const { documents, handleMove, handleReorder } = docs
    const { subfolders, ancestors, moveFolder, reorderFolders } = nav
-
-   // =========================
-   //  Drag-and-drop file import
-   // =========================
-   // Native HTML5 file drops (from the OS file explorer) are a separate system from dnd-kit's
-   // pointer-based card dragging, so the two never collide. A dropped .documinter.json becomes a
-   // new document in the folder currently being viewed.
-   const [isFileDragOver, setIsFileDragOver] = useState(false)
-
-   const handleFileDragOver = useCallback((event: React.DragEvent) => {
-      if (!event.dataTransfer.types.includes('Files')) return   // ignore non-file drags
-      event.preventDefault()
-      event.dataTransfer.dropEffect = 'copy'
-      setIsFileDragOver(true)
-   }, [])
-
-   const handleFileDragLeave = useCallback((event: React.DragEvent) => {
-      // Native dragleave also fires when crossing between child elements, only clear when the
-      // cursor has actually left the drop container.
-      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-      setIsFileDragOver(false)
-   }, [])
-
-   const handleFileDrop = useCallback((event: React.DragEvent) => {
-      if (!event.dataTransfer.types.includes('Files')) return
-      event.preventDefault()
-      setIsFileDragOver(false)
-      const files = Array.from(event.dataTransfer.files)
-      if (files.length > 0) void handleImportJSON(files, currentFolderId)
-   }, [handleImportJSON, currentFolderId])
 
    // ============
    //  Drag & drop
@@ -370,7 +341,5 @@ export function useBinderDragAndDrop({
       activeDrag, isDocDragging, isFolderDragging, isOverNav, overBack, overCancel, folderTarget,
       // overlay (puck + clones), rendered by the root from these
       overlayCardRef, clusterRef, puckVisible, puckIntent, springActive, springRunId,
-      // native file-drop import
-      isFileDragOver, handleFileDragOver, handleFileDragLeave, handleFileDrop,
    }
 }
