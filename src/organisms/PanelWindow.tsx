@@ -61,8 +61,9 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
          maxSize={MAX_SIZE}
          margin={WINDOW_MARGIN}
          // The panel body brings its own scroll (it is the same body the dock hosts), so the window body
-         // stays bare: fill the space, hide overflow, and let the inner body scroll.
-         bodyClassName="flex-1 min-h-0 flex flex-col overflow-hidden"
+         // stays bare apart from the distinct --color-bg surface that keeps the header from blending in
+         // (see .panel-window-body); the inner body owns the overflow.
+         bodyClassName="panel-window-body"
          focusOnOpen={false}
          escapeCloses={false}
          sheetFallback={false}

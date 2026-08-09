@@ -306,8 +306,11 @@ function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag
             </button>
          </div>
 
+         {/* The body sits on the distinct --color-bg surface (the header + column stay raised), so a docked
+             group reads with the same header / body contrast as a popped-out panel window instead of one
+             flat raised tone. */}
          {!group.collapsed && (
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
                {body}
             </div>
          )}

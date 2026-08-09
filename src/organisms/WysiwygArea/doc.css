@@ -1227,6 +1227,16 @@
    value outranks the dim class below, so the two cannot coexist. */
 .block-editor-window-no-anim { animation: none; }
 .block-editor-window-dimmed  { opacity: 0.6; }
+/* A popped-out panel window's body: it matches the block editor windows, a raised frame + header over a
+   distinct --color-bg body surface, so the header does not blend into the body (raised-on-raised reads
+   flat in a lone window). The panel body brings its own scroll, so this stays bare apart from the fill
+   + background; the diagonal-hatch resize grip from the shared shell then reads against this surface. */
+.panel-window-body {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+}
 
 /* Title bar = the drag handle. touch-action:none lets Pointer Events own the gesture on touch. */
 .block-editor-window-titlebar {

@@ -63,7 +63,7 @@ export function StructurePanelBody({
    }
 
    return (
-      <div className="overflow-y-auto flex-1 min-h-0 px-2 pt-2 pb-4">
+      <div className="overflow-y-auto flex-1 min-h-0 p-2">
          {sections.length === 0 ? (
             <button
                onClick={onAddSection}
