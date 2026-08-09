@@ -289,8 +289,46 @@ export function paginate(
       else breaksAfterBlockId.set(pageBreak.after.blockId, [pageBreak])
    }
 
+   // ####################
+   // # KEEP-WITH-NEXT   #
+   // ####################
+
+   // A heading is a keeper: it reads as a label for whatever follows, so it must never sit alone at a
+   // page bottom with its body on the next sheet. Section titles (h2) are keepers too, handled inline.
+   function isHeadingType(block: Block): boolean {
+      return block.type === 'h3' || block.type === 'h4'
+   }
+
+   // The smallest indivisible leading piece of a block that has to travel with a keeper above it. For a
+   // splittable list it is the first item, for a splittable paragraph the first line (and I reserve the
+   // second line too when it exists, so a heading is never followed by one dangling line then a break),
+   // and for anything atomic the whole height (an atomic block cannot be placed in pieces). Reserving one
+   // atom is enough because the split loops are guaranteed to place at least that atom once its room is
+   // held, which keeps the reservation self-consistent with placement.
+   function firstAtomHeight(block: Block): number {
+      const items = metrics.listItemHeights(block.id)
+      if (items && items.length > 0) return items[0]
+      const lines = metrics.paragraphLines(block.id)
+      if (lines && lines.length > 0 && !atomicBlockIds.has(block.id))
+         return lines.length > 1 ? lines[0].height + lines[1].height : lines[0].height
+      return metrics.blockHeight(block.id)
+   }
+
+   // Extra height that must stay on the same sheet as a keeper placed just before `blocks[index]`. I chain
+   // through a run of consecutive headings so the first heading keeps the whole cluster, and I stop the
+   // chain at a heading the author pinned with a forced break (it keeps only itself, so keep-with-next
+   // never silently undoes an explicit break). Bounded by the finite block run; 0 past the end.
+   function trailingKeepHeight(blocks: Block[], index: number): number {
+      if (index >= blocks.length) return 0
+      const next = blocks[index]
+      if (isHeadingType(next) && !breaksAfterBlockId.has(next.id))
+         return metrics.blockHeight(next.id) + trailingKeepHeight(blocks, index + 1)
+      return firstAtomHeight(next)
+   }
+
    const pages: Page[] = []
    let pageId = FIRST_PAGE_ID
+   let pageOrigin: Page['origin'] = 'first'
    let slices: PageSlice[] = []
    let pageIndex = 0
    let used = 0
@@ -304,9 +342,11 @@ export function paginate(
 
    // Close the current sheet and open the next. `continuation` keeps the current section open as a
    // no-title continuation slice (auto-flow mid-section); otherwise the next block re-opens a slice.
-   function startPage(nextId: string, continuation: boolean): void {
-      pages.push({ id: pageId, slices })
+   // `origin` records how the new page came to exist (see Page.origin), stamped at creation time.
+   function startPage(nextId: string, continuation: boolean, origin: Page['origin']): void {
+      pages.push({ id: pageId, slices, origin: pageOrigin })
       pageId = nextId
+      pageOrigin = origin
       slices = []
       used = 0
       pageIndex += 1
@@ -321,13 +361,16 @@ export function paginate(
    // An auto (height-driven) break: synthetic id derived from the content that will start the next page,
    // so it stays stable across re-measures. `continuation` keeps the current section open as a no-title
    // continuation slice (mid-block / mid-list flow); pass false when the caller opens its own next slice
-   // (a following section pushed down because its title would not fit).
+   // (a following section pushed down because its title would not fit). The `continuation` flag doubles as
+   // the origin signal: a continuation page carries a block flowing off the previous sheet, while a
+   // non-continuation auto page STARTS fresh content (a section push / empty section / keep-with-next).
    function autoBreak(nextStartKey: string, continuation: boolean): void {
-      startPage(`${AUTO_PAGE_PREFIX}${nextStartKey}`, continuation)
+      startPage(`${AUTO_PAGE_PREFIX}${nextStartKey}`, continuation, continuation ? 'continuation' : 'auto-start')
    }
 
-   // Leading blank pages: each closes the current (empty) page and opens the next.
-   for (const pageBreak of leadingBreaks) startPage(pageBreak.id, false)
+   // Leading blank pages: each closes the current (empty) page and opens the next. These come from
+   // explicit break markers, so they are `manual`.
+   for (const pageBreak of leadingBreaks) startPage(pageBreak.id, false, 'manual')
 
    for (const section of sections) {
       currentSection = section
@@ -350,34 +393,52 @@ export function paginate(
          // Open this section's slice on the current page, spending the title when it starts the section.
          if (openSlice === null) {
             const isStart = !placedAnyBlockOfSection
-            if (isStart && used > 0 && metrics.sectionTitleHeight(section.id) > remaining()) {
-               // Title would not fit under existing content: push the whole section start to a new page.
-               autoBreak(`section-${section.id}`, false)
+            if (isStart) {
+               // A section title is a keeper: never leave it stranded at a page bottom while its first
+               // block flows onto the next sheet. I keep the original title-alone break (a fresh page is
+               // strictly better when even the title cannot fit) and add keep-with-next only when the
+               // title plus its first atom could actually fit a fresh page, else a break just re-orphans
+               // the pair one sheet later.
+               const titleHeight     = metrics.sectionTitleHeight(section.id)
+               const need            = titleHeight + trailingKeepHeight(section.blocks, 0)
+               const breakForTitle   = titleHeight > remaining()
+               const breakForKeeping = need <= availableHeight && need > remaining()
+               if (used > 0 && (breakForTitle || breakForKeeping)) {
+                  // Push the whole section start to a new page.
+                  autoBreak(`section-${section.id}`, false)
+               }
             }
             openSlice = { section, blocks: [], isSectionStart: isStart, isSectionEnd: false }
             slices.push(openSlice)
             if (isStart) used += metrics.sectionTitleHeight(section.id)
          }
 
-         placeBlock(block)
+         const keepWith = (isHeadingType(block) && !breaksAfterBlockId.has(block.id))
+            ? trailingKeepHeight(section.blocks, blockIndex + 1)
+            : 0
+         placeBlock(block, keepWith)
          placedAnyBlockOfSection = true
          if (blockIndex === section.blocks.length - 1 && openSlice) openSlice.isSectionEnd = true
 
          // Explicit break(s) after this block: the first starts the next content page, extras are blanks.
+         // Both are author-made, so `manual`.
          const cuts = breaksAfterBlockId.get(block.id)
          if (cuts) {
-            for (const pageBreak of cuts) startPage(pageBreak.id, false)
+            for (const pageBreak of cuts) startPage(pageBreak.id, false, 'manual')
             openSlice = null
          }
       })
    }
 
-   pages.push({ id: pageId, slices })
+   pages.push({ id: pageId, slices, origin: pageOrigin })
    return pages
 
    // Place one block on the current page, auto-breaking (and, for a splittable list or paragraph,
-   // splitting) so it fits. `openSlice` is guaranteed non-null on entry.
-   function placeBlock(block: Block): void {
+   // splitting) so it fits. `openSlice` is guaranteed non-null on entry. `keepWith` is the height that
+   // must stay on this sheet with `block` (its keep-with-next companion): non-zero only for a heading the
+   // section loop hands a companion reservation, 0 for every other caller, so non-heading placement is
+   // byte-identical to before.
+   function placeBlock(block: Block, keepWith: number): void {
       const itemHeights    = metrics.listItemHeights(block.id)
       const paragraphLines = metrics.paragraphLines(block.id)
       // A paragraph splits only when its lines are known AND it is not held atomic (the editor / Pages
@@ -432,11 +493,16 @@ export function paginate(
       }
 
       if (!itemHeights || itemHeights.length === 0) {
-         // Atomic block: keep it whole. Move to a fresh page when it does not fit under existing
-         // content; if it does not fit even on an empty page it is simply taller than the page, place
-         // it anyway (the sheet clips it in print, exactly the pre-reflow "too tall" case).
-         const height = metrics.blockHeight(block.id)
-         if (used > 0 && height > remaining()) autoBreak(block.id, true)
+         // Atomic block: keep it whole. Move to a fresh page when it (plus any keep-with-next companion)
+         // does not fit under existing content; if it does not fit even on an empty page it is simply
+         // taller than the page, place it anyway (the sheet clips it in print, exactly the pre-reflow
+         // "too tall" case). I only break for a companion when the pair could fit a fresh page at all,
+         // else a break re-orphans the keeper one sheet later. keepWith === 0 for every non-heading
+         // block, so this reduces to the original height-only test and stays byte-identical there.
+         const height        = metrics.blockHeight(block.id)
+         const need          = height + keepWith
+         const worthBreaking = keepWith === 0 || need <= availableHeight
+         if (used > 0 && need > remaining() && worthBreaking) autoBreak(block.id, true)
          openSlice!.blocks.push(block)
          used += height
          return

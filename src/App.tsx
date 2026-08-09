@@ -296,6 +296,21 @@ export default function App() {
    const commitSectionsAndFormat = useCallback((nextSections: Section[], nextFormat: DocFormat | undefined) => {
       commitActiveEdit('page-op', document => ({ ...document, sections: nextSections, format: nextFormat }))
    }, [commitActiveEdit])
+   // A block-menu page break commits under its OWN undo kind so toggling a break never coalesces into an
+   // adjacent margin / width / band edit (those all route through setActiveFormat = 'format'). Same format
+   // write, distinct kind, so each explicit break is its own discrete undo step.
+   const setActivePageBreak = useCallback((next: DocFormat | undefined) => {
+      commitActiveEdit('page-break', document => ({ ...document, format: next }))
+   }, [commitActiveEdit])
+   // Non-recording format write for the page reconcile pass: when a break's anchor block is deleted the
+   // editor re-anchors the boundary to the surviving predecessor. That persists + autosaves like any format
+   // change, but it is a follow-on to the delete (which already recorded its own entry), not a fresh user
+   // action, so it must NOT record a second history entry. Snapshots carry `format`, so undo/redo stay
+   // consistent without it. Mirrors applySnapshotToTab's non-recording setOpenDocuments path.
+   const setActiveFormatSilently = useCallback((next: DocFormat | undefined) => {
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
+   }, [])
    // Per-tab save-status setter. Status lives on each OpenDocument, so the autosave cycle,
    // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
    // the captured originating tab for an async save's resolution.
@@ -1018,6 +1033,7 @@ export default function App() {
             onDuplicate={pagesData.onDuplicate}
             onDelete={pagesData.onDelete}
             onInsertAfter={pagesData.onInsertAfter}
+            onRemoveBreak={pagesData.onRemoveBreak}
             onAddPage={pagesData.onAddPage}
             onSaveAsPdf={handleSaveAsPdf}
             onJump={pagesData.onJump}
@@ -1160,7 +1176,9 @@ export default function App() {
                               onDocAccentChange={setActiveDocAccent}
                               onPresentationChange={setActivePresentation}
                               onFormatChange={setActiveFormat}
-                              onReplaceSections={setActiveSections}
+                              onPageBreakChange={setActivePageBreak}
+                              onReconcileFormat={setActiveFormatSilently}
+                              onCommitSectionsAndFormat={commitSectionsAndFormat}
                               onOpenExport={handleOpenExport}
                               onManualSave={handleManualSave}
                               onSaveAs={handleSaveAs}

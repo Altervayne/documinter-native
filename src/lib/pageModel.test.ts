@@ -15,6 +15,11 @@ import {
    deletePage,
    insertBlankPageAfter,
    placeBlockOnBlankPage,
+   flatPredecessorBlockId,
+   canStartOnNewPage,
+   blockStartsFreshPage,
+   startBlockOnNewPage,
+   mergeBlockWithPrevious,
    FIRST_PAGE_ID,
 } from './pageModel'
 
@@ -152,6 +157,16 @@ describe('partitionIntoPages', () => {
       ])
       expect(shape(pages).flatMap(page => page.blocks)).toEqual(['a', 'b', 'c', 'd', 'e'])
    })
+
+   it('labels page 1 first and every explicit-break page manual', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's1', 'b')])
+      expect(pages.map(page => page.origin)).toEqual(['first', 'manual'])
+   })
+
+   it('labels a leading blank page manual (opened by an explicit break)', () => {
+      const pages = partitionIntoPages(SECTIONS, [breakLeading('brk')])
+      expect(pages.map(page => page.origin)).toEqual(['first', 'manual'])
+   })
 })
 
 // #############
@@ -287,6 +302,76 @@ describe('removePageBreakAfter / removePageBreak', () => {
    it('removePageBreak drops the break with the given id', () => {
       const pages = [breakAfter('brk1', 's1', 'b'), breakAfter('brk2', 's2', 'd')]
       expect(removePageBreak(pages, 'brk1')).toEqual([breakAfter('brk2', 's2', 'd')])
+   })
+})
+
+// #####################
+// # START-ON-NEW-PAGE #
+// #####################
+
+describe('start-on-new-page wrappers', () => {
+   // A section holding a container block whose inner blocks live in `left`/`right`, never in the flat flow.
+   const CONTAINER_SECTIONS: Section[] = [
+      {
+         id: 'sc', title: 'sc', collapsed: false,
+         blocks: [
+            mkBlock('x'),
+            { id: 'cont', type: 'container', left: [mkBlock('inL')], right: [mkBlock('inR')] },
+            mkBlock('y'),
+         ],
+      },
+   ]
+
+   it('flatPredecessorBlockId returns the block just before, null for the first and unknown ids', () => {
+      expect(flatPredecessorBlockId(SECTIONS, 'a')).toBeNull()          // first top-level block
+      expect(flatPredecessorBlockId(SECTIONS, 'b')).toBe('a')
+      expect(flatPredecessorBlockId(SECTIONS, 'd')).toBe('c')           // crosses the section boundary
+      expect(flatPredecessorBlockId(SECTIONS, 'missing')).toBeNull()
+   })
+
+   it('flatPredecessorBlockId ignores container inner blocks (they are not in the flat flow)', () => {
+      expect(flatPredecessorBlockId(CONTAINER_SECTIONS, 'inL')).toBeNull()   // not a top-level block
+      expect(flatPredecessorBlockId(CONTAINER_SECTIONS, 'inR')).toBeNull()
+      expect(flatPredecessorBlockId(CONTAINER_SECTIONS, 'y')).toBe('cont')   // container is the predecessor
+   })
+
+   it('canStartOnNewPage is false for the first block and non-top-level ids, true otherwise', () => {
+      expect(canStartOnNewPage(SECTIONS, 'a')).toBe(false)             // first block, nothing to anchor after
+      expect(canStartOnNewPage(SECTIONS, 'b')).toBe(true)
+      expect(canStartOnNewPage(SECTIONS, 'e')).toBe(true)             // the LAST block can still start a page
+      expect(canStartOnNewPage(CONTAINER_SECTIONS, 'inL')).toBe(false)   // container inner block is not a target
+   })
+
+   it('starting X on a new page equals a break after X predecessor', () => {
+      const started = startBlockOnNewPage([], SECTIONS, 'c')
+      const directly = addPageBreakAfter([], SECTIONS, 'b')   // 'b' is c predecessor
+      expect(started.map(pageBreak => pageBreak.after)).toEqual(directly.map(pageBreak => pageBreak.after))
+      expect(started[0].after).toEqual({ sectionId: 's1', blockId: 'b' })
+   })
+
+   it('starting the first block on a new page is a no-op (same references)', () => {
+      const pages: PageBreak[] = []
+      expect(startBlockOnNewPage(pages, SECTIONS, 'a')).toBe(pages)
+   })
+
+   it('blockStartsFreshPage tracks whether a break sits on the predecessor', () => {
+      const started = startBlockOnNewPage([], SECTIONS, 'c')
+      expect(blockStartsFreshPage(started, SECTIONS, 'c')).toBe(true)
+      expect(blockStartsFreshPage(started, SECTIONS, 'b')).toBe(false)   // no break before 'b'
+      expect(blockStartsFreshPage([], SECTIONS, 'a')).toBe(false)        // first block never starts fresh
+   })
+
+   it('round-trips: starting then merging returns to no break', () => {
+      const started = startBlockOnNewPage([], SECTIONS, 'c')
+      expect(blockStartsFreshPage(started, SECTIONS, 'c')).toBe(true)
+      const merged = mergeBlockWithPrevious(started, SECTIONS, 'c')
+      expect(merged).toEqual([])
+      expect(blockStartsFreshPage(merged, SECTIONS, 'c')).toBe(false)
+   })
+
+   it('merging the first block is a no-op (same references)', () => {
+      const pages = [breakAfter('brk', 's1', 'b')]
+      expect(mergeBlockWithPrevious(pages, SECTIONS, 'a')).toBe(pages)
    })
 })
 

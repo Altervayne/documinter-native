@@ -423,6 +423,47 @@ describe('contentBoxWidthPx — width-parity guard', () => {
    })
 })
 
+describe('paginate — page origin', () => {
+   it('labels page 1 first and a forced-break page manual', () => {
+      const sections = [section('S', [block('A'), block('B')])]
+      const forced = [{ id: 'brk', after: { sectionId: 'S', blockId: 'A' } }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { A: 30, B: 30 } })
+      const pages = paginate(sections, forced, 100, metrics)
+      expect(pages.map(page => page.origin)).toEqual(['first', 'manual'])
+   })
+
+   it('labels a mid-block auto-flow page continuation', () => {
+      // A(40) + B(40) fill page 1; C(40) overflows onto an auto page opened with continuation:true.
+      const sections = [section('S', [block('A'), block('B'), block('C')])]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { A: 40, B: 40, C: 40 } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages.map(page => page.origin)).toEqual(['first', 'continuation'])
+      expect(isAutoPageId(pages[1].id)).toBe(true)
+   })
+
+   it('labels a section-push auto page auto-start (it begins fresh content)', () => {
+      const sections = [section('S1', [block('A')]), section('S2', [block('B')])]
+      const metrics = metricsFrom({ titleHeight: 60, blockHeights: { A: 30, B: 30 } })
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages.map(page => page.origin)).toEqual(['first', 'auto-start'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}section-S2`)
+   })
+
+   it('labels a leading blank page manual and a paragraph split page continuation together', () => {
+      const paragraph: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(40) }] }
+      const sections = [section('S', [paragraph])]
+      const lines: ParagraphLine[] = [
+         { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
+         { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
+      ]
+      const forced = [{ id: 'lead', after: null }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } })
+      const pages = paginate(sections, forced, 100, metrics)
+      // page 1 first (blank), page 2 the leading manual break, page 3 the paragraph's continuation.
+      expect(pages.map(page => page.origin)).toEqual(['first', 'manual', 'continuation'])
+   })
+})
+
 describe('paginate — multi-section flow', () => {
    it('pushes a section whose title cannot fit under existing content to a new page', () => {
       const sections = [section('S1', [block('A')]), section('S2', [block('B')])]
@@ -432,6 +473,119 @@ describe('paginate — multi-section flow', () => {
       expect(shape(pages)).toEqual([
          { id: FIRST_PAGE_ID,                     slices: [{ section: 'S1', blocks: ['A'], start: true, end: true }] },
          { id: `${AUTO_PAGE_PREFIX}section-S2`,    slices: [{ section: 'S2', blocks: ['B'], start: true, end: true }] },
+      ])
+   })
+})
+
+describe('paginate — keep-with-next', () => {
+   // 1. A heading that fits alone at a page bottom is still moved when its body cannot follow it there.
+   it('keeps a heading with its first block instead of orphaning it at a page bottom', () => {
+      const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }, { height: 20, charEnd: 30 }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { F: 60, H: 20 }, paragraphLines: { P: lines } })
+      // page 1: title(10) + F(60) = 70, remaining 30. H(20) alone would fit, but H + firstAtom(P)=40 => 60
+      // does not, so H moves with P to a fresh auto page instead of sitting orphaned above the seam.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}H`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
+   })
+
+   // 2. A section's own title is a keeper too: it must never be stranded from the section's first block.
+   it('keeps a section title with its first block when the pair cannot fit under existing content', () => {
+      const sections = [section('S1', [block('A')]), section('S2', [block('H', 'h3'), block('P', 'p')])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { A: 55, H: 15 }, paragraphLines: { P: lines } })
+      // page 1: title(10) + A(55) = 65, remaining 35. S2 title(10) + H(15) = 25 would fit, but the whole
+      // start title(10) + H(15) + firstAtom(P)=40 => 65 does not, so the entire S2 start moves together.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['A'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}section-S2`)
+      expect(pages[1].slices[0].section.id).toBe('S2')
+      expect(pages[1].slices[0].isSectionStart).toBe(true)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
+   })
+
+   // 3. A run of consecutive headings keeps as one cluster with the first real atom under it.
+   it('moves a chained heading cluster together with the first atom of its body', () => {
+      const sections = [section('S', [block('F'), block('H3', 'h3'), block('H4', 'h4'), block('P', 'p')])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { F: 60, H3: 15, H4: 15 }, paragraphLines: { P: lines } })
+      // page 1: title(10) + F(60) = 70, remaining 30. The H3 reservation chains H4 then firstAtom(P):
+      // 15 + 15 + 40 = 70, plus H3 itself, well past 30, so the whole cluster starts a fresh auto page.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F'])
+      expect(pages[1].id).toBe(`${AUTO_PAGE_PREFIX}H3`)
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H3', 'H4', 'P'])
+   })
+
+   // 4. When the companion is an atomic block taller than a page, a break cannot help, so none is taken.
+   it('does not break for an unsatisfiable giant companion (leaves the heading where it sits)', () => {
+      const sections = [section('S', [block('F'), block('H', 'h3'), block('BIG', 'table')])]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 50, H: 20, BIG: 250 } })
+      // remaining after F is 50. H + firstAtom(BIG)=250 => 270 cannot fit ANY fresh page (availableHeight
+      // 100), so worthBreaking is false: H is placed beside F and the giant flows onto its own sheet.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F', 'H'])
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['BIG'])
+   })
+
+   // 5. An explicit break pinned right after a heading wins: keep-with-next reserves nothing there.
+   it('lets a forced break after a heading suppress keep-with-next', () => {
+      const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
+      const forced = [{ id: 'brk', after: { sectionId: 'S', blockId: 'H' } }]
+      const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, H: 20 }, paragraphLines: { P: lines } })
+      // Without the forced break, F(60) + remaining 40 would push H + firstAtom(P)=60 to an auto:H page.
+      // The author break on H sets keepWith to 0, so H stays at the bottom and the break itself fires: P
+      // starts the explicit `brk` page, not an auto keep-with-next page.
+      const pages = paginate(sections, forced, 100, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F', 'H'])
+      expect(pages[1].id).toBe('brk')
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P'])
+      expect(isAutoPageId(pages[1].id)).toBe(false)
+   })
+
+   // 6. Title keep-with-next fires even when the title ALONE would have fit under existing content.
+   it('breaks for a section title whose first block will not follow, though the title alone fits', () => {
+      const sections = [section('S1', [block('A')]), section('S2', [block('B')])]
+      const metrics = metricsFrom({ titleHeight: 30, blockHeights: { A: 40, B: 40 } })
+      // page 1: title(30) + A(40) = 70, remaining 30. S2 title(30) alone would fit (30 <= 30, the
+      // title-alone break is strict), but title(30) + B(40) = 70 does not, so keep-with-next moves S2.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(shape(pages)).toEqual([
+         { id: FIRST_PAGE_ID,                  slices: [{ section: 'S1', blocks: ['A'], start: true, end: true }] },
+         { id: `${AUTO_PAGE_PREFIX}section-S2`, slices: [{ section: 'S2', blocks: ['B'], start: true, end: true }] },
+      ])
+   })
+
+   // 7. Editor at rest and export share the exact reservation, so a heading cluster lays out identically.
+   it('lays out a heading cluster identically for the editor at rest and the export atomic set', () => {
+      const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
+      const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }, { height: 20, charEnd: 30 }]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { F: 60, H: 20 }, paragraphLines: { P: lines } })
+      const editorAtRest = paginate(sections, [], 100, metrics, new Set<string>())
+      const exportLayout = paginate(sections, [], 100, metrics, new Set<string>())
+      expect(shape(exportLayout)).toEqual(shape(editorAtRest))
+      expect(exportLayout).toHaveLength(2)
+      expect(exportLayout[1].id).toBe(`${AUTO_PAGE_PREFIX}H`)
+   })
+
+   // 8. Regression: a non-heading keeper reserves nothing, so plain atomic placement is byte-identical.
+   it('leaves non-heading atomic placement byte-identical (no keep-with-next reservation)', () => {
+      const sections = [section('S', [block('A'), block('B'), block('C')])]
+      const metrics = metricsFrom({ titleHeight: 10, blockHeights: { A: 40, B: 40, C: 40 } })
+      // A and B are plain (non-heading) blocks, so keepWith stays 0 and the seam falls exactly where the
+      // pre-keep-with-next paginator put it: A + B on page 1, C pushed to the auto page on its own.
+      const pages = paginate(sections, [], 100, metrics)
+      expect(shape(pages)).toEqual([
+         { id: FIRST_PAGE_ID,          slices: [{ section: 'S', blocks: ['A', 'B'], start: true,  end: false }] },
+         { id: `${AUTO_PAGE_PREFIX}C`, slices: [{ section: 'S', blocks: ['C'],      start: false, end: true  }] },
       ])
    })
 })

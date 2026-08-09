@@ -335,6 +335,18 @@
   opacity: 0.7;
   user-select: none;
 }
+/* A manual (author-made) break page wears a subtle badge beside its action bar, so a deliberate boundary
+   reads apart from the auto continuation / auto-start sheets that only carry a label. */
+.page-thumb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+  opacity: 0.75;
+  user-select: none;
+}
 .page-thumb-actions {
   display: flex;
   align-items: center;

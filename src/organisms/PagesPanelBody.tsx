@@ -8,7 +8,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 
 // -- Icon Imports --
-import { Copy, Trash2, FilePlus2, Plus, Printer } from 'lucide-react'
+import { Copy, Trash2, FilePlus2, Plus, Printer, SeparatorHorizontal } from 'lucide-react'
 
 // -- Lib / Context Imports --
 import { renderPagePreviewHtml } from '../lib/export'
@@ -44,6 +44,7 @@ interface PagesPanelBodyProps {
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
    onInsertAfter: (pageIndex: number) => void
+   onRemoveBreak: (pageIndex: number) => void
    onAddPage:     () => void
    onSaveAsPdf:   () => void
    onJump:        (pageId: string) => void
@@ -65,21 +66,24 @@ interface PageThumbnailProps {
    sheetWidthPx:  number
    sheetHeightPx: number
    canDelete:     boolean
-   isContinuation: boolean
    onJump:        (pageId: string) => void
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
    onInsertAfter: (pageIndex: number) => void
+   onRemoveBreak: (pageIndex: number) => void
 }
 
 function PageThumbnail({
    page, pageIndex, pageCount, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   canDelete, isContinuation, onJump, onDuplicate, onDelete, onInsertAfter,
+   canDelete, onJump, onDuplicate, onDelete, onInsertAfter, onRemoveBreak,
 }: PageThumbnailProps) {
    const { t } = useLang()
-   // A continuation sheet is an auto reflow of the block flowing onto it, not an author-made page: it
-   // cannot be dragged, duplicated, deleted, or inserted after. Jump-to-page still works.
-   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id, disabled: isContinuation })
+   // An auto page (continuation or auto-start) is a reflow / push the paginator created, not an author-made
+   // page: it cannot be dragged, duplicated, deleted, or inserted after. Jump-to-page still works. A manual
+   // page additionally carries a dissolvable break (remove-break merges it back up) and a small badge.
+   const isAutoPage    = isAutoPageId(page.id)
+   const isManualBreak = page.origin === 'manual'
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id, disabled: isAutoPage })
 
    // Renders the page into self-contained doc HTML the same way the export builds it: the document header
    // (title + meta) on the first page, then each section slice's `<h2>` heading + its blocks, so the
@@ -108,7 +112,7 @@ function PageThumbnail({
             aria-label={`${t.pageSorterJump} ${pageIndex + 1}`}
             onClick={() => onJump(page.id)}
             {...attributes}
-            {...(isContinuation ? {} : listeners)}
+            {...(isAutoPage ? {} : listeners)}
          >
             <div
                className="page-thumb-scaler"
@@ -132,11 +136,32 @@ function PageThumbnail({
 
          <div className="page-thumb-bar">
             <span className="page-thumb-number">{pageIndex + 1} / {pageCount}</span>
-            {isContinuation ? (
-               // A continuation sheet has no independent page controls: it just labels itself.
-               <span className="page-thumb-continuation">{t.pageSorterContinuation}</span>
+            {isManualBreak && (
+               <span className="page-thumb-badge">
+                  <SeparatorHorizontal size={11} />
+                  {t.pageSorterManualBreak}
+               </span>
+            )}
+            {isAutoPage ? (
+               // An auto sheet has no independent page controls: it just labels its kind. A continuation
+               // carries a block flowing off the previous page; an auto-start begins fresh pushed content.
+               <span className="page-thumb-continuation">
+                  {page.origin === 'auto-start' ? t.pageSorterAutoPage : t.pageSorterContinuation}
+               </span>
             ) : (
                <div className="page-thumb-actions">
+                  {isManualBreak && (
+                     <button
+                        type="button"
+                        className="page-thumb-action"
+                        title={t.pageSorterRemoveBreak}
+                        aria-label={t.pageSorterRemoveBreak}
+                        onPointerDown={event => event.stopPropagation()}
+                        onClick={event => { event.stopPropagation(); onRemoveBreak(pageIndex) }}
+                     >
+                        <SeparatorHorizontal size={13} />
+                     </button>
+                  )}
                   <button
                      type="button"
                      className="page-thumb-action"
@@ -188,7 +213,7 @@ function PageThumbnail({
  */
 export function PagesPanelBody({
    pages, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
-   onReorder, onDuplicate, onDelete, onInsertAfter, onAddPage, onSaveAsPdf, onJump,
+   onReorder, onDuplicate, onDelete, onInsertAfter, onRemoveBreak, onAddPage, onSaveAsPdf, onJump,
 }: PagesPanelBodyProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -237,11 +262,11 @@ export function PagesPanelBody({
                      sheetWidthPx={sheetWidthPx}
                      sheetHeightPx={sheetHeightPx}
                      canDelete={canDelete}
-                     isContinuation={isAutoPageId(page.id)}
                      onJump={onJump}
                      onDuplicate={onDuplicate}
                      onDelete={onDelete}
                      onInsertAfter={onInsertAfter}
+                     onRemoveBreak={onRemoveBreak}
                   />
                ))}
             </SortableContext>

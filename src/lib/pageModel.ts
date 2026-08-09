@@ -65,6 +65,13 @@ export interface PageSlice {
 export interface Page {
    id:     string
    slices: PageSlice[]
+   /** How this page came to exist, set at page-creation time so the Pages panel can label it honestly
+    *  without string-sniffing ids: `first` = page 1, `manual` = opened by an explicit `format.pages`
+    *  break, `continuation` = an auto page carrying a block that flowed off the previous sheet,
+    *  `auto-start` = an auto page a section push / empty section / keep-with-next opened to START fresh
+    *  content. Only the measured paginator emits `continuation` / `auto-start` (partitionIntoPages, which
+    *  cuts at explicit breaks only, emits just `first` / `manual`). */
+   origin?: 'first' | 'manual' | 'continuation' | 'auto-start'
 }
 
 // ##############
@@ -105,11 +112,13 @@ export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Pag
    }
 
    const result: Page[] = []
-   let currentPage: Page = { id: FIRST_PAGE_ID, slices: [] }
+   let currentPage: Page = { id: FIRST_PAGE_ID, slices: [], origin: 'first' }
 
+   // Every page this function opens comes from an explicit break marker (a leading blank or a mid-section
+   // cut), so it is always `manual`; only page 1 is `first`. The measured paginator adds the auto kinds.
    function startPage(pageId: string): void {
       result.push(currentPage)
-      currentPage = { id: pageId, slices: [] }
+      currentPage = { id: pageId, slices: [], origin: 'manual' }
    }
 
    // Leading blank pages: each leading break closes the current (still empty) page and opens the next.
@@ -290,6 +299,58 @@ export function removePageBreak(pages: PageBreak[], pageBreakId: string): PageBr
 function findLastIndex<ItemType>(items: ItemType[], predicate: (item: ItemType) => boolean): number {
    for (let index = items.length - 1; index >= 0; index--) if (predicate(items[index])) return index
    return -1
+}
+
+// ####################
+// # START-ON-NEW-PAGE #
+// ####################
+
+// "Make block X start a fresh page" is expressed WITHOUT a new anchor direction: the model is after-only
+// (a `before` anchor was deliberately migrated away, see documentMigration.ts), so starting X on a new
+// page means a break AFTER X's flat predecessor. Each wrapper below is a predecessor lookup composed with
+// an existing after-primitive, so all the idempotency and robustness of those primitives carry through
+// for free. The flat flow is TOP-LEVEL blocks only (flattenBlocks does not descend into container
+// columns), so a container inner block is never a target here.
+
+/** The top-level block immediately before `blockId` in the flat flow, or null when `blockId` is the
+ *  document's first top-level block (no predecessor to anchor after) or is not a top-level block at all
+ *  (a container inner block is not in the flow). */
+export function flatPredecessorBlockId(sections: Section[], blockId: string): string | null {
+   const flat = flattenBlocks(sections)
+   const index = flat.findIndex(entry => entry.block.id === blockId)
+   if (index <= 0) return null   // -1 = not a top-level block, 0 = the first block (no predecessor)
+   return flat[index - 1].block.id
+}
+
+/** Whether `blockId` can be made to start a fresh page: false for the document's first top-level block
+ *  (nothing to anchor a break after) and for a non-top-level id, true otherwise. The mirror of
+ *  `canBreakAfter`, which instead forbids the last block. */
+export function canStartOnNewPage(sections: Section[], blockId: string): boolean {
+   return flatPredecessorBlockId(sections, blockId) !== null
+}
+
+/** Whether a break already sits so `blockId` starts a fresh page, i.e. a break after its flat
+ *  predecessor. False when `blockId` has no predecessor. */
+export function blockStartsFreshPage(pages: PageBreak[], sections: Section[], blockId: string): boolean {
+   const predecessor = flatPredecessorBlockId(sections, blockId)
+   return predecessor !== null && hasPageBreakAfter(pages, predecessor)
+}
+
+/** Make `blockId` start a fresh page by adding a break after its flat predecessor. Returns `pages`
+ *  unchanged when there is no predecessor (the first block already tops page 1). Idempotent through
+ *  `addPageBreakAfter`. */
+export function startBlockOnNewPage(pages: PageBreak[], sections: Section[], blockId: string): PageBreak[] {
+   const predecessor = flatPredecessorBlockId(sections, blockId)
+   if (predecessor === null) return pages
+   return addPageBreakAfter(pages, sections, predecessor)
+}
+
+/** Merge `blockId` back onto the previous page by removing the break after its flat predecessor. Returns
+ *  `pages` unchanged when there is no predecessor or no such break sits there. */
+export function mergeBlockWithPrevious(pages: PageBreak[], sections: Section[], blockId: string): PageBreak[] {
+   const predecessor = flatPredecessorBlockId(sections, blockId)
+   if (predecessor === null) return pages
+   return removePageBreakAfter(pages, predecessor)
 }
 
 // ###################

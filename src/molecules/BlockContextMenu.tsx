@@ -6,7 +6,7 @@ import {
    IndentIncrease, IndentDecrease,
    BetweenHorizontalStart, BetweenHorizontalEnd,
    BetweenVerticalStart, BetweenVerticalEnd,
-   Scissors,
+   SeparatorHorizontal,
 } from 'lucide-react'
 
 // -- Context Imports --
@@ -115,11 +115,13 @@ export function BlockContextMenu({
 
    // ============ Page-break section (paged format only) ============
    if (pageBreak) {
+      const isRemove = pageBreak.mode === 'remove'
       entries.push(
          { type: 'separator' },
          {
-            label:    pageBreak.mode === 'remove' ? t.blockRemovePageBreak : t.blockInsertPageBreak,
-            icon:     <Scissors size={13} />,
+            label:    isRemove ? t.blockRemovePageBreak : t.blockInsertPageBreak,
+            icon:     <SeparatorHorizontal size={13} />,
+            danger:   isRemove,
             onSelect: pageBreak.onSelect,
          },
       )

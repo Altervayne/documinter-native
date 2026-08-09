@@ -7,7 +7,7 @@ import type { T } from '../lib/i18n'
 // -- Lib / Context Imports --
 import { DEFAULT_A4_MARGINS, normalizeFormat } from '../lib/format'
 import {
-   partitionIntoPages, reorderPages, duplicatePage, deletePage, insertBlankPageAfter,
+   partitionIntoPages, reorderPages, duplicatePage, deletePage, insertBlankPageAfter, removePageBreak,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
 } from '../lib/pageModel'
 import { isAutoPageId } from '../lib/pageLayout'
@@ -26,6 +26,7 @@ export interface PagesPanelData {
    onDuplicate:   (pageIndex: number) => void
    onDelete:      (pageIndex: number) => void
    onInsertAfter: (pageIndex: number) => void
+   onRemoveBreak: (displayIndex: number) => void
    onAddPage:     () => void
    onJump:        (pageId: string) => void
 }
@@ -142,11 +143,21 @@ export function usePagesPanelData(
       commitPageOperation(insertBlankPageAfter(sections, pageBreaks, Math.max(0, forcedPages.length - 1)))
    }
 
+   // Dissolve a manual break WITHOUT dropping its blocks (the non-destructive opposite of onDelete): the
+   // page's content merges back onto the previous sheet. Only an author page carries a removable break, so
+   // auto continuations (forced index -1) and page 1 (forced index 0, no break to remove) are skipped.
+   function onRemoveBreak(displayIndex: number): void {
+      const forcedIndex = forcedIndexForDisplayIndex(displayIndex)
+      if (forcedIndex <= 0) return
+      const forcedPage = forcedPages[forcedIndex]
+      commitPageOperation({ sections, pages: removePageBreak(pageBreaks, forcedPage.id) })
+   }
+
    // Jump-to-page: scroll the clicked thumbnail's sheet into view. The paged sheets carry a unique
    // [data-page-id]; only the active tab's pages are ever in the DOM, so a document query is safe.
    function onJump(pageId: string): void {
       document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
    }
 
-   return { pages, margins, sheetWidthPx, sheetHeightPx, onReorder, onDuplicate, onDelete, onInsertAfter, onAddPage, onJump }
+   return { pages, margins, sheetWidthPx, sheetHeightPx, onReorder, onDuplicate, onDelete, onInsertAfter, onRemoveBreak, onAddPage, onJump }
 }

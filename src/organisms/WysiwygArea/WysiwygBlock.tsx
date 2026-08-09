@@ -198,15 +198,16 @@ export function WysiwygBlock({
    //  Anchor + context menu
    // =======================
    const anchor = useAnchorEditor({ block, blockDivRef, patch })
-   // Paged-format page-break action: only for an OUTER, editable block in paged mode. A break already
-   // after this block gives "remove"; a place to break after it gives "insert"; otherwise (the
-   // document's last block) no entry. Container inner blocks are never page-break targets.
+   // Paged-format page-break action: only for an OUTER, editable block in paged mode. Framed break-before
+   // ("make THIS block start the page"): a break already pushing this block to a fresh page gives "remove";
+   // a block that CAN start a fresh page (has a predecessor to anchor after) gives the create verb;
+   // otherwise (the document's first block) no entry. Container inner blocks are never page-break targets.
    const pageBreakOption: { mode: 'insert' | 'remove'; onSelect: () => void } | undefined =
       (!inner && !readOnly && pageBreaks.paged)
-         ? (pageBreaks.hasBreakAfter(block.id)
-            ? { mode: 'remove', onSelect: () => pageBreaks.removeBreakAfter(block.id) }
-            : (pageBreaks.canBreakAfter(block.id)
-               ? { mode: 'insert', onSelect: () => pageBreaks.insertBreakAfter(block.id) }
+         ? (pageBreaks.startsFreshPage(block.id)
+            ? { mode: 'remove', onSelect: () => pageBreaks.mergeWithPrevious(block.id) }
+            : (pageBreaks.canStartOnNewPage(block.id)
+               ? { mode: 'insert', onSelect: () => pageBreaks.startOnNewPage(block.id) }
                : undefined))
          : undefined
    const { contextMenuProps, openContextMenu } = useBlockContextMenu({

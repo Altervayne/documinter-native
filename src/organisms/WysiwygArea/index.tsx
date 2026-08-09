@@ -20,7 +20,7 @@ import { useLang } from '../../contexts/LangContext'
 import { usePagedLayout } from '../../hooks/usePagedLayout'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, Scissors, TriangleAlert } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, SeparatorHorizontal, TriangleAlert } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { BlankPageDropZone } from '../../atoms/BlankPageDropZone'
 import { BottomDropZone } from '../../atoms/BottomDropZone'
@@ -33,7 +33,7 @@ import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
 import { WysiwygSection } from './WysiwygSection'
 import { WysiwygBlock } from './WysiwygBlock'
-import { findBlockOnCanvas, type BlockLoc } from '../../lib/document'
+import { findBlockOnCanvas, relocateBlock, type BlockLoc } from '../../lib/document'
 import { restoreSelectionRange } from '../../lib/inlineFormatting'
 
 // -- Type Imports --
@@ -44,11 +44,12 @@ import { resolveDocumentSheetWidthPx, normalizeFormat, resolveHeader, DEFAULT_A4
 import { renderPageBandHtml } from '../../lib/pageBands'
 import {
    reconcilePages, reanchorMovedBlocks, placeBlockOnBlankPage, millimetresToPx,
-   canBreakAfter, hasPageBreakAfter, addPageBreakAfter, removePageBreakAfter, removePageBreak,
+   hasPageBreakAfter, removePageBreak,
+   canStartOnNewPage, blockStartsFreshPage, startBlockOnNewPage, mergeBlockWithPrevious,
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
-import { EMPTY_HEIGHTS, type MeasuredHeights } from '../../lib/pageLayout'
+import { EMPTY_HEIGHTS, isAutoPageId, type MeasuredHeights } from '../../lib/pageLayout'
 import type { DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
@@ -80,10 +81,18 @@ interface WysiwygAreaProps {
    onDocAccentChange?: (hex: string) => void
    /** Commit the document's presentation extras (watermark, etc.); undefined clears them. */
    onPresentationChange?: (next: DocPresentationExtras | undefined) => void
-   /** Commit the document's page format (infinite width, later paged A4); undefined clears it. */
+   /** Commit the document's page format (infinite width, later paged A4); undefined clears it. Records a
+    *  'format' undo entry: used by the Page setup window, margins, bands, and the on-sheet remove button. */
    onFormatChange?: (next: DocFormat | undefined) => void
-   /** Replace the whole section flow (paged blank-page drops commit sections + breaks together). */
-   onReplaceSections?: (sections: Section[]) => void
+   /** Commit a page-break-only format change under its OWN undo kind, so a block-menu break toggle never
+    *  coalesces into an adjacent margin / width / band edit. The block context menu's break path uses this. */
+   onPageBreakChange?: (next: DocFormat | undefined) => void
+   /** Non-recording format write for the reconcile pass (re-anchor a break whose anchor was deleted): it
+    *  persists + autosaves but records NO history entry, since it follows an already-recorded delete. */
+   onReconcileFormat?: (next: DocFormat | undefined) => void
+   /** Commit sections AND format in ONE undo entry. Paged block DnD (blank-page drop, cross-page moves)
+    *  changes both the flow and the break markers, so it funnels here for a single-entry drag. */
+   onCommitSectionsAndFormat?: (sections: Section[], format: DocFormat | undefined) => void
    /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
@@ -133,7 +142,7 @@ interface WysiwygAreaProps {
 
 export function WysiwygArea({
    meta, sections, docTheme, docAccent, presentation, format, activeTabKey, onUpdateMeta, onAddSection, readOnly,
-   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onReplaceSections, onOpenExport, onManualSave, onSaveAs,
+   onDocThemeChange, onDocAccentChange, onPresentationChange, onFormatChange, onPageBreakChange, onReconcileFormat, onCommitSectionsAndFormat, onOpenExport, onManualSave, onSaveAs,
    presentationOpen, onOpenPresentation, onClosePresentation,
    navOpen, onOpenNav, onCloseNav,
    formatOpen, onOpenFormat, onCloseFormat,
@@ -542,17 +551,32 @@ export function WysiwygArea({
       return () => cancelAnimationFrame(frame)
    }, [focusedParagraphId])
 
-   // Commit a new page-break list back through onFormatChange, preserving kind/width/margins. An empty
-   // list drops the `pages` key entirely (an untouched, non-default format stays clean).
-   function commitPageBreaks(nextPages: PageBreak[]): void {
-      if (!onFormatChange) return
+   // Build the format for a new page-break list, preserving kind/width/margins. An empty list drops the
+   // `pages` key entirely (an untouched, non-default format stays clean). Pure, so the DnD paths can fold
+   // it into a combined sections+format commit.
+   function formatWithPageBreaks(nextPages: PageBreak[]): DocFormat | undefined {
       const base = normalizeFormat(format)
       if (nextPages.length === 0) {
          const { pages: _dropped, ...rest } = base
-         onFormatChange(rest)
-      } else {
-         onFormatChange({ ...base, pages: nextPages })
+         return rest
       }
+      return { ...base, pages: nextPages }
+   }
+
+   // Commit a new page-break list as a 'format' edit (the on-sheet remove button and the reconcile
+   // fallback). Records under the shared 'format' undo kind.
+   function commitPageBreaks(nextPages: PageBreak[]): void {
+      if (!onFormatChange) return
+      onFormatChange(formatWithPageBreaks(nextPages))
+   }
+
+   // Commit a block-menu break toggle under its own 'page-break' undo kind (falling back to 'format' if the
+   // dedicated lever is absent), so an explicit break is a discrete step that never merges into a nearby
+   // margin / width / band edit.
+   function commitPageBreakEdit(nextPages: PageBreak[]): void {
+      const commit = onPageBreakChange ?? onFormatChange
+      if (!commit) return
+      commit(formatWithPageBreaks(nextPages))
    }
 
 
@@ -563,10 +587,14 @@ export function WysiwygArea({
    // actually differs, keeps it loop-free.
    const previousSectionsRef = useRef(sections)
    useEffect(() => {
+      // The reconcile write is a follow-on to whatever changed the flow (usually a block delete), not a
+      // fresh user action, so it goes through the NON-recording setter to persist without a second undo
+      // entry. Falls back to the recording committer only if the dedicated lever is not wired.
+      const commitReconciled = onReconcileFormat ?? onFormatChange
       const previousSections = previousSectionsRef.current
       previousSectionsRef.current = sections
       const currentPages = format?.pages
-      if (!onFormatChange || !currentPages || currentPages.length === 0) return
+      if (!commitReconciled || !currentPages || currentPages.length === 0) return
       const reconciled = reconcilePages(currentPages, sections, previousSections)
       const changed = reconciled.length !== currentPages.length
          || reconciled.some((entry, index) =>
@@ -577,21 +605,21 @@ export function WysiwygArea({
       const base = normalizeFormat(format)
       if (reconciled.length === 0) {
          const { pages: _dropped, ...rest } = base
-         onFormatChange(rest)
+         commitReconciled(rest)
       } else {
-         onFormatChange({ ...base, pages: reconciled })
+         commitReconciled({ ...base, pages: reconciled })
       }
-   }, [sections, format, onFormatChange])
+   }, [sections, format, onFormatChange, onReconcileFormat])
 
    // The page-break API the block context menu consumes (published via PageBreaksContext so the deep
    // WysiwygBlock subtree needn't be prop-drilled). Read-only surfaces (no onFormatChange) still
    // report `paged` for rendering but the mutating calls no-op.
    const pageBreaksApi: PageBreaksApi = {
       paged,
-      canBreakAfter:    blockId => canBreakAfter(sections, blockId),
-      hasBreakAfter:    blockId => hasPageBreakAfter(pageBreaks, blockId),
-      insertBreakAfter: blockId => commitPageBreaks(addPageBreakAfter(pageBreaks, sections, blockId)),
-      removeBreakAfter: blockId => commitPageBreaks(removePageBreakAfter(pageBreaks, blockId)),
+      canStartOnNewPage: blockId => canStartOnNewPage(sections, blockId),
+      startsFreshPage:   blockId => blockStartsFreshPage(pageBreaks, sections, blockId),
+      startOnNewPage:    blockId => commitPageBreakEdit(startBlockOnNewPage(pageBreaks, sections, blockId)),
+      mergeWithPrevious: blockId => commitPageBreakEdit(mergeBlockWithPrevious(pageBreaks, sections, blockId)),
    }
 
    // The title element, factored out so the "beside" logo placement can wrap it inside the same
@@ -661,16 +689,16 @@ export function WysiwygArea({
          return
       }
 
-      // Drop onto a blank page: the dragged block becomes that page's only content (sections + breaks
-      // commit together). Handled before the normal move since a blank page carries no BlockLoc.
-      if (over.data.current?.type === 'blank-page' && paged && onFormatChange && onReplaceSections && derivedPages) {
+      // Drop onto a blank page: the dragged block becomes that page's only content. Sections + breaks
+      // commit together in ONE undo entry. Handled before the normal move since a blank page carries no
+      // BlockLoc.
+      if (over.data.current?.type === 'blank-page' && paged && onCommitSectionsAndFormat && derivedPages) {
          const pageId = String(over.data.current.pageId)
          const targetIndex = derivedPages.findIndex(page => page.id === pageId)
          if (targetIndex !== -1) {
             const result = placeBlockOnBlankPage(sections, pageBreaks, targetIndex, String(active.id))
             if (result.sections !== sections) {
-               onReplaceSections(result.sections)
-               commitPageBreaks(result.pages)
+               onCommitSectionsAndFormat(result.sections, formatWithPageBreaks(result.pages))
             }
          }
          return
@@ -685,7 +713,7 @@ export function WysiwygArea({
       // Drop onto a page-end zone: append the block after that page's last block (whether the page ends
       // mid-section or at a section end), and move the page boundary onto the appended block so it stays
       // on THIS page. This is the only append target for a page that ends inside a section.
-      if (overType === 'page-end' && paged && onFormatChange && derivedPages) {
+      if (overType === 'page-end' && paged && onCommitSectionsAndFormat && derivedPages) {
          const pageId     = String(over.data.current?.pageId)
          const targetPage = derivedPages.find(page => page.id === pageId)
          let anchorBlockId: string | null = null
@@ -711,8 +739,10 @@ export function WysiwygArea({
                      ? { ...pageBreak, after: { sectionId: anchorSectionId!, blockId: movedBlockId } }
                      : pageBreak)
             }
-            if (nextPages !== pageBreaks) commitPageBreaks(nextPages)
-            moveBlockAcross(from, movedBlockId, { kind: 'section', sectionId: anchorSectionId }, successorId)
+            // Move + re-anchor commit together, so the whole drag is a single undo entry. relocateBlock is
+            // the same pure transform moveBlockAcross runs, computed here so it can join the format write.
+            const nextSections = relocateBlock(sections, from, movedBlockId, { kind: 'section', sectionId: anchorSectionId }, successorId)
+            onCommitSectionsAndFormat(nextSections, formatWithPageBreaks(nextPages))
          }
          return
       }
@@ -723,14 +753,16 @@ export function WysiwygArea({
       // Containers are one level deep: never drop a container block into a container column.
       if (active.data.current?.blockType === 'container' && to.kind === 'column') return
       const beforeBlockId = overType === 'block' ? String(over.id) : null
-      // Keep a boundary where the page ended when its own anchor block is dragged away, rather than
-      // letting it follow the block across the document (the moved block that STARTS a page is not an
-      // anchor, so it needs no handling here).
-      if (paged && onFormatChange) {
-         const reanchored = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
-         if (reanchored !== pageBreaks) commitPageBreaks(reanchored)
+      // Paged: keep a boundary where the page ended when its own anchor block is dragged away (the moved
+      // block that STARTS a page is not an anchor, so it needs no handling here), and commit the move +
+      // the re-anchor together as ONE undo entry. Infinite: a plain sections-only move.
+      if (paged && onCommitSectionsAndFormat) {
+         const reanchored   = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
+         const nextSections = relocateBlock(sections, from, movedBlockId, to, beforeBlockId)
+         onCommitSectionsAndFormat(nextSections, formatWithPageBreaks(reanchored))
+      } else {
+         moveBlockAcross(from, movedBlockId, to, beforeBlockId)
       }
-      moveBlockAcross(from, movedBlockId, to, beforeBlockId)
    }
 
    // ==========================================================
@@ -967,14 +999,14 @@ export function WysiwygArea({
             {renderWatermarkLayer(`${watermarkPatternId}-${pageIndex}`)}
             <div className="doc-page-label">{t.formatPageLabel} {pageIndex + 1} / {total}</div>
             {renderBands(pageIndex, total, margins)}
-            {pageIndex > 0 && !readOnly && onFormatChange && (
+            {pageIndex > 0 && !readOnly && onFormatChange && !isAutoPageId(page.id) && (
                <button
                   type="button"
                   className="doc-page-break-remove"
                   title={t.formatRemovePageBreak}
                   onClick={() => commitPageBreaks(removePageBreak(pageBreaks, page.id))}
                >
-                  <Scissors size={13} />
+                  <SeparatorHorizontal size={13} />
                   <span>{t.formatRemovePageBreak}</span>
                </button>
             )}
