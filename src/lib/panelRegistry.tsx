@@ -11,7 +11,7 @@
 // ###############################################################################################
 
 // -- Icon Imports --
-import { PanelsTopLeft, BookOpen } from 'lucide-react'
+import { PanelsTopLeft, BookOpen, Anchor } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 // -- Type Imports --
@@ -69,6 +69,16 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       defaultSide:  'right',
       canFloat:     true,
    },
+   anchors: {
+      id:           'anchors',
+      icon:         <Anchor size={16} />,
+      title:        translations => translations.anchorsPanel,
+      // A navigation aid: it lists every deep-link handle in the document, so it is useful in any
+      // format and in preview too (navigation still works read-only).
+      isApplicable: () => true,
+      defaultSide:  'left',
+      canFloat:     true,
+   },
 }
 
 /** All registered panel ids, in a stable order (used to iterate the catalog). */
@@ -83,4 +93,5 @@ export function applicablePanels(context: PanelContext): PanelId[] {
 export const DEFAULT_PANEL_SIDES: Record<PanelId, DockSide> = {
    structure: PANEL_REGISTRY.structure.defaultSide,
    pages:     PANEL_REGISTRY.pages.defaultSide,
+   anchors:   PANEL_REGISTRY.anchors.defaultSide,
 }

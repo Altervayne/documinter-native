@@ -34,6 +34,7 @@ import { DocumentTitleBar } from './organisms/DocumentTitleBar'
 import { DockedWorkspace } from './organisms/DockedWorkspace'
 import { StructurePanelBody } from './organisms/StructurePanelBody'
 import { PagesPanelBody } from './organisms/PagesPanelBody'
+import { AnchorsPanelBody } from './organisms/AnchorsPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument, computeDocumentPages } from './lib/exportLayout'
@@ -1100,6 +1101,9 @@ export default function App() {
             onSaveAsPdf={handleSaveAsPdf}
             onJump={pagesData.onJump}
          />
+      ),
+      anchors: (
+         <AnchorsPanelBody sections={sections} />
       ),
    }
 

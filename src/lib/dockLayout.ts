@@ -19,7 +19,7 @@ export type DockSide = 'left' | 'right'
 
 // The registered side-panel ids. Extend this union as new panels register (see lib/panelRegistry).
 // A given panel id appears in a DockLayout at most once: the no-duplicates rule.
-export type PanelId = 'structure' | 'pages'
+export type PanelId = 'structure' | 'pages' | 'anchors'
 
 export interface DockGroup {
    /** Stable id. Survives reorder so it can key React nodes and be a drag / config-menu target. */

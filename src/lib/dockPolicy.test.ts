@@ -10,7 +10,7 @@ function makeIdFactory() {
    return () => `group-${count++}`
 }
 
-const DEFAULT_SIDES: Record<PanelId, DockSide> = { structure: 'left', pages: 'right' }
+const DEFAULT_SIDES: Record<PanelId, DockSide> = { structure: 'left', pages: 'right', anchors: 'left' }
 
 function base(): DockLayout {
    return createDefaultDockLayout('group-structure')
