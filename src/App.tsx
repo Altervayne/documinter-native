@@ -66,6 +66,10 @@ import type { DocFormat } from './lib/format'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { title: '', fields: [] }
+// Pagination never holds a block atomic on account of editor focus, so the editor + Pages panel always
+// paginate against this one shared empty set. Module-level so it is a stable reference (a fresh Set per
+// render would needlessly churn the pagination inputs).
+const EMPTY_EDITOR_ATOMIC_IDS: Set<string> = new Set()
 const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'   // legacy single-pointer (migrated away)
 const OPEN_DOCUMENTS_KEY      = 'documinter-open-documents'        // the open-tab set + active, for reload restore
 const DEFAULT_DOC_ACCENT = '#2dcea8'
@@ -812,15 +816,19 @@ export default function App() {
    useEffect(() => { setMeasuredHeights(EMPTY_HEIGHTS) }, [activeTabKey])
    const pagedDocument = !!format && format.kind !== 'infinite'
    const layoutMetrics = buildMetrics(measuredHeights, sections)
-   // Which paragraph is held whole for editing (the "split at rest, whole when focused" behavior). One
-   // id at a time; a paragraph fragment press sets it, its blur clears it. Reset on tab switch like
-   // measuredHeights, since the id belongs to the outgoing document's flow.
+   // Which paragraph the editor is currently editing through its out-of-flow overlay (see WysiwygArea).
+   // A render-only signal now: a fragment press sets it, its blur clears it. It NO LONGER feeds pagination
+   // (that would move the layout on focus); it only selects which split paragraph gets the edit overlay and
+   // drives the measurement freeze while typing. Reset on tab switch, since the id belongs to the outgoing
+   // document's flow.
    const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
    useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
-   // The atomic set the editor + Pages panel paginate against: only the focused paragraph is held whole,
-   // so every other overflowing paragraph splits at rest. The export does NOT read this; it self-measures
-   // its own offscreen render (see lib/exportLayout), so its pagination is independent of editor state.
-   const editorAtomicIds = focusedParagraphId ? new Set([focusedParagraphId]) : new Set<string>()
+   // Pagination is a pure function of (model, format): the editor + Pages panel always paginate against an
+   // EMPTY atomic set, so a paragraph splits identically whether or not it is focused and clicking a block
+   // never reflows the page layout. keepTogether / keepWithNext / forced breaks still hold blocks whole,
+   // since paginate reads those from the model (isHeldAtomic reads block.keepTogether), not from this set.
+   // The export already self-measures its own offscreen render (see lib/exportLayout), independent of it.
+   const editorAtomicIds = EMPTY_EDITOR_ATOMIC_IDS
    const laidOutPages: Page[] = pagedDocument
       ? paginate(sections, format?.pages ?? [], paginationBudgetPx(format), layoutMetrics, editorAtomicIds)
       : []

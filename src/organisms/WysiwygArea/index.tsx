@@ -1,5 +1,5 @@
 // -- React Imports --
-import { useState, useMemo, useId, useEffect, useRef } from 'react'
+import { useState, useMemo, useId, useEffect, useLayoutEffect, useRef } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
@@ -22,6 +22,7 @@ import { usePagedLayout } from '../../hooks/usePagedLayout'
 // -- Component Imports --
 import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, SeparatorHorizontal, TriangleAlert } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
+import { ContentEditable } from '../../atoms/ContentEditable'
 import { BlankPageDropZone } from '../../atoms/BlankPageDropZone'
 import { BottomDropZone } from '../../atoms/BottomDropZone'
 import { FormatToolbar } from '../../molecules/FormatToolbar'
@@ -49,9 +50,9 @@ import {
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
-import { EMPTY_HEIGHTS, isAutoPageId, paginationBudgetPx, type MeasuredHeights } from '../../lib/pageLayout'
+import { EMPTY_HEIGHTS, isAutoPageId, paginationBudgetPx, contentBoxWidthPx, type MeasuredHeights } from '../../lib/pageLayout'
 import type { T } from '../../lib/i18n'
-import type { DocMeta, Mode, Section } from '../../types'
+import type { Block, DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
 
@@ -162,7 +163,7 @@ export function WysiwygArea({
    focusedParagraphId = null, onParagraphFocusChange,
 }: WysiwygAreaProps) {
    const { t } = useLang()
-   const { reorderSections, moveBlockAcross } = useDocumentMutations()
+   const { reorderSections, moveBlockAcross, updateBlock } = useDocumentMutations()
 
    // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
    // unique per component instance, colons stripped since the id rides inside a raw `url(#...)`
@@ -504,11 +505,15 @@ export function WysiwygArea({
    const derivedPages: Page[] | null = paged ? laidOutPages : null
 
    // ==========================================================
-   //  Paragraph focus: "split at rest, whole when focused"
+   //  Paragraph focus: an out-of-flow edit overlay
    // ==========================================================
-   // An overflowing paragraph renders as read-only fragments across sheets; pressing one reflows it
-   // whole (App holds it atomic) and places the caret where the press landed. The focused id lives in
-   // App so the Pages panel agrees; here we drive the request / blur signals and the caret placement.
+   // An overflowing paragraph stays split into read-only fragments across sheets AT ALL TIMES (pagination
+   // no longer holds it whole, so nothing in flow moves on focus). Pressing a fragment instead floats one
+   // contiguous editable holding the WHOLE paragraph, pinned over the first fragment (see the overlay
+   // geometry + renderParagraphEditOverlay below): typing / caret / backspace behave natively because it
+   // is a single element, and because the overlay is position:absolute nothing in flow shifts on focus or
+   // blur. The focused id lives in App so it survives a tab and drives the measurement freeze; here we
+   // drive the request / blur signals, the overlay geometry, and the caret placement.
    //
    // `focusedParagraphIdRef` mirrors the prop but is written EAGERLY on request / clear, so the blur
    // that fires synchronously when focus hands off from one paragraph to another reads the incoming id
@@ -551,14 +556,72 @@ export function WysiwygArea({
       notifyBlur:   notifyParagraphBlur,
    }
 
-   // Once the requested paragraph has reflowed to its single whole editable, focus it and drop the caret
-   // at the pressed offset. rAF defers past the readOnly -> editable innerHTML re-injection so the text
-   // nodes the caret addresses are present.
+   // Where the edit overlay pins, measured from the live DOM in the `.doc-pages` STACK coordinate space (not
+   // a single sheet's): top/left place the whole-paragraph editable over the first fragment, `tailRects` are
+   // the paragraph's remaining fragments on later sheets, whose stale slice text a scrim covers while the
+   // overlay floats above. Stack-relative because the overlay must be a PEER of the sheets: a child of the
+   // first sheet paints behind later sibling sheets (sibling DOM order beats a descendant's z-index), which
+   // clipped the overlay at the next sheet's edge. null when no paragraph is focused or the focused one fits
+   // whole on a single sheet (that case edits in flow, no overlay).
+   const [paragraphOverlay, setParagraphOverlay] = useState<{
+      blockId:   string
+      topPx:     number
+      leftPx:    number
+      tailRects: Array<{ topPx: number; leftPx: number; widthPx: number; heightPx: number }>
+   } | null>(null)
+
+   // Measure the focused paragraph's fragments and derive the overlay geometry. A useLayoutEffect (not a
+   // passive one) so the measurement + overlay mount land BEFORE paint, which the rAF caret effect below
+   // relies on: by the time its frame fires, the overlay editable is in the DOM. A paragraph that renders
+   // as a single whole editable (short, unsplit) has one [data-block-id] element and gets NO overlay; only
+   // a paragraph split into 2+ fragments across sheets floats one. Reads live rects because block heights
+   // vary, so the fragments' on-stack positions cannot be predicted without measuring them.
+   useLayoutEffect(() => {
+      // The paged canvas container. `pagesContainerRef` is a callback ref (owned by usePagedLayout), so the
+      // element is reached through the DOM; `.doc-pages` is unique to the editor canvas (the Pages panel
+      // renders an HTML string, not these [data-block-id] nodes), matching the caret effect's own query.
+      const container = document.querySelector<HTMLElement>('.doc-pages')
+      if (!focusedParagraphId || !container) { setParagraphOverlay(null); return }
+      const fragments = Array.from(container.querySelectorAll<HTMLElement>('[data-block-id]'))
+         .filter(element => element.getAttribute('data-block-id') === focusedParagraphId)
+      if (fragments.length < 2) { setParagraphOverlay(null); return }
+      // Offsets are taken against the `.doc-pages` box so they land in the stack's own coordinate space
+      // (where the overlay lives as a peer of the sheets). Both rects are viewport-relative, so subtracting
+      // cancels the scroll of the ancestor scroll container: the result is a stable layout offset, and the
+      // absolutely-positioned overlay scrolls together with the sheets since it shares this coordinate space.
+      const containerRect = container.getBoundingClientRect()
+      // Measure the fragment's TEXT element (the bare p / h3 / h4 the fragment renders), not its wrapper,
+      // so the overlay's own text element lands on the same baseline and nothing appears to jump.
+      const rectOf = (wrapper: HTMLElement) => {
+         const textElement = wrapper.querySelector<HTMLElement>('p, h3, h4') ?? wrapper
+         const textRect    = textElement.getBoundingClientRect()
+         return { topPx: textRect.top - containerRect.top, leftPx: textRect.left - containerRect.left, widthPx: textRect.width, heightPx: textRect.height }
+      }
+      const first     = rectOf(fragments[0])
+      const tailRects = fragments.slice(1).map(rectOf)
+      setParagraphOverlay({ blockId: focusedParagraphId, topPx: first.topPx, leftPx: first.leftPx, tailRects })
+   }, [focusedParagraphId])
+
+   // The paragraph the overlay edits, looked up in the model so the overlay holds the WHOLE richText (not a
+   // fragment slice) and commits back to the right section. A split paragraph is always a top-level block.
+   const overlayParagraph: { sectionId: string; block: Block } | null = (() => {
+      if (!paragraphOverlay) return null
+      for (const section of sections) {
+         const block = section.blocks.find(candidate => candidate.id === paragraphOverlay.blockId)
+         if (block) return { sectionId: section.id, block }
+      }
+      return null
+   })()
+
+   // Once the overlay editable has mounted, focus it and drop the caret at the pressed offset. rAF defers
+   // past the overlay's mount + innerHTML injection so the text nodes the caret addresses are present. The
+   // overlay holds the whole paragraph, so `caretOffset` (already model-absolute, mapped by the pressed
+   // fragment) needs no fragment math; the query targets the overlay's own editable, not an in-flow one.
    useEffect(() => {
       const pending = pendingParagraphCaretRef.current
       if (!pending || pending.blockId !== focusedParagraphId) return
       const frame = requestAnimationFrame(() => {
-         const element = document.querySelector<HTMLElement>(`[data-block-id="${pending.blockId}"] [data-rich]`)
+         const element = document.querySelector<HTMLElement>('[data-para-overlay] [data-rich]')
          if (element) {
             element.focus()
             restoreSelectionRange(element, pending.caretOffset, pending.caretOffset)
@@ -987,6 +1050,45 @@ export function WysiwygArea({
       )
    }
 
+   // The out-of-flow edit surface for the focused split paragraph, rendered ONCE at the `.doc-pages` stack
+   // level (a peer of the sheets, not a child of one) so it floats above every sheet it spans: a child of
+   // the first sheet paints behind later sibling sheets and got clipped at the next sheet's top edge. It is
+   // absolute against the position:relative `.doc-pages`, pinned over the first fragment, opaque so the
+   // read-only fragment stays covered and the seam vanishes while editing. Each later fragment the paragraph
+   // reaches gets a scrim hiding its stale slice text under the floating overlay. The editable sits in an
+   // inner `.doc-render` (dark-tagged via the outer div) so it keeps the document paragraph typography now
+   // that it no longer lives inside a sheet's `.doc-render`; its padding is zeroed so the text stays pinned.
+   function renderParagraphEditOverlay(): React.ReactNode {
+      if (!paragraphOverlay || !overlayParagraph) return null
+      const darkClass = docTheme === 'dark' ? 'doc-dark' : ''
+      return (
+         <>
+            {paragraphOverlay.tailRects.map((rect, index) => (
+               <div
+                  key={`para-scrim-${index}`}
+                  className={`doc-para-edit-scrim ${darkClass}`}
+                  style={{ top: `${rect.topPx}px`, left: `${rect.leftPx}px`, width: `${rect.widthPx}px`, height: `${rect.heightPx}px` }}
+               />
+            ))}
+            <div
+               data-para-overlay
+               className={`doc-para-edit-overlay ${darkClass}`}
+               style={{ top: `${paragraphOverlay.topPx}px`, left: `${paragraphOverlay.leftPx}px`, width: `${contentBoxWidthPx(format)}px`, '--doc-accent': docAccent } as React.CSSProperties}
+            >
+               <div className="doc-render" style={{ padding: 0 }}>
+                  <ContentEditable
+                     tag={overlayParagraph.block.type as 'p' | 'h3' | 'h4'}
+                     content={overlayParagraph.block.richText ?? []}
+                     onCommit={richText => updateBlock(overlayParagraph.sectionId, overlayParagraph.block.id, { richText })}
+                     onFocus={() => notifyParagraphFocus(overlayParagraph.block.id)}
+                     onBlur={() => notifyParagraphBlur(overlayParagraph.block.id)}
+                  />
+               </div>
+            </div>
+         </>
+      )
+   }
+
    // One paged A4 sheet: sized to the kind's portrait/landscape px, inset by the margins, with a page
    // label and (for pages 2..N) a remove-break affordance. Page 1 carries the document header; the
    // last page carries the empty-state / tail add-section.
@@ -1153,6 +1255,10 @@ export function WysiwygArea({
                   // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets.
                   <div className="doc-pages" ref={pagesContainerRef}>
                      {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
+                     {/* The focused split paragraph's edit overlay + tail scrims, mounted as a peer of the
+                         sheets (not inside one) so the overlay floats above every sheet it spans instead of
+                         being clipped behind the next one. Absolute against the position:relative stack. */}
+                     {!readOnly && renderParagraphEditOverlay()}
                   </div>
                ) : (
                   // Infinite mode: one centered sheet at the chosen width. The watermark rides behind

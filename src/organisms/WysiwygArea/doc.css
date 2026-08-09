@@ -47,6 +47,9 @@
    infinite sheet (shadow / rounded / accent top border) so the two modes read as the same document.
    ############################################################ */
 .doc-pages {
+  /* position:relative so the focused-paragraph edit overlay (a peer of the sheets, see
+     .doc-para-edit-overlay) positions against this stack and floats above every sheet it spans. */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -89,6 +92,38 @@
   opacity: 0.7;
 }
 .doc-dark .doc-page-type-label { color: #6b7280; }
+
+/* The out-of-flow edit surface for a paragraph split across sheets, mounted as a peer of the sheets in
+   the `.doc-pages` stack. At rest the paragraph shows its read-only fragments (WYSIWYG); pressing one
+   floats this single editable holding the whole paragraph, pinned over the first fragment so typing /
+   caret / backspace behave normally without reflowing the page. Opaque sheet background so the covered
+   fragment does not bleed through, an accent ring so it reads as the live field, and a z-index above the
+   sheets so it floats over every sheet it spans (not clipped behind the next one). Width / position / the
+   doc accent come from the inline style. */
+.doc-para-edit-overlay {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  background: var(--doc-canvas-bg);
+  border-radius: 0.25rem;
+  box-shadow: 0 0 0 2px var(--doc-accent, var(--color-accent)), 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+.doc-para-edit-overlay.doc-dark {
+  box-shadow: 0 0 0 2px var(--doc-accent, var(--color-accent)), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+/* The floated editable is the bare paragraph tag inside the overlay's own `.doc-render`: drop its default
+   block margin so the text is flush with the overlay on every side (the base `.doc-render p` rule adds a
+   bottom margin that would otherwise leave a gap under the last line). The `.doc-render` in the selector is
+   load-bearing: it lifts this over the base `.doc-render p` specificity, which a bare `:where()` would not. */
+.doc-para-edit-overlay .doc-render :where(p, h3, h4) { margin: 0; }
+/* Opaque sheet-coloured patch over a stale tail fragment the overlay floats past on a later sheet, so
+   no leftover slice text peeks out while editing. Sits above the sheet, below the overlay. */
+.doc-para-edit-scrim {
+  position: absolute;
+  z-index: 20;
+  background: var(--doc-canvas-bg);
+  pointer-events: none;
+}
 
 /* The fill-the-sheet target on an intentional blank page. Rests as a faint centered hint, gains a
    dashed outline while a block is being dragged, and lights up in the accent while hovered. */
