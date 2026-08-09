@@ -1219,8 +1219,14 @@
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
   overflow: hidden;
   animation: menu-in 130ms ease-out both;
+  transition: opacity 0.12s ease;
 }
 .block-editor-window:focus { outline: none; }
+/* A window whose opacity is externally controlled (a popped-out dock panel dimmed while its Pin is
+   dragged) opts out of the pop-in animation: menu-in forwards-fills opacity:1, which as an animated
+   value outranks the dim class below, so the two cannot coexist. */
+.block-editor-window-no-anim { animation: none; }
+.block-editor-window-dimmed  { opacity: 0.6; }
 
 /* Title bar = the drag handle. touch-action:none lets Pointer Events own the gesture on touch. */
 .block-editor-window-titlebar {
