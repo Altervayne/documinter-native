@@ -234,6 +234,29 @@
   border-top: 2px dashed color-mix(in srgb, var(--doc-overflow-accent) 70%, transparent);
   pointer-events: none;
 }
+/* The off-page shade: covers the sheet region below the A4 boundary line that holds the overflowing
+   slice of a too-tall atomic (or "Keep on one page") block, so it reads at a glance which part spills
+   past the page. Diagonal amber stripes signal the crop without hiding the content, and
+   pointer-events:none keeps the block underneath fully clickable. Rendered only with the too-tall note. */
+.doc-page-overflow-shade {
+  --doc-overflow-accent: #d97706;
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 0 0 2px 2px;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--doc-overflow-accent) 10%, transparent) 0 7px,
+    color-mix(in srgb, var(--doc-overflow-accent) 22%, transparent) 7px 14px
+  );
+}
+.doc-dark .doc-page-overflow-shade {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--doc-overflow-accent) 16%, transparent) 0 7px,
+    color-mix(in srgb, var(--doc-overflow-accent) 30%, transparent) 7px 14px
+  );
+}
 /* The pill sits centered on the dashed line, straddling it (translateY -50%). */
 .doc-page-overflow-pill {
   position: absolute;

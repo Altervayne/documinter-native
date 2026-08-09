@@ -1148,24 +1148,37 @@ export function WysiwygArea({
                )}
                {isLastPage && !showBlankDrop && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
-            {/* The one overflow auto-reflow cannot resolve: a single atomic block (figure, table, code)
-                taller than the whole sheet. Pinned to the bottom-margin line and absolutely positioned
-                so it never alters page flow. Splittable blocks (paragraphs, lists) reflow automatically
-                and never reach here. */}
+            {/* The one overflow auto-reflow cannot resolve: a single atomic block (a figure, table, code,
+                or a paragraph / list the author pinned with "Keep on one page") taller than the whole
+                sheet. A hatched shade covers the part that spills past the A4 bottom-margin line so it is
+                obvious WHICH slice overflows, topped by a note pill straddling that line. Both are pinned
+                and absolutely positioned so they never alter page flow. Splittable blocks reflow on their
+                own and never reach here. */}
             {showTooTall && (
-               <div
-                  className="doc-page-overflow"
-                  style={{
-                     top:   `${sheetHeight - millimetresToPx(margins.bottom)}px`,
-                     left:  `${millimetresToPx(margins.left)}px`,
-                     right: `${millimetresToPx(margins.right)}px`,
-                  }}
-               >
-                  <div className="doc-page-overflow-pill doc-page-overflow-pill-note">
-                     <TriangleAlert size={13} />
-                     <span>{t.formatOverflowTooTall}</span>
+               <>
+                  <div
+                     className="doc-page-overflow-shade"
+                     style={{
+                        top:    `${sheetHeight - millimetresToPx(margins.bottom)}px`,
+                        left:   `${millimetresToPx(margins.left)}px`,
+                        right:  `${millimetresToPx(margins.right)}px`,
+                        bottom: 0,
+                     }}
+                  />
+                  <div
+                     className="doc-page-overflow"
+                     style={{
+                        top:   `${sheetHeight - millimetresToPx(margins.bottom)}px`,
+                        left:  `${millimetresToPx(margins.left)}px`,
+                        right: `${millimetresToPx(margins.right)}px`,
+                     }}
+                  >
+                     <div className="doc-page-overflow-pill doc-page-overflow-pill-note">
+                        <TriangleAlert size={13} />
+                        <span>{t.formatOverflowTooTall}</span>
+                     </div>
                   </div>
-               </div>
+               </>
             )}
          </div>
       )
