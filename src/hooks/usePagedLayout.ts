@@ -18,8 +18,14 @@ interface UsePagedLayoutOptions {
    enabled:         boolean
    sections:        Section[]
    forcedBreaks:    PageBreak[]
-   /** The A4 content-box height in px (sheet height minus top/bottom margins), uniform across pages. */
+   /** The height the paginator may fill on one sheet: the content box MINUS the slack band
+    *  (`paginationBudgetPx`), so the canvas packs each sheet exactly as the Pages panel and the export do.
+    *  This is the pagination budget, NOT the physical content box, so all surfaces agree on page count. */
    availableHeight: number
+   /** The TRUE A4 content-box height in px (sheet height minus top/bottom margins), uniform across pages.
+    *  Used only to flag a block taller than the physical sheet: too-tall is about the real page, not the
+    *  reflow budget, so it stays on the full content box even though pagination fills the smaller budget. */
+   contentBoxHeight: number
    /** The measured heights, OWNED by the caller (App) so the Pages panel and export paginate from the
     *  same source. This hook only measures the DOM and reports back through `onHeightsChange`. */
    heights:         MeasuredHeights
@@ -119,7 +125,7 @@ function findTooTallPages(pages: Page[], heights: MeasuredHeights, availableHeig
  * derivation: nothing here touches the serialized model.
  */
 export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutResult {
-   const { enabled, sections, forcedBreaks, availableHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId } = options
+   const { enabled, sections, forcedBreaks, availableHeight, contentBoxHeight, heights, onHeightsChange, atomicBlockIds, focusedParagraphId } = options
 
    const containerElementRef = useRef<HTMLElement | null>(null)
    const heightsRef = useRef(heights)
@@ -131,12 +137,19 @@ export function usePagedLayout(options: UsePagedLayoutOptions): UsePagedLayoutRe
    const effectiveHeights = enabled ? heights : EMPTY_HEIGHTS
    const metrics = buildMetrics(effectiveHeights, sections)
    const pages = paginate(sections, forcedBreaks, availableHeight, metrics, atomicBlockIds)
-   const tooTallPageIds = enabled ? findTooTallPages(pages, heights, availableHeight) : new Set<string>()
+   // Too-tall is measured against the physical sheet (`contentBoxHeight`), not the smaller pagination
+   // budget: a block only earns the "too tall" note when it cannot fit the real page, so the reserved
+   // slack band at the bottom must not count against it.
+   const tooTallPageIds = enabled ? findTooTallPages(pages, heights, contentBoxHeight) : new Set<string>()
 
    function measure(): void {
       const container = containerElementRef.current
       if (!enabled || !container || !(availableHeight > 0)) {
-         if (heightsRef.current !== EMPTY_HEIGHTS) onHeightsChange(EMPTY_HEIGHTS)
+         // Not measuring this pass (disabled surface, no container yet, or no paged geometry). Keep the
+         // last measured heights instead of zeroing App's oracle: writing EMPTY_HEIGHTS here collapsed the
+         // Pages panel, and in a read-only Preview it flattened the whole document, because empty heights
+         // make every splittable block look atomic and the layout falls back to forced breaks only. A
+         // genuine reset (tab switch) is App's job, not this early-out's.
          return
       }
 

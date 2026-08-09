@@ -49,7 +49,7 @@ import {
    A4_PORTRAIT_WIDTH_PX, A4_PORTRAIT_HEIGHT_PX, A4_LANDSCAPE_WIDTH_PX, A4_LANDSCAPE_HEIGHT_PX,
    type Page, type PageSlice,
 } from '../../lib/pageModel'
-import { EMPTY_HEIGHTS, isAutoPageId, type MeasuredHeights } from '../../lib/pageLayout'
+import { EMPTY_HEIGHTS, isAutoPageId, paginationBudgetPx, type MeasuredHeights } from '../../lib/pageLayout'
 import type { T } from '../../lib/i18n'
 import type { DocMeta, Mode, Section } from '../../types'
 
@@ -473,26 +473,32 @@ export function WysiwygArea({
    // ==========================================================
    //  Measured pagination: automatic reflow of splittable blocks
    // ==========================================================
-   // Paged geometry (the per-sheet render below resolves the same values locally). The available
-   // content height is the A4 sheet height minus the top + bottom margins (uniform across pages). The
-   // hook measures the rendered sheets and reflows the layout so a list runs across sheets at an item
-   // boundary instead of jumping whole to the next page. MEASURED from the DOM, never predicted; the
-   // reflow is a pure render derivation that never touches the serialized model.
+   // Paged geometry (the per-sheet render below resolves the same values locally). The content box is the
+   // A4 sheet height minus the top + bottom margins (uniform across pages). The hook measures the rendered
+   // sheets and reflows the layout so a list runs across sheets at an item boundary instead of jumping
+   // whole to the next page. MEASURED from the DOM, never predicted; the reflow is a pure render derivation
+   // that never touches the serialized model.
+   //
+   // Two heights, one physical sheet: pagination fills only `paginationBudgetPx` (the content box minus the
+   // slack band) so the canvas packs each sheet exactly as the Pages panel and the PDF/HTML export do,
+   // giving all four the same page count. The too-tall check keeps the TRUE content box, because a block
+   // being taller than the sheet is about the physical page, not the reflow budget.
    const pagedMargins            = format?.margins ?? DEFAULT_A4_MARGINS
    const pagedIsLandscape        = format?.kind === 'a4-landscape'
    const pagedSheetHeightPx      = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
-   const availableContentHeightPx = pagedSheetHeightPx
+   const contentBoxHeightPx = pagedSheetHeightPx
       - millimetresToPx(pagedMargins.top)
       - millimetresToPx(pagedMargins.bottom)
 
    const { containerRef: pagesContainerRef, pages: laidOutPages, tooTallPageIds } = usePagedLayout({
-      enabled:         paged && !readOnly && !!onFormatChange,
+      enabled:          paged && !!onFormatChange,
       sections,
-      forcedBreaks:    pageBreaks,
-      availableHeight: availableContentHeightPx,
-      heights:         measuredHeights ?? EMPTY_HEIGHTS,
-      onHeightsChange: onMeasuredHeights ?? (() => {}),
-      atomicBlockIds:  atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
+      forcedBreaks:     pageBreaks,
+      availableHeight:  paginationBudgetPx(format),
+      contentBoxHeight: contentBoxHeightPx,
+      heights:          measuredHeights ?? EMPTY_HEIGHTS,
+      onHeightsChange:  onMeasuredHeights ?? (() => {}),
+      atomicBlockIds:   atomicBlockIds ?? EMPTY_ATOMIC_BLOCK_IDS,
       focusedParagraphId,
    })
    const derivedPages: Page[] | null = paged ? laidOutPages : null
@@ -604,6 +610,9 @@ export function WysiwygArea({
       const commitReconciled = onReconcileFormat ?? onFormatChange
       const previousSections = previousSectionsRef.current
       previousSectionsRef.current = sections
+      // A read-only surface (Preview) must never mutate the model. Keep the ref fresh above so editing
+      // resumes with an accurate previous flow, then bail before any reconcile write while read-only.
+      if (readOnly) return
       const currentPages = format?.pages
       if (!commitReconciled || !currentPages || currentPages.length === 0) return
       const reconciled = reconcilePages(currentPages, sections, previousSections)
@@ -620,7 +629,7 @@ export function WysiwygArea({
       } else {
          commitReconciled({ ...base, pages: reconciled })
       }
-   }, [sections, format, onFormatChange, onReconcileFormat])
+   }, [sections, format, onFormatChange, onReconcileFormat, readOnly])
 
    // The page-break API the block context menu consumes (published via PageBreaksContext so the deep
    // WysiwygBlock subtree needn't be prop-drilled). Read-only surfaces (no onFormatChange) still
