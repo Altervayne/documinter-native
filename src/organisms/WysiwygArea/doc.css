@@ -1254,8 +1254,9 @@
      window height) never shrinks the content width, no more wrap-jitter of the shape palette.
      `both-edges` mirrors that reserved gutter onto the opposite edge too, so the content stays
      symmetric / centered whether or not the scrollbar is present (plain `stable` reserves only the
-     scrollbar side, leaving content looking pushed off-centre when it's absent). No-op for the graph /
-     math bodies below, which override `overflow: hidden`. */
+     scrollbar side, leaving content looking pushed off-centre when it's absent). The graph / math
+     bodies below MUST reset this to `auto`: overflow:hidden is still a scroll container, so `stable`
+     keeps reserving the gutter and would inset their inner scrollbar from the window edge. */
   flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges;
   padding: 0.85rem 0.95rem; background: var(--color-bg);
 }
@@ -1281,12 +1282,16 @@
 
 /* When the window hosts the symbol palette (a tool window), drop the body padding: the palette's
    own filter / scroll margins already supply the inset, and the palette must fill the body so its
-   inner scroll, not the body, owns the overflow. */
-.block-editor-window-body:has(.math-symbol-palette-content) { padding: 0; overflow: hidden; }
+   inner scroll, not the body, owns the overflow. scrollbar-gutter MUST be reset to auto here:
+   overflow:hidden is still a scroll container, so the base rule's `stable both-edges` keeps reserving
+   a gutter on BOTH edges (no visible scrollbar, but the space is still held), which insets the palette
+   from the window edges and pushes its inner scrollbar in from the right. auto releases that space. */
+.block-editor-window-body:has(.math-symbol-palette-content) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 /* The graph editor fills the body and scrolls on its OWN tab panel (tabs stay pinned), so the body must
    not pad or scroll, otherwise the panel's scrollbar sits inset from the window edge. The tabs + panel
-   carry the content padding instead, so the scrollbar ends up flush with the window's edge. */
-.block-editor-window-body:has(.graph-editor) { padding: 0; overflow: hidden; }
+   carry the content padding instead, so the scrollbar ends up flush with the window's edge. Same
+   scrollbar-gutter:auto reset as the palette above (overflow:hidden does NOT release the base gutter). */
+.block-editor-window-body:has(.graph-editor) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 
 /* ############################################################
    Presentation editor (hosted in the Block Editor Window)
