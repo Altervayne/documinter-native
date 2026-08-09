@@ -42,16 +42,79 @@
   to   { opacity: 1; }
 }
 
-/* Slide-in animation for the link creator panel */
+/* Slide-in animation for the link creator panel and the inline color popover. Both are placed by a
+   measured absolute top/left (no left:50% centering), so the keyframe carries NO translateX: a held
+   translateX(-50%) under animation-fill-mode:both would offset the panel by half its width and, on an
+   odd width, land it on a fractional pixel that blurs the text. Vertical settle + fade only. */
 @keyframes link-panel-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Snap-in animation for floating menus (block picker, context menu) */
 @keyframes menu-in {
   from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }
+}
+
+/* ============================================================
+   Overflow navigator (molecules/OverflowNavigator). Editor chrome, so it lives here, not in the
+   exported doc.css. It borrows the amber "danger zone" palette of the page overflow shade / note (same
+   --doc-overflow-accent, same diagonal hatch) so it reads as part of the one warning system and pops
+   against the neutral canvas. Amber brightens on the dark (default) app theme for contrast; the light
+   theme drops to the standard amber-600. Surface / muted tokens flip with the app theme on their own.
+   ============================================================ */
+.doc-overflow-nav {
+  --doc-overflow-accent: #f59e0b;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+  border-radius: 999px;
+  color: var(--doc-overflow-accent);
+  /* Just a whisper of the amber hatch over the theme surface, so the palette reads without fighting the
+     text on top; the icon / arrows carry the amber signal. */
+  background:
+    repeating-linear-gradient(-45deg,
+      color-mix(in srgb, var(--doc-overflow-accent) 3%, transparent) 0 6px,
+      color-mix(in srgb, var(--doc-overflow-accent) 6%, transparent) 6px 12px),
+    color-mix(in srgb, var(--doc-overflow-accent) 6%, var(--color-raised));
+  border: 1.5px solid color-mix(in srgb, var(--doc-overflow-accent) 45%, transparent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+html[data-theme="light"] .doc-overflow-nav { --doc-overflow-accent: #d97706; }
+.doc-overflow-nav-count {
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.doc-overflow-nav-pos {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.doc-overflow-nav-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--color-border);
+}
+.doc-overflow-nav-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  color: var(--doc-overflow-accent);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.doc-overflow-nav-btn:hover { background: color-mix(in srgb, var(--doc-overflow-accent) 20%, transparent); }
+.doc-overflow-nav-btn:focus-visible {
+  outline: 2px solid var(--doc-overflow-accent);
+  outline-offset: 1px;
 }
 
 /* Flash indicator, canvas element highlighted after tree-scroll navigation */

@@ -28,6 +28,7 @@ import { FormatToolbar } from '../../molecules/FormatToolbar'
 import { MetaFieldColorPopover } from '../../molecules/MetaFieldColorPopover'
 import { ContextMenu } from '../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../molecules/ContextMenu'
+import { OverflowNavigator } from '../../molecules/OverflowNavigator'
 import { PresentationWindow } from '../../molecules/PresentationWindow'
 import { NavWindow } from '../../molecules/NavWindow'
 import { FormatWindow } from '../../molecules/FormatWindow'
@@ -1235,7 +1236,7 @@ export function WysiwygArea({
          <PageBreaksContext.Provider value={pageBreaksApi}>
          <div className="flex flex-col h-full min-h-0 w-full">
          {!readOnly && <FormatToolbar sections={sections} />}
-         <div className="flex-1 min-h-0 w-full flex">
+         <div className="flex-1 min-h-0 w-full flex relative">
          <div
             className="flex-1 h-full overflow-y-auto px-6"
             style={{ background: 'var(--color-canvas)' }}
@@ -1307,6 +1308,12 @@ export function WysiwygArea({
             })()}
             {renderDocWindowsAndMenus()}
          </div>
+         {/* Floating overflow navigator: a Find-bar-style pill naming how many blocks overflow their
+             sheet and stepping through them. Sits over the canvas (a peer of the scroll area, pinned to
+             the relative flex row) so it stays put while the canvas scrolls. Editor-only, paged-only. */}
+         {!readOnly && derivedPages && (
+            <OverflowNavigator pageIds={derivedPages.filter(page => tooTallPageIds.has(page.id)).map(page => page.id)} />
+         )}
          </div>
          </div>
          </PageBreaksContext.Provider>

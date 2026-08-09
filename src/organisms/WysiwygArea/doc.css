@@ -257,6 +257,15 @@
     color-mix(in srgb, var(--doc-overflow-accent) 30%, transparent) 7px 14px
   );
 }
+/* A brief ring pulse when the overflow navigator steps to this page, so the eye lands on the spill.
+   Added at runtime by molecules/OverflowNavigator and removed after it plays; layout-free (outline). */
+.doc-page-overflow-shade-flash {
+  animation: doc-overflow-shade-flash 0.9s ease-out 1;
+}
+@keyframes doc-overflow-shade-flash {
+  0%, 100% { outline: 0 solid transparent; outline-offset: 0; }
+  35%      { outline: 3px solid color-mix(in srgb, var(--doc-overflow-accent) 75%, transparent); outline-offset: 2px; }
+}
 /* The pill sits centered on the dashed line, straddling it (translateY -50%). */
 .doc-page-overflow-pill {
   position: absolute;

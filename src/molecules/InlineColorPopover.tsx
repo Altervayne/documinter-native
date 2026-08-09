@@ -80,9 +80,11 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, pa
       const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - popoverBoundingRect.width  - CLAMP_MARGIN))
       const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - popoverBoundingRect.height - CLAMP_MARGIN))
 
+      // Rounded to whole pixels: a fractional absolute offset renders the popover off the pixel grid,
+      // which the browser anti-aliases into a blur that reads like an unwanted scale.
       setPosition({
-         top:  clampedTop  - anchor.top,
-         left: clampedLeft - anchor.left,
+         top:  Math.round(clampedTop  - anchor.top),
+         left: Math.round(clampedLeft - anchor.left),
       })
    }, [anchorRef])
 

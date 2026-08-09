@@ -147,7 +147,10 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - toolbarWidth  - CLAMP_MARGIN))
             const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - toolbarHeight - CLAMP_MARGIN))
 
-            setPos({ top: clampedTop, left: clampedLeft })
+            // Snap the translate to whole pixels: a fractional translate renders the toolbar (and the
+            // link panel nested inside its transformed box) off the pixel grid, which the browser
+            // anti-aliases into a blur that reads like an unwanted scale.
+            setPos({ top: Math.round(clampedTop), left: Math.round(clampedLeft) })
             setFormatState({
                bold:           document.queryCommandState('bold'),
                italic:         document.queryCommandState('italic'),
@@ -203,10 +206,11 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
 
       // The panel is `position: absolute` against the toolbar (its nearest positioned
       // ancestor), so the clamped viewport coordinates are converted back into an
-      // offset relative to the toolbar's own box before being stored.
+      // offset relative to the toolbar's own box before being stored. Rounded to whole
+      // pixels so the panel never lands on a fractional offset (which blurs its text).
       setLinkPanelPos({
-         top:  clampedTop  - toolbarBoundingRect.top,
-         left: clampedLeft - toolbarBoundingRect.left,
+         top:  Math.round(clampedTop  - toolbarBoundingRect.top),
+         left: Math.round(clampedLeft - toolbarBoundingRect.left),
       })
    }, [linkMode])
 
