@@ -103,6 +103,14 @@ export async function deleteFolder(id: string, options?: { recursive?: boolean }
    return deletedDocumentIds
 }
 
+/** Every folder record in the binder, unordered. The whole-tree read a Tin export needs; the
+ *  tree is rebuilt from parentId by the caller (mirror of listDocuments reading the whole store). */
+export async function listAllFolders(): Promise<BinderFolderRecord[]> {
+   const database = await openDatabase()
+   const transaction = database.transaction(FOLDERS_STORE, 'readonly')
+   return requestToPromise<BinderFolderRecord[]>(transaction.objectStore(FOLDERS_STORE).getAll())
+}
+
 /** Direct children of a folder, sorted by sortOrder ascending. */
 export async function getFolderChildren(parentId: string): Promise<BinderFolderRecord[]> {
    const database = await openDatabase()

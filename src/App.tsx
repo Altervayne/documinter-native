@@ -10,6 +10,8 @@ import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
 import { getFolder } from './lib/binderFolders'
+import { collectBinderForTin, importTin, type TinImportSummary } from './lib/binderBackup'
+import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
 import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
 import { saveTemplate } from './lib/templateStore'
 import {
@@ -53,6 +55,7 @@ import { MintdownEditor } from './organisms/MintdownEditor'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
+import { TinImportDialog } from './molecules/TinImportDialog'
 import { SaveAsDialog } from './molecules/SaveAsDialog'
 import { PromptDialog } from './molecules/PromptDialog'
 import { NewDocumentDialog, type NewDocumentChoice } from './molecules/NewDocumentDialog'
@@ -568,6 +571,18 @@ export default function App() {
       setActiveTabKey(tabKey)
    }, [persistNow])
 
+   // Reset the whole tab list down to one fresh blank, syncing the refs synchronously (not only via
+   // the post-render effects) so any follow-up read sees the new state at once. Used both when the
+   // last tab closes and after a Tin replace wipes the binder out from under the open tabs.
+   const spawnSingleBlankTab = useCallback(() => {
+      const blankDocument = createBlankDocument(t.defaultSectionTitle)
+      skipNextAutosaveRef.current = true
+      openDocumentsRef.current = [blankDocument]
+      activeTabKeyRef.current  = blankDocument.tabKey
+      setOpenDocuments([blankDocument])
+      setActiveTabKey(blankDocument.tabKey)
+   }, [t])
+
    // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
    // neighbor (right, else left). If it was the last tab, respawn a blank, openDocuments is never
    // empty (the always-have-a-document invariant lives on the tab list).
@@ -585,12 +600,7 @@ export default function App() {
       // (a recursive folder delete removing several open docs) chains off fresh state instead of
       // each call clobbering the previous one with a stale snapshot.
       if (remaining.length === 0) {
-         const blankDocument = createBlankDocument(t.defaultSectionTitle)
-         skipNextAutosaveRef.current = true
-         openDocumentsRef.current = [blankDocument]
-         activeTabKeyRef.current  = blankDocument.tabKey
-         setOpenDocuments([blankDocument])
-         setActiveTabKey(blankDocument.tabKey)
+         spawnSingleBlankTab()
          return
       }
 
@@ -602,7 +612,7 @@ export default function App() {
          activeTabKeyRef.current = neighbor.tabKey
          setActiveTabKey(neighbor.tabKey)
       }
-   }, [t])
+   }, [spawnSingleBlankTab])
 
    // Reorder the tab strip. Only the array order changes, the active tab's content + identity are
    // untouched (activeTabKey is unchanged), so this triggers no autosave and no activation.
@@ -625,6 +635,112 @@ export default function App() {
    const handleDocumentImported = useCallback(() => {
       setBinderRefreshToken(token => token + 1)
    }, [])
+
+   // ##################
+   // # TINS (.tin I/O) #
+   // ##################
+
+   // The folder the binder is currently showing, reported up from the Binder so a File-menu Tin
+   // import (its picker lives in the header, outside the Binder) grafts into that folder. Held in a
+   // ref, not state: nothing renders from it, and the picker's async onchange must read the latest
+   // value. Root is the sentinel '0'.
+   const binderCurrentFolderIdRef = useRef('0')
+   const handleBinderFolderChange = useCallback((folderId: string) => {
+      binderCurrentFolderIdRef.current = folderId
+   }, [])
+
+   // A parsed Tin awaiting the user's merge / replace choice, and the merge target (the folder it
+   // was picked or dropped into). Replace ignores the target.
+   const [tinModeRequest, setTinModeRequest]     = useState<{ tin: TinFile; targetFolderId: string } | null>(null)
+   // A Tin awaiting the second, destructive Replace confirmation (kept apart so Merge never touches it).
+   const [tinReplaceConfirm, setTinReplaceConfirm] = useState<TinFile | null>(null)
+   // Bumped only on a Replace to remount the Binder fresh at root: the folder it was showing may be
+   // one of the records the wipe just removed, so re-seeding to root avoids a stale breadcrumb.
+   const [binderRemountKey, setBinderRemountKey] = useState(0)
+
+   // Compose the "N templates, N folders, N documents" fragment shared by the mode dialog's summary
+   // and the post-import toast, filling the translated pattern's placeholders.
+   const formatTinCounts = useCallback((counts: TinImportSummary) => t.tinImportModeCounts
+      .replace('{templates}', String(counts.templates))
+      .replace('{folders}',   String(counts.folders))
+      .replace('{documents}', String(counts.documents)), [t])
+
+   // File -> Save binder as Tin...: collect the whole binder and download it, stamped with today.
+   const handleSaveBinderTin = useCallback(async () => {
+      try {
+         const tin = await collectBinderForTin()
+         await downloadTin(tin, tinDownloadName('documinter-binder', tin.exportedAt))
+         showToast(t.tinExported, { type: 'success' })
+      } catch {
+         showToast(t.tinExportFailed, { type: 'error' })
+      }
+   }, [showToast, t])
+
+   // File -> Open Tin...: pick a `.tin`, read its bytes, gunzip, parse. A corrupt gzip or a file that
+   // is not a Tin errors out with no writes; a valid one opens the merge / replace mode dialog,
+   // targeting the folder the binder is currently showing.
+   const handleOpenTin = useCallback(() => {
+      const input  = document.createElement('input')
+      input.type   = 'file'
+      input.accept = '.tin'
+      input.onchange = async () => {
+         const file = input.files?.[0]
+         if (!file) return
+         try {
+            const tin = parseTin(await gunzipToString(await file.arrayBuffer()))
+            if (!tin) { showToast(t.tinInvalid, { type: 'error' }); return }
+            setTinModeRequest({ tin, targetFolderId: binderCurrentFolderIdRef.current })
+         } catch {
+            showToast(t.tinInvalid, { type: 'error' })
+         }
+      }
+      input.click()
+   }, [showToast, t])
+
+   // A `.tin` dropped onto the binder body (routed by useBinderFileImport): same mode dialog, with the
+   // drop's folder as the merge target.
+   const handleTinDropped = useCallback((tin: TinFile, targetFolderId: string) => {
+      setTinModeRequest({ tin, targetFolderId })
+   }, [])
+
+   // Write an imported Tin, then refresh the binder list and toast the per-kind counts. A Replace also
+   // wipes the open tabs (their ids may be gone) down to one blank and drops all session history, and
+   // remounts the Binder at root; a Merge just refreshes the list in place.
+   const runTinImport = useCallback(async (tin: TinFile, mode: 'merge' | 'replace', targetFolderId: string) => {
+      try {
+         const summary = await importTin(tin, mode, targetFolderId)
+         if (mode === 'replace') {
+            historyRef.current.clear()
+            spawnSingleBlankTab()
+            setBinderInitialFolder(null)
+            setBinderRemountKey(key => key + 1)
+         }
+         setBinderRefreshToken(token => token + 1)
+         showToast(`${t.tinImportedPrefix} ${formatTinCounts(summary)}`, { type: 'success' })
+      } catch {
+         showToast(t.binderActionFailed, { type: 'error' })
+      }
+   }, [showToast, t, formatTinCounts, spawnSingleBlankTab])
+
+   // Merge chosen: graft into the target folder straight away (non-destructive).
+   const handleTinMerge = useCallback(() => {
+      const request = tinModeRequest
+      setTinModeRequest(null)
+      if (request) void runTinImport(request.tin, 'merge', request.targetFolderId)
+   }, [tinModeRequest, runTinImport])
+
+   // Replace chosen: hand off to the destructive second confirmation (no write yet).
+   const handleTinReplaceStep = useCallback(() => {
+      const request = tinModeRequest
+      setTinModeRequest(null)
+      if (request) setTinReplaceConfirm(request.tin)
+   }, [tinModeRequest])
+
+   const handleConfirmTinReplace = useCallback(() => {
+      const tin = tinReplaceConfirm
+      setTinReplaceConfirm(null)
+      if (tin) void runTinImport(tin, 'replace', '0')
+   }, [tinReplaceConfirm, runTinImport])
 
    // Open the binder, flush any pending changes first so the current document appears up-to-date
    // in the list, resolve which folder it lives in, then mount the binder in place of the editor.
@@ -1237,6 +1353,8 @@ export default function App() {
             onImportMarkdownFile={handleImportMarkdown}
             onImportMintdownFile={handleImportMintdown}
             onDocumentImported={handleDocumentImported}
+            onSaveTin={handleSaveBinderTin}
+            onOpenTin={handleOpenTin}
             onDocThemeChange={setActiveDocTheme}
             onDocAccentChange={setActiveDocAccent}
             exportOpen={exportOpen}
@@ -1251,6 +1369,7 @@ export default function App() {
 
          {binderOpen ? (
             <Binder
+               key={binderRemountKey}
                openDocumentIds={openDocumentIds}
                activeDocumentId={documentId}
                initialFolder={binderInitialFolder}
@@ -1260,6 +1379,8 @@ export default function App() {
                onNewFromTemplate={handleNewFromTemplate}
                onApplyTemplate={handleApplyTemplate}
                onDocumentDeleted={handleDocumentDeleted}
+               onCurrentFolderChange={handleBinderFolderChange}
+               onTinDropped={handleTinDropped}
             />
          ) : (
           <>
@@ -1406,6 +1527,29 @@ export default function App() {
                <NewDocumentDialog
                   onCreate={handleCreateNewDocument}
                   onCancel={handleCancelNewDocument}
+               />
+            )}
+
+            {tinModeRequest && (
+               <TinImportDialog
+                  templates={tinModeRequest.tin.templates.length}
+                  folders={tinModeRequest.tin.folders.length}
+                  documents={tinModeRequest.tin.documents.length}
+                  onMerge={handleTinMerge}
+                  onReplace={handleTinReplaceStep}
+                  onCancel={() => setTinModeRequest(null)}
+               />
+            )}
+
+            {tinReplaceConfirm && (
+               <ConfirmDialog
+                  title={t.tinReplaceTitle}
+                  message={t.tinReplaceWarning}
+                  confirmLabel={t.tinReplaceConfirm}
+                  cancelLabel={t.tinImportCancel}
+                  danger
+                  onConfirm={handleConfirmTinReplace}
+                  onCancel={() => setTinReplaceConfirm(null)}
                />
             )}
 

@@ -7,6 +7,7 @@ import { parseDocumentBackup } from '../lib/documentBackupFile'
 import { saveDocument } from '../lib/binderDocuments'
 import { captureTemplate } from '../lib/documentTemplate'
 import { saveTemplate } from '../lib/templateStore'
+import { gunzipToString, parseTin, type TinFile } from '../lib/tinFile'
 
 // -- Context Imports --
 import { useToast } from '../contexts/ToastContext'
@@ -17,6 +18,9 @@ interface UseBinderFileImportOptions {
    currentFolderId: string
    /** Re-read the binder lists once one or more files have imported. */
    onImported:      () => void
+   /** A dropped `.tin` bundle bubbles up here (App owns the merge/replace mode dialog); the drop's
+    *  folder is the merge target. */
+   onTinDropped:    (tin: TinFile, targetFolderId: string) => void
 }
 
 /**
@@ -26,7 +30,7 @@ interface UseBinderFileImportOptions {
  * (parseDocumentBackup) becomes a new document in the current folder, and anything else is skipped.
  * Both kinds are `.json`, so the routing is by marker, not by extension.
  */
-export function useBinderFileImport({ currentFolderId, onImported }: UseBinderFileImportOptions) {
+export function useBinderFileImport({ currentFolderId, onImported, onTinDropped }: UseBinderFileImportOptions) {
    const { showToast } = useToast()
    const { t }         = useLang()
 
@@ -51,7 +55,24 @@ export function useBinderFileImport({ currentFolderId, onImported }: UseBinderFi
       event.preventDefault()
       setIsFileDragOver(false)
 
-      const files = Array.from(event.dataTransfer.files).filter(file => file.name.toLowerCase().endsWith('.json'))
+      const dropped = Array.from(event.dataTransfer.files)
+
+      // A `.tin` is binary (gzip), so it takes its own path: read the bytes, gunzip, parse, then hand
+      // the bundle up to App's mode dialog. Distinct from the text/JSON route below, which reads
+      // file.text() and sniffs the content. One `.tin` per drop is handled (the dialog is modal).
+      const tinFile = dropped.find(file => file.name.toLowerCase().endsWith('.tin'))
+      if (tinFile) {
+         try {
+            const tin = parseTin(await gunzipToString(await tinFile.arrayBuffer()))
+            if (!tin) { showToast(t.tinInvalid, { type: 'error' }); return }
+            onTinDropped(tin, currentFolderId)
+         } catch {
+            showToast(t.tinInvalid, { type: 'error' })
+         }
+         return
+      }
+
+      const files = dropped.filter(file => file.name.toLowerCase().endsWith('.json'))
       if (files.length === 0) { showToast(t.binderImportInvalid, { type: 'error' }); return }
 
       let documentsImported = 0
@@ -85,7 +106,7 @@ export function useBinderFileImport({ currentFolderId, onImported }: UseBinderFi
       // Two toasts only in the rare mixed drop (documents AND templates in one selection), which is fine.
       if (documentsImported > 0) showToast(t.binderImportSuccess, { type: 'success' })
       if (templatesImported > 0) showToast(t.templateImported, { type: 'success' })
-   }, [currentFolderId, onImported, showToast, t])
+   }, [currentFolderId, onImported, onTinDropped, showToast, t])
 
    return { isFileDragOver, handleFileDragOver, handleFileDragLeave, handleFileDrop }
 }

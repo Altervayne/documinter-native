@@ -21,7 +21,7 @@ import type {
    BinderDocumentRecord, BinderDocumentContent,
 } from '../types'
 
-const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to freeform meta
+export const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to freeform meta
                                   // (v3 moved meta to the freeform { title, fields } shape;
                                   //  v2 added contentText, the flattened block text for full-text search)
 

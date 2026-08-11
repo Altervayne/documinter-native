@@ -160,6 +160,10 @@ interface HeaderMenuBarProps {
    /** Notifies the binder (File -> Import... just added a record behind its back) so its list
     *  picks up the new card without waiting on an unrelated action to refresh it. Binder mode only. */
    onDocumentImported: () => void
+   /** Download the whole binder as a `.tin` bundle (File -> Save binder as Tin...). Binder mode only. */
+   onSaveTin:          () => void
+   /** Open a `.tin` bundle, choosing merge vs replace (File -> Open Tin...). Binder mode only. */
+   onOpenTin:          () => void
    onDocThemeChange: (theme: 'light' | 'dark') => void
    onDocAccentChange:(hex: string) => void
    /** Export dialog open state, lifted to App.tsx so the document background context menu's
@@ -190,7 +194,7 @@ export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus, neverSaved,
    onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate,
    onUndo, onRedo, canUndo, canRedo, onNew, onAddSection, onToggleBinder,
-   onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onDocThemeChange, onDocAccentChange,
+   onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onSaveTin, onOpenTin, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
    format, onOpenFormat,
 }: HeaderMenuBarProps) {
@@ -213,11 +217,6 @@ export function HeaderMenuBar({
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [isDocumentMode, onOpenExport])
-
-   // Placeholder for features not yet implemented (Tin).
-   function comingSoon() {
-      showToast(t.comingSoon, { type: 'neutral' })
-   }
 
    // =============
    //  File actions
@@ -316,7 +315,8 @@ export function HeaderMenuBar({
                onSaveAsTemplate={onSaveAsTemplate}
                onExport={onOpenExport}
                onImport={handleImport}
-               onOpenTin={comingSoon}
+               onSaveTin={onSaveTin}
+               onOpenTin={onOpenTin}
                t={t}
             />
             {isDocumentMode && <ViewMenu paneLayout={paneLayout} onTogglePanel={onTogglePanel} dockPanels={dockPanels} t={t} />}

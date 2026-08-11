@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, File, FilePlus, Archive, FolderOpen, Download, Save, SaveAll, Upload, LayoutTemplate } from 'lucide-react'
+import { ChevronDown, File, FilePlus, Archive, PackageOpen, FolderOpen, Download, Save, SaveAll, Upload, LayoutTemplate } from 'lucide-react'
 import type { T } from '../lib/i18n'
 
 // #############
@@ -34,6 +34,9 @@ interface FileMenuProps {
    /** Single, format-detecting Import (JSON backup / Mintdown / Markdown), lands as a new binder
     *  record without opening a tab. Binder mode only. */
    onImport:         () => void
+   /** Download the whole binder as a `.tin` bundle. Binder mode only. */
+   onSaveTin:        () => void
+   /** Open a `.tin` bundle (merge into or replace the binder). Binder mode only. */
    onOpenTin:        () => void
    t: T
 }
@@ -46,7 +49,7 @@ export function FileMenu({
    mode,
    onNewDocument, onOpen,
    onSave, onSaveAs, onSaveAsTemplate, onExport,
-   onImport, onOpenTin,
+   onImport, onSaveTin, onOpenTin,
    t,
 }: FileMenuProps) {
    const [open, setOpen] = useState(false)
@@ -122,13 +125,15 @@ export function FileMenu({
                   </>
                )}
 
-               {/* Binder mode: the unified Import (lands as a new binder record, no tab opens) and
-                   the Tin placeholder, not mounted in document mode. */}
+               {/* Binder mode: the unified Import (lands as a new binder record, no tab opens) plus
+                   the whole-binder Tin save + open, not mounted in document mode. */}
                {!isDocumentMode && (
                   <>
                      <MenuSeparator />
-                     <MenuItem icon={<Upload size={13} />} label={t.fileImport}  onClick={() => handleItemClick(onImport)} />
-                     <MenuItem icon={<Archive size={13} />} label={t.fileOpenTin} onClick={() => handleItemClick(onOpenTin)} />
+                     <MenuItem icon={<Upload size={13} />}  label={t.fileImport}  onClick={() => handleItemClick(onImport)} />
+                     <MenuSeparator />
+                     <MenuItem icon={<Archive size={13} />} label={t.fileSaveTin} onClick={() => handleItemClick(onSaveTin)} />
+                     <MenuItem icon={<PackageOpen size={13} />} label={t.fileOpenTin} onClick={() => handleItemClick(onOpenTin)} />
                   </>
                )}
             </div>

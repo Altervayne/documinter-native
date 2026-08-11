@@ -4,6 +4,8 @@ import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { Folder, ArrowDown, ArrowUp, FilePlus, FileJson } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
 import { backfillSearchText, loadDocument } from '../../lib/binderDocuments'
+import { collectFolderSubtreeForTin } from '../../lib/binderBackup'
+import { downloadTin, tinDownloadName, type TinFile } from '../../lib/tinFile'
 import type { DocumentSortBy } from '../../lib/binderSearch'
 import type { DocumentTemplate } from '../../lib/documentTemplate'
 import { useBinderDocuments } from '../../hooks/useBinderDocuments'
@@ -59,6 +61,12 @@ export interface BinderProps {
    onApplyTemplate:   (template: DocumentTemplate) => void
    /** Notify the editor that a document was deleted (so it can close its tab if open). */
    onDocumentDeleted: (id: string) => void
+   /** Report the folder currently being browsed, so App can target a File-menu Tin import at it.
+    *  Fires on mount and on every navigation; root is the sentinel '0'. */
+   onCurrentFolderChange: (folderId: string) => void
+   /** A `.tin` file was dropped onto the binder body; App owns the merge/replace mode dialog, so the
+    *  parsed bundle bubbles up with the folder it was dropped into as the merge target. */
+   onTinDropped:      (tin: TinFile, targetFolderId: string) => void
 }
 
 const ROOT_FOLDER_ID = '0'
@@ -67,7 +75,7 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onApplyTemplate, onDocumentDeleted }: BinderProps) {
+export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onApplyTemplate, onDocumentDeleted, onCurrentFolderChange, onTinDropped }: BinderProps) {
    const { t } = useLang()
    const { showToast } = useToast()
 
@@ -150,6 +158,10 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       resetSearch()               // navigating exits a global search + clears advanced filters
    }, [resetSearch])
 
+   // Keep App told which folder is on screen, so a File-menu Tin import (whose picker lives up in the
+   // header, out of this component) can graft the bundle into the folder the user is looking at.
+   useEffect(() => { onCurrentFolderChange(currentFolderId) }, [currentFolderId, onCurrentFolderChange])
+
    // ==================
    //  Template actions
    // ==================
@@ -194,6 +206,19 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       navigateTo(folder)          // drill into the parent so the new subfolder is visible
       setEditingFolderId(id)
    }, [nav, navigateTo, t])
+
+   // "Export folder as Tin...": collect this folder + its whole subtree (descendant folders + the
+   // documents filed in any of them) into a `.tin` bundle and download it. Carries no templates
+   // (those are app-wide, not folder-scoped); the file is named from the folder.
+   const handleExportFolderTin = useCallback(async (folder: BinderFolderRecord) => {
+      try {
+         const tin = await collectFolderSubtreeForTin(folder.id)
+         await downloadTin(tin, tinDownloadName(folder.name || t.binderNewFolder, tin.exportedAt))
+         showToast(t.tinFolderExported, { type: 'success' })
+      } catch {
+         showToast(t.tinExportFailed, { type: 'error' })
+      }
+   }, [showToast, t])
 
    const handleConfirmDeleteFolder = useCallback((recursive: boolean) => {
       const folder = folderPendingDelete
@@ -249,7 +274,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    // Native file-drop import covers the whole binder body (nav + templates pane + document grid) and
    // routes each dropped file by its content: a template export becomes a stored template, a document
    // backup becomes a new document in the current folder. Orthogonal to dnd-kit's pointer dragging.
-   const fileImport = useBinderFileImport({ currentFolderId, onImported: bumpData })
+   const fileImport = useBinderFileImport({ currentFolderId, onImported: bumpData, onTinDropped })
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
@@ -471,6 +496,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
                onClose={() => setFolderMenu(null)}
                onRename={() => setEditingFolderId(folderMenu.folder.id)}
                onNewSubfolder={() => void handleNewSubfolder(folderMenu.folder)}
+               onExportTin={() => void handleExportFolderTin(folderMenu.folder)}
                onDelete={() => setFolderPendingDelete(folderMenu.folder)}
             />
          )}

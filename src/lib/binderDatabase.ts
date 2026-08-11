@@ -146,6 +146,7 @@ export function openDatabase(): Promise<IDBDatabase> {
    return databasePromise
 }
 
+
 /** Resolve when an IDBRequest succeeds, reject on error. */
 export function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
    return new Promise<T>((resolve, reject) => {
