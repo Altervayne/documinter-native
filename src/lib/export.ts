@@ -771,7 +771,12 @@ function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): st
    const layout  = resolveWatermarkLayout(watermark)
    const opacity = effectiveWatermarkOpacity(watermark.opacity, theme)
    const style = [
-      `background-image:url("${watermark.src}")`,
+      // Single-quote the url() so its base64 data URL cannot collide with the double-quoted
+      // style="..." attribute this string is dropped into. A double-quoted url() would close the
+      // attribute early and the browser would parse the base64 as stray attribute names, killing the
+      // embed. Data URLs are base64 (readAsDataURL / canvas toDataURL both encode), so they never
+      // contain a single quote of their own.
+      `background-image:url('${watermark.src}')`,
       `background-repeat:${layout.repeat}`,
       `background-size:${layout.size}`,
       `background-position:${layout.position}`,

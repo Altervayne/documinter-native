@@ -244,7 +244,10 @@ describe('generateExportHTML, background watermark', () => {
       })
       // The layer div with the inlined base64 image, correct fit/position, and the light opacity.
       expect(html).toContain('class="doc-watermark"')
-      expect(html).toContain('background-image:url("data:image/png;base64,ABC123")')
+      // Single-quoted url() so the base64 data URL sits cleanly inside the double-quoted style
+      // attribute (a double-quoted url() would close the attribute early and break the embed).
+      expect(html).toContain('background-image:url(\'data:image/png;base64,ABC123\')')
+      expect(html).toContain('style="background-image:url(\'data:image/png;base64,ABC123\')')
       expect(html).toContain('background-size:contain')
       expect(html).toContain('background-position:center center')
       expect(html).toContain('opacity:0.1')
