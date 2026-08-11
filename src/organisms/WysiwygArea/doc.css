@@ -2168,6 +2168,19 @@
 .doc-dark .doc-img-ctrl { color: #8b949e; }
 .doc-dark .doc-img-ctrl:hover { color: #e6edf3; }
 
+/* Annotate / remove buttons overlaid on an image. Dark translucent so they read on any picture in
+   either theme, dim until hovered. No .doc-dark override needed, they sit over the image. */
+.doc-img-overlay-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  border: none; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45); color: #fff;
+  cursor: pointer; opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s;
+}
+.doc-img-overlay-btn:hover { opacity: 1; background: rgba(0, 0, 0, 0.7); }
+.doc-img-overlay-btn-danger:hover { background: var(--callout-danger-accent); }
+
 /* Add item / Add block dashed buttons */
 .doc-add-btn {
   color:        #6b7280;

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { AlignLeft, AlignCenter, AlignRight, GripHorizontal, Pencil } from 'lucide-react'
+import { AlignLeft, AlignCenter, AlignRight, GripHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { PlainEditable } from '../../../atoms/PlainEditable'
 import { compressImage } from '../../../lib/image'
 import { decodeImageSize } from '../../../lib/imageDownscale'
@@ -123,6 +123,31 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                            {draggingHeight} px
                         </div>
                      )}
+
+                     {/* Annotate + remove, overlaid on the image so the controls row below has room in a
+                         cramped column container. Hidden mid-drag so they never sit under the size badge. */}
+                     {!readOnly && draggingHeight === null && (
+                        <div className="absolute top-2 right-2 flex items-center gap-1">
+                           <button
+                              type="button"
+                              onClick={handleAddMarkup}
+                              title={t.imageMarkupAdd}
+                              aria-label={t.imageMarkupAdd}
+                              className="doc-img-overlay-btn"
+                           >
+                              <Pencil size={14} />
+                           </button>
+                           <button
+                              type="button"
+                              onClick={() => patch({ src: '', alt: '', caption: '' })}
+                              title={t.imageRemove}
+                              aria-label={t.imageRemove}
+                              className="doc-img-overlay-btn doc-img-overlay-btn-danger"
+                           >
+                              <Trash2 size={14} />
+                           </button>
+                        </div>
+                     )}
                   </div>
                </figure>
             </div>
@@ -147,7 +172,7 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                singleLine
                readOnly={readOnly}
             />
-            {!readOnly && <div className="wysiwyg-util-row" style={{ marginTop: 6 }}>
+            {!readOnly && <div className="wysiwyg-util-row flex-wrap items-center" style={{ marginTop: 6 }}>
                <div className="flex items-center gap-0.5">
                   {ALIGN_BUTTONS.map(({ value, Icon }) => (
                      <button
@@ -187,12 +212,6 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                      </button>
                   )}
                </div>
-               <button className="doc-img-ctrl flex items-center gap-1" onClick={handleAddMarkup}>
-                  <Pencil size={12} /> {t.imageMarkupAdd}
-               </button>
-               <button className="danger" onClick={() => patch({ src: '', alt: '', caption: '' })}>
-                  ✕ Remove
-               </button>
             </div>}
          </div>
       )

@@ -1244,19 +1244,6 @@ export function WysiwygArea({
             onDragLeave={handleTemplateDragLeave}
             onDrop={handleTemplateDrop}
          >
-            {isTemplateDragOver && (
-               <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
-                  {/* A white shadow on the icon + label so the accent-tinted text keeps contrast over
-                      whatever document content the translucent overlay sits on top of. */}
-                  <div
-                     className="flex flex-col items-center gap-2.5"
-                     style={{ filter: 'drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9))' }}
-                  >
-                     <PaintRoller size={34} />
-                     <span className="text-sm font-medium">{t.templateDropToApply}</span>
-                  </div>
-               </div>
-            )}
             {(() => {
                // The canvas body: paged sheets or the single infinite sheet. Both modes render blocks
                // through WysiwygSection, whose block SortableContexts all live under the ONE shared DnD
@@ -1323,6 +1310,22 @@ export function WysiwygArea({
             })()}
             {renderDocWindowsAndMenus()}
          </div>
+         {/* Template drop overlay: a peer of the scroll area, pinned to the relative flex row (like the
+             overflow navigator below) so it stays centered in the visible canvas while a long document
+             scrolls, instead of riding the scrolled content and sliding off the top. */}
+         {isTemplateDragOver && (
+            <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
+               {/* A white shadow on the icon + label so the accent-tinted text keeps contrast over
+                   whatever document content the translucent overlay sits on top of. */}
+               <div
+                  className="flex flex-col items-center gap-2.5"
+                  style={{ filter: 'drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9))' }}
+               >
+                  <PaintRoller size={34} />
+                  <span className="text-sm font-medium">{t.templateDropToApply}</span>
+               </div>
+            </div>
+         )}
          {/* Floating overflow navigator: a Find-bar-style pill naming how many blocks overflow their
              sheet and stepping through them. Sits over the canvas (a peer of the scroll area, pinned to
              the relative flex row) so it stays put while the canvas scrolls. Editor-only, paged-only. */}

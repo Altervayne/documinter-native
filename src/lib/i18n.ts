@@ -144,6 +144,7 @@ export const translations = {
       dropImageHere:  'Drop image or click to select',
       imageAlt:       'Alt text',
       imageCaption:   'Caption (optional)',
+      imageRemove:    'Remove image',
       // Container block
       leftColumn:     'Left',
       rightColumn:    'Right',
@@ -1005,6 +1006,7 @@ export const translations = {
       dropImageHere:  'Déposer une image ou cliquer pour sélectionner',
       imageAlt:       'Texte alternatif',
       imageCaption:   'Légende (optionnelle)',
+      imageRemove:    'Supprimer l\'image',
       // Container block
       leftColumn:     'Gauche',
       rightColumn:    'Droite',
