@@ -478,6 +478,12 @@ export function paginate(
          // (not the line index) so nudging the boundary while typing keeps the key stable, exactly like
          // the list branch below.
          const lines = paragraphLines!
+         // The block's own top+bottom margin, backed out of its whole-block height minus its line sum
+         // (blockHeight already includes it, same as the atomic branch below; the line sum does not, since
+         // each ParagraphLine is a bare rendered-line height). It is bottom-only in the stylesheet, so it
+         // belongs on the LAST page the paragraph occupies, never a mid-split page.
+         const totalLineHeight = lines.reduce((accumulator, line) => accumulator + line.height, 0)
+         const paragraphMargin = Math.max(0, metrics.blockHeight(block.id) - totalLineHeight)
          let startLine    = 0
          let charStart    = 0
          let continuation = 0
@@ -509,6 +515,10 @@ export function paginate(
             const whole = charStart === 0 && endLine === lines.length
             openSlice!.blocks.push(whole ? block : sliceParagraphBlock(block, charStart, charEnd, isTail))
             used += sum
+            // The tail piece (the one ending the paragraph) also spends the block's own margin, matching
+            // the atomic branch's full blockHeight; a mid-block piece adds none (its break is not a real
+            // margin, the paragraph keeps flowing).
+            if (isTail) used += paragraphMargin
             charStart = charEnd
             startLine = endLine
             if (startLine < lines.length) {
@@ -541,6 +551,10 @@ export function paginate(
       // continuation page key is the block id plus a continuation ORDINAL (0, 1, 2...), not the split
       // item index, so nudging the boundary by an item while typing keeps the same page key and never
       // remounts the continuation subtree (which would jump the caret and jitter the canvas).
+      // The block's own top+bottom margin, backed out of its whole-block height minus its item sum, the
+      // same reasoning as paragraphMargin above: blockHeight already counts it, the per-item sum does not.
+      const totalItemHeight = itemHeights.reduce((accumulator, height) => accumulator + height, 0)
+      const listMargin      = Math.max(0, metrics.blockHeight(block.id) - totalItemHeight)
       let start = 0
       let continuation = 0
       while (start < itemHeights.length) {
@@ -564,6 +578,9 @@ export function paginate(
 
          openSlice!.blocks.push(sliceListBlock(block, start, end))
          used += sum
+         // The tail item piece (the one ending the list) also spends the block's own margin, matching the
+         // atomic branch's full blockHeight; a mid-list piece adds none (the list keeps flowing).
+         if (end === itemHeights.length) used += listMargin
          start = end
          if (start < itemHeights.length) {
             autoBreak(`${block.id}:c${continuation}`, true)

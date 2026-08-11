@@ -312,6 +312,70 @@ describe('paginate — paragraph splitting', () => {
    })
 })
 
+describe('paginate — split block margin accounting', () => {
+   // A `p` block whose richText is `length` chars long (mirrors the helper in the paragraph-splitting
+   // block above; kept local so this describe block reads standalone).
+   function paragraphBlock(id: string, length: number): Block {
+      return { id, type: 'p', richText: [{ text: 'x'.repeat(length) }] }
+   }
+   function fragmentOf(candidate: Block | undefined) {
+      return candidate?.paragraphFragment
+   }
+
+   // The bug: a splittable paragraph's own bottom margin (blockHeight minus its line sum) was dropped
+   // from `used` whenever the paragraph landed WHOLE (not split), so a following block that should have
+   // been pushed off the page stayed put, overrunning the sheet by that margin. Here the paragraph's
+   // lines sum to 50 but its measured whole height is 60 (a 10px margin); a budget of 90 exactly fits
+   // 50 + 40, but only the margin-blind accounting would let NEXT stay on page 1.
+   it('counts a whole-placed paragraph own margin against a following block', () => {
+      const sections = [section('S', [paragraphBlock('P', 50), block('NEXT')])]
+      const lines: ParagraphLine[] = [{ height: 50, charEnd: 50 }]
+      const metrics = metricsFrom({
+         titleHeight: 0, blockHeights: { P: 60, NEXT: 40 }, paragraphLines: { P: lines },
+      })
+      const pages = paginate(sections, [], 90, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P'])
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['NEXT'])
+      expect(isAutoPageId(pages[1].id)).toBe(true)
+   })
+
+   // The margin-accounting fix must make a WHOLE-placed splittable paragraph spend its full blockHeight,
+   // exactly like the atomic branch: two paragraphs whose line sums both fit comfortably (30 + 30 = 60)
+   // still cannot share a page once their measured (margin-inclusive) heights are counted (40 + 30 = 70
+   // > the 65 budget), so the second is pushed to its own page.
+   it('spends a whole-placed splittable paragraph full blockHeight, not just its line sum', () => {
+      const sections = [section('S', [paragraphBlock('P1', 30), paragraphBlock('P2', 30)])]
+      const linesP1: ParagraphLine[] = [{ height: 30, charEnd: 30 }]
+      const linesP2: ParagraphLine[] = [{ height: 30, charEnd: 30 }]
+      const metrics = metricsFrom({
+         titleHeight: 0, blockHeights: { P1: 40, P2: 40 }, paragraphLines: { P1: linesP1, P2: linesP2 },
+      })
+      const pages = paginate(sections, [], 65, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P1'])
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P2'])
+      // Both placed whole (untagged), never split: the margin fix only changes `used` accounting, not
+      // whether a fitting paragraph gets tagged as a fragment.
+      expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
+      expect(fragmentOf(pages[1].slices[0].blocks[0])).toBeUndefined()
+   })
+
+   // The analogous list case: two items summing to 50 but a measured whole blockHeight of 60 (a 10px
+   // margin). A budget of 80 exactly fits 50 + 30, but only margin-blind accounting would let NEXT stay.
+   it('counts a whole-placed list own margin against a following block', () => {
+      const sections = [section('S', [listBlock('L', 2), block('NEXT')])]
+      const metrics = metricsFrom({
+         titleHeight: 0, blockHeights: { L: 60, NEXT: 30 }, listItems: { L: [25, 25] },
+      })
+      const pages = paginate(sections, [], 80, metrics)
+      expect(pages).toHaveLength(2)
+      expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['L'])
+      expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['NEXT'])
+      expect(isAutoPageId(pages[1].id)).toBe(true)
+   })
+})
+
 describe('reconcileParagraphLines', () => {
    const linesA: ParagraphLine[] = [{ height: 30, charEnd: 20 }, { height: 30, charEnd: 40 }]
    const linesB: ParagraphLine[] = [{ height: 20, charEnd: 15 }, { height: 20, charEnd: 30 }]
