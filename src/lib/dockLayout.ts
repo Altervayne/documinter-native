@@ -211,6 +211,13 @@ export function isPanelDocked(layout: DockLayout, panelId: PanelId): boolean {
    return locatePanel(layout, panelId) !== null
 }
 
+/** Whether a group with this id currently exists in the layout. Used by the policy layer to decide
+ *  whether a remembered group is still around to rejoin (a group vanishes when its last panel leaves,
+ *  see `detachPanel`), or whether it must fall back to creating a new one. */
+export function groupExists(layout: DockLayout, groupId: string): boolean {
+   return findGroup(layout, groupId) !== null
+}
+
 /** Every panel currently in the layout, left column first (top-to-bottom), then right. */
 export function dockedPanels(layout: DockLayout): PanelId[] {
    const result: PanelId[] = []

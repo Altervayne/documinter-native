@@ -17,7 +17,7 @@
 import type { DockLayout, DockSide, PanelId, FloatingPanels, WindowPlacement } from './dockLayout'
 
 // -- Lib Imports --
-import { addPanel, removePanel, isPanelDocked, locatePanel, dockedPanels, toggleGroupCollapsed } from './dockLayout'
+import { addPanel, removePanel, isPanelDocked, locatePanel, dockedPanels, toggleGroupCollapsed, groupExists, mergePanelIntoGroup } from './dockLayout'
 
 // #########
 // # TYPES #
@@ -39,6 +39,16 @@ export interface PanelMemory {
     *  panel that cycles out and back (e.g. Pages across an infinite <-> A4 switch, or the brief
     *  infinite-default window before a document hydrates on load) returns collapsed, not expanded. */
    collapsed?: boolean
+   /** The group the panel was tabbed into when it was undocked or hidden, so it rejoins that exact
+    *  group instead of forming a new standalone one. Absent for panels that were never docked, or
+    *  that were floating (not tabbed into a group) when hidden. The group may no longer exist by the
+    *  time we try to restore (it is dropped if the panel was alone in it), in which case the restore
+    *  falls back to a fresh group, same as today. */
+   groupId?: string
+   /** The tab position the panel held within `groupId` when it was undocked or hidden. Only meaningful
+    *  alongside `groupId`; clamped on restore since the group's tab count may have shifted while the
+    *  panel was gone. */
+   tabIndex?: number
 }
 
 export type ClosedPanels = Partial<Record<PanelId, PanelMemory>>
@@ -46,6 +56,37 @@ export type ClosedPanels = Partial<Record<PanelId, PanelMemory>>
 /** A monotonic source of fresh group ids. Injected so the policy stays pure and deterministic in
  *  tests (pass a counter); the hook passes a real unique-id generator. */
 export type GroupIdFactory = () => string
+
+// ####################
+// # INTERNAL HELPERS #
+// ####################
+
+/**
+ * Docks a panel back at `side`, preferring to rejoin the group it was tabbed into before it was
+ * undocked or hidden, over always starting a fresh standalone group. Capturing `groupId` on the way
+ * out is always safe to do unconditionally: if the panel was alone in that group, `removePanel` drops
+ * the group with it, so `groupExists` comes back false here and this falls back to the new-group path
+ * exactly like before. Only when a sibling tab kept the group alive does the panel rejoin it.
+ *
+ * The remembered `collapsed` state is restored only on the new-group path: a group we are merging into
+ * already owns its own collapsed state (it never went away), so toggling it here would fight whatever
+ * the user has it set to now.
+ */
+function dockRemembered(
+   layout:      DockLayout,
+   panelId:     PanelId,
+   memory:      PanelMemory | undefined,
+   side:        DockSide,
+   nextGroupId: GroupIdFactory,
+): DockLayout {
+   if (memory?.groupId && groupExists(layout, memory.groupId)) {
+      return mergePanelIntoGroup(layout, panelId, memory.groupId, memory.tabIndex ?? Infinity)
+   }
+   const newId = nextGroupId()
+   let next = addPanel(layout, panelId, side, newId)
+   if (memory?.collapsed) next = toggleGroupCollapsed(next, newId)
+   return next
+}
 
 // #############################
 // # VISIBILITY (show / hide)  #
@@ -88,9 +129,10 @@ export function togglePanelVisibility(
    }
 
    if (isPanelDocked(layout, panelId)) {
-      // Hide a docked panel, remembering its side so it comes back docked.
-      const side = locatePanel(layout, panelId)!.side
-      return { layout: removePanel(layout, panelId), floating, hidden: { ...hidden, [panelId]: { side, auto: false } } }
+      // Hide a docked panel, remembering its side and group so it comes back docked in the same group.
+      const location = locatePanel(layout, panelId)!
+      const memory: PanelMemory = { side: location.side, auto: false, groupId: location.groupId, tabIndex: location.tabIndex }
+      return { layout: removePanel(layout, panelId), floating, hidden: { ...hidden, [panelId]: memory } }
    }
 
    // Show a hidden panel, restoring how it was hidden.
@@ -101,7 +143,7 @@ export function togglePanelVisibility(
       return { layout, floating: { ...floating, [panelId]: memory.placement }, hidden: nextHidden }
    }
    const side = memory?.side ?? defaultSide
-   return { layout: addPanel(layout, panelId, side, nextGroupId()), floating, hidden: nextHidden }
+   return { layout: dockRemembered(layout, panelId, memory, side, nextGroupId), floating, hidden: nextHidden }
 }
 
 // #####################
@@ -134,9 +176,16 @@ export function reconcileDock(
       if (applicable.includes(panelId)) continue
       const location = locatePanel(nextLayout, panelId)
       if (!location) continue
-      // Remember the group's collapsed state so re-docking restores it (see PanelMemory.collapsed).
+      // Remember the group's collapsed state so re-docking restores it (see PanelMemory.collapsed),
+      // and which group/tab it held so it rejoins that group rather than forming a new one.
       const wasCollapsed = !!nextLayout[location.side]?.groups[location.groupIndex]?.collapsed
-      nextClosed[panelId] = { side: location.side, auto: true, ...(wasCollapsed ? { collapsed: true } : {}) }
+      nextClosed[panelId] = {
+         side: location.side,
+         auto: true,
+         groupId: location.groupId,
+         tabIndex: location.tabIndex,
+         ...(wasCollapsed ? { collapsed: true } : {}),
+      }
       nextLayout = removePanel(nextLayout, panelId)
    }
 
@@ -155,10 +204,7 @@ export function reconcileDock(
       if (!memory && !defaultOpen.has(panelId)) continue
 
       const side = memory?.side ?? defaultSides[panelId]
-      const newId = nextGroupId()
-      nextLayout = addPanel(nextLayout, panelId, side, newId)
-      // A freshly added group is expanded; restore the remembered collapsed state (one toggle).
-      if (memory?.collapsed) nextLayout = toggleGroupCollapsed(nextLayout, newId)
+      nextLayout = dockRemembered(nextLayout, panelId, memory, side, nextGroupId)
       delete nextClosed[panelId]
    }
 
