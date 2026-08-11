@@ -4,7 +4,8 @@ import type React from 'react'
 
 // -- Library / Type Imports --
 import { pointerToDiagramPoint, screenToFramePoint, nodeHandlePoints, nodePorts } from '../lib/diagram/edit'
-import type { DiagramViewBox, AlignmentGuide, NodeResizeHandle } from '../lib/diagram/edit'
+import type { DiagramViewBox, AlignmentGuide, NodeResizeHandle, NodeBox } from '../lib/diagram/edit'
+import type { SpacingBadge, Rect } from '../lib/diagram/align'
 import type { DiagramNode } from '../lib/diagram'
 import type { Point } from '../lib/diagram/geometry'
 
@@ -50,6 +51,8 @@ export interface CanvasPointerInfo {
    diagramPoint:         Point
    framePoint:           Point
    pixelsPerDiagramUnit: number
+   /** Whether Alt was held on this pointer event (a group drag reads it to bypass snapping). */
+   altKey:               boolean
 }
 
 interface DiagramCanvasProps {
@@ -62,8 +65,16 @@ interface DiagramCanvasProps {
    /** The FIXED reference frame (0 0 W H): the container aspect ratio + the transform-independent space
     *  pan deltas and zoom anchors are measured in. Never clips content (the viewport does the windowing). */
    frame: DiagramViewBox
-   /** The currently selected node (its outline + resize handles are drawn), or null. */
-   selectedNode: DiagramNode | null
+   /** The currently selected nodes (each draws an outline; resize handles only when there is exactly
+    *  one). Empty when nothing is selected. */
+   selectedNodes: DiagramNode[]
+   /** The combined bounding box of the selection when 2+ nodes are selected (a lighter group rect), or
+    *  null (0 / 1 selected). */
+   groupBox: NodeBox | null
+   /** The live marquee rectangle while an empty-canvas drag is selecting, or null. */
+   marqueeRect: Rect | null
+   /** The equal-spacing distance badges to draw while a group drags (empty otherwise). */
+   spacingBadges: SpacingBadge[]
    /** The polyline of the currently selected edge (a highlight is drawn over it), or null. */
    selectedEdgePolyline: Point[] | null
    /** The node whose connection ports are revealed (the hovered node), or null. */
@@ -123,7 +134,8 @@ interface DiagramCanvasProps {
  * All hit-testing + geometry is pure (`lib/diagram/edit.ts`); this component is thin pointer glue.
  */
 export function DiagramCanvas({
-   svgMarkup, viewport, frame, selectedNode, selectedEdgePolyline, portNode,
+   svgMarkup, viewport, frame, selectedNodes, groupBox, marqueeRect, spacingBadges,
+   selectedEdgePolyline, portNode,
    connectPreview, connectTargetNode, editingLabelNode, alignmentGuides,
    onPointerDownPoint, onPointerMovePoint, onPointerUp, onDoubleClickPoint, onContextMenuPoint,
    onLabelCommit, onWheelZoom, heightPx, onContainerResize, cursor,
@@ -180,6 +192,7 @@ export function DiagramCanvas({
             diagramPoint: { x: viewport.minX, y: viewport.minY },
             framePoint:   { x: frame.minX, y: frame.minY },
             pixelsPerDiagramUnit: 1,
+            altKey:       event.altKey,
          }
       }
       return {
@@ -189,6 +202,7 @@ export function DiagramCanvas({
          framePoint:   screenToFramePoint(event.clientX, event.clientY, rect, frame),
          // 1 diagram unit spans (rect.width / viewport.width) screen pixels along x.
          pixelsPerDiagramUnit: rect.width > 0 && viewport.width > 0 ? rect.width / viewport.width : 1,
+         altKey:       event.altKey,
       }
    }
 
@@ -215,7 +229,11 @@ export function DiagramCanvas({
             ref={overlayRef}
             className="diagram-canvas-interaction"
             style={{ cursor }}
-            onPointerDown={event => { if (event.button === 0) onPointerDownPoint(pointerInfo(event), event) }}
+            onPointerDown={event => {
+               // The primary button drives selection / move / marquee; the middle button is the pan
+               // trigger (handled downstream). The right button is left for the context menu.
+               if (event.button === 0 || event.button === 1) onPointerDownPoint(pointerInfo(event), event)
+            }}
             onPointerMove={event => onPointerMovePoint(pointerInfo(event))}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
@@ -229,7 +247,12 @@ export function DiagramCanvas({
             >
                {selectedEdgePolyline && <EdgeHighlight polyline={selectedEdgePolyline} />}
                {alignmentGuides.map((guide, index) => <GuideLine key={index} guide={guide} />)}
-               {selectedNode && <SelectionChrome node={selectedNode} />}
+               {spacingBadges.map((badge, index) => <SpacingBadgeMarks key={`spacing-${index}`} badge={badge} />)}
+               {groupBox && <GroupBoundsRect box={groupBox} />}
+               {selectedNodes.map(node => (
+                  <SelectionChrome key={node.id} node={node} showHandles={selectedNodes.length === 1} />
+               ))}
+               {marqueeRect && <MarqueeRect rect={marqueeRect} />}
                {portNode && <ConnectionPorts node={portNode} />}
                {connectTargetNode && <ConnectTargetOutline node={connectTargetNode} />}
                {connectPreview && <ConnectPreviewLine preview={connectPreview} />}
@@ -279,9 +302,10 @@ function GuideLine({ guide }: { guide: AlignmentGuide }) {
    )
 }
 
-/** The selected node's dashed bounding outline + a square per resize handle, at absolute coords. */
-function SelectionChrome({ node }: { node: DiagramNode }) {
-   const handles = nodeHandlePoints(node)
+/** The selected node's dashed bounding outline + a square per resize handle, at absolute coords. The
+ *  handles are drawn only when `showHandles` is set (a lone selection), never on a multi-selection. */
+function SelectionChrome({ node, showHandles }: { node: DiagramNode; showHandles: boolean }) {
+   const handles = showHandles ? nodeHandlePoints(node) : []
    return (
       <>
          <rect
@@ -304,6 +328,83 @@ function SelectionChrome({ node }: { node: DiagramNode }) {
                style={{ cursor: RESIZE_CURSORS[handle], pointerEvents: 'auto' }}
             />
          ))}
+      </>
+   )
+}
+
+/** The combined bounding box around a multi-node selection: a lighter, tighter dashed rect than the
+ *  per-node outlines, so the group reads as one unit without competing with them. */
+function GroupBoundsRect({ box }: { box: NodeBox }) {
+   return (
+      <rect
+         x={box.x} y={box.y} width={box.width} height={box.height}
+         fill="none" stroke={SELECTION_COLOR} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.6}
+         vectorEffect="non-scaling-stroke"
+      />
+   )
+}
+
+/** The live marquee selection rectangle: a translucent blue fill + dashed border, normalized so a drag
+ *  in any direction reads correctly. */
+function MarqueeRect({ rect }: { rect: Rect }) {
+   const left   = Math.min(rect.x, rect.x + rect.width)
+   const top    = Math.min(rect.y, rect.y + rect.height)
+   const width  = Math.abs(rect.width)
+   const height = Math.abs(rect.height)
+   return (
+      <rect
+         x={left} y={top} width={width} height={height}
+         fill={SELECTION_COLOR} fillOpacity={0.08}
+         stroke={SELECTION_COLOR} strokeWidth={1} strokeDasharray="4 3"
+         vectorEffect="non-scaling-stroke"
+      />
+   )
+}
+
+/** A spacing badge's two equal-gap markers: a thin line per matched gap with a short end cap at each
+ *  end (magenta, à la the alignment guides). Horizontal gaps run along x, vertical gaps along y. */
+function SpacingBadgeMarks({ badge }: { badge: SpacingBadge }) {
+   const CAP = 5
+   return (
+      <>
+         {badge.segments.map((segment, index) => {
+            if (badge.orientation === 'horizontal') {
+               const y = segment.cross
+               return (
+                  <g key={index}>
+                     <line
+                        x1={segment.start} y1={y} x2={segment.end} y2={y}
+                        stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                     />
+                     <line
+                        x1={segment.start} y1={y - CAP} x2={segment.start} y2={y + CAP}
+                        stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                     />
+                     <line
+                        x1={segment.end} y1={y - CAP} x2={segment.end} y2={y + CAP}
+                        stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                     />
+                  </g>
+               )
+            }
+            const x = segment.cross
+            return (
+               <g key={index}>
+                  <line
+                     x1={x} y1={segment.start} x2={x} y2={segment.end}
+                     stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                  />
+                  <line
+                     x1={x - CAP} y1={segment.start} x2={x + CAP} y2={segment.start}
+                     stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                  />
+                  <line
+                     x1={x - CAP} y1={segment.end} x2={x + CAP} y2={segment.end}
+                     stroke={GUIDE_COLOR} strokeWidth={1} vectorEffect="non-scaling-stroke"
+                  />
+               </g>
+            )
+         })}
       </>
    )
 }

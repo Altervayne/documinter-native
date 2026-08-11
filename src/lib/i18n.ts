@@ -387,6 +387,16 @@ export const translations = {
       diagramDeleteNode:        'Delete node',
       diagramDuplicateNode:     'Duplicate node',
       diagramDefaultNodeLabel:  'Node',
+      // Multi-select align + distribute toolbar
+      diagramAlignLeft:            'Align left',
+      diagramAlignHCenter:         'Align horizontal centers',
+      diagramAlignRight:           'Align right',
+      diagramAlignTop:             'Align top',
+      diagramAlignVMiddle:         'Align vertical centers',
+      diagramAlignBottom:          'Align bottom',
+      diagramDistributeHorizontal: 'Distribute horizontally',
+      diagramDistributeVertical:   'Distribute vertically',
+      diagramNodesSelected:        '{count} nodes selected',
       // Edge (link) editor
       diagramEdgeSection:          'Link',
       diagramEdgeLabel:            'Label',
@@ -1280,6 +1290,16 @@ export const translations = {
       diagramDeleteNode:        'Supprimer le nœud',
       diagramDuplicateNode:     'Dupliquer le nœud',
       diagramDefaultNodeLabel:  'Nœud',
+      // Barre d'alignement + distribution de la sélection multiple
+      diagramAlignLeft:            'Aligner à gauche',
+      diagramAlignHCenter:         'Centrer horizontalement',
+      diagramAlignRight:           'Aligner à droite',
+      diagramAlignTop:             'Aligner en haut',
+      diagramAlignVMiddle:         'Centrer verticalement',
+      diagramAlignBottom:          'Aligner en bas',
+      diagramDistributeHorizontal: 'Distribuer horizontalement',
+      diagramDistributeVertical:   'Distribuer verticalement',
+      diagramNodesSelected:        '{count} nœuds sélectionnés',
       // Edge (link) editor
       diagramEdgeSection:          'Lien',
       diagramEdgeLabel:            'Libellé',

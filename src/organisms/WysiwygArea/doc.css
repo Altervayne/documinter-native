@@ -1709,10 +1709,27 @@
   background: transparent; border: none; color: var(--color-muted); cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
-.diagram-zoom-btn:hover {
+.diagram-zoom-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent); color: var(--color-text);
 }
 .diagram-zoom-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.diagram-zoom-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* Align + distribute cluster: mirrors the zoom controls, floated at the canvas top-left. Its buttons
+   reuse the zoom-btn grammar; the align set enables at two selected nodes, the distribute set at three. */
+.diagram-align-controls {
+  position: absolute; left: 0.5rem; top: 0.5rem; z-index: 4;
+  display: inline-flex; align-items: center; gap: 0.1rem;
+  padding: 0.15rem; border-radius: 8px;
+  background: color-mix(in srgb, var(--color-el) 92%, transparent);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(4px);
+}
+.diagram-align-divider {
+  width: 1px; height: 1.1rem; margin: 0 0.2rem;
+  background: var(--color-border);
+}
 .diagram-zoom-readout {
   min-width: 2.8rem; text-align: center;
   font-size: 0.72rem; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--color-text);

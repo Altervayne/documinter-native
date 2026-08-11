@@ -24,13 +24,18 @@ import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 
 // -- Library Imports --
-import { Workflow, Pencil, ZoomIn, ZoomOut, Maximize, Copy, Trash2 } from 'lucide-react'
+import {
+   Workflow, Pencil, ZoomIn, ZoomOut, Maximize, Copy, Trash2,
+   AlignHorizontalJustifyStart, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd,
+   AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
+} from 'lucide-react'
 
 // -- Library / Hook Imports --
 import { renderDiagramToSvg, LIGHT_DIAGRAM_THEME, DARK_DIAGRAM_THEME } from '../../../lib/diagram'
 import {
    createNode, addNode, duplicateNode, removeNode, resizeNode, updateNodeLabel, updateNodeStyle,
-   translateNode, setNode, hitTestNode, hitTestNodeHandle, findNode, computeEditorCanvas,
+   setNode, hitTestNode, hitTestNodeHandle, findNode, computeEditorCanvas,
    nodeBox, roundUnit, computeAlignmentSnaps, computeResizeSnaps, zoomViewToward, fitViewToContent,
    viewportViewBox, frameFromContainer, clampCanvasHeight, CANVAS_DEFAULT_HEIGHT,
    IDENTITY_VIEW_TRANSFORM, NODE_HANDLE_HIT_TOLERANCE,
@@ -39,7 +44,12 @@ import {
 } from '../../../lib/diagram/edit'
 import type {
    DiagramViewBox, NodeResizeHandle, NodeStylePatch, EdgeStylePatch, ViewTransform, AlignmentGuide,
+   NodeBox,
 } from '../../../lib/diagram/edit'
+import {
+   computeSpacingSnaps, nodesInRect, alignNodes, distributeNodes, translateNodes,
+} from '../../../lib/diagram/align'
+import type { SpacingBadge, AlignAxis, DistributeAxis, Rect } from '../../../lib/diagram/align'
 import { edgePolyline, intersectNodeBoundary } from '../../../lib/diagram/geometry'
 import type { Point } from '../../../lib/diagram/geometry'
 import { ShapePalette } from '../../../molecules/ShapePalette'
@@ -52,6 +62,7 @@ import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
 import { useLang } from '../../../contexts/LangContext'
+import type { T } from '../../../lib/i18n'
 
 // -- Type Imports --
 import type { Block } from '../../../types'
@@ -85,9 +96,43 @@ const SNAP_THRESHOLD_PX = 7
 /** How near (SCREEN pixels, converted through the live zoom) a click must be to an edge to select it. */
 const EDGE_HIT_THRESHOLD_PX = 8
 
+/** Arrow-key nudge amounts (diagram units): a plain tap, and the larger Shift+arrow step. */
+const NUDGE_STEP = 1
+const NUDGE_LARGE_STEP = 10
+
+/** Which diagram-unit direction each arrow key nudges the whole selection. */
+const ARROW_NUDGE: Record<string, { x: number; y: number }> = {
+   ArrowLeft:  { x: -1, y:  0 },
+   ArrowRight: { x:  1, y:  0 },
+   ArrowUp:    { x:  0, y: -1 },
+   ArrowDown:  { x:  0, y:  1 },
+}
+
 // ###########
 // # HELPERS #
 // ###########
+
+/** The single node id when exactly one is selected, else null (resize / ports / inspector gate). */
+function onlySelected(ids: ReadonlySet<string>): string | null {
+   if (ids.size !== 1) return null
+   return ids.values().next().value ?? null
+}
+
+/** The bounding box (x / y / width / height) enclosing every box in `boxes`; empty gives a zero box. */
+function unionBox(boxes: NodeBox[]): NodeBox {
+   let minX = Infinity
+   let minY = Infinity
+   let maxX = -Infinity
+   let maxY = -Infinity
+   for (const box of boxes) {
+      if (box.x < minX) minX = box.x
+      if (box.y < minY) minY = box.y
+      if (box.x + box.width  > maxX) maxX = box.x + box.width
+      if (box.y + box.height > maxY) maxY = box.y + box.height
+   }
+   if (boxes.length === 0) return { x: 0, y: 0, width: 0, height: 0 }
+   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
 
 /**
  * Override the root `<svg>`'s viewBox on the (unchanged) renderer output so the EDITOR draws through
@@ -126,10 +171,11 @@ interface DiagramBlockProps {
 
 /** A live pointer-drag session, kept in a ref (mutating it must not re-render). */
 type Interaction =
-   | { mode: 'move';    id: string; start: Point; origin: DiagramSpec['nodes'][number] }
+   | { mode: 'move';    ids: ReadonlySet<string>; start: Point; originNodes: DiagramSpec['nodes'] }
    | { mode: 'resize';  id: string; handle: NodeResizeHandle }
    | { mode: 'connect'; from: string }
    | { mode: 'pan';     startFrame: Point; startView: ViewTransform }
+   | { mode: 'marquee'; startPoint: Point; additive: boolean; baseIds: ReadonlySet<string> }
 
 // #############
 // # COMPONENT #
@@ -152,8 +198,11 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const patchRef = useRef(patch)
    useEffect(() => { patchRef.current = patch })
 
-   const [selectedId, setSelectedId] = useState<string | null>(null)
-   const selectedIdRef = useRef<string | null>(null)
+   // Node selection is a SET (marquee / shift-click can hold several); edge selection stays single.
+   // The two are mutually exclusive: selecting nodes clears the edge and vice versa, so the inspector
+   // shows exactly one context. A ref mirror keeps pointer handlers stale-closure-free mid-drag.
+   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+   const selectedIdsRef = useRef<ReadonlySet<string>>(selectedIds)
    const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
    const selectedEdgeIdRef = useRef<string | null>(null)
    const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
@@ -187,6 +236,23 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    // serialized, reset on window open. Alignment guides show only while a node is dragged.
    const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW_TRANSFORM)
    const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([])
+
+   // Spacing badges (equal-gap distance ticks) show alongside the alignment guides while a group drags.
+   const [spacingBadges, setSpacingBadges] = useState<SpacingBadge[]>([])
+
+   // The live marquee rectangle (diagram units, possibly with a negative size while dragged up-left), or
+   // null when no marquee is active. Mirrored in a ref so pointer-up reads the final rect synchronously.
+   const [marqueeRect, setMarqueeRectState] = useState<Rect | null>(null)
+   const marqueeRectRef = useRef<Rect | null>(null)
+   function setMarqueeRect(rect: Rect | null): void {
+      marqueeRectRef.current = rect
+      setMarqueeRectState(rect)
+   }
+
+   // Whether Space is held (its keydown/keyup is tracked while the editor is open): while held, an
+   // empty-canvas drag PANS instead of drawing a marquee, and the empty-canvas cursor reads "grab".
+   const [spaceHeld, setSpaceHeld] = useState(false)
+   const spaceHeldRef = useRef(false)
 
    // The user-resizable canvas height (screen px) + the measured on-screen container size. Both are
    // ephemeral editor state (never serialized). The frame's aspect is derived from the measured
@@ -232,19 +298,35 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    function flushPendingEdit(): void {
       if (editing.current) commit(workingRef.current)
    }
-   // Node + edge selection are mutually exclusive: selecting one clears the other, so the inspector
-   // always shows exactly one element (or the empty hint). selectNode(null) clears both.
-   function selectNode(id: string | null): void {
-      selectedIdRef.current = id
-      setSelectedId(id)
+   // Node + edge selection are mutually exclusive: selecting nodes clears the edge and vice versa, so the
+   // inspector always shows exactly one context (or the empty hint). Every node-selection change routes
+   // through selectNodes so the ref mirror + the edge-clear stay in lockstep.
+   function selectNodes(ids: ReadonlySet<string>): void {
+      selectedIdsRef.current = ids
+      setSelectedIds(ids)
       selectedEdgeIdRef.current = null
       setSelectedEdgeId(null)
+   }
+   /** Select exactly this one node (a plain click replaces the whole set). */
+   function selectSingleNode(id: string): void {
+      selectNodes(new Set([id]))
+   }
+   /** Toggle a node in / out of the current selection (a shift-click). */
+   function toggleNodeInSelection(id: string): void {
+      const next = new Set(selectedIdsRef.current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      selectNodes(next)
+   }
+   /** Clear the node selection (click on empty canvas / after a delete). */
+   function clearNodeSelection(): void {
+      selectNodes(new Set())
    }
    function selectEdge(id: string | null): void {
       selectedEdgeIdRef.current = id
       setSelectedEdgeId(id)
-      selectedIdRef.current = null
-      setSelectedId(null)
+      selectedIdsRef.current = new Set()
+      setSelectedIds(new Set())
    }
    function setHovered(id: string | null): void {
       hoveredIdRef.current = id
@@ -264,6 +346,10 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       setConnectFromId(null)
       setConnectCursor(null)
       connectCursorRef.current = null
+      setSpacingBadges([])
+      setMarqueeRect(null)
+      spaceHeldRef.current = false
+      setSpaceHeld(false)
       editorWindow.openEditor(block.id)
    }
 
@@ -341,7 +427,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          y: visible.minY + visible.height / 2 + cascade,
       }
       const id = crypto.randomUUID()
-      selectNode(id)
+      selectSingleNode(id)
       commit(addNode(current, createNode(shape, center, t.diagramDefaultNodeLabel, id)))
    }
 
@@ -350,12 +436,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    // ============
    /** Duplicate the selected node in place with an offset (the right-click "Duplicate node" action). */
    function duplicateSelectedNode(): void {
-      const id = selectedIdRef.current
+      const id = onlySelected(selectedIdsRef.current)
       if (!id) return
       const node = findNode(workingRef.current, id)
       if (!node) return
       const newId = crypto.randomUUID()
-      selectNode(newId)
+      selectSingleNode(newId)
       commit(addNode(workingRef.current, duplicateNode(node, () => newId, DUPLICATE_OFFSET)))
    }
 
@@ -369,7 +455,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       if (!hit) return
       event.preventDefault()
       flushPendingEdit()
-      selectNode(hit.id)
+      selectSingleNode(hit.id)
       setEditingLabel(null)
       setNodeMenu({ x: event.clientX, y: event.clientY })
    }
@@ -395,9 +481,11 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       const current = workingRef.current
       const point = info.diagramPoint
 
-      // (1) A press on a handle of the ALREADY-selected node begins a resize (checked before a body
-      // hit). The grab tolerance is widened as we zoom OUT so the handles stay grabbable on screen.
-      const selected = selectedIdRef.current ? findNode(current, selectedIdRef.current) : null
+      // (1) A press on a handle of the SINGLE selected node begins a resize (checked before a body hit;
+      // handles only exist when exactly one node is selected). The grab tolerance widens as we zoom OUT
+      // so the handles stay grabbable on screen.
+      const onlyId = onlySelected(selectedIdsRef.current)
+      const selected = onlyId ? findNode(current, onlyId) : null
       if (selected) {
          const handle = hitTestNodeHandle(selected, point, NODE_HANDLE_HIT_TOLERANCE / view.scale)
          if (handle) {
@@ -421,11 +509,21 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (3) A node body hit selects it + begins a move.
+      // (3) A node body hit. A shift-click toggles it in / out of the set (a pure selection gesture, no
+      // move). Otherwise, a hit INSIDE the current selection group-moves the whole set; a hit OUTSIDE it
+      // first selects just that node, then moves it (the single-node move is the 1-element group case).
       const hit = hitTestNode(current, point)
       if (hit) {
-         selectNode(hit.id)
-         interactionRef.current = { mode: 'move', id: hit.id, start: point, origin: hit }
+         if (event.shiftKey) {
+            toggleNodeInSelection(hit.id)
+            return
+         }
+         let ids = selectedIdsRef.current
+         if (!ids.has(hit.id)) {
+            ids = new Set([hit.id])
+            selectNodes(ids)
+         }
+         interactionRef.current = { mode: 'move', ids, start: point, originNodes: current.nodes }
          event.currentTarget.setPointerCapture(event.pointerId)
          setInteracting(true)
          return
@@ -440,9 +538,19 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (5) The empty background begins a PAN and clears the selection.
-      selectNode(null)
-      interactionRef.current = { mode: 'pan', startFrame: info.framePoint, startView: view }
+      // (5) The empty background. With Space held OR the middle mouse button, begin a PAN; otherwise
+      // begin a MARQUEE (its selection resolves on pointer-up, so a plain click just clears the set).
+      if (spaceHeldRef.current || event.button === 1) {
+         event.preventDefault()
+         interactionRef.current = { mode: 'pan', startFrame: info.framePoint, startView: view }
+         event.currentTarget.setPointerCapture(event.pointerId)
+         setInteracting(true)
+         return
+      }
+      interactionRef.current = {
+         mode: 'marquee', startPoint: point, additive: event.shiftKey, baseIds: selectedIdsRef.current,
+      }
+      setMarqueeRect({ x: point.x, y: point.y, width: 0, height: 0 })
       event.currentTarget.setPointerCapture(event.pointerId)
       setInteracting(true)
    }
@@ -477,22 +585,57 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
+      if (interaction.mode === 'marquee') {
+         // Grow the marquee rectangle from its start toward the current point (any drag direction).
+         const point = info.diagramPoint
+         setMarqueeRect({
+            x:      interaction.startPoint.x,
+            y:      interaction.startPoint.y,
+            width:  point.x - interaction.startPoint.x,
+            height: point.y - interaction.startPoint.y,
+         })
+         return
+      }
+
       if (interaction.mode === 'move') {
          const point = info.diagramPoint
-         // Apply the delta to the ORIGIN node (captured at drag start), never accumulating rounding.
-         const moved = translateNode(interaction.origin, point.x - interaction.start.x, point.y - interaction.start.y)
-         // Probe the other nodes for edge/center alignment; snap + show guides while within threshold.
-         const others = current.nodes.filter(other => other.id !== interaction.id).map(nodeBox)
-         const threshold = SNAP_THRESHOLD_PX / info.pixelsPerDiagramUnit
-         const snap = computeAlignmentSnaps(nodeBox(moved), others, threshold)
-         const snapped = {
-            ...moved,
-            x: snap.snapX !== undefined ? roundUnit(snap.snapX) : moved.x,
-            y: snap.snapY !== undefined ? roundUnit(snap.snapY) : moved.y,
+         const deltaX = point.x - interaction.start.x
+         const deltaY = point.y - interaction.start.y
+         // Move the WHOLE selection from the ORIGIN nodes (captured at drag start), never accumulating.
+         const movedNodes = translateNodes(interaction.originNodes, interaction.ids, deltaX, deltaY)
+
+         // Alt held bypasses all snapping: free placement, no guides / badges.
+         if (info.altKey) {
+            setAlignmentGuides([])
+            setSpacingBadges([])
+            draft({ ...current, nodes: movedNodes })
+            return
          }
-         setAlignmentGuides(snap.guides)
-         draft(setNode(current, snapped))
-      } else {
+
+         // Probe the selection's BOUNDING BOX against the NON-selected nodes only: run both alignment
+         // (edge/center) and spacing (equal-gap) snaps, then apply the alignment snap on an axis if
+         // present, else the spacing snap (alignment wins ties per axis). Shift the whole group by the
+         // resulting per-axis delta, keeping the members' relative offsets.
+         const groupBox = unionBox(movedNodes.filter(node => interaction.ids.has(node.id)).map(nodeBox))
+         const otherBoxes = movedNodes.filter(node => !interaction.ids.has(node.id)).map(nodeBox)
+         const threshold = SNAP_THRESHOLD_PX / info.pixelsPerDiagramUnit
+         const align = computeAlignmentSnaps(groupBox, otherBoxes, threshold)
+         const spacing = computeSpacingSnaps(groupBox, otherBoxes, threshold)
+         const snapX = align.snapX ?? spacing.snapX
+         const snapY = align.snapY ?? spacing.snapY
+         const shiftX = snapX !== undefined ? roundUnit(snapX) - groupBox.x : 0
+         const shiftY = snapY !== undefined ? roundUnit(snapY) - groupBox.y : 0
+         const snappedNodes = shiftX !== 0 || shiftY !== 0
+            ? translateNodes(movedNodes, interaction.ids, shiftX, shiftY)
+            : movedNodes
+         // Keep only the spacing badges for an axis alignment did NOT take (a horizontal badge marks an
+         // x snap, a vertical badge a y snap), so the chrome never shows an equal-gap that was overridden.
+         const shownBadges = spacing.spacingBadges.filter(badge =>
+            badge.orientation === 'horizontal' ? align.snapX === undefined : align.snapY === undefined)
+         setAlignmentGuides(align.guides)
+         setSpacingBadges(shownBadges)
+         draft({ ...current, nodes: snappedNodes })
+      } else if (interaction.mode === 'resize') {
          // Resize: compute the raw resized box, then snap the MOVING edge(s) (per the active handle) to
          // neighbor edges/centers + show guides, the move-drag snap's sibling, holding the pinned edge.
          const resized = resizeNode(current, interaction.id, interaction.handle, info.diagramPoint)
@@ -516,11 +659,28 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       const interaction = interactionRef.current
       interactionRef.current = null
       setAlignmentGuides([])
-      if (!interaction) return
+      setSpacingBadges([])
+      if (!interaction) { setMarqueeRect(null); return }
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
          event.currentTarget.releasePointerCapture(event.pointerId)
       }
       setInteracting(false)
+
+      // A marquee resolves to the nodes it intersected; when Shift was held at start, the marquee UNIONs
+      // with the prior selection, otherwise it replaces it. A zero-ish drag (a click) grabs nothing, so
+      // a plain click clears the selection.
+      if (interaction.mode === 'marquee') {
+         const rect = marqueeRectRef.current
+         setMarqueeRect(null)
+         if (rect) {
+            const hitIds = nodesInRect(workingRef.current.nodes, rect)
+            const next = interaction.additive
+               ? new Set([...interaction.baseIds, ...hitIds])
+               : new Set(hitIds)
+            selectNodes(next)
+         }
+         return
+      }
 
       // A connect drag commits a new edge if it was released over a DIFFERENT node (self-loops are
       // out of scope, and a drop back on the source or on empty space simply cancels).
@@ -548,7 +708,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    function onCanvasDoubleClick(point: Point): void {
       const hit = hitTestNode(workingRef.current, point)
       if (hit) {
-         selectNode(hit.id)
+         selectSingleNode(hit.id)
          setEditingLabel(hit.id)
       }
    }
@@ -569,21 +729,36 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    // so the text is never trapped in an uncommitted, about-to-unmount field; the actual document write
    // happens via flushPendingEdit (blur / canvas-pointerdown / window-close).
    function handleLabelDraft(value: string): void {
-      const id = selectedIdRef.current
+      const id = onlySelected(selectedIdsRef.current)
       if (!id || !findNode(workingRef.current, id)) return
       draft(updateNodeLabel(workingRef.current, id, value))
    }
    function handleStyleChange(stylePatch: NodeStylePatch): void {
-      const id = selectedIdRef.current
+      const id = onlySelected(selectedIdsRef.current)
       if (!id || !findNode(workingRef.current, id)) return
       commit(updateNodeStyle(workingRef.current, id, stylePatch))
    }
+   /** Delete EVERY selected node (each cascades its incident edges via removeNode). */
    function handleDeleteSelected(): void {
-      const id = selectedIdRef.current
-      if (!id) return
-      selectNode(null)
+      const ids = selectedIdsRef.current
+      if (ids.size === 0) return
+      let next = workingRef.current
+      for (const id of ids) next = removeNode(next, id)
+      clearNodeSelection()
       setEditingLabel(null)
-      commit(removeNode(workingRef.current, id))
+      commit(next)
+   }
+
+   // ============
+   //  Align / distribute (applied to the whole selection, one undo entry per action)
+   // ============
+   function applyAlign(alignment: AlignAxis): void {
+      const nodes = alignNodes(workingRef.current.nodes, selectedIdsRef.current, alignment)
+      commit({ ...workingRef.current, nodes })
+   }
+   function applyDistribute(axis: DistributeAxis): void {
+      const nodes = distributeNodes(workingRef.current.nodes, selectedIdsRef.current, axis)
+      commit({ ...workingRef.current, nodes })
    }
    function handleEdgeLabelDraft(value: string): void {
       const id = selectedEdgeIdRef.current
@@ -602,32 +777,86 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       commit(deleteEdge(workingRef.current, id))
    }
 
-   // Delete / Backspace removes the selected node while the editor is open (unless a form field has
-   // focus, so typing a label / color hex is never hijacked).
+   // Keyboard while the editor is open: Space toggles pan-on-empty-drag, Delete/Backspace removes the
+   // selection (nodes cascade their edges, else the selected edge), Escape clears the selection, the
+   // arrow keys nudge the whole selection (Shift = a larger step), and Ctrl/Cmd+A selects every node.
+   // Any form field with focus bails first, so typing a label / color hex is never hijacked.
    useEffect(() => {
       if (!isEditing) return
-      function onKeyDown(event: KeyboardEvent): void {
-         if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      function inFormField(event: KeyboardEvent): boolean {
          const target = event.target as HTMLElement | null
-         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-         const nodeId = selectedIdRef.current
-         if (nodeId) {
+         return !!target?.closest('input, textarea, select, [contenteditable="true"]')
+      }
+      function onKeyDown(event: KeyboardEvent): void {
+         if (inFormField(event)) return
+
+         // Space held: pan-on-empty-drag. Swallow the key so it never scrolls the page or types.
+         if (event.code === 'Space') {
             event.preventDefault()
-            selectNode(null)
-            setEditingLabel(null)
-            commit(removeNode(workingRef.current, nodeId))
+            if (!spaceHeldRef.current) {
+               spaceHeldRef.current = true
+               setSpaceHeld(true)
+            }
             return
          }
-         const edgeId = selectedEdgeIdRef.current
-         if (edgeId) {
+
+         if (event.key === 'Delete' || event.key === 'Backspace') {
+            const ids = selectedIdsRef.current
+            if (ids.size > 0) {
+               event.preventDefault()
+               let next = workingRef.current
+               for (const id of ids) next = removeNode(next, id)
+               clearNodeSelection()
+               setEditingLabel(null)
+               commit(next)
+               return
+            }
+            const edgeId = selectedEdgeIdRef.current
+            if (edgeId) {
+               event.preventDefault()
+               selectEdge(null)
+               commit(deleteEdge(workingRef.current, edgeId))
+            }
+            return
+         }
+
+         if (event.key === 'Escape') {
+            clearNodeSelection()
+            selectedEdgeIdRef.current = null
+            setSelectedEdgeId(null)
+            setEditingLabel(null)
+            return
+         }
+
+         if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) {
             event.preventDefault()
-            selectEdge(null)
-            commit(deleteEdge(workingRef.current, edgeId))
+            selectNodes(new Set(workingRef.current.nodes.map(node => node.id)))
+            return
+         }
+
+         const direction = ARROW_NUDGE[event.key]
+         if (direction) {
+            const ids = selectedIdsRef.current
+            if (ids.size === 0) return
+            event.preventDefault()
+            const step = event.shiftKey ? NUDGE_LARGE_STEP : NUDGE_STEP
+            const nodes = translateNodes(workingRef.current.nodes, ids, direction.x * step, direction.y * step)
+            commit({ ...workingRef.current, nodes })
+         }
+      }
+      function onKeyUp(event: KeyboardEvent): void {
+         if (event.code === 'Space') {
+            spaceHeldRef.current = false
+            setSpaceHeld(false)
          }
       }
       document.addEventListener('keydown', onKeyDown)
-      return () => document.removeEventListener('keydown', onKeyDown)
-      // commit / selectNode read refs, so only the isEditing gate matters here.
+      document.addEventListener('keyup', onKeyUp)
+      return () => {
+         document.removeEventListener('keydown', onKeyDown)
+         document.removeEventListener('keyup', onKeyUp)
+      }
+      // commit / selectNodes read refs, so only the isEditing gate matters here.
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [isEditing])
 
@@ -661,7 +890,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const canvasSvg = working.nodes.length > 0
       ? overrideSvgViewBox(renderDiagramToSvg(working, diagramTheme), viewport)
       : ''
-   const selectedNode = selectedId ? findNode(working, selectedId) : null
+   // The selected nodes (chrome draws one SelectionChrome each; resize handles show only when the count
+   // is exactly one). A single selected node also feeds the inspector's per-node panel; 2+ shows the
+   // combined group bounding box + the "N nodes selected" inspector state instead.
+   const selectedNodes = working.nodes.filter(node => selectedIds.has(node.id))
+   const onlySelectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
+   const groupBox = selectedNodes.length >= 2 ? unionBox(selectedNodes.map(nodeBox)) : null
    const editingLabelNode = editingLabelId ? findNode(working, editingLabelId) : null
 
    // ============
@@ -703,7 +937,10 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
                      svgMarkup={canvasSvg}
                      viewport={viewport}
                      frame={fixedFrame}
-                     selectedNode={selectedNode}
+                     selectedNodes={selectedNodes}
+                     groupBox={groupBox}
+                     marqueeRect={marqueeRect}
+                     spacingBadges={spacingBadges}
                      selectedEdgePolyline={selectedEdgePolyline}
                      portNode={portNode}
                      connectPreview={connectPreview}
@@ -719,7 +956,13 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
                      onWheelZoom={handleWheelZoom}
                      heightPx={canvasHeight}
                      onContainerResize={handleContainerResize}
-                     cursor={connectFromId ? 'crosshair' : interacting ? 'grabbing' : 'default'}
+                     cursor={connectFromId ? 'crosshair' : interacting ? 'grabbing' : spaceHeld ? 'grab' : 'default'}
+                  />
+                  <AlignDistributeControls
+                     count={selectedNodes.length}
+                     onAlign={applyAlign}
+                     onDistribute={applyDistribute}
+                     t={t}
                   />
                   <div className="diagram-zoom-controls">
                      <button
@@ -765,8 +1008,9 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          <section className="diagram-section">
             <span className="diagram-section-label">{inspectorLabel}</span>
             <DiagramInspector
-               node={selectedNode}
+               node={onlySelectedNode}
                edge={selectedEdge}
+               multiSelectCount={selectedNodes.length}
                theme={diagramTheme}
                onLabelDraft={handleLabelDraft}
                onLabelCommit={flushPendingEdit}
@@ -829,6 +1073,84 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
                onClose={() => setNodeMenu(null)}
             />
          )}
+      </div>
+   )
+}
+
+// ####################
+// # ALIGN / DISTRIBUTE TOOLBAR #
+// ####################
+
+interface AlignDistributeControlsProps {
+   /** How many nodes are selected: the align buttons enable at 2+, the distribute buttons at 3+. */
+   count:        number
+   onAlign:      (alignment: AlignAxis) => void
+   onDistribute: (axis: DistributeAxis) => void
+   t:            T
+}
+
+/**
+ * The align + distribute cluster floated at the canvas top-left (mirroring the zoom cluster). The six
+ * align buttons line every selected node up on the selection bounding box's edge / center; the two
+ * distribute buttons even out the edge-to-edge gaps. Aligns need two selected nodes, distributes need
+ * three, so below that count the buttons dim + disable. Each action commits one undo entry.
+ */
+function AlignDistributeControls({ count, onAlign, onDistribute, t }: AlignDistributeControlsProps) {
+   const alignDisabled      = count < 2
+   const distributeDisabled = count < 3
+   return (
+      <div className="diagram-align-controls">
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignLeft} title={t.diagramAlignLeft} onClick={() => onAlign('left')}
+         >
+            <AlignHorizontalJustifyStart size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignHCenter} title={t.diagramAlignHCenter} onClick={() => onAlign('hcenter')}
+         >
+            <AlignHorizontalJustifyCenter size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignRight} title={t.diagramAlignRight} onClick={() => onAlign('right')}
+         >
+            <AlignHorizontalJustifyEnd size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignTop} title={t.diagramAlignTop} onClick={() => onAlign('top')}
+         >
+            <AlignVerticalJustifyStart size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignVMiddle} title={t.diagramAlignVMiddle} onClick={() => onAlign('vmiddle')}
+         >
+            <AlignVerticalJustifyCenter size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={alignDisabled}
+            aria-label={t.diagramAlignBottom} title={t.diagramAlignBottom} onClick={() => onAlign('bottom')}
+         >
+            <AlignVerticalJustifyEnd size={14} />
+         </button>
+         <span className="diagram-align-divider" aria-hidden="true" />
+         <button
+            type="button" className="diagram-zoom-btn" disabled={distributeDisabled}
+            aria-label={t.diagramDistributeHorizontal} title={t.diagramDistributeHorizontal}
+            onClick={() => onDistribute('horizontal')}
+         >
+            <AlignHorizontalSpaceAround size={14} />
+         </button>
+         <button
+            type="button" className="diagram-zoom-btn" disabled={distributeDisabled}
+            aria-label={t.diagramDistributeVertical} title={t.diagramDistributeVertical}
+            onClick={() => onDistribute('vertical')}
+         >
+            <AlignVerticalSpaceAround size={14} />
+         </button>
       </div>
    )
 }

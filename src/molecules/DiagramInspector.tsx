@@ -16,10 +16,12 @@ import type { NodeStylePatch, EdgeStylePatch } from '../lib/diagram/edit'
 // #########
 
 interface DiagramInspectorProps {
-   /** The currently selected node, or null when a node is not selected. */
+   /** The currently selected node, or null when exactly one node is not selected. */
    node:  DiagramNode | null
    /** The currently selected edge, or null when an edge is not selected. */
    edge:  DiagramEdge | null
+   /** How many nodes are selected: 2+ shows a brief count state instead of any per-node panel. */
+   multiSelectCount: number
    /** The resolved doc theme, for the default color a swatch shows when an element carries no override. */
    theme: DiagramTheme
    /** Draft a node label edit live on each keystroke (kept in the block's working spec, not yet saved). */
@@ -52,10 +54,19 @@ interface DiagramInspectorProps {
  * default when the element carries no override, and a reset button clears an override back to it.
  */
 export function DiagramInspector({
-   node, edge, theme, onLabelDraft, onLabelCommit, onStyleChange, onDelete,
+   node, edge, multiSelectCount, theme, onLabelDraft, onLabelCommit, onStyleChange, onDelete,
    onEdgeLabelDraft, onEdgeLabelCommit, onEdgeStyleChange, onEdgeDelete,
 }: DiagramInspectorProps) {
    const { t } = useLang()
+
+   // A multi-node selection has no single set of per-node props to edit, so show a brief count instead.
+   if (multiSelectCount >= 2) {
+      return (
+         <p className="diagram-inspector-hint">
+            {t.diagramNodesSelected.replace('{count}', String(multiSelectCount))}
+         </p>
+      )
+   }
 
    if (node) {
       return (
