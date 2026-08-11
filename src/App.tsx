@@ -1010,6 +1010,32 @@ export default function App() {
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [binderOpen, undo, redo])
 
+   // Ctrl+S / Cmd+S saves the active document (and binds a scratch tab to a binder record on its
+   // first save). Unlike undo, it fires even while a field is focused, since that is exactly when
+   // people reach for it. A block or the title commits only on blur (RichEditable / the title input),
+   // so the in-progress edit lives in the DOM, not the model yet. Blur the focused field first to
+   // flush its commit, then persist on the next tick once that write has landed in openDocumentsRef,
+   // otherwise persistNow would save the last-committed content and drop the latest keystrokes. Only
+   // active in document mode (the binder has no editable document of its own).
+   useEffect(() => {
+      if (binderOpen) return
+      function handleKeyDown(event: KeyboardEvent): void {
+         if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+         if (event.key.toLowerCase() !== 's') return
+         event.preventDefault()
+         const active = document.activeElement as HTMLElement | null
+         const isField = !!active && (active.isContentEditable || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+         if (isField) {
+            active.blur()
+            setTimeout(() => { void handleManualSave() }, 0)
+         } else {
+            void handleManualSave()
+         }
+      }
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+   }, [binderOpen, handleManualSave])
+
    // ############################
    // # DOCUMENT-LEVEL CALLBACKS #
    // ############################
