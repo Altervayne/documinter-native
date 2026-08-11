@@ -13,10 +13,11 @@
 import type { DocMeta } from '../types'
 import type { DocPresentationExtras } from './presentation'
 import type { DocFormat } from './format'
+import type { DocSnapshot } from './undoHistory'
 
 // -- Lib Imports --
 import { normalizePresentation } from './presentation'
-import { normalizeFormat, isDefaultFormat } from './format'
+import { normalizeFormat, isDefaultFormat, DEFAULT_FORMAT } from './format'
 
 // #########
 // # TYPES #
@@ -109,6 +110,41 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
       // base64 logo), so a shallow spread would alias every instantiated document back to the stored
       // template. structuredClone severs all of it.
       format:       template.format ? structuredClone(template.format) : undefined,
+   }
+}
+
+// ##########################
+// # APPLY TO CURRENT DOC   #
+// ##########################
+
+/**
+ * Re-styles the ACTIVE document with a template's chrome while keeping its content: `meta` and
+ * `sections` pass through untouched. `docTheme` / `docAccent` / `presentation` are fully adopted from
+ * the template, an absent template presentation clears the document's own (a template is a complete
+ * look, not a patch). `format` adopts the template's kind / width / margins / header / footer bands,
+ * but the document's own `format.pages` always wins: page breaks are content-relative (where in THIS
+ * document's flow a page ends), a template never carries them (captureFormat strips them at capture
+ * time), so blending in the template's format must never drop them. When the template's format
+ * reduces to the default (no template.format, or the document had no pages to keep), the result is
+ * `undefined` like any other untouched-format document. Deep-clones the template's presentation /
+ * format so the document never aliases the stored template object, the same hazard instantiateTemplate
+ * guards against.
+ */
+export function applyTemplateChrome(current: DocSnapshot, template: DocumentTemplate): DocSnapshot {
+   const templateFormat = template.format ? structuredClone(template.format) : { ...DEFAULT_FORMAT }
+   const { pages: _templatePages, ...formatWithoutPages } = templateFormat
+   const currentPages = current.format?.pages
+   const format: DocFormat = currentPages && currentPages.length > 0
+      ? { ...formatWithoutPages, pages: structuredClone(currentPages) }
+      : formatWithoutPages
+
+   return {
+      meta:         current.meta,
+      sections:     current.sections,
+      docTheme:     template.docTheme,
+      docAccent:    template.docAccent,
+      presentation: template.presentation ? structuredClone(template.presentation) : undefined,
+      format:       isDefaultFormat(format) ? undefined : format,
    }
 }
 

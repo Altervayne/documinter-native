@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 
-import { captureTemplate, instantiateTemplate, BUILT_IN_TEMPLATES } from './documentTemplate'
-import type { TemplateChrome } from './documentTemplate'
-import type { DocMeta } from '../types'
+import { captureTemplate, instantiateTemplate, applyTemplateChrome, BUILT_IN_TEMPLATES } from './documentTemplate'
+import type { TemplateChrome, DocumentTemplate } from './documentTemplate'
+import { normalizePresentation } from './presentation'
+import type { DocMeta, Section } from '../types'
 import type { DocFormat } from './format'
+import type { DocSnapshot } from './undoHistory'
 
 // A deterministic field-id factory for tests: field-0, field-1, ...
 function makeIdFactory() {
@@ -112,6 +114,81 @@ describe('instantiateTemplate', () => {
       const templateLogo = templateImage?.kind === 'content' ? templateImage.image : undefined
       expect(seedLogo).toBeDefined()
       expect(seedLogo).not.toBe(templateLogo)
+   })
+})
+
+describe('applyTemplateChrome', () => {
+   const currentSections: Section[] = [{ id: 's1', title: 'Section one', collapsed: false, blocks: [] }]
+   const currentMeta: DocMeta = { title: 'Live doc title', fields: [{ id: 'live-1', label: 'Owner', value: 'Dana', position: 'above' }] }
+
+   function current(extra: Partial<DocSnapshot> = {}): DocSnapshot {
+      return { meta: currentMeta, sections: currentSections, docTheme: 'dark', docAccent: '#111111', ...extra }
+   }
+
+   function template(extra: Partial<DocumentTemplate> = {}): DocumentTemplate {
+      return {
+         id: 'tmpl-1', name: 'T', createdAt: 0, updatedAt: 0,
+         meta: { title: '', fields: [] }, docTheme: 'light', docAccent: '#2dcea8',
+         ...extra,
+      }
+   }
+
+   it('keeps meta and sections verbatim (same references), adopts theme + accent from the template', () => {
+      const result = applyTemplateChrome(current(), template())
+      expect(result.meta).toBe(currentMeta)
+      expect(result.sections).toBe(currentSections)
+      expect(result.docTheme).toBe('light')
+      expect(result.docAccent).toBe('#2dcea8')
+   })
+
+   it('adopts the template presentation (deep-cloned, not the same reference)', () => {
+      const presentation = normalizePresentation({ watermark: { src: 'data:image/png;base64,AAAA' } })!
+      const result = applyTemplateChrome(current(), template({ presentation }))
+      expect(result.presentation).toEqual(presentation)
+      expect(result.presentation).not.toBe(presentation)
+   })
+
+   it('clears the document presentation when the template carries none', () => {
+      const presentation = normalizePresentation({ watermark: { src: 'data:image/png;base64,AAAA' } })!
+      const result = applyTemplateChrome(current({ presentation }), template())
+      expect(result.presentation).toBeUndefined()
+   })
+
+   it('adopts the template format (kind, margins, bands) when the document had no pages', () => {
+      const format: DocFormat = { kind: 'a4-portrait', margins: { top: 15, right: 15, bottom: 15, left: 15 } }
+      const result = applyTemplateChrome(current(), template({ format }))
+      expect(result.format).toEqual(format)
+      expect(result.format).not.toBe(format)
+   })
+
+   it('adopts the template format but keeps the document own page breaks', () => {
+      const templateFormat: DocFormat = { kind: 'a4-landscape', margins: { top: 5, right: 5, bottom: 5, left: 5 } }
+      const currentPages = [{ id: 'brk-1', after: { sectionId: 's1', blockId: 'b1' } }]
+      const result = applyTemplateChrome(current({ format: { kind: 'infinite', pages: currentPages } }), template({ format: templateFormat }))
+      expect(result.format?.kind).toBe('a4-landscape')
+      expect(result.format?.margins).toEqual({ top: 5, right: 5, bottom: 5, left: 5 })
+      expect(result.format?.pages).toEqual(currentPages)
+      expect(result.format?.pages).not.toBe(currentPages)
+   })
+
+   it('adopts the default format (undefined) when the template has none and the document had no pages', () => {
+      const result = applyTemplateChrome(current({ format: { kind: 'a4-portrait' } }), template())
+      expect(result.format).toBeUndefined()
+   })
+
+   it('carries the document own page breaks even when the template has no format at all', () => {
+      const currentPages = [{ id: 'brk-1', after: null }]
+      const result = applyTemplateChrome(current({ format: { kind: 'a4-portrait', pages: currentPages } }), template())
+      expect(result.format).toEqual({ kind: 'infinite', pages: currentPages })
+      expect(result.format?.pages).not.toBe(currentPages)
+   })
+
+   it('does not alias the stored template format object', () => {
+      const format: DocFormat = { kind: 'a4-portrait', header: { left: { kind: 'content', text: 'Acme' } } }
+      const sourceTemplate = template({ format })
+      const result = applyTemplateChrome(current(), sourceTemplate)
+      expect(result.format).not.toBe(sourceTemplate.format)
+      expect(result.format?.header).not.toBe(sourceTemplate.format?.header)
    })
 })
 

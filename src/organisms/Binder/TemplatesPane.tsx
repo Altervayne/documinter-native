@@ -7,6 +7,7 @@ interface TemplatesPaneProps {
    templates:   DocumentTemplate[]
    isLoading:   boolean
    onUse:       (template: DocumentTemplate) => void
+   onApply:     (template: DocumentTemplate) => void
    onDuplicate: (template: DocumentTemplate) => void
    onExport:    (template: DocumentTemplate) => void
    onRename:    (template: DocumentTemplate) => void
@@ -20,7 +21,7 @@ interface TemplatesPaneProps {
  * nav's Templates entry is active. There is always at least the one built-in, so there is no empty
  * state; the header's hint tells the user how to add their own.
  */
-export function TemplatesPane({ templates, isLoading, onUse, onDuplicate, onExport, onRename, onDelete, onImport }: TemplatesPaneProps) {
+export function TemplatesPane({ templates, isLoading, onUse, onApply, onDuplicate, onExport, onRename, onDelete, onImport }: TemplatesPaneProps) {
    const { t } = useLang()
 
    return (
@@ -53,6 +54,7 @@ export function TemplatesPane({ templates, isLoading, onUse, onDuplicate, onExpo
                         key={template.id}
                         template={template}
                         onUse={() => onUse(template)}
+                        onApply={() => onApply(template)}
                         onDuplicate={() => onDuplicate(template)}
                         onExport={() => onExport(template)}
                         onRename={() => onRename(template)}

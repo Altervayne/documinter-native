@@ -1,19 +1,24 @@
 import { useState } from 'react'
-import { LayoutTemplate, MoreHorizontal, Copy, Pencil, Trash2, Wand2, Download } from 'lucide-react'
+import { LayoutTemplate, MoreHorizontal, Copy, Pencil, Trash2, Wand2, Download, PaintRoller } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import type { DocumentTemplate } from '../../lib/documentTemplate'
 import type { PageBand } from '../../lib/format'
 import { useLang } from '../../contexts/LangContext'
 import { ContextMenu } from '../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../molecules/ContextMenu'
+import { TEMPLATE_DRAG_MIME, setDraggedTemplate, clearDraggedTemplate } from '../../lib/templateDrag'
 
 interface TemplateCardProps {
    template:    DocumentTemplate
    onUse:       () => void
+   onApply:     () => void
    onDuplicate: () => void
    onExport:    () => void
    onRename:    () => void
    onDelete:    () => void
+   /** Lets the card be picked up and dropped on the canvas to apply it (the Templates dock panel's
+    *  drag source). Off in the Binder's own Templates view, where the card stays click-only. */
+   enableApplyDrag?: boolean
 }
 
 /** One running-header-band slot worth surfacing as chrome: an image and/or text. */
@@ -44,9 +49,15 @@ function collectChromeBandItems(band: PageBand | undefined): ChromeBandItem[] {
  * code-defined). Templates carry no content, so there is no live document preview like
  * DocumentCard has.
  */
-export function TemplateCard({ template, onUse, onDuplicate, onExport, onRename, onDelete }: TemplateCardProps) {
+export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, onRename, onDelete, enableApplyDrag }: TemplateCardProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+
+   function handleDragStart(event: React.DragEvent) {
+      event.dataTransfer.setData(TEMPLATE_DRAG_MIME, template.id)
+      event.dataTransfer.effectAllowed = 'copy'
+      setDraggedTemplate(template)
+   }
 
    // Built-in names are English in code; the picker localizes them by id.
    const displayName = template.builtIn && template.id === 'builtin-default' ? t.templateBuiltinDefault : template.name
@@ -82,9 +93,10 @@ export function TemplateCard({ template, onUse, onDuplicate, onExport, onRename,
    }
 
    const entries: ContextMenuEntry[] = [
-      { label: t.templateUse,       icon: <Wand2 size={13} />,     onSelect: onUse },
-      { label: t.binderDuplicate,   icon: <Copy size={13} />,      onSelect: onDuplicate },
-      { label: t.templateExport,    icon: <Download size={13} />,  onSelect: onExport },
+      { label: t.templateUse,       icon: <Wand2 size={13} />,       onSelect: onUse },
+      { label: t.templateApply,     icon: <PaintRoller size={13} />, onSelect: onApply },
+      { label: t.binderDuplicate,   icon: <Copy size={13} />,        onSelect: onDuplicate },
+      { label: t.templateExport,    icon: <Download size={13} />,    onSelect: onExport },
       ...(template.builtIn ? [] : [
          { type: 'separator' } as ContextMenuEntry,
          { label: t.templateRename, icon: <Pencil size={13} />, onSelect: onRename },
@@ -97,6 +109,9 @@ export function TemplateCard({ template, onUse, onDuplicate, onExport, onRename,
          <div
             onDoubleClick={onUse}
             onContextMenu={openMenu}
+            draggable={enableApplyDrag}
+            onDragStart={enableApplyDrag ? handleDragStart : undefined}
+            onDragEnd={enableApplyDrag ? clearDraggedTemplate : undefined}
             className="group relative overflow-hidden rounded-lg border border-border bg-raised p-4 transition-colors hover:border-accent/40 select-none"
          >
             {/* Watermark, faint and full-bleed behind the card content, clipped to the rounded corners */}

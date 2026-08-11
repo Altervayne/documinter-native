@@ -11,11 +11,12 @@ function makeIdFactory() {
 }
 
 const DEFAULT_SIDES: Record<PanelId, DockSide> = {
-   structure: 'left', pages: 'right', anchors: 'left', pagesetup: 'right', presentation: 'right', documentnav: 'right',
+   structure: 'left', pages: 'right', anchors: 'left', pagesetup: 'right', presentation: 'right', documentnav: 'right', templates: 'right',
 }
 
 // The panels that auto-dock the first time they apply. Structure / Pages / Anchors are default-open; the
-// settings-editor panels (pagesetup / presentation / documentnav) are default-closed, so they are absent.
+// settings-editor panels (pagesetup / presentation / documentnav / templates) are default-closed, so they
+// are absent.
 const DEFAULT_OPEN = new Set<PanelId>(['structure', 'pages', 'anchors'])
 
 function base(): DockLayout {

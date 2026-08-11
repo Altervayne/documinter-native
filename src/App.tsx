@@ -10,7 +10,7 @@ import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
 import { getFolder } from './lib/binderFolders'
-import { instantiateTemplate, captureTemplate, type DocumentTemplate } from './lib/documentTemplate'
+import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
 import { saveTemplate } from './lib/templateStore'
 import {
    emptyHistory, recordEdit, applyUndo, applyRedo, canUndo, canRedo,
@@ -38,6 +38,7 @@ import { AnchorsPanelBody } from './organisms/AnchorsPanelBody'
 import { FormatPanelBody } from './organisms/FormatPanelBody'
 import { PresentationPanelBody } from './organisms/PresentationPanelBody'
 import { NavPanelBody } from './organisms/NavPanelBody'
+import { TemplatesPanelBody } from './organisms/TemplatesPanelBody'
 import { useDockState } from './hooks/useDockState'
 import { usePagesPanelData } from './hooks/usePagesPanelData'
 import { printDocument, computeDocumentPages } from './lib/exportLayout'
@@ -704,6 +705,15 @@ export default function App() {
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [t, activateTab, showToast])
 
+   // Apply a template's chrome to the ACTIVE document, keeping its content: the binder Templates
+   // view's per-card "Apply to current document" entry. One undo step (applyTemplateChrome runs
+   // inside commitActiveEdit), then the binder closes so the restyled document shows right away.
+   const handleApplyTemplate = useCallback((template: DocumentTemplate) => {
+      commitActiveEdit('apply-template', document => ({ ...document, ...applyTemplateChrome(document, template) }))
+      setBinderOpen(false)
+      showToast(t.templateApplied, { type: 'success' })
+   }, [commitActiveEdit, t, showToast])
+
    // Duplicate a tab's document via the binder and open the copy as a new tab. The copy is made from
    // the binder record, so the source must be persisted first: the active tab may hold unsaved edits
    // or (if pristine) have no record yet, persist it and use persistNow's returned id (its promotion
@@ -1105,6 +1115,13 @@ export default function App() {
       documentnav: (
          <NavPanelBody presentation={presentation} sections={sections} onChange={setActivePresentation} />
       ),
+      templates: (
+         <TemplatesPanelBody
+            currentChrome={{ meta, docTheme, docAccent, presentation, format }}
+            onUse={template => handleNewFromTemplate(template)}
+            onApply={handleApplyTemplate}
+         />
+      ),
    }
 
    // The applicable dockable panels as View-menu toggles: on = visible (docked or floating), off =
@@ -1169,6 +1186,7 @@ export default function App() {
                onOpenDocument={handleOpenDocument}
                onNewDocument={folderId => handleOpenNewDocument(folderId ?? null)}
                onNewFromTemplate={handleNewFromTemplate}
+               onApplyTemplate={handleApplyTemplate}
                onDocumentDeleted={handleDocumentDeleted}
             />
          ) : (
@@ -1249,6 +1267,7 @@ export default function App() {
                               onSaveAs={handleSaveAs}
                               onOpenPresentation={handleOpenPresentation}
                               onOpenNav={handleOpenNav}
+                              onApplyTemplate={handleApplyTemplate}
                               onOpenFormat={handleOpenFormat}
                               previewMode={mode}
                               onSetMode={handleSetMode}

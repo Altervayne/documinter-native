@@ -55,6 +55,8 @@ export interface BinderProps {
    onNewDocument:     (folderId?: string) => void
    /** Create a new document pre-styled from a template and open it (filed into folderId when given). */
    onNewFromTemplate: (template: DocumentTemplate, folderId?: string) => void
+   /** Overwrite the active document's chrome with a template's, keeping its content. */
+   onApplyTemplate:   (template: DocumentTemplate) => void
    /** Notify the editor that a document was deleted (so it can close its tab if open). */
    onDocumentDeleted: (id: string) => void
 }
@@ -65,7 +67,7 @@ const ROOT_FOLDER_ID = '0'
  * Binder root, the in-app document library. Replaces the editor full-screen when open.
  * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
  */
-export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onDocumentDeleted }: BinderProps) {
+export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onApplyTemplate, onDocumentDeleted }: BinderProps) {
    const { t } = useLang()
    const { showToast } = useToast()
 
@@ -315,6 +317,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
                   templates={templates.templates}
                   isLoading={templates.isLoading}
                   onUse={template => onNewFromTemplate(template, currentFolderId)}
+                  onApply={template => onApplyTemplate(template)}
                   onDuplicate={template => void templates.handleDuplicate(template)}
                   onExport={template => templates.handleExport(template)}
                   onRename={template => setTemplateNameDialog({ mode: 'rename', templateId: template.id, initialName: template.name })}

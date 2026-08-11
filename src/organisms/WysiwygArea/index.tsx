@@ -19,7 +19,7 @@ import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaks
 import { useLang } from '../../contexts/LangContext'
 
 // -- Component Imports --
-import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, SeparatorHorizontal, TriangleAlert } from 'lucide-react'
+import { SquareDashed, Plus, X, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Eye, EyeOff, Palette, SeparatorHorizontal, TriangleAlert, PaintRoller } from 'lucide-react'
 import { PlainEditable } from '../../atoms/PlainEditable'
 import { ContentEditable } from '../../atoms/ContentEditable'
 import { BlankPageDropZone } from '../../atoms/BlankPageDropZone'
@@ -48,6 +48,8 @@ import {
    type Page, type PageSlice,
 } from '../../lib/pageModel'
 import { isAutoPageId, contentBoxWidthPx } from '../../lib/pageLayout'
+import { TEMPLATE_DRAG_MIME, getDraggedTemplate } from '../../lib/templateDrag'
+import type { DocumentTemplate } from '../../lib/documentTemplate'
 import type { T } from '../../lib/i18n'
 import type { Block, DocMeta, Mode, Section } from '../../types'
 
@@ -131,6 +133,9 @@ interface WysiwygAreaProps {
    focusedParagraphId?: string | null
    /** Set / clear the focused paragraph: a fragment press sets it, a blur clears it. */
    onParagraphFocusChange?: (blockId: string | null) => void
+   /** Overwrite the active document's chrome with a dragged template's, keeping its content: the
+    *  Templates panel drop-to-apply gesture, same effect as the panel card's own "Apply" action. */
+   onApplyTemplate?: (template: DocumentTemplate) => void
 }
 
 export function WysiwygArea({
@@ -140,6 +145,7 @@ export function WysiwygArea({
    previewMode, onSetMode,
    pages = [], tooTallPageIds = EMPTY_TOO_TALL_PAGE_IDS,
    focusedParagraphId = null, onParagraphFocusChange,
+   onApplyTemplate,
 }: WysiwygAreaProps) {
    const { t } = useLang()
    const { reorderSections, moveBlockAcross, updateBlock } = useDocumentMutations()
@@ -199,6 +205,38 @@ export function WysiwygArea({
    function closeBackgroundMenu() {
       setBackgroundMenu(null)
       setCustomAccentSelected(false)
+   }
+
+   // ==========================================================
+   //  Drop-to-apply a template dragged from the Templates dock panel (native HTML5 DnD, a separate
+   //  event system from the dnd-kit block DndContext below, so the two never collide). Only wired up
+   //  when the canvas is editable and a template really is being dragged (guarded on the custom MIME
+   //  in lib/templateDrag.ts), so an ordinary file drag or block drag passes through untouched.
+   // ==========================================================
+   const templateDropEnabled = Boolean(onApplyTemplate) && !readOnly
+   const [isTemplateDragOver, setIsTemplateDragOver] = useState(false)
+
+   function handleTemplateDragOver(event: React.DragEvent) {
+      if (!templateDropEnabled || !event.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+      setIsTemplateDragOver(true)
+   }
+
+   function handleTemplateDragLeave(event: React.DragEvent) {
+      if (!templateDropEnabled || !event.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return
+      // Native dragleave also fires when crossing between child elements, only clear when the
+      // cursor has actually left the canvas container.
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+      setIsTemplateDragOver(false)
+   }
+
+   function handleTemplateDrop(event: React.DragEvent) {
+      if (!templateDropEnabled || !event.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return
+      event.preventDefault()
+      setIsTemplateDragOver(false)
+      const template = getDraggedTemplate()
+      if (template) onApplyTemplate?.(template)
    }
 
    // The document-background context menu shares its entry list with the top-bar "Document" dropdown
@@ -1199,10 +1237,26 @@ export function WysiwygArea({
          {!readOnly && <FormatToolbar sections={sections} />}
          <div className="flex-1 min-h-0 w-full flex relative">
          <div
-            className="flex-1 h-full overflow-y-auto px-6"
+            className="relative flex-1 h-full overflow-y-auto px-6"
             style={{ background: 'var(--color-canvas)' }}
             onContextMenu={handleBackgroundContextMenu}
+            onDragOver={handleTemplateDragOver}
+            onDragLeave={handleTemplateDragLeave}
+            onDrop={handleTemplateDrop}
          >
+            {isTemplateDragOver && (
+               <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
+                  {/* A white shadow on the icon + label so the accent-tinted text keeps contrast over
+                      whatever document content the translucent overlay sits on top of. */}
+                  <div
+                     className="flex flex-col items-center gap-2.5"
+                     style={{ filter: 'drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9))' }}
+                  >
+                     <PaintRoller size={34} />
+                     <span className="text-sm font-medium">{t.templateDropToApply}</span>
+                  </div>
+               </div>
+            )}
             {(() => {
                // The canvas body: paged sheets or the single infinite sheet. Both modes render blocks
                // through WysiwygSection, whose block SortableContexts all live under the ONE shared DnD

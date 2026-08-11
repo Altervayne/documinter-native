@@ -11,7 +11,7 @@
 // ###############################################################################################
 
 // -- Icon Imports --
-import { PanelsTopLeft, BookOpen, Anchor, Ruler, Image as ImageIcon, PanelLeft } from 'lucide-react'
+import { PanelsTopLeft, BookOpen, Anchor, Ruler, Image as ImageIcon, PanelLeft, LayoutTemplate } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 // -- Type Imports --
@@ -116,6 +116,16 @@ export const PANEL_REGISTRY: Record<PanelId, PanelDescriptor> = {
       canFloat:     true,
       defaultOpen:  false,
    },
+   templates: {
+      id:           'templates',
+      icon:         <LayoutTemplate size={16} />,
+      title:        translations => translations.binderTemplates,
+      // An editing surface (save current / apply to current), not a preview aid.
+      isApplicable: context => !context.readOnly,
+      defaultSide:  'right',
+      canFloat:     true,
+      defaultOpen:  false,
+   },
 }
 
 /** All registered panel ids, in a stable order (used to iterate the catalog). */
@@ -134,6 +144,7 @@ export const DEFAULT_PANEL_SIDES: Record<PanelId, DockSide> = {
    pagesetup:    PANEL_REGISTRY.pagesetup.defaultSide,
    presentation: PANEL_REGISTRY.presentation.defaultSide,
    documentnav:  PANEL_REGISTRY.documentnav.defaultSide,
+   templates:    PANEL_REGISTRY.templates.defaultSide,
 }
 
 /** The panels that auto-dock the first time they apply, derived from each descriptor's `defaultOpen`.
