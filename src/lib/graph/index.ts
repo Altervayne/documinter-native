@@ -214,11 +214,22 @@ export {
    median,
    linearRegression,
    linearRegressionXY,
+   variance,
+   stddev,
+   extent,
+   movingAverage,
+   evaluatePolynomial,
+   polynomialFit,
+   exponentialFit,
+   logarithmicFit,
+   powerFit,
 } from './stats'
 
 export type {
    LinearFit,
    Point,
+   PolynomialFit,
+   CurveFit,
 } from './stats'
 
 export {
@@ -226,6 +237,9 @@ export {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   GRAPH_DEFAULT_OVERLAY_SIGMA,
+   GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW,
+   GRAPH_DEFAULT_TREND_DEGREE,
    FUNCTION_DEFAULT_X_MIN,
    FUNCTION_DEFAULT_X_MAX,
    FUNCTION_DEFAULT_SAMPLES,

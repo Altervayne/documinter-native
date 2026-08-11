@@ -24,6 +24,9 @@ import {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   GRAPH_DEFAULT_OVERLAY_SIGMA,
+   GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW,
+   GRAPH_DEFAULT_TREND_DEGREE,
    FUNCTION_DEFAULT_X_MIN,
    FUNCTION_DEFAULT_X_MAX,
    FUNCTION_DEFAULT_SAMPLES,
@@ -69,17 +72,60 @@ interface ParsedInfo {
 
 // ============ overlay token grammar (compact, colon-separated, quote-safe) ============
 // One `overlay=` token per Overlay (a REPEATED key, the only one in the fence). Grammar:
-//   mean:<series>            median:<series>            trend:<series>[:eq]
+//   mean:<series>            median:<series>            trend:<series>[:<fitFlag>][:eq]
+//   stddev:<series>[:<sigma>]  range:<series>            ma:<series>[:<window>]
 //   ref:<value>[:<label>]     vref:<value>[:<label>]     (ref = horizontal, vref = vertical)
 //   eq:<expression>
-// where <series> is a slot index or the literal `all`. A reference label may contain spaces (and
-// colons), so the whole token is double-quoted by serializeInfoValue when it needs it. An
-// equation's <expression> is taken VERBATIM as everything after the first colon (never split
-// further), the expr.ts grammar has NO `:` operator or token anywhere (numbers, `x`, `pi`/`e`,
-// `+ - * / ^`, parens, commas, function names), so the
-// `eq:` prefix split is unambiguous by construction; an expression containing whitespace or a
-// literal `"` is still double-quoted by serializeInfoValue like every other token, no new
-// escaping needed.
+// where <series> is a slot index or the literal `all`. A trend's optional <fitFlag> is one of
+// `poly2 poly3 poly4 poly5 exp log pow` (absent = linear); it and the `eq` flag are ORDER-
+// INDEPENDENT after the series segment, so `trend:0:poly3:eq` and `trend:0:eq:poly3` parse the
+// same. `poly<N>` encodes both fit='polynomial' AND degree=N. A stddev's sigma and a moving
+// average's window are emitted only when they differ from their defaults (a lean fence). A
+// reference label may contain spaces (and colons), so the whole token is double-quoted by
+// serializeInfoValue when it needs it. An equation's <expression> is taken VERBATIM as everything
+// after the first colon (never split further), the expr.ts grammar has NO `:` operator or token
+// anywhere (numbers, `x`, `pi`/`e`, `+ - * / ^`, parens, commas, function names), so the `eq:`
+// prefix split is unambiguous by construction; an expression containing whitespace or a literal
+// `"` is still double-quoted by serializeInfoValue like every other token, no new escaping needed.
+
+/** Serialize a series target (index or the literal `all`) to its token segment. */
+function serializeSeriesToken(series: number | 'all' | undefined): string {
+   return series === 'all' ? 'all' : String(series ?? 0)
+}
+
+/** Parse a series-target token segment back to an index or `'all'`, defaulting a bad one to 0. */
+function parseSeriesToken(token: string | undefined): number | 'all' {
+   if (token === 'all') return 'all'
+   const parsed = Number(token)
+   return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** The trend fit flag emitted for a non-linear fit (linear emits nothing); `poly<N>` carries the
+ *  degree, clamped to 2..5. Returns '' for a linear (or absent) fit so the caller appends nothing. */
+function serializeTrendFitFlag(overlay: Overlay): string {
+   switch (overlay.fit) {
+      case 'polynomial': {
+         const degree = Math.min(5, Math.max(2, Math.round(overlay.degree ?? GRAPH_DEFAULT_TREND_DEGREE)))
+         return `poly${degree}`
+      }
+      case 'exponential': return 'exp'
+      case 'logarithmic': return 'log'
+      case 'power':       return 'pow'
+      default:            return '' // 'linear' or absent: no flag, back-compat with old trend tokens
+   }
+}
+
+/** Read a trend fit flag segment onto an overlay (order-independent; unknown flags left as linear). */
+function applyTrendFitFlag(overlay: Overlay, flag: string): void {
+   if (flag === 'exp') { overlay.fit = 'exponential'; return }
+   if (flag === 'log') { overlay.fit = 'logarithmic'; return }
+   if (flag === 'pow') { overlay.fit = 'power'; return }
+   const polyMatch = /^poly([2-5])$/.exec(flag)
+   if (polyMatch) {
+      overlay.fit = 'polynomial'
+      overlay.degree = Number(polyMatch[1])
+   }
+}
 
 /** Serialize one overlay to its token VALUE (before quoting), or null if it can't round-trip. */
 function serializeOverlay(overlay: Overlay): string | null {
@@ -96,10 +142,25 @@ function serializeOverlay(overlay: Overlay): string | null {
       if (overlay.expression === undefined || overlay.expression.trim() === '') return null
       return `eq:${overlay.expression}`
    }
-   // Computed kinds carry a series target (index or 'all'); trend carries the optional `eq` flag.
-   const seriesToken = overlay.series === 'all' ? 'all' : String(overlay.series ?? 0)
+   const seriesToken = serializeSeriesToken(overlay.series)
+   if (overlay.kind === 'stddev') {
+      const sigma = overlay.sigma ?? GRAPH_DEFAULT_OVERLAY_SIGMA
+      return sigma !== GRAPH_DEFAULT_OVERLAY_SIGMA ? `stddev:${seriesToken}:${sigma}` : `stddev:${seriesToken}`
+   }
+   if (overlay.kind === 'range') {
+      return `range:${seriesToken}`
+   }
+   if (overlay.kind === 'movingAverage') {
+      const window = overlay.window ?? GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW
+      return window !== GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW ? `ma:${seriesToken}:${window}` : `ma:${seriesToken}`
+   }
+   // mean / median / trend: a plain series target, with trend carrying the optional fit + `eq` flags.
    let token = `${overlay.kind}:${seriesToken}`
-   if (overlay.kind === 'trend' && overlay.showEquation) token += ':eq'
+   if (overlay.kind === 'trend') {
+      const fitFlag = serializeTrendFitFlag(overlay)
+      if (fitFlag !== '') token += `:${fitFlag}`
+      if (overlay.showEquation) token += ':eq'
+   }
    return token
 }
 
@@ -125,17 +186,31 @@ function parseOverlay(raw: string): Overlay | null {
       if (expression === '') return null // no expression: nothing to plot, not a valid overlay
       return { kind: 'equation', expression }
    }
+   if (kindToken === 'stddev') {
+      const overlay: Overlay = { kind: 'stddev', series: parseSeriesToken(segments[1]) }
+      const sigma = Number(segments[2])
+      if (segments[2] !== undefined && Number.isFinite(sigma)) overlay.sigma = sigma
+      return overlay
+   }
+   if (kindToken === 'range') {
+      return { kind: 'range', series: parseSeriesToken(segments[1]) }
+   }
+   if (kindToken === 'ma') {
+      const overlay: Overlay = { kind: 'movingAverage', series: parseSeriesToken(segments[1]) }
+      const window = Number(segments[2])
+      if (segments[2] !== undefined && Number.isFinite(window)) overlay.window = window
+      return overlay
+   }
    if (kindToken === 'mean' || kindToken === 'median' || kindToken === 'trend') {
-      const seriesToken = segments[1]
-      let series: number | 'all'
-      if (seriesToken === 'all') {
-         series = 'all'
-      } else {
-         const parsed = Number(seriesToken)
-         series = Number.isFinite(parsed) ? parsed : 0
+      const overlay: Overlay = { kind: kindToken, series: parseSeriesToken(segments[1]) }
+      if (kindToken === 'trend') {
+         const flags = segments.slice(2)
+         if (flags.includes('eq')) overlay.showEquation = true
+         for (const flag of flags) {
+            if (flag === 'eq') continue
+            applyTrendFitFlag(overlay, flag)
+         }
       }
-      const overlay: Overlay = { kind: kindToken, series }
-      if (kindToken === 'trend' && segments.slice(2).includes('eq')) overlay.showEquation = true
       return overlay
    }
    return null // unknown kind: skip (tolerant, forward-compatible)

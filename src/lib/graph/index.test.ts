@@ -373,6 +373,68 @@ describe('statistical overlays', () => {
       expect(countDashedLines(svg)).toBe(0)
    })
 
+   // ====== analytical overlays: bands, moving average, non-linear trend fits ======
+   /** Count filled summary-band regions (the one new primitive, a low-opacity fill rect). */
+   function countBandFills(svg: string): number {
+      return countOccurrences(svg, 'fill-opacity="0.12"')
+   }
+
+   it('draws a std-dev band as a filled region, absent without the overlay', () => {
+      const plain = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+      const withBand = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'stddev', series: 0 }] }), LIGHT_GRAPH_THEME)
+      expect(countBandFills(plain)).toBe(0)
+      expect(countBandFills(withBand)).toBe(1)
+      // A haloed label rides the band, in the ±σ default form.
+      expect(withBand).toContain('σ')
+   })
+
+   it('draws a min-max range band as a filled region', () => {
+      const withRange = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'range', series: 0 }] }), LIGHT_GRAPH_THEME)
+      expect(countBandFills(withRange)).toBe(1)
+      expect(withRange).toContain('min-max')
+   })
+
+   it('draws a moving average as a dashed polyline', () => {
+      const plain = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)
+      const withMovingAverage = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'movingAverage', series: 0, window: 2 }] }), LIGHT_GRAPH_THEME)
+      expect(countDashedLines(plain)).toBe(0)
+      expect(countDashedLines(withMovingAverage)).toBe(1)
+      expect(withMovingAverage).toContain('<polyline')
+      expect(withMovingAverage).toContain('moving avg 2')
+   })
+
+   it('draws a polynomial trend as a multi-point curve with an x^2 equation label', () => {
+      const svg = renderGraphToSvg(
+         makeSpec('line', { overlays: [{ kind: 'trend', series: 0, fit: 'polynomial', degree: 2, showEquation: true }] }),
+         LIGHT_GRAPH_THEME)
+      expect(svg).toContain('<polyline')
+      expect(countDashedLines(svg)).toBe(1) // the sampled curve is one dashed polyline
+      expect(svg).toContain('x^2')
+      expect(svg).toContain('R²')
+   })
+
+   it('draws nothing and never throws for a degenerate polynomial trend (too few distinct points)', () => {
+      const single: GraphSpec = {
+         type: 'line',
+         data: { labels: ['A', 'B'], series: [{ name: 'S', values: [1, 2] }] },
+         options: { overlays: [{ kind: 'trend', series: 0, fit: 'polynomial', degree: 3 }] },
+      }
+      expect(() => renderGraphToSvg(single, LIGHT_GRAPH_THEME)).not.toThrow()
+      expect(countDashedLines(renderGraphToSvg(single, LIGHT_GRAPH_THEME))).toBe(0)
+   })
+
+   it('radial ignores the analytical overlay kinds too', () => {
+      const svg = renderGraphToSvg(
+         makeSpec('pie', { overlays: [
+            { kind: 'stddev', series: 0 }, { kind: 'range', series: 0 }, { kind: 'movingAverage', series: 0 },
+         ] }), LIGHT_GRAPH_THEME)
+      expect(countBandFills(svg)).toBe(0)
+      expect(countDashedLines(svg)).toBe(0)
+   })
+
    describe('equation-curve overlay', () => {
       it('draws a dashed polyline over an existing data chart, labelled with the expression', () => {
          const plain = renderGraphToSvg(makeSpec('line'), LIGHT_GRAPH_THEME)

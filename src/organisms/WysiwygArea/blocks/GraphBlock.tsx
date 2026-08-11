@@ -9,6 +9,9 @@ import {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   GRAPH_DEFAULT_OVERLAY_SIGMA,
+   GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW,
+   GRAPH_DEFAULT_TREND_DEGREE,
    compileExpression,
    supportsLogScale,
 } from '../../../lib/graph'
@@ -526,10 +529,16 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                   value={overlay.kind}
                   onChange={event => setOverlayKind(overlayIndex, event.target.value as OverlayKind)}
                >
-                  {/* Mean / trend need a discrete data series to compute over, a function chart's
-                      sampled f(x) curve has none, so those are hidden there (reference-only). */}
+                  {/* The series-computed kinds (mean / median / trend / std-dev band / min-max band /
+                      moving average) all need a discrete data series; a function chart's sampled f(x)
+                      curve has none, so those are hidden there (reference-only). They apply to every
+                      cartesian type (bar family / line / area) and to scatter. */}
                   {!isFunction && <option value="mean">{t.graphOverlayMean}</option>}
+                  {!isFunction && <option value="median">{t.graphOverlayMedian}</option>}
                   {!isFunction && <option value="trend">{t.graphOverlayTrend}</option>}
+                  {!isFunction && <option value="stddev">{t.graphOverlayStddev}</option>}
+                  {!isFunction && <option value="range">{t.graphOverlayRange}</option>}
+                  {!isFunction && <option value="movingAverage">{t.graphOverlayMovingAverage}</option>}
                   <option value="reference">{t.graphOverlayReference}</option>
                   {/* Equation curve is chart-level over the CATEGORICAL index axis; scatter has no
                       such axis and a function chart would just duplicate its own plot, so it isn't
@@ -556,18 +565,100 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                   </select>
                )}
 
-               {/* Trend: opt-in equation label. */}
-               {overlay.kind === 'trend' && (
-                  <label className="graph-toggle">
-                     <input
-                        type="checkbox"
-                        checked={overlay.showEquation ?? false}
-                        onChange={event => commit(updateOverlay(working, overlayIndex, {
-                           showEquation: event.target.checked || undefined,
-                        }))}
-                     />
-                     <span>{t.graphOverlayShowEquation}</span>
+               {/* Std-dev band: the sigma multiplier (band spans mean +/- sigma * stddev). */}
+               {overlay.kind === 'stddev' && (
+                  <label className="graph-field">
+                     <span className="graph-field-label">{t.graphOverlaySigma}</span>
+                     <div className="graph-range-row">
+                        <input
+                           className="graph-range-input"
+                           type="range"
+                           min={1}
+                           max={3}
+                           step={0.5}
+                           value={overlay.sigma ?? GRAPH_DEFAULT_OVERLAY_SIGMA}
+                           onChange={event => commit(updateOverlay(working, overlayIndex, { sigma: Number(event.target.value) }))}
+                        />
+                        <span className="graph-range-value">{overlay.sigma ?? GRAPH_DEFAULT_OVERLAY_SIGMA}</span>
+                     </div>
                   </label>
+               )}
+
+               {/* Moving average: the trailing window length. */}
+               {overlay.kind === 'movingAverage' && (
+                  <label className="graph-field">
+                     <span className="graph-field-label">{t.graphOverlayWindow}</span>
+                     <div className="graph-range-row">
+                        <input
+                           className="graph-range-input"
+                           type="range"
+                           min={2}
+                           max={15}
+                           step={1}
+                           value={overlay.window ?? GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW}
+                           onChange={event => commit(updateOverlay(working, overlayIndex, { window: Number(event.target.value) }))}
+                        />
+                        <span className="graph-range-value">{overlay.window ?? GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW}</span>
+                     </div>
+                  </label>
+               )}
+
+               {/* Trend: the fit model, the polynomial degree (polynomial only), and the opt-in
+                   equation label. */}
+               {overlay.kind === 'trend' && (
+                  <>
+                     <select
+                        className="graph-overlay-select"
+                        aria-label={t.graphOverlayFit}
+                        value={overlay.fit ?? 'linear'}
+                        onChange={event => {
+                           const fit = event.target.value as NonNullable<Overlay['fit']>
+                           // Linear drops both fit + degree (serializes lean); polynomial seeds a
+                           // degree; the other models carry no degree.
+                           const patch: Partial<Overlay> = fit === 'linear'
+                              ? { fit: undefined, degree: undefined }
+                              : fit === 'polynomial'
+                              ? { fit, degree: overlay.degree ?? GRAPH_DEFAULT_TREND_DEGREE }
+                              : { fit, degree: undefined }
+                           commit(updateOverlay(working, overlayIndex, patch))
+                        }}
+                     >
+                        <option value="linear">{t.graphOverlayFitLinear}</option>
+                        <option value="polynomial">{t.graphOverlayFitPolynomial}</option>
+                        <option value="exponential">{t.graphOverlayFitExponential}</option>
+                        <option value="logarithmic">{t.graphOverlayFitLogarithmic}</option>
+                        <option value="power">{t.graphOverlayFitPower}</option>
+                     </select>
+
+                     {overlay.fit === 'polynomial' && (
+                        <label className="graph-field">
+                           <span className="graph-field-label">{t.graphOverlayDegree}</span>
+                           <div className="graph-range-row">
+                              <input
+                                 className="graph-range-input"
+                                 type="range"
+                                 min={2}
+                                 max={5}
+                                 step={1}
+                                 value={overlay.degree ?? GRAPH_DEFAULT_TREND_DEGREE}
+                                 onChange={event => commit(updateOverlay(working, overlayIndex, { degree: Number(event.target.value) }))}
+                              />
+                              <span className="graph-range-value">{overlay.degree ?? GRAPH_DEFAULT_TREND_DEGREE}</span>
+                           </div>
+                        </label>
+                     )}
+
+                     <label className="graph-toggle">
+                        <input
+                           type="checkbox"
+                           checked={overlay.showEquation ?? false}
+                           onChange={event => commit(updateOverlay(working, overlayIndex, {
+                              showEquation: event.target.checked || undefined,
+                           }))}
+                        />
+                        <span>{t.graphOverlayShowEquation}</span>
+                     </label>
+                  </>
                )}
 
                {/* Equation curve: a monospace expression input, live-validated via compileExpression

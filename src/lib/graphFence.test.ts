@@ -410,6 +410,99 @@ describe('Graph fence, vertical reference overlay (vref: token)', () => {
    })
 })
 
+describe('Graph fence, analytical overlays (stddev / range / moving average / trend fits)', () => {
+   /** A tiny line spec carrying just the overlays under test. */
+   function lineWithOverlays(overlays: GraphSpec['options']['overlays']): GraphSpec {
+      return {
+         type: 'line',
+         data: { labels: ['A', 'B', 'C'], series: [{ name: 'S', values: [1, 2, 3] }] },
+         options: { overlays },
+      }
+   }
+
+   it('round-trips a std-dev band, omitting the default sigma', () => {
+      const spec = lineWithOverlays([{ kind: 'stddev', series: 0 }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=stddev:0')
+      expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'stddev', series: 0 }])
+   })
+
+   it('emits the sigma segment when it differs from the default', () => {
+      const spec = lineWithOverlays([{ kind: 'stddev', series: 0, sigma: 2 }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=stddev:0:2')
+      expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'stddev', series: 0, sigma: 2 }])
+   })
+
+   it('round-trips a min-max range band', () => {
+      const spec = lineWithOverlays([{ kind: 'range', series: 'all' }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=range:all')
+      expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'range', series: 'all' }])
+   })
+
+   it('round-trips a moving average, omitting the default window', () => {
+      const spec = lineWithOverlays([{ kind: 'movingAverage', series: 0 }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=ma:0')
+      expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'movingAverage', series: 0 }])
+   })
+
+   it('emits the window segment when it differs from the default', () => {
+      const spec = lineWithOverlays([{ kind: 'movingAverage', series: 0, window: 5 }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=ma:0:5')
+      expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'movingAverage', series: 0, window: 5 }])
+   })
+
+   it('round-trips a polynomial trend fit (poly<N> carries fit + degree)', () => {
+      const spec = lineWithOverlays([{ kind: 'trend', series: 0, fit: 'polynomial', degree: 3 }])
+      expect(graphSpecToFence(spec).info).toContain('overlay=trend:0:poly3')
+      expect(roundTripSpec(spec).options.overlays).toEqual([
+         { kind: 'trend', series: 0, fit: 'polynomial', degree: 3 },
+      ])
+   })
+
+   it('round-trips exponential / logarithmic / power trend fits', () => {
+      for (const [fit, flag] of [['exponential', 'exp'], ['logarithmic', 'log'], ['power', 'pow']] as const) {
+         const spec = lineWithOverlays([{ kind: 'trend', series: 0, fit }])
+         expect(graphSpecToFence(spec).info).toContain(`overlay=trend:0:${flag}`)
+         expect(roundTripSpec(spec).options.overlays).toEqual([{ kind: 'trend', series: 0, fit }])
+      }
+   })
+
+   it('emits no fit flag for a linear trend (back-compat with the old trend: token)', () => {
+      const linear = lineWithOverlays([{ kind: 'trend', series: 0 }])
+      expect(graphSpecToFence(linear).info).toContain('overlay=trend:0')
+      expect(graphSpecToFence(linear).info).not.toContain('poly')
+
+      const linearWithEquation = lineWithOverlays([{ kind: 'trend', series: 0, showEquation: true }])
+      expect(graphSpecToFence(linearWithEquation).info).toContain('overlay=trend:0:eq')
+   })
+
+   it('parses the fit flag and the eq flag in any order after the series segment', () => {
+      const forwards = fenceToGraphSpec('graph type=line overlay=trend:0:poly3:eq', '')
+      const reversed = fenceToGraphSpec('graph type=line overlay=trend:0:eq:poly3', '')
+      const expected = [{ kind: 'trend', series: 0, showEquation: true, fit: 'polynomial', degree: 3 }]
+      expect(forwards.options.overlays).toEqual(expected)
+      expect(reversed.options.overlays).toEqual(expected)
+   })
+
+   it('still parses the pre-existing bare and eq trend forms', () => {
+      expect(fenceToGraphSpec('graph type=line overlay=trend:0', '').options.overlays)
+         .toEqual([{ kind: 'trend', series: 0 }])
+      expect(fenceToGraphSpec('graph type=line overlay=trend:0:eq', '').options.overlays)
+         .toEqual([{ kind: 'trend', series: 0, showEquation: true }])
+   })
+
+   it('never throws on malformed analytical tokens, skipping the bad one', () => {
+      const spec = fenceToGraphSpec(
+         'graph type=line overlay=stddev overlay=ma:0:notanumber overlay=range:0', '')
+      // stddev with no series -> series defaults to 0; ma with a bad window -> window dropped;
+      // range parses fine. None throw.
+      expect(spec.options.overlays).toEqual([
+         { kind: 'stddev', series: 0 },
+         { kind: 'movingAverage', series: 0 },
+         { kind: 'range', series: 0 },
+      ])
+   })
+})
+
 describe('Graph fence, custom axis origin (origin= token)', () => {
    it('round-trips a custom axis origin on a scatter chart', () => {
       const spec: GraphSpec = {

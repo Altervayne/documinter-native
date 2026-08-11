@@ -86,8 +86,22 @@ export interface GraphData {
  *                chart type samples with. Never auto-extends the y-axis (unlike `reference`): an
  *                out-of-range portion of the curve is analytically clipped to the plot rect instead
  *                of stretching the domain to fit it (see cartesian.ts's `renderEquationOverlay`).
+ *   - stddev:    a filled horizontal summary BAND at a target series' mean +/- sigma*stddev (see
+ *                {@link Overlay.sigma}), the spread of the series shaded in its own hue.
+ *   - range:     a filled horizontal summary BAND at a target series' [min, max], its full extent
+ *                shaded in its own hue.
+ *   - movingAverage: a trailing moving-average polyline for a target series (see
+ *                {@link Overlay.window}), a smoothed trace of the raw data.
  */
-export type OverlayKind = 'mean' | 'median' | 'trend' | 'reference' | 'equation'
+export type OverlayKind =
+   | 'mean'
+   | 'median'
+   | 'trend'
+   | 'reference'
+   | 'equation'
+   | 'stddev'
+   | 'range'
+   | 'movingAverage'
 
 /**
  * One computed reference mark drawn over a cartesian plot. Every field is optional-with-a-default,
@@ -116,8 +130,30 @@ export interface Overlay {
    orientation?: 'horizontal' | 'vertical'
    /** Optional label override; falls back to a computed default per kind (see cartesian.ts). */
    label?: string
-   /** Trend only: append `y = m*x + b` to the label (R^2 is shown regardless). Default false. */
+   /** Trend only: append the fitted equation to the label (R^2 is shown regardless). Default false. */
    showEquation?: boolean
+   /**
+    * `stddev` band only: the sigma multiplier, so the band spans mean +/- {@link sigma} * stddev.
+    * Defaults to {@link GRAPH_DEFAULT_OVERLAY_SIGMA} (1). Ignored by every other kind.
+    */
+   sigma?: number
+   /**
+    * `movingAverage` only: the trailing window length. Defaults to
+    * {@link GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW} (3), clamped to at least 2 by the renderer.
+    * Ignored by every other kind.
+    */
+   window?: number
+   /**
+    * `trend` only: which model the trendline is fit with. Absent means `'linear'` (the ordinary
+    * least-squares line, byte-identical to before this field existed). `'polynomial'` additionally
+    * reads {@link degree}. Ignored by every other kind.
+    */
+   fit?: 'linear' | 'polynomial' | 'exponential' | 'logarithmic' | 'power'
+   /**
+    * `trend` with `fit === 'polynomial'` only: the polynomial degree. Defaults to
+    * {@link GRAPH_DEFAULT_TREND_DEGREE} (2), clamped to 2..5 by the renderer. Ignored otherwise.
+    */
+   degree?: number
    /**
     * The `equation` overlay's raw source text in one variable `x`, e.g. `"sin(x) * 2"`, compiled
     * via `graph/expr.ts`'s `compileExpression`, the SAME evaluator + "uncompileable/undefined
@@ -254,6 +290,14 @@ export const GRAPH_DEFAULT_BAR_WIDTH = 1          // fraction 0..1 of the catego
 export const GRAPH_DEFAULT_LINE_WIDTH = 2         // stroke width in px
 export const GRAPH_DEFAULT_SHOW_POINTS = true     // markers drawn at each datum
 export const GRAPH_DEFAULT_AREA_FILL_OPACITY = 0.1 // area fill alpha 0..1
+
+// ====== overlay defaults (the analytical kinds) ======
+// Same one-source-of-truth rule: the renderer falls back to these when a field is unset, the
+// serializer drops a token segment whose value equals its default (a lean fence), and the editor
+// seeds its controls from them.
+export const GRAPH_DEFAULT_OVERLAY_SIGMA = 1          // stddev band multiplier (mean +/- sigma*sd)
+export const GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW = 3  // trailing moving-average window length
+export const GRAPH_DEFAULT_TREND_DEGREE = 2           // polynomial trend degree (clamped 2..5)
 
 // ###########################
 // # FUNCTION PLOT (EQUATION) #

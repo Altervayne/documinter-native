@@ -18,6 +18,9 @@ import {
    GRAPH_DEFAULT_LINE_WIDTH,
    GRAPH_DEFAULT_SHOW_POINTS,
    GRAPH_DEFAULT_AREA_FILL_OPACITY,
+   GRAPH_DEFAULT_OVERLAY_SIGMA,
+   GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW,
+   GRAPH_DEFAULT_TREND_DEGREE,
    FUNCTION_DEFAULT_X_MIN,
    FUNCTION_DEFAULT_X_MAX,
    FUNCTION_DEFAULT_SAMPLES,
@@ -26,7 +29,12 @@ import {
    LOG_SCALE_UNSUPPORTED_TYPES,
 } from './types'
 import { MAX_SERIES, resolveSeriesColor } from './palette'
-import { mean as meanOf, median as medianOf, linearRegression, linearRegressionXY } from './stats'
+import {
+   mean as meanOf, median as medianOf, linearRegression, linearRegressionXY,
+   stddev as stddevOf, extent as extentOf, movingAverage,
+   evaluatePolynomial, polynomialFit, exponentialFit, logarithmicFit, powerFit,
+} from './stats'
+import type { Point } from './stats'
 import { linearScale, niceTicks, logScale, niceLogTicks, bandScale } from './scale'
 import { compileExpression, evaluate } from './expr'
 import type { CompiledExpression } from './expr'
@@ -75,9 +83,21 @@ const MAX_FILL_OPACITY = 1
 // heavier). ~1.5px round-capped sits between the 1px grid and the 2px data stroke.
 const OVERLAY_STROKE_WIDTH = 1.5
 const OVERLAY_DASH_LINE = '6 4'    // mean / median / reference horizontals
-const OVERLAY_DASH_TREND = '5 3'   // the sloped trendline, a touch tighter
+const OVERLAY_DASH_TREND = '5 3'   // the sloped trendline / sampled curve / moving average, a touch tighter
 const OVERLAY_LABEL_HALO_WIDTH = 3 // the surface-color halo behind a label, via paint-order:stroke
 const OVERLAY_LABEL_GAP = 4        // px the label sits off its line
+
+// ====== summary band styling (stddev / range: a filled horizontal region in the series hue) ======
+// A low-opacity fill so the band reads as a soft shaded region behind the data, never a solid block;
+// faint dashed edge lines mark the two boundaries so the band's extent stays legible over a busy plot.
+const OVERLAY_BAND_FILL_OPACITY = 0.12
+const OVERLAY_BAND_EDGE_OPACITY = 0.5
+
+// ====== non-linear trend sampling ======
+// A fitted polynomial/exponential/log/power curve is sampled into a clipped polyline (a straight
+// two-point segment only fits the linear case). ~80 points keeps the curve reading smooth at the
+// chart's canvas width without bloating the SVG (mirrors the equation overlay's own sample density).
+const TREND_CURVE_SAMPLE_COUNT = 80
 
 // The bar-peak-line stroke weight: a sensible ~2px, matching GRAPH_DEFAULT_LINE_WIDTH so a bar+line
 // combo reads like the line chart's own default weight rather than inventing a new visual language.
@@ -787,7 +807,9 @@ function renderScatterOverlays(
       }
       if (overlay.kind === 'equation') continue // chart-level, categorical-axis only, no scatter analog yet
 
-      // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
+      // Computed kinds (mean / median / trend / stddev / range / movingAverage): resolve the target
+      // series, fanning out for 'all'. The spread/summary kinds read the series' point Y-values; the
+      // moving average traces the points in x order.
       const targetIndices = overlay.series === 'all'
          ? series.map((_oneSeries, index) => index)
          : [typeof overlay.series === 'number' ? overlay.series : 0]
@@ -798,6 +820,23 @@ function renderScatterOverlays(
          if (overlay.kind === 'trend') {
             parts.push(renderScatterTrendOverlay(
                overlay, oneSeries, xScale, yScale, plot, xNiceMin, xNiceMax, color, theme))
+         } else if (overlay.kind === 'stddev') {
+            parts.push(renderStddevBandOverlay(
+               overlay, oneSeries.points.map(point => point.y), oneSeries.name,
+               plot, yScale, yNiceMin, yNiceMax, color, singleSeries, theme))
+         } else if (overlay.kind === 'range') {
+            parts.push(renderRangeBandOverlay(
+               overlay, oneSeries.points.map(point => point.y), oneSeries.name,
+               plot, yScale, yNiceMin, yNiceMax, color, singleSeries, theme))
+         } else if (overlay.kind === 'movingAverage') {
+            const sorted = oneSeries.points
+               .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+               .slice()
+               .sort((left, right) => left.x - right.x)
+            const pixelPoints = movingAveragePixelPoints(
+               sorted.map(point => point.y), overlay.window, index => xScale(sorted[index].x), yScale)
+            parts.push(renderMovingAverageOverlay(
+               overlay, pixelPoints, oneSeries.name, overlay.window, plot, color, singleSeries, theme))
          } else {
             parts.push(renderScatterStatLineOverlay(
                overlay, oneSeries, plot, yScale, yNiceMin, yNiceMax, color, singleSeries, theme))
@@ -855,40 +894,54 @@ function renderScatterTrendOverlay(
    color: string,
    theme: GraphTheme,
 ): string {
-   const fit = linearRegressionXY(oneSeries.points)
-   if (fit === null) return '' // fewer than 2 finite points, or an undefined (vertical) slope
+   const fitType = overlay.fit ?? 'linear'
 
-   const startX = xScale(xNiceMin)
-   const endX = xScale(xNiceMax)
-   const startY = yScale(fit.slope * xNiceMin + fit.intercept)
-   const endY = yScale(fit.slope * xNiceMax + fit.intercept)
+   if (fitType === 'linear') {
+      const fit = linearRegressionXY(oneSeries.points)
+      if (fit === null) return '' // fewer than 2 finite points, or an undefined (vertical) slope
 
-   // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
-   // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
-   const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
-   if (clipped === null) return '' // the whole segment sits off the plot vertically
+      const startX = xScale(xNiceMin)
+      const endX = xScale(xNiceMax)
+      const startY = yScale(fit.slope * xNiceMin + fit.intercept)
+      const endY = yScale(fit.slope * xNiceMax + fit.intercept)
 
-   const line = selfClosingElement('line', {
-      x1: clipped.x1,
-      y1: clipped.y1,
-      x2: clipped.x2,
-      y2: clipped.y2,
-      stroke: color,
-      'stroke-width': OVERLAY_STROKE_WIDTH,
-      'stroke-dasharray': OVERLAY_DASH_TREND,
-      'stroke-linecap': 'round',
-   })
+      // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
+      // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
+      const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
+      if (clipped === null) return '' // the whole segment sits off the plot vertically
+
+      const line = selfClosingElement('line', {
+         x1: clipped.x1,
+         y1: clipped.y1,
+         x2: clipped.x2,
+         y2: clipped.y2,
+         stroke: color,
+         'stroke-width': OVERLAY_STROKE_WIDTH,
+         'stroke-dasharray': OVERLAY_DASH_TREND,
+         'stroke-linecap': 'round',
+      })
+      const label = overlay.label && overlay.label !== ''
+         ? overlay.label
+         : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
+      // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
+      const labelText = overlayLabel(
+         Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+         clipped.y2 - OVERLAY_LABEL_GAP,
+         'end',
+         label,
+         theme)
+      return element('g', {}, line + labelText)
+   }
+
+   // Non-linear: fit over the raw (x, y) points, then sample the fitted curve across the x-domain.
+   const trend = computeTrendFit(fitType, overlay.degree, oneSeries.points)
+   if (trend === null) return ''
+   const runs = sampleTrendCurveRuns(
+      trend.predict, xNiceMin, xNiceMax, value => xScale(value), yScale, plot)
    const label = overlay.label && overlay.label !== ''
       ? overlay.label
-      : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
-   // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
-   const labelText = overlayLabel(
-      Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
-      clipped.y2 - OVERLAY_LABEL_GAP,
-      'end',
-      label,
-      theme)
-   return element('g', {}, line + labelText)
+      : nonLinearTrendLabel(trend.equationLabel, trend.rSquared, overlay.showEquation ?? false)
+   return drawTrendCurveRuns(runs, label, plot, color, theme)
 }
 
 // #####################
@@ -1091,7 +1144,8 @@ function renderOverlays(
          parts.push(renderEquationOverlay(overlay, labels, xBand, yScale, plot, niceMin, niceMax, theme))
          continue
       }
-      // Computed kinds (mean / median / trend): resolve the target series, fanning out for 'all'.
+      // Computed kinds (mean / median / trend / stddev / range / movingAverage): resolve the target
+      // series, fanning out for 'all'.
       const targetIndices = overlay.series === 'all'
          ? drawnSeries.map((_series, index) => index)
          : [typeof overlay.series === 'number' ? overlay.series : 0]
@@ -1102,6 +1156,17 @@ function renderOverlays(
          if (overlay.kind === 'trend') {
             parts.push(renderTrendOverlay(
                overlay, oneSeries, labels, xBand, yScale, plot, color, theme))
+         } else if (overlay.kind === 'stddev') {
+            parts.push(renderStddevBandOverlay(
+               overlay, oneSeries.values, oneSeries.name, plot, yScale, niceMin, niceMax, color, singleSeries, theme))
+         } else if (overlay.kind === 'range') {
+            parts.push(renderRangeBandOverlay(
+               overlay, oneSeries.values, oneSeries.name, plot, yScale, niceMin, niceMax, color, singleSeries, theme))
+         } else if (overlay.kind === 'movingAverage') {
+            const pixelPoints = movingAveragePixelPoints(
+               oneSeries.values, overlay.window, index => xBand.center(index), yScale)
+            parts.push(renderMovingAverageOverlay(
+               overlay, pixelPoints, oneSeries.name, overlay.window, plot, color, singleSeries, theme))
          } else {
             parts.push(renderStatLineOverlay(
                overlay, oneSeries, plot, yScale, niceMin, niceMax, color, singleSeries, theme))
@@ -1297,20 +1362,36 @@ function computeEquationOverlayRuns(
    }
    const gappedValues = applyAsymptoteGaps(rawValues, niceMin, niceMax)
 
+   // Map each finite sample to a pixel point (a null sample stays a gap that breaks the polyline),
+   // then let the shared clip-runner trim every segment to the plot's vertical band.
+   const pixelPoints: ({ x: number; y: number } | null)[] = gappedValues.map((value, sampleIndex) =>
+      value === null ? null : { x: interpolateBandCenter(xBand, sampleIndex * step), y: yScale(value) })
+   return clipPixelRunsToBand(pixelPoints, plot)
+}
+
+/**
+ * Trim a sequence of pixel points (a `null` marks a gap that breaks the line) into runs clipped to
+ * the plot's vertical band, one segment at a time, via {@link clipSegmentToBand} (NO SVG clipPath,
+ * a fixed id would collide across the many chart SVGs inlined into one export). A segment fully
+ * outside the band breaks the run; a partially-outside segment is trimmed to the boundary crossing,
+ * so a curve reads as truly clipped to the plot rect rather than stopping at the last in-range
+ * SAMPLE. Shared by the equation overlay, the moving-average polyline, and the non-linear trend
+ * curve so all three clip identically.
+ */
+function clipPixelRunsToBand(
+   pixelPoints: ({ x: number; y: number } | null)[],
+   plot: OverlayPlot,
+): { x: number; y: number }[][] {
    const runs: { x: number; y: number }[][] = []
    let currentRun: { x: number; y: number }[] | null = null
    let previousPoint: { x: number; y: number } | null = null
 
-   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-      const value = gappedValues[sampleIndex]
-      if (value === null) {
+   for (const currentPoint of pixelPoints) {
+      if (currentPoint === null) {
          currentRun = null
          previousPoint = null
          continue
       }
-      const fractionalIndex = sampleIndex * step
-      const currentPoint = { x: interpolateBandCenter(xBand, fractionalIndex), y: yScale(value) }
-
       if (previousPoint === null) {
          // First finite sample after a gap: nothing to connect to yet (mirrors buildPointRuns,
          // which needs two points before a polyline exists).
@@ -1383,7 +1464,13 @@ function renderStatLineOverlay(
    return horizontalOverlay(lineY, label, plot, color, OVERLAY_DASH_LINE, theme)
 }
 
-/** A per-series linear trendline: a series-hued sloped segment analytically clipped to the plot rect. */
+/**
+ * A per-series trendline. A LINEAR fit (the default, absent {@link Overlay.fit}) keeps its exact
+ * original behavior: a single series-hued sloped segment analytically clipped to the plot rect. A
+ * non-linear fit (polynomial / exponential / logarithmic / power) is instead SAMPLED across the
+ * category-index domain into a clipped dashed polyline (a straight segment cannot draw a curve),
+ * with the equation label formatted per fit type.
+ */
 function renderTrendOverlay(
    overlay: Overlay,
    oneSeries: GraphSeries,
@@ -1394,41 +1481,57 @@ function renderTrendOverlay(
    color: string,
    theme: GraphTheme,
 ): string {
-   const fit = linearRegression(oneSeries.values)
-   if (fit === null) return '' // fewer than 2 finite points: no line to draw
-
    const lastIndex = labels.length - 1
-   const startX = xBand.center(0)
-   const endX = xBand.center(lastIndex)
-   const startY = yScale(fit.intercept)
-   const endY = yScale(fit.intercept + fit.slope * lastIndex)
+   const fitType = overlay.fit ?? 'linear'
 
-   // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
-   // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
-   const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
-   if (clipped === null) return '' // the whole segment sits off the plot vertically
+   if (fitType === 'linear') {
+      const fit = linearRegression(oneSeries.values)
+      if (fit === null) return '' // fewer than 2 finite points: no line to draw
 
-   const line = selfClosingElement('line', {
-      x1: clipped.x1,
-      y1: clipped.y1,
-      x2: clipped.x2,
-      y2: clipped.y2,
-      stroke: color,
-      'stroke-width': OVERLAY_STROKE_WIDTH,
-      'stroke-dasharray': OVERLAY_DASH_TREND,
-      'stroke-linecap': 'round',
-   })
+      const startX = xBand.center(0)
+      const endX = xBand.center(lastIndex)
+      const startY = yScale(fit.intercept)
+      const endY = yScale(fit.intercept + fit.slope * lastIndex)
+
+      // Analytic clamp to the plot rect (NO SVG clipPath, a fixed id would collide across the many
+      // chart SVGs inlined into one exported HTML doc): clip the segment to the plot's vertical band.
+      const clipped = clipSegmentToBand(startX, startY, endX, endY, plot.y, plot.y + plot.height)
+      if (clipped === null) return '' // the whole segment sits off the plot vertically
+
+      const line = selfClosingElement('line', {
+         x1: clipped.x1,
+         y1: clipped.y1,
+         x2: clipped.x2,
+         y2: clipped.y2,
+         stroke: color,
+         'stroke-width': OVERLAY_STROKE_WIDTH,
+         'stroke-dasharray': OVERLAY_DASH_TREND,
+         'stroke-linecap': 'round',
+      })
+      const label = overlay.label && overlay.label !== ''
+         ? overlay.label
+         : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
+      // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
+      const labelText = overlayLabel(
+         Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+         clipped.y2 - OVERLAY_LABEL_GAP,
+         'end',
+         label,
+         theme)
+      return element('g', {}, line + labelText)
+   }
+
+   // Non-linear: fit over (index, value) points, then sample the fitted curve across the index domain.
+   if (lastIndex <= 0) return '' // a single category has no index range to sample a curve across
+   const points = indexValuePoints(oneSeries.values)
+   const trend = computeTrendFit(fitType, overlay.degree, points)
+   if (trend === null) return ''
+   const runs = sampleTrendCurveRuns(
+      trend.predict, 0, lastIndex, index => interpolateBandCenter(xBand, index), yScale, plot)
    const label = overlay.label && overlay.label !== ''
       ? overlay.label
-      : defaultTrendLabel(fit.slope, fit.intercept, fit.rSquared, overlay.showEquation ?? false)
-   // Anchor the label at the clipped right end, nudged inward so it never spills past the plot edge.
-   const labelText = overlayLabel(
-      Math.min(clipped.x2, plot.x + plot.width) - OVERLAY_LABEL_GAP,
-      clipped.y2 - OVERLAY_LABEL_GAP,
-      'end',
-      label,
-      theme)
-   return element('g', {}, line + labelText)
+      : nonLinearTrendLabel(trend.equationLabel, trend.rSquared, overlay.showEquation ?? false)
+   return drawTrendCurveRuns(runs, label, plot, color, theme)
 }
 
 /** Draw a full-width horizontal dashed overlay at `lineY` with a right-anchored haloed label. */
@@ -1540,6 +1643,369 @@ function defaultTrendLabel(
    const sign = intercept < 0 ? '-' : '+'
    const equation = `y = ${formatNumber(roundToDigits(slope, 3))}x ${sign} ${formatNumber(roundToDigits(Math.abs(intercept), 3))}`
    return `${equation} · ${rSquaredText}`
+}
+
+// ================================================================
+// # ANALYTICAL OVERLAYS (bands, moving average, non-linear trends)
+// ================================================================
+// The newer overlay kinds share the same styling language as the mean/trend originals above (the
+// dashed OVERLAY_DASH_TREND stroke, the haloed overlayLabel, the analytic clipPixelRunsToBand clip,
+// resolveSeriesColor for the hue), so only their computation differs, not their look. The band kinds
+// add ONE new primitive (a filled horizontal region); everything else reuses what is already here.
+
+/** Collect a value series' finite cells as (index, value) points, for a category-index curve fit. */
+function indexValuePoints(values: readonly (number | null)[]): Point[] {
+   const points: Point[] = []
+   for (let index = 0; index < values.length; index++) {
+      const value = values[index]
+      if (value === null || value === undefined || !Number.isFinite(value)) continue
+      points.push({ x: index, y: value })
+   }
+   return points
+}
+
+/** Resolve a polynomial trend's degree to a sane integer in 2..5 (unset => GRAPH_DEFAULT_TREND_DEGREE). */
+function clampTrendDegree(degree: number | undefined): number {
+   const resolved = degree ?? GRAPH_DEFAULT_TREND_DEGREE
+   if (!Number.isFinite(resolved)) return GRAPH_DEFAULT_TREND_DEGREE
+   return Math.min(5, Math.max(2, Math.round(resolved)))
+}
+
+/** Resolve a stddev band's sigma multiplier (unset/non-positive => GRAPH_DEFAULT_OVERLAY_SIGMA). */
+function clampOverlaySigma(sigma: number | undefined): number {
+   const resolved = sigma ?? GRAPH_DEFAULT_OVERLAY_SIGMA
+   return Number.isFinite(resolved) && resolved > 0 ? resolved : GRAPH_DEFAULT_OVERLAY_SIGMA
+}
+
+/** A resolved non-linear trend fit: a sampler, its formatted equation, and its R^2. */
+interface TrendCurveFit {
+   predict: (x: number) => number
+   equationLabel: string
+   rSquared: number
+}
+
+/**
+ * Fit a non-linear trend model to `points` and return a sampler + a formatted equation label + R^2,
+ * or null when the model cannot be fit (too few points, a singular system, non-positive values a
+ * log/power model needs, ...). Linear trends never reach here (the callers draw those as a straight
+ * segment); this is only the polynomial / exponential / logarithmic / power path.
+ */
+function computeTrendFit(
+   fitType: Exclude<NonNullable<Overlay['fit']>, 'linear'>,
+   degree: number | undefined,
+   points: readonly Point[],
+): TrendCurveFit | null {
+   if (fitType === 'polynomial') {
+      const fit = polynomialFit(points, clampTrendDegree(degree))
+      if (fit === null) return null
+      return {
+         predict: x => evaluatePolynomial(fit.coefficients, x),
+         equationLabel: formatPolynomialEquation(fit.coefficients),
+         rSquared: fit.rSquared,
+      }
+   }
+   if (fitType === 'exponential') {
+      const fit = exponentialFit(points)
+      if (fit === null) return null
+      return {
+         predict: x => fit.a * Math.exp(fit.b * x),
+         equationLabel: formatExponentialEquation(fit.a, fit.b),
+         rSquared: fit.rSquared,
+      }
+   }
+   if (fitType === 'logarithmic') {
+      const fit = logarithmicFit(points)
+      if (fit === null) return null
+      return {
+         predict: x => fit.a + fit.b * Math.log(x),
+         equationLabel: formatLogarithmicEquation(fit.a, fit.b),
+         rSquared: fit.rSquared,
+      }
+   }
+   // 'power'
+   const fit = powerFit(points)
+   if (fit === null) return null
+   return {
+      predict: x => fit.a * Math.pow(x, fit.b),
+      equationLabel: formatPowerEquation(fit.a, fit.b),
+      rSquared: fit.rSquared,
+   }
+}
+
+/** Format a polynomial (ascending-power coefficients) as `y = c2x^2 + c1x + c0`, matching the linear
+ *  trend label's no-space, rounded-to-3-digits style. */
+function formatPolynomialEquation(coefficients: readonly number[]): string {
+   const terms: string[] = []
+   for (let power = coefficients.length - 1; power >= 0; power--) {
+      const coefficient = roundToDigits(coefficients[power], 3)
+      const magnitude = formatNumber(Math.abs(coefficient))
+      const suffix = power === 0 ? '' : power === 1 ? 'x' : `x^${power}`
+      const body = `${magnitude}${suffix}`
+      if (terms.length === 0) {
+         terms.push(coefficient < 0 ? `-${body}` : body)
+      } else {
+         terms.push(coefficient < 0 ? `- ${body}` : `+ ${body}`)
+      }
+   }
+   return `y = ${terms.join(' ')}`
+}
+
+/** Format an exponential fit as `y = a e^(bx)`. */
+function formatExponentialEquation(a: number, b: number): string {
+   return `y = ${formatNumber(roundToDigits(a, 3))} e^(${formatNumber(roundToDigits(b, 3))}x)`
+}
+
+/** Format a logarithmic fit as `y = a + b ln(x)` (the sign folds into the operator like the linear label). */
+function formatLogarithmicEquation(a: number, b: number): string {
+   const sign = b < 0 ? '-' : '+'
+   return `y = ${formatNumber(roundToDigits(a, 3))} ${sign} ${formatNumber(roundToDigits(Math.abs(b), 3))} ln(x)`
+}
+
+/** Format a power fit as `y = a x^b`. */
+function formatPowerEquation(a: number, b: number): string {
+   return `y = ${formatNumber(roundToDigits(a, 3))} x^${formatNumber(roundToDigits(b, 3))}`
+}
+
+/** The non-linear trend label: `R² 0.94`, with the fitted equation prepended when `showEquation`. */
+function nonLinearTrendLabel(equationLabel: string, rSquared: number, showEquation: boolean): string {
+   const rSquaredText = `R² ${formatNumber(roundToDigits(rSquared, 3))}`
+   return showEquation ? `${equationLabel} · ${rSquaredText}` : rSquaredText
+}
+
+/**
+ * Sample a fitted curve across the data x-range `[xStart, xEnd]` into clipped pixel runs. `xToPixel`
+ * maps a data x to a pixel x (the band-center interpolation for a categorical chart, `xScale` for a
+ * scatter), `yScale` maps the predicted value; a non-finite prediction (e.g. `ln` of a negative
+ * sampled x) becomes a gap. The result is trimmed to the plot rect by the shared clip runner.
+ */
+function sampleTrendCurveRuns(
+   predict: (x: number) => number,
+   xStart: number,
+   xEnd: number,
+   xToPixel: (x: number) => number,
+   yScale: (value: number) => number,
+   plot: OverlayPlot,
+): { x: number; y: number }[][] {
+   if (!(xEnd > xStart)) return []
+   const step = (xEnd - xStart) / (TREND_CURVE_SAMPLE_COUNT - 1)
+   const pixelPoints: ({ x: number; y: number } | null)[] = []
+   for (let sampleIndex = 0; sampleIndex < TREND_CURVE_SAMPLE_COUNT; sampleIndex++) {
+      const xValue = xStart + sampleIndex * step
+      const value = predict(xValue)
+      if (!Number.isFinite(value)) { pixelPoints.push(null); continue }
+      pixelPoints.push({ x: xToPixel(xValue), y: yScale(value) })
+   }
+   return clipPixelRunsToBand(pixelPoints, plot)
+}
+
+/**
+ * Draw a set of clipped pixel runs as dashed series-hued polylines (the trend/curve/moving-average
+ * look), with the haloed label anchored at the last drawn point. Runs shorter than 2 points draw
+ * nothing (a lone point cannot form a polyline); an empty set draws nothing at all. Shared by the
+ * non-linear trend curve AND the moving-average polyline, which look identical.
+ */
+function drawTrendCurveRuns(
+   runs: { x: number; y: number }[][],
+   label: string,
+   plot: OverlayPlot,
+   color: string,
+   theme: GraphTheme,
+): string {
+   const drawnRuns = runs.filter(run => run.length >= 2)
+   if (drawnRuns.length === 0) return ''
+   const parts: string[] = []
+   for (const run of drawnRuns) {
+      const pointsAttribute = run.map(point => `${roundForPath(point.x)},${roundForPath(point.y)}`).join(' ')
+      parts.push(selfClosingElement('polyline', {
+         points: pointsAttribute,
+         fill: 'none',
+         stroke: color,
+         'stroke-width': OVERLAY_STROKE_WIDTH,
+         'stroke-dasharray': OVERLAY_DASH_TREND,
+         'stroke-linejoin': 'round',
+         'stroke-linecap': 'round',
+      }))
+   }
+   const lastRun = drawnRuns[drawnRuns.length - 1]
+   const lastPoint = lastRun[lastRun.length - 1]
+   parts.push(overlayLabel(
+      Math.min(lastPoint.x, plot.x + plot.width) - OVERLAY_LABEL_GAP,
+      lastPoint.y - OVERLAY_LABEL_GAP,
+      'end',
+      label,
+      theme))
+   return element('g', {}, parts.join(''))
+}
+
+/**
+ * The one new drawing primitive: a filled horizontal summary BAND spanning the full plot width
+ * between two values, at low opacity in the target series' hue, with faint dashed edge lines marking
+ * the two boundaries and a haloed label just inside the top edge. Clamped to the visible domain so a
+ * band running past an axis edge still fills the visible part; a band wholly outside draws nothing.
+ */
+function renderBandOverlay(
+   lowValue: number,
+   highValue: number,
+   label: string,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   color: string,
+   theme: GraphTheme,
+): string {
+   if (!Number.isFinite(lowValue) || !Number.isFinite(highValue)) return ''
+   const low = Math.min(lowValue, highValue)
+   const high = Math.max(lowValue, highValue)
+   const visibleLow = Math.max(low, niceMin)
+   const visibleHigh = Math.min(high, niceMax)
+   if (visibleHigh <= visibleLow) return '' // the whole band sits outside the visible domain
+   const topY = yScale(visibleHigh)
+   const bottomY = yScale(visibleLow)
+   const rectY = Math.min(topY, bottomY)
+   const rectHeight = Math.abs(bottomY - topY)
+
+   const parts: string[] = []
+   parts.push(selfClosingElement('rect', {
+      x: plot.x,
+      y: rectY,
+      width: plot.width,
+      height: rectHeight,
+      fill: color,
+      'fill-opacity': OVERLAY_BAND_FILL_OPACITY,
+      stroke: 'none',
+   }))
+   // Edge lines only where a boundary actually falls inside the visible domain (a clamped-off edge
+   // would otherwise draw a stray line at the axis limit).
+   if (high <= niceMax && high >= niceMin) parts.push(bandEdgeLine(yScale(high), plot, color))
+   if (low >= niceMin && low <= niceMax) parts.push(bandEdgeLine(yScale(low), plot, color))
+   parts.push(overlayLabel(
+      plot.x + plot.width - OVERLAY_LABEL_GAP,
+      rectY + TICK_FONT_SIZE,
+      'end',
+      label,
+      theme))
+   return element('g', {}, parts.join(''))
+}
+
+/** A faint dashed boundary line for a summary band (recessive, so the fill carries the band). */
+function bandEdgeLine(lineY: number, plot: OverlayPlot, color: string): string {
+   return selfClosingElement('line', {
+      x1: plot.x,
+      y1: lineY,
+      x2: plot.x + plot.width,
+      y2: lineY,
+      stroke: color,
+      'stroke-width': 1,
+      'stroke-opacity': OVERLAY_BAND_EDGE_OPACITY,
+      'stroke-dasharray': OVERLAY_DASH_LINE,
+      'stroke-linecap': 'round',
+   })
+}
+
+/** A std-dev band at mean +/- sigma*stddev of a value list, drawn as a filled region. Nothing when
+ *  the mean or stddev is undefined (fewer than 2 finite values). */
+function renderStddevBandOverlay(
+   overlay: Overlay,
+   values: readonly (number | null)[],
+   seriesName: string,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const meanValue = meanOf(values)
+   const standardDeviation = stddevOf(values)
+   if (meanValue === null || standardDeviation === null) return ''
+   const sigma = clampOverlaySigma(overlay.sigma)
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultStddevLabel(seriesName, sigma, singleSeries)
+   return renderBandOverlay(
+      meanValue - sigma * standardDeviation, meanValue + sigma * standardDeviation,
+      label, plot, yScale, niceMin, niceMax, color, theme)
+}
+
+/** A min-max band spanning a value list's full extent, drawn as a filled region. Nothing when there
+ *  is no finite value to bound. */
+function renderRangeBandOverlay(
+   overlay: Overlay,
+   values: readonly (number | null)[],
+   seriesName: string,
+   plot: OverlayPlot,
+   yScale: (value: number) => number,
+   niceMin: number,
+   niceMax: number,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const range = extentOf(values)
+   if (range === null) return ''
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultRangeLabel(seriesName, singleSeries)
+   return renderBandOverlay(range.min, range.max, label, plot, yScale, niceMin, niceMax, color, theme)
+}
+
+/** `±1σ`, or `Revenue · ±1σ` when multi-series. */
+function defaultStddevLabel(seriesName: string, sigma: number, singleSeries: boolean): string {
+   const stat = `±${formatNumber(sigma)}σ`
+   return singleSeries || seriesName === '' ? stat : `${seriesName} · ${stat}`
+}
+
+/** `min-max`, or `Revenue · min-max` when multi-series. */
+function defaultRangeLabel(seriesName: string, singleSeries: boolean): string {
+   const stat = 'min-max'
+   return singleSeries || seriesName === '' ? stat : `${seriesName} · ${stat}`
+}
+
+/** `moving avg 3`, or `Revenue · moving avg 3` when multi-series. */
+function defaultMovingAverageLabel(seriesName: string, window: number, singleSeries: boolean): string {
+   const stat = `moving avg ${formatNumber(window)}`
+   return singleSeries || seriesName === '' ? stat : `${seriesName} · ${stat}`
+}
+
+/**
+ * Map a value list's trailing moving average to pixel points (a gap where the average is undefined),
+ * ready for the shared clip runner. `indexToPixelX` positions each averaged point (the band center
+ * for a categorical chart, `xScale(sortedX)` for a scatter traced in x order).
+ */
+function movingAveragePixelPoints(
+   values: readonly (number | null)[],
+   window: number | undefined,
+   indexToPixelX: (index: number) => number,
+   yScale: (value: number) => number,
+): ({ x: number; y: number } | null)[] {
+   const averaged = movingAverage(values, window ?? GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW)
+   return averaged.map((value, index) =>
+      value === null || !Number.isFinite(value) ? null : { x: indexToPixelX(index), y: yScale(value) })
+}
+
+/** A trailing moving-average polyline: clip the pre-mapped pixel points to the plot and draw them
+ *  with the same dashed look the trend curve uses. Nothing when fewer than 2 averaged points fall
+ *  inside the plot. */
+function renderMovingAverageOverlay(
+   overlay: Overlay,
+   pixelPoints: ({ x: number; y: number } | null)[],
+   seriesName: string,
+   window: number | undefined,
+   plot: OverlayPlot,
+   color: string,
+   singleSeries: boolean,
+   theme: GraphTheme,
+): string {
+   const runs = clipPixelRunsToBand(pixelPoints, plot)
+   const resolvedWindow = Number.isFinite(window)
+      ? Math.max(2, Math.floor(window as number))
+      : GRAPH_DEFAULT_MOVING_AVERAGE_WINDOW
+   const label = overlay.label && overlay.label !== ''
+      ? overlay.label
+      : defaultMovingAverageLabel(seriesName, resolvedWindow, singleSeries)
+   return drawTrendCurveRuns(runs, label, plot, color, theme)
 }
 
 /**
