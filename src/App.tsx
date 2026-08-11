@@ -273,6 +273,11 @@ export default function App() {
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
    const { meta, sections, docTheme, docAccent, presentation, format, documentId, saveStatus } = activeDocument
 
+   // A scratch tab (no binder record yet) that holds real content: closing it would lose it, and no
+   // autosave is running. Drives the persistent red "Never saved" indicator. Gated on isEmptyDocument
+   // so a pristine blank scratch tab stays quiet (nothing to warn about), matching closeTab's guard.
+   const activeNeverSaved = documentId === null && !isEmptyDocument(activeDocument)
+
    // Binder records that currently have an open tab (for the open-vs-active card highlight).
    const openDocumentIds = openDocuments
       .map(document => document.documentId)
@@ -431,7 +436,8 @@ export default function App() {
 
    // Persist the open-tab set + active tab (only after hydration, so the initial blank can't
    // overwrite the stored set before it has been read). Tabs without a binder id aren't listed;
-   // once autosave assigns one this re-runs and includes them. Also retires the legacy pointer key.
+   // a scratch tab only earns an id (and a slot here) once an explicit Save binds it to a record,
+   // which re-runs this and includes it. Also retires the legacy pointer key.
    useEffect(() => {
       if (!hasHydratedRef.current) return
       const documentIds = openDocuments
@@ -441,7 +447,10 @@ export default function App() {
       localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
    }, [openDocuments, documentId])
 
-   // Autosave on any document change, debounced 1.5s, persisted to IndexedDB.
+   // Autosave on any document change, debounced 1.5s, persisted to IndexedDB. Runs ONLY for a tab
+   // already bound to a binder record (documentId set). A scratch tab (documentId null) persists
+   // nothing here, it stays in memory until an explicit Save (File -> Save / Save As) binds it via
+   // persistNow, which flips its documentId and hands autosave over from there.
    useEffect(() => {
       if (skipNextAutosaveRef.current) {
          skipNextAutosaveRef.current = false
@@ -452,6 +461,14 @@ export default function App() {
          setTabSaveStatus(activeTabKeyRef.current, 'clean')
          return
       }
+      // A scratch tab has no record yet. Persist nothing, schedule nothing, mark nothing: it stays
+      // a purely in-memory document (surfaced by the red "Never saved" indicator) until the user
+      // explicitly saves it. The dependency list re-runs this on the next edit, still a no-op while
+      // scratch, so there is no timer to clean up either. Read the id off the ref (kept current for
+      // this render) so binding it later via persistNow doesn't re-trigger this effect with a
+      // spurious save.
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      if (!activeTab || activeTab.documentId === null) return
       // Capture the tab that originated this edit. The resolved save promotes/marks THIS tab by key,
       // never whatever happens to be active when the promise settles.
       const originatingTabKey = activeTabKeyRef.current
@@ -488,17 +505,21 @@ export default function App() {
       return () => clearTimeout(clearTimer)
    }, [saveStatus, setTabSaveStatus])
 
-   // Browser tab title, asterisk while dirty
+   // Browser tab title, asterisk while there are changes on disk: a bound tab mid-save cycle, or a
+   // scratch tab that has never been saved at all.
    useEffect(() => {
       const baseTitle = meta.title ? `${meta.title} - Documinter` : 'Documinter'
-      document.title  = saveStatus !== 'clean' ? `* ${baseTitle}` : baseTitle
-   }, [saveStatus, meta.title])
+      document.title  = (saveStatus !== 'clean' || activeNeverSaved) ? `* ${baseTitle}` : baseTitle
+   }, [saveStatus, activeNeverSaved, meta.title])
 
-   // Cancel any pending autosave and write the active document immediately. Awaitable so callers
-   // (manual save, opening the binder, Save As) can flush before continuing. Returns the binder id
-   // the active tab was saved under (newly assigned if it had none), or null on failure, callers
-   // that need the id can use it directly rather than re-reading openDocumentsRef, whose promotion
-   // hasn't synced back to the ref yet at the await boundary.
+   // Cancel any pending autosave and write the active document immediately. This is the SINGLE
+   // explicit binding point: for a scratch tab (documentId null) it creates the binder record and
+   // assigns the id, turning autosave on from there. Awaitable so callers (manual save, Save As) can
+   // flush before continuing. Returns the binder id the active tab was saved under (newly assigned if
+   // it had none), or null on failure, callers that need the id can use it directly rather than
+   // re-reading openDocumentsRef, whose promotion hasn't synced back to the ref yet at the await
+   // boundary. Implicit-flush callers (opening the binder, tab-switch drain) must gate on
+   // documentId !== null so they never mint a record for a scratch tab.
    const persistNow = useCallback(async (): Promise<string | null> => {
       if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
       const flushTabKey = activeTabKeyRef.current
@@ -607,8 +628,10 @@ export default function App() {
 
    // Open the binder, flush any pending changes first so the current document appears up-to-date
    // in the list, resolve which folder it lives in, then mount the binder in place of the editor.
+   // Only a BOUND tab flushes: a scratch tab (documentId null) has no record to refresh, and opening
+   // the binder must never mint one behind the user's back.
    const handleOpenBinder = useCallback(async () => {
-      if (saveStatus !== 'clean') await persistNow()
+      if (documentId !== null && saveStatus !== 'clean') await persistNow()
       let folder: BinderFolderRecord | null = null
       const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
       const openId = activeTab?.documentId ?? null
@@ -620,16 +643,17 @@ export default function App() {
       }
       setBinderInitialFolder(folder)
       setBinderOpen(true)
-   }, [saveStatus, persistNow])
+   }, [documentId, saveStatus, persistNow])
 
    // Pending action awaiting unsaved-changes confirmation: a dirty tab close (discard-and-close).
    // Opening a doc / creating one adds or focuses a tab, discarding nothing, so neither needs a guard.
    const [pendingNavigation, setPendingNavigation] = useState<{ kind: 'close-tab'; tabKey: string; reason: 'dirty' | 'unsaved-open' } | null>(null)
 
    // Close a tab, guarding two ways data could be lost:
-   //  - dirty/saving: unsaved edits (discard-and-close).
-   //  - a clean tab opened from a file but never saved to the binder (documentId null + real content):
-   //    it has no stored record, so closing it loses it. The blank scaffold has nothing to lose.
+   //  - dirty/saving: unsaved edits on a bound tab (discard-and-close).
+   //  - a scratch tab never saved to the binder (documentId null + real content), whatever its origin
+   //    (a brand-new doc, a template instance, or a file opened from disk): it has no stored record,
+   //    so closing it loses it. The blank scaffold has nothing to lose.
    // Anything safely stored (a binder record, or the empty blank) closes immediately.
    const closeTab = useCallback((tabKey: string) => {
       const target = openDocumentsRef.current.find(document => document.tabKey === tabKey)
@@ -714,21 +738,41 @@ export default function App() {
       showToast(t.templateApplied, { type: 'success' })
    }, [commitActiveEdit, t, showToast])
 
-   // Duplicate a tab's document via the binder and open the copy as a new tab. The copy is made from
-   // the binder record, so the source must be persisted first: the active tab may hold unsaved edits
-   // or (if pristine) have no record yet, persist it and use persistNow's returned id (its promotion
-   // hasn't synced to openDocumentsRef at this await boundary). A non-active pristine tab has nothing
-   // stored to copy, so it no-ops.
+   // Duplicate a tab's document and open the copy as a new tab. A BOUND tab is copied from its binder
+   // record: the active bound tab flushes its unsaved edits first (persistNow's returned id, since its
+   // promotion hasn't synced to openDocumentsRef at this await boundary). A non-active tab with no
+   // record has nothing stored to copy, so it no-ops.
+   //
+   // The active SCRATCH tab has no record and must not mint one just to be duplicated. It is cloned in
+   // memory into a fresh scratch tab instead, deep-copied so the two documents never share references,
+   // and the copy stays unsaved (documentId null) exactly like its source until an explicit save.
    const handleDuplicateTab = useCallback(async (sourceTabKey: string) => {
       const sourceTab = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)
       if (!sourceTab) return
+      if (sourceTab.tabKey === activeTabKeyRef.current && sourceTab.documentId === null) {
+         const clonedTab: OpenDocument = {
+            tabKey:                crypto.randomUUID(),
+            meta:                  structuredClone(sourceTab.meta),
+            sections:              structuredClone(sourceTab.sections),
+            docTheme:              sourceTab.docTheme,
+            docAccent:             sourceTab.docAccent,
+            presentation:          sourceTab.presentation ? structuredClone(sourceTab.presentation) : undefined,
+            format:                sourceTab.format ? structuredClone(sourceTab.format) : undefined,
+            documentId:            null,
+            saveStatus:            'clean',
+            pendingNewDocFolderId: sourceTab.pendingNewDocFolderId,
+         }
+         setOpenDocuments(documents => [...documents, clonedTab])
+         void activateTab(clonedTab.tabKey)
+         return
+      }
       const sourceDocumentId = sourceTab.tabKey === activeTabKeyRef.current
-         ? ((sourceTab.saveStatus !== 'clean' || sourceTab.documentId === null) ? await persistNow() : sourceTab.documentId)
+         ? (sourceTab.saveStatus !== 'clean' ? await persistNow() : sourceTab.documentId)
          : sourceTab.documentId
       if (!sourceDocumentId) return
       const duplicateId = await duplicateDocument(sourceDocumentId)
       await handleOpenDocument(duplicateId)
-   }, [persistNow, handleOpenDocument])
+   }, [persistNow, handleOpenDocument, activateTab])
 
    // Save As opens a dialog to name the copy + pick a destination folder. The fork happens on
    // confirm (handleConfirmSaveAs); cancel does nothing. The picker opens at the document's current
@@ -976,11 +1020,12 @@ export default function App() {
    }, [commitActiveEdit])
 
    // Open freshly-loaded content (File -> Open: JSON backup / Markdown / Mintdown) in a NEW tab,
-   // activating it. Discards nothing (it never replaces another tab). The new tab is NOT yet a binder
-   // record (documentId null), so the first edit forks a fresh IndexedDB record; a JSON backup's
-   // presentation restores its saved theme / accent / extras, a plain Markdown/Mintdown import lands
-   // with the document defaults. Opening from a file never auto-creates a binder entry (Open is not
-   // Import); closeTab warns before an unsaved opened tab is lost.
+   // activating it. Discards nothing (it never replaces another tab). The new tab is NOT a binder
+   // record (documentId null) and stays that way: editing it no longer forks a record, only an
+   // explicit Save (File -> Save / Save As) binds it. A JSON backup's presentation restores its saved
+   // theme / accent / extras, a plain Markdown/Mintdown import lands with the document defaults.
+   // Opening from a file never auto-creates a binder entry (Open is not Import); it reads as
+   // "Never saved" and closeTab warns before the unsaved tab is lost.
    const openLoadedInNewTab = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
       const newTab: OpenDocument = {
          tabKey:    crypto.randomUUID(),
@@ -990,7 +1035,7 @@ export default function App() {
          docAccent: presentation ? presentation.docAccent : DEFAULT_DOC_ACCENT,
          presentation: presentation ? presentation.presentation : undefined,
          format:       presentation ? presentation.format       : undefined,
-         documentId:            null,   // not yet a binder record; the first edit forks a fresh one
+         documentId:            null,   // not a binder record; stays scratch until an explicit Save binds it
          saveStatus:            'clean',
          pendingNewDocFolderId: null,
       }
@@ -1147,6 +1192,7 @@ export default function App() {
             previewMode={mode}
             paneLayout={paneLayout}
             saveStatus={saveStatus}
+            neverSaved={activeNeverSaved}
             onLoad={handleLoad}
             onToggleTheme={toggleTheme}
             onSetMode={handleSetMode}

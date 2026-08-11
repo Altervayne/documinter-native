@@ -29,7 +29,7 @@ import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 
 // -- Icon Imports --
-import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck, Undo2, Redo2 } from 'lucide-react'
+import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck, TriangleAlert, Undo2, Redo2 } from 'lucide-react'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
@@ -66,18 +66,33 @@ const OPEN_FILE_ACCEPT = '.json,.documint,.mint,.mintd,.mintdown,.md,.markdown,.
 
 interface SaveStatusIndicatorProps {
    status:      SaveStatus
+   /** The active tab is a scratch document with real content that has never been saved to the binder.
+    *  Takes precedence over `status` and shows a persistent red warning that never fades. */
+   neverSaved:  boolean
    labelDirty:  string
    labelSaving: string
    labelSaved:  string
+   labelNever:  string
 }
 
-function SaveStatusIndicator({ status, labelDirty, labelSaving, labelSaved }: SaveStatusIndicatorProps) {
+function SaveStatusIndicator({ status, neverSaved, labelDirty, labelSaving, labelSaved, labelNever }: SaveStatusIndicatorProps) {
    // Remember the last non-clean status so the pill keeps showing that label
    // while it fades out after the status returns to 'clean'. Uses React's
    // "adjust state during render" pattern, so no ref read/write happens during render.
    const [displayed, setDisplayed] = useState<'dirty' | 'saving' | 'saved'>('dirty')
 
    if (status !== 'clean' && status !== displayed) setDisplayed(status)
+
+   // A never-saved scratch tab is a standing risk (no record, no autosave), so its warning bypasses
+   // the fade state machine entirely: always rendered, full opacity, red, until the doc is saved.
+   if (neverSaved) {
+      return (
+         <div className="flex items-center gap-1.5 font-mono text-xs select-none pointer-events-none text-red">
+            <TriangleAlert size={12} />
+            <span>{labelNever}</span>
+         </div>
+      )
+   }
 
    const isVisible = status !== 'clean'
 
@@ -117,6 +132,9 @@ interface HeaderMenuBarProps {
    previewMode:      Mode
    paneLayout:       PaneNode
    saveStatus:       SaveStatus
+   /** Active tab is a scratch document with real content, never saved to the binder. Shows the
+    *  persistent red "Never saved" indicator instead of the ordinary save-status pill. */
+   neverSaved:       boolean
    onLoad:           (state: DocState, presentation: DocPresentation) => void
    onToggleTheme:    () => void
    onSetMode:        (mode: Mode) => void
@@ -169,7 +187,7 @@ interface HeaderMenuBarProps {
 // #############
 
 export function HeaderMenuBar({
-   mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus,
+   mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus, neverSaved,
    onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate,
    onUndo, onRedo, canUndo, canRedo, onNew, onAddSection, onToggleBinder,
    onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onDocThemeChange, onDocAccentChange,
@@ -340,9 +358,11 @@ export function HeaderMenuBar({
             <div className="shrink-0 flex items-center mr-1">
                <SaveStatusIndicator
                   status={saveStatus}
+                  neverSaved={neverSaved}
                   labelDirty={t.unsavedChanges}
                   labelSaving={t.autosaving}
                   labelSaved={t.saved}
+                  labelNever={t.neverSaved}
                />
             </div>
 

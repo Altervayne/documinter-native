@@ -12,6 +12,9 @@ import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 // -- Type Imports --
 import type { DocMeta, OpenDocument } from '../types'
 
+// -- Lib Imports --
+import { isEmptyDocument } from '../lib/document'
+
 // -- Molecule Imports --
 import { TabContextMenu } from '../molecules/TabContextMenu'
 
@@ -54,7 +57,11 @@ function TabChipContent({
    inputRef, onClose, onDraftChange, onTitleBlur, onTitleKeyDown,
 }: TabChipContentProps) {
    const isDirty = openDocument.saveStatus !== 'clean'
-   const title   = openDocument.meta.title || placeholder
+   // A scratch tab with real content has never been saved (no record, no autosave): flag its dot red,
+   // the same danger colour as the header's "Never saved" pill. A pristine blank scratch tab shows no
+   // dot at all, same as a clean saved tab.
+   const neverSaved = openDocument.documentId === null && !isEmptyDocument(openDocument)
+   const title      = openDocument.meta.title || placeholder
 
    return (
       <>
@@ -77,7 +84,9 @@ function TabChipContent({
             </span>
          )}
 
-         {isDirty && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-yellow" />}
+         {neverSaved
+            ? <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-red" />
+            : isDirty && <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-yellow" />}
 
          <button
             type="button"
