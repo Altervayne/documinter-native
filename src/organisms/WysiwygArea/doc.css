@@ -550,6 +550,17 @@
   border-radius: inherit;
 }
 
+/* Clips the watermark to the sheet without touching .doc-page's own overflow (that would also clip
+   the block drag-grips at small margins). NOT transformed, unlike .doc-watermark itself, so a rotated
+   or offset single watermark (and the tiled pattern svg) never spills past the sheet edges. */
+.doc-watermark-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
 /* Page header */
 .doc-render .page-header   { margin-bottom: 3rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e5e7eb; }
 .doc-render .page-module   { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--doc-accent, var(--color-accent)); margin-bottom: 0.4rem; }

@@ -10,7 +10,12 @@
  *
  * The pure size math (fitWithinLongestEdge) is factored out and unit-tested; the canvas encode is
  * browser-only (jsdom has no real canvas) and therefore not covered by unit tests.
+ *
+ * SVGs and animated images (GIF/WebP/APNG) skip the canvas re-encode entirely: it would rasterize
+ * vector art and flatten animation to a single frame, so those are embedded as raw bytes instead.
  */
+
+import { isSvgFile, isAnimatedImageBytes, readFileAsDataUrl } from './imageFormat'
 
 /** Default cap on the longest edge of a downscaled image, in device pixels. */
 export const DEFAULT_MAX_EDGE = 2048
@@ -64,8 +69,26 @@ export interface DownscaledImage {
  * and the smaller is kept; an opaque source is re-encoded as WebP and JPEG and the smaller is kept.
  * WebP falls out of the comparison automatically on the rare browser that can't encode it (the
  * toDataURL falls back to PNG, which the size compare then simply doesn't prefer over the real PNG).
+ *
+ * An SVG or animated source (GIF/WebP/APNG) instead embeds the original bytes untouched, and reads
+ * width/height off the decoded image rather than a canvas so the watermark tile keeps a sane aspect
+ * ratio (an SVG with no intrinsic size falls back to a square of maxEdge).
  */
-export function downscaleImageToDataUrl(file: File, maxEdge = DEFAULT_MAX_EDGE): Promise<DownscaledImage> {
+export async function downscaleImageToDataUrl(file: File, maxEdge = DEFAULT_MAX_EDGE): Promise<DownscaledImage> {
+   const isSvg = isSvgFile(file)
+   const bytes = isSvg ? null : new Uint8Array(await file.arrayBuffer())
+   const embedRaw = isSvg || isAnimatedImageBytes(bytes!, file.type)
+
+   if (embedRaw) {
+      const rawDataUrl = await readFileAsDataUrl(file)
+      const { width, height } = await decodeImageSize(rawDataUrl)
+      return {
+         src:    rawDataUrl,
+         width:  width  > 0 ? width  : maxEdge,
+         height: height > 0 ? height : maxEdge,
+      }
+   }
+
    return new Promise((resolve, reject) => {
       const image = new Image()
       const url = URL.createObjectURL(file)

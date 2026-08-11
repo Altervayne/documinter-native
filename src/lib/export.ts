@@ -329,6 +329,9 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
                   position: absolute; inset: 0; pointer-events: none; z-index: 0;
                   background-repeat: no-repeat;
             }
+            .doc-watermark-clip {
+                  position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0;
+            }
             .doc-card > .doc-render { position: relative; z-index: 1; }
             .doc-card > .doc-footer { position: relative; z-index: 1; }
    ` : ''
@@ -612,6 +615,7 @@ function buildPagedStyles(
    const watermarkPaged = hasWatermark
       ? `
             .doc-page { position: relative; overflow: hidden; }
+            .doc-watermark-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
             .doc-page > .doc-render { position: relative; z-index: 1; }`
       : ''
 
@@ -837,10 +841,12 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    // Tiled uses the shared SVG <pattern> builder (identical to the editor's render, see
    // WysiwygArea/index.tsx); single uses the positioned/fit CSS layer. The pattern id only needs to
    // be unique within this one exported document, so a short random suffix is enough.
+   // The clip wrapper is NOT transformed, so it clips a rotated/offset single watermark (and the
+   // tiled pattern svg) to the sheet box without touching .doc-card/.doc-page's own overflow rule.
    const watermarkHTML = hasWatermark
-      ? (watermark!.tile
+      ? `<div class="doc-watermark-clip">${watermark!.tile
          ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-${Math.random().toString(36).slice(2, 10)}`)
-         : renderWatermarkLayer(watermark!, theme))
+         : renderWatermarkLayer(watermark!, theme)}</div>`
       : ''
 
    // Build the document-wide `handle -> table cells` catalog ONCE (from all sections, including
@@ -922,9 +928,9 @@ ${blocksHTML}
       ? exportPages.map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
               ? ''
-              : (watermark!.tile
+              : `<div class="doc-watermark-clip">${watermark!.tile
                  ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-p${pageIndex}`)
-                 : renderWatermarkLayer(watermark!, theme))
+                 : renderWatermarkLayer(watermark!, theme)}</div>`
            const slicesHTML = page.slices.map(slice => {
               const sectionIndex = sections.findIndex(section => section.id === slice.section.id)
               const headingHTML  = slice.isSectionStart ? `<h2>${sectionIndex + 1}. ${esc(slice.section.title)}</h2>` : ''

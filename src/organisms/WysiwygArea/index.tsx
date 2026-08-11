@@ -815,28 +815,35 @@ export function WysiwygArea({
    function renderWatermarkLayer(patternId: string): React.ReactNode {
       if (!presentation?.watermark?.src) return null
       const watermark = presentation.watermark
+      // The clip wrapper is NOT transformed, so it clips the rotated inner .doc-watermark (or the
+      // tiled pattern svg) to the sheet box - the sheet's own overflow can't do this (see doc-watermark-clip
+      // in doc.css for why the editor .doc-page can't just get overflow:hidden directly).
       if (watermark.tile) {
          return (
-            <div
-               aria-hidden="true"
-               dangerouslySetInnerHTML={{ __html: renderWatermarkPatternSvg(watermark, docTheme, patternId) }}
-            />
+            <div className="doc-watermark-clip" aria-hidden="true">
+               <div
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: renderWatermarkPatternSvg(watermark, docTheme, patternId) }}
+               />
+            </div>
          )
       }
       const layout = resolveWatermarkLayout(watermark)
       return (
-         <div
-            className="doc-watermark"
-            aria-hidden="true"
-            style={{
-               backgroundImage:    `url("${watermark.src}")`,
-               backgroundRepeat:   layout.repeat,
-               backgroundSize:     layout.size,
-               backgroundPosition: layout.position,
-               opacity:            effectiveWatermarkOpacity(watermark.opacity, docTheme),
-               transform:          watermarkTransform(watermark),
-            }}
-         />
+         <div className="doc-watermark-clip" aria-hidden="true">
+            <div
+               className="doc-watermark"
+               aria-hidden="true"
+               style={{
+                  backgroundImage:    `url("${watermark.src}")`,
+                  backgroundRepeat:   layout.repeat,
+                  backgroundSize:     layout.size,
+                  backgroundPosition: layout.position,
+                  opacity:            effectiveWatermarkOpacity(watermark.opacity, docTheme),
+                  transform:          watermarkTransform(watermark),
+               }}
+            />
+         </div>
       )
    }
 

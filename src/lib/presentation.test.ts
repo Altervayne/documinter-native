@@ -37,6 +37,7 @@ import {
    WATERMARK_MIN_OFFSET,
    WATERMARK_MAX_OFFSET,
    WATERMARK_DEFAULT_OFFSET,
+   WATERMARK_DEFAULT_SIZE,
    HEADER_MIN_MAX_HEIGHT,
    HEADER_MAX_MAX_HEIGHT,
    HEADER_DEFAULT_MAX_HEIGHT,
@@ -313,6 +314,7 @@ describe('makeWatermark', () => {
          aspectRatio: WATERMARK_DEFAULT_ASPECT_RATIO,
          offsetX: WATERMARK_DEFAULT_OFFSET,
          offsetY: WATERMARK_DEFAULT_OFFSET,
+         size: WATERMARK_DEFAULT_SIZE,
       })
    })
    it('captures the picked image aspect ratio when supplied', () => {

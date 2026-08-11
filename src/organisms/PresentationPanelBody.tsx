@@ -24,13 +24,15 @@ import {
    WATERMARK_MAX_SPACING,
    WATERMARK_MIN_OFFSET,
    WATERMARK_MAX_OFFSET,
+   WATERMARK_MIN_SIZE,
+   WATERMARK_MAX_SIZE,
+   WATERMARK_DEFAULT_SIZE,
    WATERMARK_DEFAULT_ASPECT_RATIO,
    HEADER_MIN_MAX_HEIGHT,
    HEADER_MAX_MAX_HEIGHT,
    HEADER_LOGO_MAX_EDGE,
    type DocPresentationExtras,
    type Watermark,
-   type WatermarkFit,
    type WatermarkPosition,
    type Header,
    type HeaderPlacement,
@@ -102,7 +104,6 @@ interface WatermarkSectionProps {
    onChange:  (next: Watermark | undefined) => void
 }
 
-const FIT_OPTIONS: WatermarkFit[] = ['cover', 'contain', 'natural']
 const POSITION_OPTIONS: WatermarkPosition[] = [
    'center', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right',
 ]
@@ -124,11 +125,6 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
       onChange(watermark ? { ...watermark, src, aspectRatio } : makeWatermark(src, aspectRatio))
    }
 
-   const fitLabels: Record<WatermarkFit, string> = {
-      cover:   t.presentationWatermarkFitCover,
-      contain: t.presentationWatermarkFitContain,
-      natural: t.presentationWatermarkFitNatural,
-   }
    const positionLabels: Record<WatermarkPosition, string> = {
       'center':       t.presentationWatermarkPositionCenter,
       'top':          t.presentationWatermarkPositionTop,
@@ -297,17 +293,18 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                   </>
                ) : (
                   <>
-                     {/* Fit + position only apply to a single (non-tiled) image. */}
-                     <label className="presentation-field">
-                        <span className="presentation-field-label">{t.presentationWatermarkFit}</span>
-                        <select
-                           className="presentation-select"
-                           value={watermark.fit}
-                           onChange={event => onChange({ ...watermark, fit: event.target.value as WatermarkFit })}
-                        >
-                           {FIT_OPTIONS.map(fit => <option key={fit} value={fit}>{fitLabels[fit]}</option>)}
-                        </select>
-                     </label>
+                     {/* Size + position only apply to a single (non-tiled) image. Size is a percentage
+                         of the page width; height is left to `auto` so the image's own aspect ratio is
+                         preserved, mirroring the tiled case's tileSize slider. */}
+                     <SliderWithNumberInput
+                        label={t.presentationWatermarkSize}
+                        min={WATERMARK_MIN_SIZE}
+                        max={WATERMARK_MAX_SIZE}
+                        step={1}
+                        value={watermark.size ?? WATERMARK_DEFAULT_SIZE}
+                        unit="%"
+                        onChange={next => onChange({ ...watermark, size: next })}
+                     />
 
                      <label className="presentation-field">
                         <span className="presentation-field-label">{t.presentationWatermarkPosition}</span>

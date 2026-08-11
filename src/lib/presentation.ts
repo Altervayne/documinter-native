@@ -32,7 +32,7 @@ export type WatermarkPosition =
 export interface Watermark {
    src:         string             // base64 data: URL (inlined into every export, no external fetch)
    opacity:     number             // clamped to [WATERMARK_MIN_OPACITY, WATERMARK_MAX_OPACITY]
-   fit:         WatermarkFit       // single-image sizing; ignored when tile = true
+   fit:         WatermarkFit       // single-image sizing fallback; ignored when tile = true OR size is set
    tile:        boolean            // repeat across the page vs one placed image
    position:    WatermarkPosition  // single-image anchor; ignored when tile = true
    rotation:    number             // degrees, clamped to [WATERMARK_MIN_ROTATION, WATERMARK_MAX_ROTATION]; applies to single AND tiled
@@ -42,6 +42,7 @@ export interface Watermark {
    aspectRatio: number             // the source image's natural width / height, so tile height derives from tileSize
    offsetX:     number             // fine horizontal position nudge (px), may be negative; applies to single AND tiled
    offsetY:     number             // fine vertical position nudge (px), may be negative; applies to single AND tiled
+   size?:       number             // percentage of the page width for a SINGLE watermark, clamped to [WATERMARK_MIN_SIZE, WATERMARK_MAX_SIZE]; ignored when tile = true; absent -> falls back to `fit`
 }
 
 // ##########
@@ -172,6 +173,13 @@ export const WATERMARK_MIN_SPACING = 0
 export const WATERMARK_MAX_SPACING = 400
 export const WATERMARK_DEFAULT_SPACING = 40
 
+// Single-image size: a percentage of the page width, the SINGLE (non-tiled) watermark's own explicit
+// sizing knob, mirroring the tiled case's tileSize. Height is left to `auto` so the image's own aspect
+// ratio is preserved (no separate height field needed, unlike the tiled pattern's derived height).
+export const WATERMARK_MIN_SIZE = 5
+export const WATERMARK_MAX_SIZE = 100
+export const WATERMARK_DEFAULT_SIZE = 50
+
 // The source image's natural aspect ratio (width / height), captured at pick time so a rectangular
 // logo never gets squashed into a square tile. Bounded to a sane window against corrupt data.
 export const WATERMARK_MIN_ASPECT_RATIO = 0.05
@@ -229,6 +237,12 @@ export function clampWatermarkTileSize(value: unknown): number {
 export function clampWatermarkSpacing(value: unknown): number {
    if (typeof value !== 'number' || Number.isNaN(value)) return WATERMARK_DEFAULT_SPACING
    return Math.min(WATERMARK_MAX_SPACING, Math.max(WATERMARK_MIN_SPACING, value))
+}
+
+/** Clamp a raw single-watermark size (percentage of the page width) into range, falling back to the default for a non-number. */
+export function clampWatermarkSize(value: unknown): number {
+   if (typeof value !== 'number' || Number.isNaN(value)) return WATERMARK_DEFAULT_SIZE
+   return Math.min(WATERMARK_MAX_SIZE, Math.max(WATERMARK_MIN_SIZE, value))
 }
 
 /** Clamp a raw aspect ratio (width / height) into range, falling back to the default (square) for a non-number. */
@@ -305,16 +319,24 @@ export interface WatermarkLayout {
    position: string
 }
 
-/** Resolve a watermark's fit / tile / position to concrete CSS background-* values (pure). */
+/**
+ * Resolve a watermark's size / fit / tile / position to concrete CSS background-* values (pure).
+ * The SINGLE (non-tiled) case prefers an explicit `size` (percentage of the page width, height
+ * `auto` so the image's own aspect ratio is preserved) when present; when `size` is absent it falls
+ * back to the EXISTING fit-based sizing exactly as before, so a stored document with no `size` keeps
+ * rendering unchanged.
+ */
 export function resolveWatermarkLayout(watermark: Watermark): WatermarkLayout {
    const repeat = watermark.tile ? 'repeat' : 'no-repeat'
    const size = watermark.tile
       ? 'auto'
-      : watermark.fit === 'cover'
-         ? 'cover'
-         : watermark.fit === 'contain'
-            ? 'contain'
-            : 'auto'   // 'natural'
+      : typeof watermark.size === 'number'
+         ? `${clampWatermarkSize(watermark.size)}% auto`
+         : watermark.fit === 'cover'
+            ? 'cover'
+            : watermark.fit === 'contain'
+               ? 'contain'
+               : 'auto'   // 'natural'
    return { repeat, size, position: cssBackgroundPosition(watermark.position) }
 }
 
@@ -613,7 +635,7 @@ function normalizeWatermark(raw: unknown): Watermark | undefined {
    const position = WATERMARK_POSITIONS.has(source.position as WatermarkPosition)
       ? (source.position as WatermarkPosition)
       : DEFAULT_WATERMARK_POSITION
-   return {
+   const watermark: Watermark = {
       src,
       opacity:  clampWatermarkOpacity(source.opacity),
       fit,
@@ -627,6 +649,10 @@ function normalizeWatermark(raw: unknown): Watermark | undefined {
       offsetX:     clampWatermarkOffset(source.offsetX),
       offsetY:     clampWatermarkOffset(source.offsetY),
    }
+   // `size` stays ABSENT when not stored, an old watermark keeps its `fit` fallback rather than being
+   // silently switched onto the size-based slider.
+   if (typeof source.size === 'number') watermark.size = clampWatermarkSize(source.size)
+   return watermark
 }
 
 /** Defensive read-time normalization of a stored header logo, or undefined when it is unusable. */
@@ -754,6 +780,7 @@ export function makeWatermark(src: string, aspectRatio: number = WATERMARK_DEFAU
       aspectRatio: clampWatermarkAspectRatio(aspectRatio),
       offsetX:     WATERMARK_DEFAULT_OFFSET,
       offsetY:     WATERMARK_DEFAULT_OFFSET,
+      size:        WATERMARK_DEFAULT_SIZE,
    }
 }
 
