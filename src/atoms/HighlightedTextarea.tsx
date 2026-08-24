@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { tokenize } from '../lib/highlight/tokenize'
 import { markdownRules } from '../lib/highlight/languages/markdown'
-import { mintdown } from '../lib/highlight/languages/mintdown'
 
 // #########
 // # TYPES #
@@ -9,7 +8,7 @@ import { mintdown } from '../lib/highlight/languages/mintdown'
 
 interface HighlightedTextareaProps {
    value:        string
-   language:     'markdown' | 'mintdown'
+   language:     'markdown'
    onChange:     (event: React.ChangeEvent<HTMLTextAreaElement>) => void
    /** useRawEditor returns () => void (no event arg), compatible with React's
     *  FocusEventHandler because TypeScript allows callbacks with fewer parameters. */
@@ -54,8 +53,7 @@ export function HighlightedTextarea({
    // A trailing '\n ' (newline + space) prevents the backdrop from being
    // shorter than the textarea when the cursor sits on the last empty line.
    const highlightedHtml = useMemo(() => {
-      const rules = language === 'mintdown' ? mintdown.rules : markdownRules
-      return tokenize(value + '\n ', rules)
+      return tokenize(value + '\n ', markdownRules)
    }, [value, language])
 
    // Keep the backdrop's scroll position in sync with the textarea.

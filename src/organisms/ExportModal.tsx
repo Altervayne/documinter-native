@@ -7,7 +7,6 @@ import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 import { generateExportHTML, type ExportOptions } from '../lib/export'
 import { downloadHTML, printDocument, computeDocumentPages } from '../lib/exportLayout'
-import { exportMintdownFile } from '../lib/mintdown'
 import { exportMarkdownFile } from '../lib/markdown'
 import { downloadJSON } from '../lib/documentBackupFile'
 import { ensureTemmlReady } from '../lib/math'
@@ -20,7 +19,7 @@ import { ACCENT_PRESETS, accentPresetName } from '../lib/constants'
 // # TYPES #
 // #########
 
-type ExportFormat = 'html' | 'pdf' | 'mintdown' | 'markdown' | 'json'
+type ExportFormat = 'html' | 'pdf' | 'markdown' | 'json'
 
 interface ExportModalProps {
    meta: DocMeta
@@ -43,13 +42,12 @@ interface ExportModalProps {
 // #############
 
 /**
- * Format-aware Export dialog. A format selector (HTML / Mintdown / Markdown / JSON) drives which
+ * Format-aware Export dialog. A format selector (HTML / Markdown / JSON) drives which
  * options and actions are shown. Each format reuses the document's own serializers:
  *   - HTML    , the presentation options (theme + accent) + generate -> downloadHTML / copy. Math
  *                is rendered by Temml, which loads asynchronously, so this path (and only this path)
- *                awaits ensureTemmlReady() before generating. Mintdown/Markdown serialize the LaTeX
- *                source verbatim and need no await.
- *   - Mintdown, documentToMintdown -> download (via exportMintdownFile). Lean, no options.
+ *                awaits ensureTemmlReady() before generating. Markdown serializes the LaTeX
+ *                source verbatim and needs no await.
  *   - Markdown, documentToMarkdown -> download (via exportMarkdownFile). Lean, no options.
  *   - JSON    , downloadJSON, a lossless snapshot of the document's own state. Lean, no options.
  */
@@ -65,10 +63,10 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    const { t } = useLang()
    const { showToast } = useToast()
 
-   // Presentation extras + document format ride into the HTML export via ExportOptions; the .mint /
-   // .md paths never see them (they serialize content only). Aliased to docFormat above to avoid
-   // colliding with this modal's own `format` state (the export FILE format selector, html/mintdown/
-   // markdown, a separate concept from the document's page format). The paged layout is not threaded in:
+   // Presentation extras + document format ride into the HTML export via ExportOptions; the .md
+   // path never sees them (it serializes content only). Aliased to docFormat above to avoid
+   // colliding with this modal's own `format` state (the export FILE format selector, html/markdown/
+   // json, a separate concept from the document's page format). The paged layout is not threaded in:
    // downloadHTML / printDocument / computeDocumentPages self-measure it from the model.
    const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
@@ -105,13 +103,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       onClose()
    }
 
-   // Mintdown / Markdown: pure serialize + download, no async asset to await.
-   function handleMintdownDownload() {
-      exportMintdownFile(sections, meta)
-      showToast(t.mintdownExported, { type: 'success' })
-      onClose()
-   }
-
+   // Markdown: pure serialize + download, no async asset to await.
    function handleMarkdownDownload() {
       exportMarkdownFile(sections, meta)
       showToast(t.markdownExported, { type: 'success' })
@@ -142,12 +134,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    const isPagedDocument = !!docFormat && docFormat.kind !== 'infinite'
 
    // Extension-only labels (see i18n exportFormat*); the explanation lives in the hover tooltip. Two
-   // rows: the content serializers (JSON / Mintdown / Markdown) above the rendered exports (HTML / PDF).
+   // rows: the content serializers (JSON / Markdown) above the rendered exports (HTML / PDF).
    type FormatOption = { value: ExportFormat; label: string; tooltip: string; disabled?: boolean }
    const FORMAT_ROWS: FormatOption[][] = [
       [
          { value: 'json',     label: t.exportFormatJson,     tooltip: t.exportFormatJsonTooltip },
-         { value: 'mintdown', label: t.exportFormatMintdown, tooltip: t.exportFormatMintdownTooltip },
          { value: 'markdown', label: t.exportFormatMarkdown, tooltip: t.exportFormatMarkdownTooltip },
       ],
       [
@@ -296,11 +287,6 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                {format === 'pdf' && (
                   <Button variant="primary" className="flex-1" onClick={handlePdf}>
                      <Printer size={13} />{t.saveAsPdf}
-                  </Button>
-               )}
-               {format === 'mintdown' && (
-                  <Button variant="primary" className="flex-1" onClick={handleMintdownDownload}>
-                     <Download size={13} />{t.download}
                   </Button>
                )}
                {format === 'markdown' && (

@@ -2,8 +2,8 @@
  * Document-level presentation extras (export + editor only).
  *
  * Pure types, defaults, and normalization for the presentation features that render IN the editor
- * and bake into the self-contained HTML export, but are intentionally NOT serialized to Mintdown /
- * Markdown (those carry portable content, not presentation). This object rides ALONGSIDE the flat
+ * and bake into the self-contained HTML export, but are intentionally NOT serialized to
+ * Markdown (that carries portable content, not presentation). This object rides ALONGSIDE the flat
  * docTheme / docAccent presentation fields (never inside DocState), same category, same seams.
  *
  * The background watermark, the header logo, and the nav model each slot into

@@ -48,7 +48,7 @@ const FENCE_LANG_TO_CODE_LANG: Record<string, CodeLang> = {
 // # PRIVATE HELPERS, SERIALISATION #
 // ###################################
 
-/** Serialises InlineContent to Mintdown inline syntax. */
+/** Serialises InlineContent to its inline text syntax via the shared inline serializer. */
 function serializeInline(content: InlineContent | undefined): string {
    return inlineContentToMintdown(content ?? [])
 }
@@ -57,16 +57,14 @@ function serializeInline(content: InlineContent | undefined): string {
  *  item carries a GFM task-list marker (`[x]` checked / `[ ]` unchecked) right after the dash.
  *  For a plain list, `marker` is the CURRENT sub-list's marker: an ORDERED marker emits the
  *  1-based sibling index as `${n}. `, an unordered marker emits `- ` (the historical default, so a
- *  sub-list with no marker stays byte-identical). The alpha/roman refinement is carried only by the
- *  Mintdown `<!-- list-marker -->` comment. Under `mintdown`, each nested sub-list whose owning
- *  item's `childMarker` is non-`dot` gets its own comment line at the child indent, right before
- *  its first item; the root sub-list's comment is emitted by the caller (serializeBlock). */
+ *  sub-list with no marker stays byte-identical). Portable Markdown keeps only that ordered/
+ *  unordered distinction; the alpha/roman refinement rides the lossless JSON backup, not the text. */
 function serializeListItems(
    items: ListItem[],
    depth: number,
-   options: { checklist?: boolean; mintdown?: boolean; marker?: ListMarker },
+   options: { checklist?: boolean; marker?: ListMarker },
 ): string {
-   const { checklist = false, mintdown = false, marker = 'dot' } = options
+   const { checklist = false, marker = 'dot' } = options
    const lines: string[] = []
    const indent = '  '.repeat(depth)
    const ordered = !checklist && isOrderedMarker(marker)
@@ -79,25 +77,17 @@ function serializeListItems(
       lines.push(`${indent}${bullet}${serializeInline(item.richText)}`)
       if (item.children.length > 0) {
          const childMarker = checklist ? 'dot' : markerOrDefault(item.childMarker)
-         if (!checklist && mintdown && childMarker !== 'dot') {
-            lines.push(`${'  '.repeat(depth + 1)}<!-- list-marker: ${childMarker} -->`)
-         }
-         lines.push(serializeListItems(item.children, depth + 1, { checklist, mintdown, marker: childMarker }))
+         lines.push(serializeListItems(item.children, depth + 1, { checklist, marker: childMarker }))
       }
    })
    return lines.join('\n')
 }
 
-/** Serialises a single block to its Markdown/Mintdown representation.
+/** Serialises a single block to its Markdown representation.
  *  For h3/h4 blocks that carry a handle, the handle is emitted inline as {#slug}.
  *  For all other block types, the caller is responsible for emitting the
- *  <!-- handle: slug --> comment BEFORE this function's output.
- *
- *  `options.mintdown` selects the Mintdown flavour, which is a superset of Markdown: it
- *  currently only affects the `math` fence (the display scale rides the fence info string in
- *  Mintdown but is dropped in portable Markdown). Defaults to Markdown (bare) so `.md` output
- *  is unchanged. The flag is forwarded through the recursive `container` serialization. */
-export function serializeBlock(block: Block, options?: { mintdown?: boolean }): string {
+ *  <!-- handle: slug --> comment BEFORE this function's output. */
+export function serializeBlock(block: Block): string {
    switch (block.type) {
       case 'p': {
          return serializeInline(block.richText)
@@ -139,21 +129,16 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
          // The rendered MathML is not serialized; it is re-derived from the LaTeX on load.
          const latex = block.latex ?? ''
          const fence = /^```\s*$/m.test(latex) ? '````' : '```'
-         // Flavour-aware info string: Mintdown carries a non-default display scale as
-         // `math scale=1.5`; portable Markdown stays bare `math` (GitHub disables its native
-         // math rendering when the info string carries any suffix), so the scale is dropped there.
-         const scale = block.mathScale
-         const info  = options?.mintdown && scale !== undefined && scale !== 1
-            ? `math scale=${scale}`
-            : 'math'
-         return `${fence}${info}\n${latex}\n${fence}`
+         // Portable Markdown stays bare `math` (GitHub disables its native math rendering when the
+         // info string carries any suffix), so the display scale is never emitted here; it rides
+         // the lossless JSON backup instead.
+         return `${fence}math\n${latex}\n${fence}`
       }
 
       case 'graph': {
          // A ```graph fence: chart type + options on the info string, data as a Markdown pipe
-         // table body. `type=` is load-bearing and rides BOTH flavours (no mintdown branch),
-         // a graph fence is Documinter-specific in either format. The rendered SVG is never
-         // serialized; it is re-derived from this spec on load.
+         // table body. `type=` is load-bearing; a graph fence is Documinter-specific. The rendered
+         // SVG is never serialized; it is re-derived from this spec on load.
          const spec = block.graph
          if (!spec) return '```graph type=bar\n|  |\n| --- |\n```'
          const { info, body } = graphSpecToFence(spec)
@@ -162,8 +147,8 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
 
       case 'diagram': {
          // A ```diagram fence: options on the info string, TWO pipe tables (nodes + edges) in the
-         // body separated by a blank line. Documinter-specific in both flavours (no mintdown branch).
-         // The rendered SVG is never serialized; it is re-derived from this spec on load.
+         // body separated by a blank line. Documinter-specific. The rendered SVG is never
+         // serialized; it is re-derived from this spec on load.
          const spec = block.diagram
          if (!spec) {
             const { info, body } = diagramSpecToFence({ nodes: [], edges: [], options: {} })
@@ -177,15 +162,9 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
          const items = block.items ?? []
          if (items.length === 0) return ''
          const rootMarker = markerOrDefault(block.listMarker)
-         const body = serializeListItems(items, 0, { mintdown: options?.mintdown, marker: rootMarker })
-         // Byte-identical guard: a list whose root sub-list is `dot` emits no root token and plain
-         // `- ` bullets, exactly as before. The `<!-- list-marker -->` refinement rides ONLY the
-         // Mintdown flavour, and only for a non-`dot` sub-list; portable Markdown keeps just the
-         // native ordered/unordered distinction each sub-list already carries positionally.
-         if (options?.mintdown && rootMarker !== 'dot') {
-            return `<!-- list-marker: ${rootMarker} -->\n${body}`
-         }
-         return body
+         // Portable Markdown keeps just the native ordered/unordered distinction each sub-list
+         // already carries positionally; the alpha/roman refinement rides the lossless JSON backup.
+         return serializeListItems(items, 0, { marker: rootMarker })
       }
 
       case 'checklist': {
@@ -218,7 +197,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
       case 'image': {
          // A marked-up image serializes as a ```imagemarkup fence: base dims + alt/caption on the
          // info string, one overlay element per body line. See imageMarkupFence.ts: the
-         // base64 `src` is NEVER emitted in either flavour, so a `.mint`/`.md` reopen restores every
+         // base64 `src` is NEVER emitted, so a `.md` reopen restores every
          // annotation but with an empty `src`. A PLAIN image (no overlay) keeps its own convention
          // below, byte-identical. The rendered SVG is never serialized, re-derived from the spec.
          if (block.imageMarkup) {
@@ -260,7 +239,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
             if (innerBlock.handle && !isHeading) {
                parts.push(`<!-- handle: ${innerBlock.handle} -->`)
             }
-            parts.push(serializeBlock(innerBlock, options))
+            parts.push(serializeBlock(innerBlock))
          }
 
          parts.push('')
@@ -272,7 +251,7 @@ export function serializeBlock(block: Block, options?: { mintdown?: boolean }): 
             if (innerBlock.handle && !isHeading) {
                parts.push(`<!-- handle: ${innerBlock.handle} -->`)
             }
-            parts.push(serializeBlock(innerBlock, options))
+            parts.push(serializeBlock(innerBlock))
          }
 
          parts.push('')
@@ -298,7 +277,7 @@ function normalizeFenceLang(tag: string): CodeLang {
  * Builds the block for a closed fence from its full info string and body. The first token is the
  * language tag; a ```math fence becomes a math block carrying the raw LaTeX, and any following
  * `scale=<step>` token sets its display scale (junk / out-of-range values are ignored). Every
- * other tag becomes a code block. Symmetric with mintdown.ts, harmless in the bare-Markdown path.
+ * other tag becomes a code block. The scale token is read on import but never emitted on export.
  */
 function buildFenceBlock(fenceInfo: string, body: string): Block {
    const tokens  = fenceInfo.trim().split(/\s+/)
@@ -929,8 +908,8 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
       // HTML comment lines
       if (line.startsWith('<!--')) {
 
-         // list-marker: the following list's ROOT sub-list adopts this marker style (Mintdown
-         // refinement; harmless in Markdown, which never emits it but can round-trip an authored one).
+         // list-marker: the following list's ROOT sub-list adopts this marker style. Markdown export
+         // never emits this comment, but the importer still honours an authored one when present.
          const listMarkerFromComment = parseListMarkerComment(line)
          if (listMarkerFromComment) {
             commitBlock(flushAccum())

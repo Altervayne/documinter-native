@@ -8,14 +8,13 @@ import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocumentListFilter } from '../lib/binderSearch'
 import { downloadHTML } from '../lib/exportLayout'
 import { exportMarkdownFile } from '../lib/markdown'
-import { exportMintdownFile } from '../lib/mintdown'
 import { useToast } from '../contexts/ToastContext'
 import { useLang } from '../contexts/LangContext'
 
 /**
  * Loads the filtered/sorted document list for the current binder view (lightweight records
  * only, no sections/base64) and exposes the card actions: delete (with undo), duplicate,
- * the three exports, move, and reorder. Mutations bump the shared data version (onChanged)
+ * the exports, move, and reorder. Mutations bump the shared data version (onChanged)
  * so the nav and grid refresh together. Re-reads when the filter or data version changes.
  */
 export function useBinderDocuments(filter: DocumentListFilter, dataVersion: number, onChanged: () => void) {
@@ -152,17 +151,6 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       }
    }, [showToast, t])
 
-   const handleExportMintdown = useCallback(async (id: string) => {
-      try {
-         const loaded = await loadDocument(id, { touch: false })
-         if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
-         exportMintdownFile(loaded.sections, loaded.meta)
-         showToast(t.mintdownExported, { type: 'success' })
-      } catch {
-         showToast(t.binderActionFailed, { type: 'error' })
-      }
-   }, [showToast, t])
-
    return {
       documents,
       isLoading,
@@ -173,6 +161,5 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       handleReorder,
       handleExportHtml,
       handleExportMarkdown,
-      handleExportMintdown,
    }
 }

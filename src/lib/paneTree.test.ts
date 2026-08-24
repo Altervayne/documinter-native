@@ -11,25 +11,27 @@ import {
 } from './paneTree'
 import type { PaneNode } from '../types'
 
-// A horizontal split of two leaves, and a nested three-leaf tree, reused across the queries below.
+// A horizontal split of the two real panes, and a nested three-leaf tree, reused across the queries
+// below. Only two pane ids exist (wysiwyg + markdown), so the nested tree repeats wysiwyg to reach a
+// third leaf; the structural operations under test stay deterministic all the same.
 const twoLeaves: PaneNode = {
    kind: 'split', orientation: 'h', ratio: 0.5,
-   children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'mintdown' }],
+   children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'markdown' }],
 }
 const threeLeaves: PaneNode = {
    kind: 'split', orientation: 'h', ratio: 0.5,
-   children: [twoLeaves, { kind: 'leaf', paneId: 'markdown' }],
+   children: [twoLeaves, { kind: 'leaf', paneId: 'wysiwyg' }],
 }
 
 describe('read-only queries', () => {
    it('visiblePanels collects every leaf paneId', () => {
       expect(visiblePanels({ kind: 'leaf', paneId: 'wysiwyg' })).toEqual(new Set(['wysiwyg']))
-      expect(visiblePanels(threeLeaves)).toEqual(new Set(['wysiwyg', 'mintdown', 'markdown']))
+      expect(visiblePanels(twoLeaves)).toEqual(new Set(['wysiwyg', 'markdown']))
    })
 
    it('isPanelVisible finds present leaves and misses absent ones', () => {
-      expect(isPanelVisible(twoLeaves, 'mintdown')).toBe(true)
-      expect(isPanelVisible(twoLeaves, 'markdown')).toBe(false)
+      expect(isPanelVisible({ kind: 'leaf', paneId: 'wysiwyg' }, 'wysiwyg')).toBe(true)
+      expect(isPanelVisible({ kind: 'leaf', paneId: 'wysiwyg' }, 'markdown')).toBe(false)
    })
 
    it('countVisiblePanels counts leaves', () => {
@@ -39,19 +41,23 @@ describe('read-only queries', () => {
    })
 
    it('hasExactPanels compares the leaf set exactly', () => {
-      expect(hasExactPanels(twoLeaves, new Set(['wysiwyg', 'mintdown']))).toBe(true)
+      expect(hasExactPanels(twoLeaves, new Set(['wysiwyg', 'markdown']))).toBe(true)
       expect(hasExactPanels(twoLeaves, new Set(['wysiwyg']))).toBe(false)
-      expect(hasExactPanels(twoLeaves, new Set(['wysiwyg', 'mintdown', 'markdown']))).toBe(false)
+      expect(hasExactPanels({ kind: 'leaf', paneId: 'wysiwyg' }, new Set(['wysiwyg', 'markdown']))).toBe(false)
    })
 })
 
 describe('removePanel', () => {
    it('collapses a split into its remaining child', () => {
-      expect(removePanel(twoLeaves, 'mintdown')).toEqual({ kind: 'leaf', paneId: 'wysiwyg' })
+      expect(removePanel(twoLeaves, 'markdown')).toEqual({ kind: 'leaf', paneId: 'wysiwyg' })
    })
 
    it('collapses a nested split up one level', () => {
-      expect(removePanel(threeLeaves, 'markdown')).toEqual(twoLeaves)
+      // markdown appears once (inside the nested split); removing it collapses that split to a leaf.
+      expect(removePanel(threeLeaves, 'markdown')).toEqual({
+         kind: 'split', orientation: 'h', ratio: 0.5,
+         children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'wysiwyg' }],
+      })
    })
 
    it('returns null when the input is the matching single leaf', () => {
@@ -59,25 +65,25 @@ describe('removePanel', () => {
    })
 
    it('leaves the tree intact when the paneId is absent', () => {
-      expect(removePanel(twoLeaves, 'markdown')).toEqual(twoLeaves)
+      expect(removePanel({ kind: 'leaf', paneId: 'wysiwyg' }, 'markdown')).toEqual({ kind: 'leaf', paneId: 'wysiwyg' })
    })
 })
 
 describe('insertPanelRight', () => {
    it('wraps the tree in a new horizontal split with the new leaf on the right', () => {
-      expect(insertPanelRight({ kind: 'leaf', paneId: 'wysiwyg' }, 'mintdown')).toEqual({
+      expect(insertPanelRight({ kind: 'leaf', paneId: 'wysiwyg' }, 'markdown')).toEqual({
          kind: 'split', orientation: 'h', ratio: 0.5,
-         children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'mintdown' }],
+         children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'markdown' }],
       })
    })
 })
 
 describe('relocatePanel', () => {
    it('removes the dragged leaf then re-inserts it beside the target on the chosen side', () => {
-      // Drag mintdown to the top of wysiwyg -> a vertical split with mintdown first.
-      expect(relocatePanel(twoLeaves, 'mintdown', 'wysiwyg', 'top')).toEqual({
+      // Drag markdown to the top of wysiwyg -> a vertical split with markdown first.
+      expect(relocatePanel(twoLeaves, 'markdown', 'wysiwyg', 'top')).toEqual({
          kind: 'split', orientation: 'v', ratio: 0.5,
-         children: [{ kind: 'leaf', paneId: 'mintdown' }, { kind: 'leaf', paneId: 'wysiwyg' }],
+         children: [{ kind: 'leaf', paneId: 'markdown' }, { kind: 'leaf', paneId: 'wysiwyg' }],
       })
    })
 })

@@ -24,7 +24,6 @@ import { parseDocumentBackup } from '../lib/documentBackupFile'
 import { saveDocument, type DocPresentation } from '../lib/binderDocuments'
 import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
 import { importMarkdownFile } from '../lib/markdown'
-import { importMintdownFile } from '../lib/mintdown'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 
@@ -40,25 +39,23 @@ import { useToast } from '../contexts/ToastContext'
 // ====================
 
 // Route one picked file to the right existing loader. Extension decides when it is one we know;
-// otherwise the trimmed content is sniffed: `{` -> JSON backup, `---` front matter -> Mintdown,
-// anything else -> Markdown. HTML is export-only and never routed here.
-type OpenFormat = 'backup' | 'mintdown' | 'markdown'
+// otherwise the trimmed content is sniffed: `{` -> JSON backup, anything else -> Markdown (a
+// leading `---` is Markdown front matter). HTML is export-only and never routed here.
+type OpenFormat = 'backup' | 'markdown'
 
 function detectOpenFormat(fileName: string, text: string): OpenFormat {
    const lowerName = fileName.toLowerCase()
    if (lowerName.endsWith('.json') || lowerName.endsWith('.documint')) return 'backup'
-   if (lowerName.endsWith('.mint') || lowerName.endsWith('.mintd') || lowerName.endsWith('.mintdown')) return 'mintdown'
    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'markdown'
    // Ambiguous / unknown extension (.txt, none, or anything else): sniff the content.
    const trimmed = text.trimStart()
    if (trimmed.startsWith('{'))   return 'backup'
-   if (trimmed.startsWith('---')) return 'mintdown'
    return 'markdown'
 }
 
 // The picker accepts everything detectOpenFormat knows how to route, shared by Open (lands in a
 // new tab) and Import (lands as a new binder record).
-const OPEN_FILE_ACCEPT = '.json,.documint,.mint,.mintd,.mintdown,.md,.markdown,.txt'
+const OPEN_FILE_ACCEPT = '.json,.documint,.md,.markdown,.txt'
 
 // #########################
 // # SAVE STATUS INDICATOR #
@@ -156,7 +153,6 @@ interface HeaderMenuBarProps {
    onAddSection:     () => void
    onToggleBinder:   () => void
    onImportMarkdownFile: (file: File) => Promise<void>
-   onImportMintdownFile: (file: File) => Promise<void>
    /** Notifies the binder (File -> Import... just added a record behind its back) so its list
     *  picks up the new card without waiting on an unrelated action to refresh it. Binder mode only. */
    onDocumentImported: () => void
@@ -194,7 +190,7 @@ export function HeaderMenuBar({
    mode, meta, sections, theme, docTheme, docAccent, previewMode, paneLayout, saveStatus, neverSaved,
    onLoad, onToggleTheme, onSetMode, onTogglePanel, dockPanels, onManualSave, onSaveAs, onSaveAsTemplate,
    onUndo, onRedo, canUndo, canRedo, onNew, onAddSection, onToggleBinder,
-   onImportMarkdownFile, onImportMintdownFile, onDocumentImported, onSaveTin, onOpenTin, onDocThemeChange, onDocAccentChange,
+   onImportMarkdownFile, onDocumentImported, onSaveTin, onOpenTin, onDocThemeChange, onDocAccentChange,
    exportOpen, onOpenExport, onCloseExport, presentation, onOpenPresentation, onOpenNav,
    format, onOpenFormat,
 }: HeaderMenuBarProps) {
@@ -223,8 +219,8 @@ export function HeaderMenuBar({
    // =============
 
    // One unified Open: a single picker whose selection is format-detected and handed to the
-   // matching EXISTING loader (JSON backup / Mintdown / Markdown). All three paths land in the
-   // editor (the import handlers leave binder mode); the toast reflects the detected format.
+   // matching EXISTING loader (JSON backup / Markdown). Both paths land in the editor (the import
+   // handlers leave binder mode); the toast reflects the detected format.
    function handleOpen() {
       const input  = document.createElement('input')
       input.type   = 'file'
@@ -240,9 +236,6 @@ export function HeaderMenuBar({
                if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
                onLoad(parsed.state, parsed.presentation)
                showToast(t.jsonBackupImported, { type: 'success' })
-            } else if (format === 'mintdown') {
-               await onImportMintdownFile(file)
-               showToast(t.mintdownImported, { type: 'success' })
             } else {
                await onImportMarkdownFile(file)
                showToast(t.markdownImported, { type: 'success' })
@@ -273,7 +266,7 @@ export function HeaderMenuBar({
                if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
                await saveDocument(parsed.state, parsed.presentation)
             } else {
-               const loaded = format === 'mintdown' ? await importMintdownFile(file) : await importMarkdownFile(file)
+               const loaded = await importMarkdownFile(file)
                const state: DocState = { meta: loaded.meta, sections: loaded.sections }
                await saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
             }

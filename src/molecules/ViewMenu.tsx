@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Layout, FileText, FileType, Check, ChevronDown } from 'lucide-react'
+import { Layout, FileText, Check, ChevronDown } from 'lucide-react'
 import type { PaneId, PaneNode } from '../types'
 import type { T } from '../lib/i18n'
 import { isPanelVisible } from '../lib/paneTree'
@@ -38,7 +38,6 @@ const PANEL_OPTIONS: {
    shortcutKey: keyof T
 }[] = [
    { id: 'wysiwyg',  icon: <Layout       size={14} />, labelKey: 'viewWysiwyg',  shortcutKey: 'shortcutToggleWysiwyg'  },
-   { id: 'mintdown', icon: <FileType size={14} />, labelKey: 'viewMintdown', shortcutKey: 'shortcutToggleMintdown' },
    { id: 'markdown', icon: <FileText     size={14} />, labelKey: 'viewMarkdown', shortcutKey: 'shortcutToggleMarkdown' },
 ]
 

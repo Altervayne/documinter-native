@@ -12,7 +12,6 @@ interface BinderContextMenuProps {
    onDelete:         () => void
    onExportHtml:     () => void
    onExportMarkdown: () => void
-   onExportMintdown: () => void
    onSaveAsTemplate: () => void
 }
 
@@ -21,7 +20,7 @@ interface BinderContextMenuProps {
  * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
  */
 export function BinderContextMenu({
-   x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onExportMintdown, onSaveAsTemplate,
+   x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onSaveAsTemplate,
 }: BinderContextMenuProps) {
    const { t } = useLang()
 
@@ -32,7 +31,6 @@ export function BinderContextMenu({
       { type: 'separator' },
       { label: t.exportHtml,     icon: <Download size={13} />, onSelect: onExportHtml },
       { label: t.exportMarkdown, icon: <FileDown size={13} />, onSelect: onExportMarkdown },
-      { label: t.exportMintdown, icon: <FileDown size={13} />, onSelect: onExportMintdown },
       { type: 'separator' },
       { label: t.binderDelete, icon: <Trash2 size={13} />, danger: true, onSelect: onDelete },
    ]

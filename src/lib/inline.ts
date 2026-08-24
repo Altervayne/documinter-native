@@ -5,8 +5,8 @@
  *   parseInlineContent      , HTML string -> InlineContent (migration bridge)
  *   renderInlineContent     , InlineContent -> HTML string
  *   domToInlineContent      , live HTMLElement -> InlineContent (called on commit)
- *   inlineContentToMintdown , InlineContent -> Mintdown string
- *   mintdownToInlineContent , Mintdown string -> InlineContent
+ *   inlineContentToMintdown , InlineContent -> inline text string
+ *   mintdownToInlineContent , inline text string -> InlineContent
  *   stripTrailingNewlines   , remove trailing newline-only runs (exposed for migration)
  *   isEmptyContent          , true if array is empty or all-whitespace
  *   inlineContentEquals     , deep equality check

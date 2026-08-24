@@ -28,7 +28,7 @@ export interface RawEditorResult {
 // ########
 
 /**
- * Shared debounce + sync contract for raw text editors (Markdown, Mintdown).
+ * Shared debounce + sync contract for raw text editors (Markdown).
  *
  * Sync invariant: while `isActiveWriterRef` is true (user is typing or focused),
  * external `sections`/`meta` prop changes are silently ignored. This prevents

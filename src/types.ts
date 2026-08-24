@@ -111,9 +111,9 @@ export interface Block {
     *  Each item's own child sub-list carries its marker on `ListItem.childMarker`, so two sibling
     *  sub-lists at the same nesting are independent. Absent means the root sub-list renders a `dot`
     *  (the historical behaviour), so an untouched document stays byte-identical; a `dot` value is
-    *  never stored (normalised to absent). The field IS serialized to the lossless JSON backup and,
-    *  in Mintdown, to a `<!-- list-marker -->` comment before the list; portable Markdown keeps only
-    *  the ordered/unordered distinction each sub-list already carries positionally. */
+    *  never stored (normalised to absent). The field IS serialized to the lossless JSON backup;
+    *  portable Markdown keeps only the ordered/unordered distinction each sub-list already carries
+    *  positionally (the Markdown importer still honours an authored `<!-- list-marker -->` comment). */
    listMarker?: ListMarker
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
@@ -187,10 +187,10 @@ export interface OpenDocument {
    docTheme:  'light' | 'dark'
    docAccent: string
    /** Export-only / editor-only presentation extras (watermark, ...); absent = default behavior.
-    *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Mintdown / Markdown. */
+    *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Markdown. */
    presentation?: DocPresentationExtras
    /** Document page format (infinite canvas width, or paged A4); absent = default infinite/
-    *  normal-width behavior. Rides on the SAME seams as presentation; NEVER serialized to Mintdown /
+    *  normal-width behavior. Rides on the SAME seams as presentation; NEVER serialized to
     *  Markdown (chrome, not content, see lib/format.ts). */
    format?: DocFormat
    documentId:            string | null   // binder record id; null until first save
@@ -221,7 +221,7 @@ export interface BinderFolderRecord {
 /** Lightweight binder record (the `documents` object store). Returned by
  *  listDocuments(): everything a card needs, WITHOUT the heavy sections array.
  *  NOTE: lastOpenedAt / folderId / sortOrder are binder-only and are NEVER serialized
- *  to any export format (HTML/MD/Mintdown/JSON), exports operate on DocState only. */
+ *  to any export format (HTML/MD/JSON), exports operate on DocState only. */
 export interface BinderDocumentRecord {
    id:              string             // crypto.randomUUID()
    meta:            DocMeta
@@ -260,7 +260,7 @@ export type Mode = 'wysiwyg' | 'preview'
 // ######################################
 
 /** Which content lives in a leaf pane. */
-export type PaneId = 'wysiwyg' | 'mintdown' | 'markdown'
+export type PaneId = 'wysiwyg' | 'markdown'
 
 /** A leaf pane, shows one editor surface. */
 export interface PaneLeaf {

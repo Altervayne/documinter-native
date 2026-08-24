@@ -21,17 +21,17 @@ interface FileMenuProps {
    mode: 'binder' | 'document'
    // Available in both modes:
    onNewDocument:    () => void
-   /** Single, format-detecting Open (JSON backup / Mintdown / Markdown), document mode only. */
+   /** Single, format-detecting Open (JSON backup / Markdown), document mode only. */
    onOpen:           () => void
    // Document mode only:
    onSave:           () => void
    onSaveAs:         () => void
    /** Save the active document's chrome as a reusable template, document mode only. */
    onSaveAsTemplate: () => void
-   /** Single, format-aware Export dialog (HTML / PDF / Mintdown / Markdown / JSON), document mode only. */
+   /** Single, format-aware Export dialog (HTML / PDF / Markdown / JSON), document mode only. */
    onExport:         () => void
    // Binder mode only:
-   /** Single, format-detecting Import (JSON backup / Mintdown / Markdown), lands as a new binder
+   /** Single, format-detecting Import (JSON backup / Markdown), lands as a new binder
     *  record without opening a tab. Binder mode only. */
    onImport:         () => void
    /** Download the whole binder as a `.tin` bundle. Binder mode only. */
@@ -120,7 +120,7 @@ export function FileMenu({
                      <MenuItem icon={<SaveAll size={13} />}       label={t.fileSaveAs}       onClick={() => handleItemClick(onSaveAs)} />
                      <MenuItem icon={<LayoutTemplate size={13} />} label={t.saveAsTemplate}  onClick={() => handleItemClick(onSaveAsTemplate)} />
                      <MenuSeparator />
-                     {/* One format-aware Export dialog (HTML / PDF / Mintdown / Markdown / JSON) */}
+                     {/* One format-aware Export dialog (HTML / PDF / Markdown / JSON) */}
                      <MenuItem icon={<Download size={13} />} label={t.menuExport} onClick={() => handleItemClick(onExport)} />
                   </>
                )}

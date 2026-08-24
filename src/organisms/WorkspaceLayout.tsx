@@ -175,7 +175,6 @@ export function WorkspaceLayout({
    function getPaneLabel(paneId: PaneId): string {
       switch (paneId) {
          case 'wysiwyg':  return t.paneEditor
-         case 'mintdown': return t.paneMintdown
          case 'markdown': return t.paneMarkdown
       }
    }

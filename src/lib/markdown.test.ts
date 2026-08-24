@@ -89,7 +89,7 @@ describe('Markdown targeted parse', () => {
 
 // Containers have no Markdown representation, so they flatten by design : the
 // wrapper is dropped, inner blocks are promoted to top level, and the ratio is lost. This is a
-// stable contract, not a bug, Mintdown remains the format that preserves containers.
+// stable contract, not a bug, the lossless JSON backup remains the format that preserves containers.
 describe('Markdown container flattening (by design)', () => {
    it('promotes a container\'s inner blocks to top level and drops the wrapper + ratio', () => {
       const fixture  = buildFixtureDocument()   // includes the two containers

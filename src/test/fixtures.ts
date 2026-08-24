@@ -131,13 +131,13 @@ const allBlocks: Block[] = [
 //  Public builders
 // =====================
 
-/** The full fixture, including containers, used by the lossless Mintdown round-trip. */
+/** The full fixture, including containers, used by the lossless Markdown round-trip. */
 export function buildFixtureDocument(): DocState {
    return {
       meta: {
          title:  'Round-Trip Fixture',
          // A mix of simple fields plus custom ones exercising label spaces and a value with a
-         // colon (which forces YAML value-quoting in Mintdown), so the round-trip covers quoting.
+         // colon (which forces YAML value-quoting in Markdown), so the round-trip covers quoting.
          // `Module` is an above-title, accent-colored field, so the round-trip also exercises the
          // position + color inline-mapping encoding.
          fields: [

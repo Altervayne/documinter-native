@@ -4,9 +4,8 @@ import type { Language, TokenRule } from '../types'
 // # MARKDOWN LANGUAGE, RULES FOR THE MARKDOWN EDITOR PANEL #
 // ###########################################################
 //
-// These rules are also imported and extended by mintdown.ts.
-// Export `markdownRules` as a separate constant so mintdown.ts can spread it
-// without duplicating any pattern.
+// `markdownRules` is exported as a separate constant so the Markdown textarea (and any future
+// consumer) can spread it without duplicating any pattern.
 //
 // Priority order: earlier rules win over later ones.
 // All patterns have the `y` (sticky) flag added automatically by the tokenizer.

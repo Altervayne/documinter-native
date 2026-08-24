@@ -1,6 +1,6 @@
 /**
  * calloutColor.ts, Pure hex-validation helper for the callout block's custom-color override
- * (`Block.calloutColor`). Shared by the Mintdown and Markdown parsers (parse-time sanitization)
+ * (`Block.calloutColor`). Shared by the Markdown parser (parse-time sanitization)
  * and the editor's color popover.
  *
  * Exports: isValidCalloutHex, sanitizeCalloutHex

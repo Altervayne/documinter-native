@@ -408,7 +408,6 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
                                  onDelete={() => setDocumentPendingDelete(record)}
                                  onExportHtml={() => docs.handleExportHtml(record.id)}
                                  onExportMarkdown={() => docs.handleExportMarkdown(record.id)}
-                                 onExportMintdown={() => docs.handleExportMintdown(record.id)}
                                  onSaveAsTemplate={() => openSaveAsTemplate(record)}
                               />
                            ))}

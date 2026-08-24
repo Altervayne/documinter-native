@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { graphSpecToFence, fenceToGraphSpec } from './graphFence'
 import { documentToMarkdown, markdownToDocument } from './markdown'
-import { documentToMintdown, mintdownToDocument } from './mintdown'
 import type { GraphSpec } from './graph'
 import type { Block, DocMeta, Section } from '../types'
 
 // A graph block serializes as a ```graph fence: chart type + options on the info string, data as
-// a Markdown pipe table body. The `type=` token is load-bearing and rides BOTH .mint and .md.
+// a Markdown pipe table body. The `type=` token is load-bearing and rides the .md document path.
 
 /** Round-trip a spec directly through the fence serializer + parser (prepending the `graph` tag
  *  the real fence line carries, so the parser sees exactly what buildFenceBlock passes it). */
@@ -322,20 +321,6 @@ describe('Graph fence, statistical overlays (repeated overlay= tokens)', () => {
       expect(spec.options.overlays).toEqual([{ kind: 'reference', value: 100, label: 'Deadline: EOD' }])
    })
 
-   it('carries overlays through the full Mintdown document path', () => {
-      const spec: GraphSpec = {
-         type: 'line',
-         data: { labels: ['A', 'B', 'C'], series: [{ name: 'S', values: [1, 2, 3] }] },
-         options: { overlays: [{ kind: 'trend', series: 0 }, { kind: 'reference', value: 5 }] },
-      }
-      const { sections, meta } = wrapGraph(spec)
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('overlay=trend:0')
-      expect(mintdown).toContain('overlay=ref:5')
-      const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsed.graph).toEqual(spec)
-   })
-
    it('round-trips an equation-curve overlay through an unquoted eq: token (no spaces)', () => {
       const spec: GraphSpec = {
          type: 'line',
@@ -622,7 +607,7 @@ describe('Graph fence, function type (equation plots)', () => {
       expect(spec.functionPlot?.domain).toEqual({ xMin: -10, xMax: 10, samples: 200 })
    })
 
-   it('carries a function spec through the full Markdown and Mintdown document paths', () => {
+   it('carries a function spec through the full Markdown document path', () => {
       const spec: GraphSpec = {
          type: 'function',
          data: { labels: [], series: [] },
@@ -641,11 +626,6 @@ describe('Graph fence, function type (equation plots)', () => {
       expect(markdown).toContain('```graph type=function')
       const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
       expect(reparsedFromMarkdown.graph).toEqual(spec)
-
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('```graph type=function')
-      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsedFromMintdown.graph).toEqual(spec)
    })
 })
 
@@ -760,7 +740,7 @@ describe('Graph fence, scatter type (x/y point pairs)', () => {
       ])
    })
 
-   it('carries a scatter spec through the full Markdown and Mintdown document paths', () => {
+   it('carries a scatter spec through the full Markdown document path', () => {
       const spec: GraphSpec = {
          type: 'scatter',
          data: { labels: [], series: [] },
@@ -778,11 +758,6 @@ describe('Graph fence, scatter type (x/y point pairs)', () => {
       expect(markdown).toContain('```graph type=scatter')
       const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
       expect(reparsedFromMarkdown.graph).toEqual(spec)
-
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('```graph type=scatter')
-      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsedFromMintdown.graph).toEqual(spec)
    })
 
    // Overlays live on `options.overlays`, which is shared, type-agnostic serialization (the SAME
@@ -883,7 +858,7 @@ describe('Graph fence, histogram type (binned frequency distribution)', () => {
       expect(spec.histogramData).toEqual({ samples: [] })
    })
 
-   it('carries a histogram spec through the full Markdown and Mintdown document paths', () => {
+   it('carries a histogram spec through the full Markdown document path', () => {
       const spec: GraphSpec = {
          type: 'histogram',
          data: { labels: [], series: [] },
@@ -896,11 +871,6 @@ describe('Graph fence, histogram type (binned frequency distribution)', () => {
       expect(markdown).toContain('```graph type=histogram')
       const reparsedFromMarkdown = markdownToDocument(markdown).sections[0].blocks[0]
       expect(reparsedFromMarkdown.graph).toEqual(spec)
-
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('```graph type=histogram')
-      const reparsedFromMintdown = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsedFromMintdown.graph).toEqual(spec)
    })
 })
 
@@ -947,16 +917,6 @@ describe('Graph fence, full-document serialization (.md and .mint both carry typ
       expect(reparsed.graph).toEqual(spec)
    })
 
-   it('Mintdown carries the load-bearing type= token and reparses to the same spec', () => {
-      const { sections, meta } = wrapGraph(spec)
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('```graph type=bar-grouped')
-
-      const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsed.type).toBe('graph')
-      expect(reparsed.graph).toEqual(spec)
-   })
-
    it('a pie chart round-trips through the full Markdown document path', () => {
       const pieSpec: GraphSpec = {
          type: 'pie',
@@ -968,22 +928,6 @@ describe('Graph fence, full-document serialization (.md and .mint both carry typ
       expect(reparsed.graph).toEqual(pieSpec)
    })
 
-   it('a pie chart with per-slice colors round-trips through the full Mintdown document path', () => {
-      const pieSpec: GraphSpec = {
-         type: 'donut',
-         data: {
-            labels: ['Direct', 'Search', 'Social'],
-            series: [{ name: 'Sessions', values: [1200, 3400, 800] }],
-            categoryColors: ['#2a78d6', undefined, '#eb6834'],
-         },
-         options: { title: 'Traffic by source', donutHole: 0.6 },
-      }
-      const { sections, meta } = wrapGraph(pieSpec)
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('sliceColors="#2a78d6,,#eb6834"')
-      const reparsed = mintdownToDocument(mintdown).sections[0].blocks[0]
-      expect(reparsed.graph).toEqual(pieSpec)
-   })
 })
 
 // A linked graph carries a `source=<handle>` token plus optional `labelCol=`/`orient=` mapping
@@ -1053,7 +997,7 @@ describe('Graph fence, live table link (source=)', () => {
       expect(roundTripSpec(spec)).toEqual(spec)
    })
 
-   it('round-trips a linked graph through the full Mintdown AND Markdown document paths', () => {
+   it('round-trips a linked graph through the full Markdown document path', () => {
       const spec: GraphSpec = {
          type: 'bar',
          data: { labels: ['A', 'B'], series: [{ name: 'V', values: [10, 20] }] },
@@ -1062,13 +1006,9 @@ describe('Graph fence, live table link (source=)', () => {
       }
       const { sections, meta } = wrapGraph(spec)
 
-      const mintdown = documentToMintdown(sections, meta)
-      expect(mintdown).toContain('source=src')
-      expect(mintdown).toContain('labelCol=1')
-      expect(mintdownToDocument(mintdown).sections[0].blocks[0].graph).toEqual(spec)
-
       const markdown = documentToMarkdown(sections, meta)
       expect(markdown).toContain('source=src')
+      expect(markdown).toContain('labelCol=1')
       expect(markdownToDocument(markdown).sections[0].blocks[0].graph).toEqual(spec)
    })
 })

@@ -51,7 +51,6 @@ import type { DockPanelToggle } from './molecules/ViewMenu'
 import type { PanelId } from './lib/dockLayout'
 import { WysiwygArea } from './organisms/WysiwygArea'
 import { MarkdownPanel } from './organisms/MarkdownPanel'
-import { MintdownEditor } from './organisms/MintdownEditor'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
@@ -64,7 +63,6 @@ import { UpdatePrompt } from './atoms/UpdatePrompt'
 
 // -- Markdown Imports --
 import { importMarkdownFile } from './lib/markdown'
-import { importMintdownFile } from './lib/mintdown'
 
 // -- Type Imports --
 import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
@@ -1088,13 +1086,12 @@ export default function App() {
 
    const { paneLayout, togglePanel, setPaneLayout } = useWorkspaceState()
 
-   // Per-panel keyboard shortcuts: Ctrl+Shift+D/M/K
+   // Per-panel keyboard shortcuts: Ctrl+Shift+D/K
    useEffect(() => {
       function handleKeyDown(event: KeyboardEvent): void {
          if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return
          const key = event.key.toLowerCase()
          if (key === 'd') { event.preventDefault(); togglePanel('wysiwyg') }
-         else if (key === 'm') { event.preventDefault(); togglePanel('mintdown') }
          else if (key === 'k') { event.preventDefault(); togglePanel('markdown') }
       }
       document.addEventListener('keydown', handleKeyDown)
@@ -1161,11 +1158,11 @@ export default function App() {
       commitActiveEdit('markdown', document => ({ ...document, sections: newSections, meta: newMeta }))
    }, [commitActiveEdit])
 
-   // Open freshly-loaded content (File -> Open: JSON backup / Markdown / Mintdown) in a NEW tab,
+   // Open freshly-loaded content (File -> Open: JSON backup / Markdown) in a NEW tab,
    // activating it. Discards nothing (it never replaces another tab). The new tab is NOT a binder
    // record (documentId null) and stays that way: editing it no longer forks a record, only an
    // explicit Save (File -> Save / Save As) binds it. A JSON backup's presentation restores its saved
-   // theme / accent / extras, a plain Markdown/Mintdown import lands with the document defaults.
+   // theme / accent / extras, a plain Markdown import lands with the document defaults.
    // Opening from a file never auto-creates a binder entry (Open is not Import); it reads as
    // "Never saved" and closeTab warns before the unsaved tab is lost.
    const openLoadedInNewTab = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
@@ -1189,14 +1186,6 @@ export default function App() {
    // so leave binder mode if it was open.
    const handleImportMarkdown = useCallback((file: File): Promise<void> => {
       return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         openLoadedInNewTab(newMeta, newSections)
-         setBinderOpen(false)
-      })
-   }, [openLoadedInNewTab])
-
-   // Import a Mintdown file, parse it, open it in a new tab.
-   const handleImportMintdown = useCallback((file: File): Promise<void> => {
-      return importMintdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
          openLoadedInNewTab(newMeta, newSections)
          setBinderOpen(false)
       })
@@ -1351,7 +1340,6 @@ export default function App() {
             onAddSection={sectionMutations.addSection}
             onToggleBinder={handleToggleBinder}
             onImportMarkdownFile={handleImportMarkdown}
-            onImportMintdownFile={handleImportMintdown}
             onDocumentImported={handleDocumentImported}
             onSaveTin={handleSaveBinderTin}
             onOpenTin={handleOpenTin}
@@ -1468,13 +1456,6 @@ export default function App() {
                               tooTallPageIds={documentPages.tooTallPageIds}
                               focusedParagraphId={focusedParagraphId}
                               onParagraphFocusChange={setFocusedParagraphId}
-                           />
-                        ),
-                        mintdown: (
-                           <MintdownEditor
-                              sections={sections}
-                              meta={meta}
-                              onCommit={handleMarkdownCommit}
                            />
                         ),
                         markdown: (

@@ -3,9 +3,10 @@
  *
  * A math block's `mathScale` is a font-size multiplier applied to the rendered MathML in the
  * editor preview, the read-only view, and the HTML export. The editor stepper walks these
- * discrete steps; the Mintdown serializer round-trips the value on the fence info string.
+ * discrete steps; the value rides the lossless JSON backup (portable Markdown drops it on export,
+ * though the importer still reads a `scale=` fence token when one is present).
  *
- * Kept in its own tiny, side-effect-free module so the pure Markdown/Mintdown serializers can
+ * Kept in its own tiny, side-effect-free module so the pure Markdown serializer can
  * share the step list + validation WITHOUT importing the UI-flavoured lib/constants.ts (which
  * pulls in lucide-react) or lib/math.ts (which eagerly kicks off the Temml asset load on import).
  */

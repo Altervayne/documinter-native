@@ -41,8 +41,8 @@ export function imageBlockToMarkupSpec(block: Block): ImageMarkupSpec {
 }
 
 /**
- * Build an image Block (markup mode on) from an {@link ImageMarkupSpec}. Used by the Mintdown /
- * Markdown `imagemarkup` fence parsers and by the legacy `image-markup`->`image` load migration.
+ * Build an image Block (markup mode on) from an {@link ImageMarkupSpec}. Used by the Markdown
+ * `imagemarkup` fence parser and by the legacy `image-markup`->`image` load migration.
  * The overlay stores only the viewBox dims + element stack; src/alt/caption land on the block.
  */
 export function markupSpecToImageBlock(id: string, spec: ImageMarkupSpec): Block {
