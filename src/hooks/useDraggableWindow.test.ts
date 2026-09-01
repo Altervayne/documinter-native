@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { clampWindowPosition, clampWindowSize } from './useDraggableWindow'
+import { clampWindowPosition, clampWindowSize } from 'react-pop-a-window'
 
-// The draggable-window primitive's viewport math is extracted as two pure functions so the
-// "can never leave the screen" / "can never invert" guarantees are provable without a DOM.
-
-const VIEWPORT = { width: 1000, height: 800 }
+// The draggable-window primitive's clamp math (now owned by react-pop-a-window) is exposed as two
+// pure functions so the "can never leave the screen" / "can never invert" guarantees the app relies
+// on are provable without a DOM. The bounds origin stays at 0/0 (the clamp reads width/height only).
+const VIEWPORT = { top: 0, left: 0, width: 1000, height: 800 }
 const MARGIN = 12
 
 describe('clampWindowPosition', () => {

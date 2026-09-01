@@ -2,20 +2,23 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 
-// -- Component Imports --
-import { FloatingWindow } from './FloatingWindow'
-import { clampWindowPosition, type WindowPosition, type WindowSize } from '../hooks/useDraggableWindow'
+// -- Library Imports --
+import { PopAWindow, computeAnchoredPosition, usePopAWindowBounds, type WindowSize } from 'react-pop-a-window'
+
+// -- Context Imports --
+import { useLang } from '../contexts/LangContext'
 
 // #############
 // # CONSTANTS #
 // #############
 
-const DEFAULT_SIZE: WindowSize = { width: 460, height: 540 }
-const MIN_SIZE:     WindowSize = { width: 320, height: 240 }
-const MAX_SIZE:     WindowSize = { width: 920, height: 860 }
-const VIEWPORT_MARGIN = 12
-// Gap between the anchored block and the window's initial placement.
+// The anchor-placement size, matching the window's default initial size. The window itself opens at
+// the package defaults (460x540 / 320x240 / 920x860 / margin 12), so only the placement math needs it.
+const SIZE: WindowSize = { width: 460, height: 540 }
+// Gap between the anchored block and the window's initial placement, and the viewport-edge margin the
+// placement is kept inside of. Both match the package's own defaults, passed here for intent.
 const ANCHOR_GAP = 16
+const VIEWPORT_MARGIN = 12
 
 // #########
 // # TYPES #
@@ -41,44 +44,13 @@ interface BlockEditorWindowProps {
    children: ReactNode
 }
 
-// ###########
-// # HELPERS #
-// ###########
-
-/**
- * Initial placement: sit the window to the right of the block (or to its left when the right side
- * has no room), aligned to the block's top, then clamp fully on-screen. A degenerate anchor rect
- * (a block whose ref had not measured) falls back to viewport-centered.
- */
-function computeInitialPosition(
-   anchorRect: DOMRect,
-   size:       WindowSize,
-   viewport:   { width: number; height: number },
-): WindowPosition {
-   const isDegenerate = anchorRect.width === 0 && anchorRect.height === 0
-   if (isDegenerate) {
-      const centered: WindowPosition = {
-         left: (viewport.width  - size.width)  / 2,
-         top:  (viewport.height - size.height) / 2,
-      }
-      return clampWindowPosition(centered, size, viewport, VIEWPORT_MARGIN)
-   }
-
-   const fitsRight = anchorRect.right + ANCHOR_GAP + size.width <= viewport.width - VIEWPORT_MARGIN
-   const desiredLeft = fitsRight
-      ? anchorRect.right + ANCHOR_GAP
-      : anchorRect.left - ANCHOR_GAP - size.width
-   const desired: WindowPosition = { left: desiredLeft, top: anchorRect.top }
-   return clampWindowPosition(desired, size, viewport, VIEWPORT_MARGIN)
-}
-
 // #############
 // # COMPONENT #
 // #############
 
 /**
  * A floating, draggable, NON-MODAL window hosting a block's full editing UI. It is the shared
- * `FloatingWindow` shell configured for a block editor: placed offset from the block's anchor rect
+ * `PopAWindow` shell configured for a block editor: placed offset from the block's anchor rect
  * (once, on open), focus-grabbing by default, Escape-closing, and degrading to a near-full-screen
  * sheet on a narrow viewport. Unlike every other overlay in the app it has NO backdrop and does NOT
  * close on outside-click or scroll; only the close button and Escape dismiss it.
@@ -87,27 +59,31 @@ function computeInitialPosition(
  * that block is the open one, so a deleted block unmounts and takes the window with it for free.
  */
 export function BlockEditorWindow({ title, anchorRect, icon, focusOnOpen = true, onClose, children }: BlockEditorWindowProps) {
+   const { t } = useLang()
+   const bounds = usePopAWindowBounds()
+
    // Initial placement computed once from the anchor rect (lazy initializer, no recompute on every
-   // render; a re-open remounts this component and recomputes fresh).
-   const [initialPosition] = useState<WindowPosition>(() =>
-      computeInitialPosition(anchorRect, DEFAULT_SIZE, { width: window.innerWidth, height: window.innerHeight }),
+   // render; a re-open remounts this component and recomputes fresh). The window sits to the right of
+   // the block when it fits there, else to its left, and clamps fully on-screen.
+   const [initialPosition] = useState(() =>
+      computeAnchoredPosition(anchorRect, SIZE, bounds, { gap: ANCHOR_GAP, margin: VIEWPORT_MARGIN }),
    )
 
    return (
-      <FloatingWindow
+      <PopAWindow
          title={title}
          icon={icon}
          initialPosition={initialPosition}
-         initialSize={DEFAULT_SIZE}
-         minSize={MIN_SIZE}
-         maxSize={MAX_SIZE}
-         margin={VIEWPORT_MARGIN}
          focusOnOpen={focusOnOpen}
-         escapeCloses
-         sheetFallback
+         closeLabel={t.blockWindowClose}
+         resizeLabel={t.blockWindowResize}
+         // The window portals over the document surface, and React bubbles synthetic events up the
+         // React tree (not the DOM tree), so a right-click inside the window would otherwise reach the
+         // document's onContextMenu and open a document menu on top of any editor menu. Stop it here.
+         stopContextMenuPropagation={true}
          onClose={onClose}
       >
          {children}
-      </FloatingWindow>
+      </PopAWindow>
    )
 }

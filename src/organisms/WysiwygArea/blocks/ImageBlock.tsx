@@ -3,7 +3,7 @@ import { AlignLeft, AlignCenter, AlignRight, GripHorizontal, Pencil, Trash2 } fr
 import { PlainEditable } from '../../../atoms/PlainEditable'
 import { compressImage } from '../../../lib/image'
 import { decodeImageSize } from '../../../lib/imageDownscale'
-import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
+import { usePopAWindow } from 'react-pop-a-window'
 import { useLang } from '../../../contexts/LangContext'
 import { ImageMarkupEditor } from './ImageMarkupEditor'
 import type { Block } from '../../../types'
@@ -28,7 +28,7 @@ export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
 
 function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
    const { t } = useLang()
-   const editorWindow = useBlockEditorWindow()
+   const editorWindow = usePopAWindow()
    const inputRef  = useRef<HTMLInputElement>(null)
    const imageRef  = useRef<HTMLImageElement>(null)
    const [dropping, setDropping]             = useState(false)
@@ -46,7 +46,7 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
    async function handleAddMarkup() {
       const { width, height } = block.src ? await decodeImageSize(block.src) : { width: 0, height: 0 }
       patch({ imageMarkup: { width, height, elements: [] } })
-      editorWindow.openEditor(block.id)
+      editorWindow.open(block.id)
    }
 
    function handleResizeMouseDown(event: React.MouseEvent) {

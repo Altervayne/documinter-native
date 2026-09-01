@@ -34,7 +34,7 @@ import { useDocTheme } from '../../../contexts/DocThemeContext'
 import { useDocumentTables, useLinkableTables } from '../../../contexts/DocumentTablesContext'
 import { useDocumentHandles } from '../../../contexts/DocumentHandlesContext'
 import { useDocumentMutations } from '../../../contexts/DocumentMutationsContext'
-import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
+import { usePopAWindow } from 'react-pop-a-window'
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
@@ -101,7 +101,7 @@ function overlayTargetSeriesList(spec: GraphSpec): { name: string; index: number
  *
  * Inline, the block shows only its rendered chart plus a hover-reveal Edit pill; the full editor,
  * chart-type selector, editable data grid, and option controls live in a floating
- * BlockEditorWindow opened via BlockEditorWindowContext. A local working spec keeps typing smooth
+ * BlockEditorWindow opened via the pop-a-window coordinator. A local working spec keeps typing smooth
  * and commits via `patch({ graph })` on blur. The window is rendered inline by this component only
  * while this block is the open one, so deleting the block unmounts the window with it for free.
  */
@@ -109,8 +109,8 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    const { t }        = useLang()
    const docTheme     = useDocTheme()
    const graphTheme   = docTheme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
-   const editorWindow = useBlockEditorWindow()
-   const isEditing    = !readOnly && editorWindow.isEditing(block.id)
+   const editorWindow = usePopAWindow()
+   const isEditing    = !readOnly && editorWindow.isOpen(block.id)
    // The document-wide `handle -> table cells` catalog a LINKED graph resolves its data from. A
    // table edit changes this map's identity, which re-renders this block and re-resolves the link.
    const documentTables = useDocumentTables()
@@ -141,7 +141,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
    // Capture the block's rect at click time, then open the window (single-window context lever).
    function openEditorWindow(): void {
       setAnchorRect(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
-      editorWindow.openEditor(block.id)
+      editorWindow.open(block.id)
    }
 
    // External changes (undo, tab switch, load) sync in only when not actively editing.
@@ -977,7 +977,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                title={t.graphWindowTitle}
                icon={<BarChart3 size={15} />}
                anchorRect={anchorRect}
-               onClose={editorWindow.closeEditor}
+               onClose={editorWindow.close}
             >
                {editorBody}
             </BlockEditorWindow>

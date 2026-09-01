@@ -4,8 +4,10 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 // -- Icon Imports --
 import { Pin } from 'lucide-react'
 
+// -- Library Imports --
+import { PopAWindow } from 'react-pop-a-window'
+
 // -- Component / Lib / Context Imports --
-import { FloatingWindow } from '../molecules/FloatingWindow'
 import { PANEL_REGISTRY } from '../lib/panelRegistry'
 import type { PanelId, WindowPlacement } from '../lib/dockLayout'
 import { useLang } from '../contexts/LangContext'
@@ -40,7 +42,7 @@ interface PanelWindowProps {
 // #############
 
 /**
- * A floating window hosting a popped-out panel. It is the shared `FloatingWindow` shell configured for
+ * A floating window hosting a popped-out panel. It is the shared `PopAWindow` shell configured for
  * the dock: opened at the panel's stored placement (persisted back on every move / resize so it
  * survives a reload), the panel body host-agnostic (identical docked or floating, so it owns its own
  * scroll), and the title bar carrying the panel identity plus a Pin (return to / re-dock) and close. It
@@ -52,7 +54,7 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
    const descriptor = PANEL_REGISTRY[panelId]
 
    return (
-      <FloatingWindow
+      <PopAWindow
          title={descriptor.title(t)}
          icon={descriptor.icon}
          initialPosition={{ top: placement.top, left: placement.left }}
@@ -69,8 +71,19 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
          sheetFallback={false}
          animateIn={false}
          dimmed={dragging}
-         onGeometryCommit={onCommitPlacement}
+         // The package callback hands back (geometry, corners); the dock persists only the geometry,
+         // which is the same top/left/width/height shape as WindowPlacement.
+         onGeometryCommit={geometry => onCommitPlacement({
+            top:    geometry.top,
+            left:   geometry.left,
+            width:  geometry.width,
+            height: geometry.height,
+         })}
          closeLabel={t.dockClosePanel}
+         resizeLabel={t.blockWindowResize}
+         // A right-click inside a popped-out panel must not fall through to the document context menu
+         // (the window portals over the document surface; see the block editor window for the detail).
+         stopContextMenuPropagation={true}
          onClose={onClose}
          headerActions={
             <button
@@ -85,6 +98,6 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
          }
       >
          {body}
-      </FloatingWindow>
+      </PopAWindow>
    )
 }

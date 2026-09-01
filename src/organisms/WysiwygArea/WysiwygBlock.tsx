@@ -9,7 +9,7 @@ import { GripVertical, TriangleAlert } from 'lucide-react'
 // -- Context / Hook Imports --
 import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { useDocumentHandles } from '../../contexts/DocumentHandlesContext'
-import { useBlockEditorWindow } from '../../contexts/BlockEditorWindowContext'
+import { usePopAWindow } from 'react-pop-a-window'
 import { usePageBreaks } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
 import { useAnchorEditor } from './useAnchorEditor'
@@ -114,19 +114,19 @@ export function WysiwygBlock({
    const ctx          = useDocumentMutations()
    const { t }        = useLang()
    const allHandles   = useDocumentHandles()
-   const editorWindow = useBlockEditorWindow()
+   const editorWindow = usePopAWindow()
    const pageBreaks   = usePageBreaks()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
    // The block's editor window is open: highlight it and drop its inline controls (block-owned).
-   const isWindowOpen = !readOnly && editorWindow.isEditing(block.id)
+   const isWindowOpen = !readOnly && editorWindow.isOpen(block.id)
 
-   // Unmount safety: a deleted / undone-away block clears its own open id so the context never
+   // Unmount safety: a deleted / undone-away block clears its own open id so the coordinator never
    // holds a dangling reference. Deliberately unmount-only (block.id is stable per instance), the
-   // functional clear (see clearIfEditing) keeps the captured context reference stale-closure safe.
-   // Depending on `editorWindow` would re-run the cleanup on every openBlockId change and wrongly
+   // functional clear (see closeIfOpen) keeps the captured coordinator reference stale-closure safe.
+   // Depending on `editorWindow` would re-run the cleanup on every open-id change and wrongly
    // clear the just-opened block, so it is intentionally excluded.
    // eslint-disable-next-line react-hooks/exhaustive-deps
-   useEffect(() => () => editorWindow.clearIfEditing(block.id), [block.id])
+   useEffect(() => () => editorWindow.closeIfOpen(block.id), [block.id])
 
    const [hovered,       setHovered]       = useState(false)
    const [pendingInsert, setPendingInsert] = useState<'before' | 'after' | null>(null)

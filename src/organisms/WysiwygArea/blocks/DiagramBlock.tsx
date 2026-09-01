@@ -59,7 +59,7 @@ import { ContextMenu } from '../../../molecules/ContextMenu'
 import type { ContextMenuEntry } from '../../../molecules/ContextMenu'
 import type { CanvasPointerInfo } from '../../../molecules/DiagramCanvas'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
-import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
+import { usePopAWindow } from 'react-pop-a-window'
 import { useDocTheme } from '../../../contexts/DocThemeContext'
 import { useLang } from '../../../contexts/LangContext'
 import type { T } from '../../../lib/i18n'
@@ -185,8 +185,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const { t }          = useLang()
    const docTheme       = useDocTheme()
    const diagramTheme   = docTheme === 'dark' ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME
-   const editorWindow   = useBlockEditorWindow()
-   const isEditing      = !readOnly && editorWindow.isEditing(block.id)
+   const editorWindow   = usePopAWindow()
+   const isEditing      = !readOnly && editorWindow.isOpen(block.id)
 
    // ============
    //  Draft state (mirrors GraphBlock / ImageMarkupEditor): a working spec + refs so pointer
@@ -350,7 +350,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       setMarqueeRect(null)
       spaceHeldRef.current = false
       setSpaceHeld(false)
-      editorWindow.openEditor(block.id)
+      editorWindow.open(block.id)
    }
 
    /** Cancel any in-flight edge-connect drag + clear its preview state. */
@@ -1060,7 +1060,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
                title={t.diagramWindowTitle}
                icon={<Workflow size={15} />}
                anchorRect={anchorRect}
-               onClose={() => { flushPendingEdit(); setNodeMenu(null); editorWindow.closeEditor() }}
+               onClose={() => { flushPendingEdit(); setNodeMenu(null); editorWindow.close() }}
             >
                {editorBody}
             </BlockEditorWindow>

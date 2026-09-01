@@ -37,8 +37,8 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const editing = useRef(false)
 
    // Symbol palette: a pure-UI assisted-input tool over the same `latex` source, hosted in a
-   // persistent, draggable BlockEditorWindow (NOT a modal / not the block-editor-window context,
-   // it is a per-block tool). The textarea ref lets an inserted snippet read the live
+   // persistent, draggable BlockEditorWindow (NOT a modal / not the window coordinator's single
+   // open block, it is a per-block tool). The textarea ref lets an inserted snippet read the live
    // caret/selection and hand focus straight back; the palette opens with focusOnOpen={false} so
    // the source textarea keeps focus and the user can keep typing while inserting symbols.
    const textareaRef = useRef<HTMLTextAreaElement>(null)

@@ -33,6 +33,37 @@
   --pqc-swatch-size: 1.375rem;
 }
 
+/* ##############################################################################
+   react-pop-a-window theme mapping
+   ##############################################################################
+
+   The floating-window package (react-pop-a-window) themes via `--paw-*` custom
+   properties. Map each to the app token so the block-editor and popped-out panel
+   windows inherit the app's palette. Because the `--color-*` tokens flip under
+   html[data-theme="light"], this one override gives the windows automatic
+   light/dark parity, so the package's own `.paw-dark` class stays unused.
+
+   The package defines its fallbacks on `:where(.paw-window)` (zero specificity),
+   so this plain `.paw-window` rule always wins on specificity; main.tsx also
+   imports the package stylesheet before this file, so source order favors us too.
+
+   Only the tokens whose old chrome value DIFFERED from the package default are
+   mapped: radius (12px), radius-sm (6px), shadow, z-index (9000) and dim opacity
+   (0.6) already match the defaults and are left alone. The close-button hover
+   tint is mapped too: the package default is a fixed rgba black that would read
+   almost invisibly on the dark app theme, whereas the old `--color-text` mix
+   flips with the theme, so mapping it preserves the hover on both themes. */
+.paw-window {
+  --paw-surface:     var(--color-raised);
+  --paw-body-bg:     var(--color-bg);
+  --paw-border:      var(--color-border);
+  --paw-text:        var(--color-text);
+  --paw-muted:       var(--color-muted);
+  --paw-accent:      var(--color-accent);
+  --paw-font:        var(--font-sans);
+  --paw-close-hover: color-mix(in srgb, var(--color-text) 10%, transparent);
+}
+
 /* Makes .doc-dark a usable Tailwind variant: doc-dark:bg-[#21262d] etc. */
 @custom-variant doc-dark (&:where(.doc-dark *));
 

@@ -1212,9 +1212,12 @@
    the data color swatches remain document-themed (handled in JS via useDocTheme + inline styles). */
 
 /* ############################################################
-   Block editor window (floating, draggable, NON-modal editor host)
-   Portaled to <body>, so these rules are UNSCOPED (like .math-symbol-palette). App --color-*
-   tokens drive the chrome; the body content re-establishes its own doc-theme scope.
+   Block editor + panel window bridges
+   The floating-window CHROME (frame / titlebar / close / resize grip / sheet) now comes from the
+   react-pop-a-window package (`.paw-window*`), themed to the app --color-* tokens in index.css. What
+   stays here is only the app-content that lives INSIDE those windows: the anchored block's highlight
+   ring, the popped-out panel's own body surface, and the per-editor body-padding resets.
+   Portaled to <body>, so these rules are UNSCOPED (like .math-symbol-palette).
    ############################################################ */
 
 /* The open block's accent highlight ring, mirrors the anchor-dupe amber ring mechanism, one class. */
@@ -1222,22 +1225,6 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--doc-accent, var(--color-accent)) 60%, transparent);
 }
 
-.block-editor-window {
-  position: fixed; z-index: 9000; box-sizing: border-box;
-  display: flex; flex-direction: column;
-  border: 1px solid var(--color-border); border-radius: 12px;
-  background: var(--color-raised);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
-  overflow: hidden;
-  animation: menu-in 130ms ease-out both;
-  transition: opacity 0.12s ease;
-}
-.block-editor-window:focus { outline: none; }
-/* A window whose opacity is externally controlled (a popped-out dock panel dimmed while its Pin is
-   dragged) opts out of the pop-in animation: menu-in forwards-fills opacity:1, which as an animated
-   value outranks the dim class below, so the two cannot coexist. */
-.block-editor-window-no-anim { animation: none; }
-.block-editor-window-dimmed  { opacity: 0.6; }
 /* A popped-out panel window's body: it matches the block editor windows, a raised frame + header over a
    distinct --color-bg body surface, so the header does not blend into the body (raised-on-raised reads
    flat in a lone window). The panel body brings its own scroll, so this stays bare apart from the fill
@@ -1249,60 +1236,6 @@
   background: var(--color-bg);
 }
 
-/* Title bar = the drag handle. touch-action:none lets Pointer Events own the gesture on touch. */
-.block-editor-window-titlebar {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.5rem 0.55rem 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-raised);
-  cursor: grab; user-select: none; touch-action: none;
-}
-.block-editor-window-titlebar:active { cursor: grabbing; }
-.block-editor-window-icon  { display: inline-flex; flex: 0 0 auto; color: var(--color-accent); }
-.block-editor-window-title {
-  flex: 1 1 auto; min-width: 0;
-  font-family: var(--font-sans); font-size: 0.82rem; font-weight: 600; color: var(--color-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.block-editor-window-close {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 1.6rem; height: 1.6rem; padding: 0; border-radius: 6px;
-  border: none; background: transparent; color: var(--color-muted); cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-.block-editor-window-close:hover {
-  background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--color-text);
-}
-
-/* Body scrolls within the window; content supplies its own colors. */
-.block-editor-window-body {
-  /* `scrollbar-gutter: stable both-edges` reserves the scrollbar's horizontal space even when no
-     scrollbar is shown, so a scrollbar appearing (e.g. selecting a node grows the inspector past the
-     window height) never shrinks the content width, no more wrap-jitter of the shape palette.
-     `both-edges` mirrors that reserved gutter onto the opposite edge too, so the content stays
-     symmetric / centered whether or not the scrollbar is present (plain `stable` reserves only the
-     scrollbar side, leaving content looking pushed off-centre when it's absent). The graph / math
-     bodies below MUST reset this to `auto`: overflow:hidden is still a scroll container, so `stable`
-     keeps reserving the gutter and would inset their inner scrollbar from the window edge. */
-  flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-gutter: stable both-edges;
-  padding: 0.85rem 0.95rem; background: var(--color-bg);
-}
-
-/* Bottom-right resize grip: a small diagonal-hatch corner. */
-.block-editor-window-resize {
-  position: absolute; right: 2px; bottom: 2px;
-  width: 16px; height: 16px; cursor: nwse-resize; touch-action: none;
-  background: linear-gradient(135deg,
-     transparent 0 45%, var(--color-border) 45% 55%,
-     transparent 55% 68%, var(--color-border) 68% 78%, transparent 78%);
-}
-
-/* Narrow-viewport fallback: a near-full-screen sheet, drag + resize disabled. */
-.block-editor-window-sheet {
-  top: 3vh; left: 3vw; width: 94vw; height: 94vh;
-}
-.block-editor-window-sheet .block-editor-window-titlebar { cursor: default; }
-
 /* The graph editor is app-chrome (its `.graph-editor` rule owns the app tokens + font + the
    height:100% that lets the tabs pin while only the tab content scrolls), so it mounts directly in
    the window body, no `.doc-render`/`.doc-dark` wrapper, no padding-neutralization needed. */
@@ -1313,18 +1246,18 @@
    overflow:hidden is still a scroll container, so the base rule's `stable both-edges` keeps reserving
    a gutter on BOTH edges (no visible scrollbar, but the space is still held), which insets the palette
    from the window edges and pushes its inner scrollbar in from the right. auto releases that space. */
-.block-editor-window-body:has(.math-symbol-palette-content) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+.paw-window-body:has(.math-symbol-palette-content) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 /* The graph editor fills the body and scrolls on its OWN tab panel (tabs stay pinned), so the body must
    not pad or scroll, otherwise the panel's scrollbar sits inset from the window edge. The tabs + panel
    carry the content padding instead, so the scrollbar ends up flush with the window's edge. Same
    scrollbar-gutter:auto reset as the palette above (overflow:hidden does NOT release the base gutter). */
-.block-editor-window-body:has(.graph-editor) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+.paw-window-body:has(.graph-editor) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 /* The document settings editors (Page setup / Presentation / Document nav) share one body with their
    docked side panels: the `.doc-settings-panel` scroll wrapper owns the scroll + padding so the panel
    form is not flush to the edges, and it must be the ONLY scroller. Neutralize the window body the same
    way as the graph / palette above, including the scrollbar-gutter:auto reset (overflow:hidden does NOT
    release the base rule's `stable both-edges` gutter, which would otherwise inset the panel scrollbar). */
-.block-editor-window-body:has(.doc-settings-panel) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+.paw-window-body:has(.doc-settings-panel) { padding: 0; overflow: hidden; scrollbar-gutter: auto; }
 
 /* ############################################################
    Presentation editor (hosted in the Block Editor Window)

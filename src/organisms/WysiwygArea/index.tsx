@@ -13,7 +13,7 @@ import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { DocumentTablesProvider, LinkableTablesProvider } from '../../contexts/DocumentTablesContext'
 import { DocThemeProvider } from '../../contexts/DocThemeContext'
-import { BlockEditorWindowProvider } from '../../contexts/BlockEditorWindowContext'
+import { PopAWindowProvider } from 'react-pop-a-window'
 import { ParagraphFocusProvider } from '../../contexts/ParagraphFocusContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
@@ -1230,7 +1230,7 @@ export function WysiwygArea({
        <DocumentTablesProvider tables={documentTables}>
        <LinkableTablesProvider tables={linkableTables}>
        <DocThemeProvider theme={docTheme}>
-        <BlockEditorWindowProvider resetKey={activeTabKey}>
+        <PopAWindowProvider mode="single" resetKey={activeTabKey}>
          <ParagraphFocusProvider value={paragraphFocusValue}>
          <PageBreaksContext.Provider value={pageBreaksApi}>
          <div className="flex flex-col h-full min-h-0 w-full">
@@ -1336,7 +1336,7 @@ export function WysiwygArea({
          </div>
          </PageBreaksContext.Provider>
          </ParagraphFocusProvider>
-        </BlockEditorWindowProvider>
+        </PopAWindowProvider>
        </DocThemeProvider>
        </LinkableTablesProvider>
        </DocumentTablesProvider>

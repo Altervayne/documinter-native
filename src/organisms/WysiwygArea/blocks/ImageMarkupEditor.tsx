@@ -32,7 +32,7 @@ import { PlainEditable } from '../../../atoms/PlainEditable'
 import { SegmentedIconToggle } from '../../../atoms/SegmentedIconToggle'
 import { BlockEditorWindow } from '../../../molecules/BlockEditorWindow'
 import { ColorSwatchField } from '../../../molecules/ColorSwatchField'
-import { useBlockEditorWindow } from '../../../contexts/BlockEditorWindowContext'
+import { usePopAWindow } from 'react-pop-a-window'
 import { useLang } from '../../../contexts/LangContext'
 
 // -- Type Imports --
@@ -207,8 +207,8 @@ interface ImageMarkupEditorProps {
  */
 export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorProps) {
    const { t }        = useLang()
-   const editorWindow = useBlockEditorWindow()
-   const isEditing    = !readOnly && editorWindow.isEditing(block.id)
+   const editorWindow = usePopAWindow()
+   const isEditing    = !readOnly && editorWindow.isOpen(block.id)
 
    // ============
    //  Draft state (mirrors GraphBlock): local working spec + refs for stale-closure-free handlers.
@@ -311,7 +311,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       // Fold markup off entirely: clear the overlay so the block reverts to a plain image, keeping
       // the base pixels/alt/caption intact.
       editing.current = false
-      editorWindow.closeEditor()
+      editorWindow.close()
       patchRef.current({ imageMarkup: undefined })
    }
 
@@ -569,7 +569,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
 
    function openEditorWindow(): void {
       setAnchorRect(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
-      editorWindow.openEditor(block.id)
+      editorWindow.open(block.id)
    }
 
    // ============
@@ -1008,7 +1008,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
                title={t.imageMarkupWindowTitle}
                icon={<Pencil size={15} />}
                anchorRect={anchorRect}
-               onClose={editorWindow.closeEditor}
+               onClose={editorWindow.close}
             >
                {editorBody}
             </BlockEditorWindow>
