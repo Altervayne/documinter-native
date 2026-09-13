@@ -3,8 +3,6 @@ import { DndContext, DragOverlay, pointerWithin, useDndMonitor } from '@dnd-kit/
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable'
 import { Folder, ArrowDown, ArrowUp, FilePlus, FileJson } from 'lucide-react'
 import type { BinderFolderRecord, BinderDocumentRecord } from '../../types'
-import { backfillSearchText, loadDocument } from '../../lib/binderDocuments'
-import { collectFolderSubtreeForTin } from '../../lib/binderBackup'
 import { downloadTin, tinDownloadName, type TinFile } from '../../lib/tinFile'
 import type { DocumentSortBy } from '../../lib/binderSearch'
 import type { DocumentTemplate } from '../../lib/documentTemplate'
@@ -16,6 +14,7 @@ import { useBinderFileImport } from '../../hooks/useBinderFileImport'
 import { useTemplates } from '../../hooks/useTemplates'
 import { useLang } from '../../contexts/LangContext'
 import { useToast } from '../../contexts/ToastContext'
+import { useBinderBackend } from '../../contexts/BinderBackendContext'
 import { BinderNav } from './BinderNav'
 import { BinderBreadcrumb } from './BinderBreadcrumb'
 import { BinderControls } from './BinderControls'
@@ -78,6 +77,7 @@ const ROOT_FOLDER_ID = '0'
 export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onApplyTemplate, onDocumentDeleted, onCurrentFolderChange, onTinDropped }: BinderProps) {
    const { t } = useLang()
    const { showToast } = useToast()
+   const backend = useBinderBackend()
 
    // ============================
    //  Navigation + shared refresh
@@ -111,11 +111,11 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    // One-time: backfill contentText on documents saved before full-text search existed.
    useEffect(() => {
       let active = true
-      backfillSearchText()
+      backend.backfillSearchText()
          .then(updated => { if (active && updated > 0) bumpData() })
          .catch(error => console.error('[binder] search-text backfill failed:', error))
       return () => { active = false }
-   }, [bumpData])
+   }, [bumpData, backend])
 
    const templates = useTemplates(dataVersion, bumpData)
    const nav  = useBinderNav(currentFolderId, dataVersion, bumpData)
@@ -176,7 +176,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       if (!dialog) return
       if (dialog.mode === 'rename') { void templates.handleRename(dialog.templateId, name); return }
       // Save mode: load the document's chrome (no content is captured) and store the template.
-      const loaded = await loadDocument(dialog.documentId, { touch: false })
+      const loaded = await backend.loadDocument(dialog.documentId, { touch: false })
       if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
       await templates.handleSave(name, {
          meta:         loaded.meta,
@@ -185,7 +185,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
          presentation: loaded.presentation,
          format:       loaded.format,
       })
-   }, [templateNameDialog, templates, showToast, t])
+   }, [templateNameDialog, templates, showToast, t, backend])
 
    const handleConfirmDeleteTemplate = useCallback(() => {
       const template = templatePendingDelete
@@ -212,13 +212,13 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    // (those are app-wide, not folder-scoped); the file is named from the folder.
    const handleExportFolderTin = useCallback(async (folder: BinderFolderRecord) => {
       try {
-         const tin = await collectFolderSubtreeForTin(folder.id)
+         const tin = await backend.collectFolderSubtreeForTin(folder.id)
          await downloadTin(tin, tinDownloadName(folder.name || t.binderNewFolder, tin.exportedAt))
          showToast(t.tinFolderExported, { type: 'success' })
       } catch {
          showToast(t.tinExportFailed, { type: 'error' })
       }
-   }, [showToast, t])
+   }, [showToast, t, backend])
 
    const handleConfirmDeleteFolder = useCallback((recursive: boolean) => {
       const folder = folderPendingDelete

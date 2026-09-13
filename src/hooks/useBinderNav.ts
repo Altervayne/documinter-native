@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BinderFolderRecord } from '../types'
-import { listDocuments } from '../lib/binderDocuments'
-import {
-   getFolderChildren, getFolderAncestors,
-   createFolder as storageCreateFolder, renameFolder as storageRenameFolder,
-   deleteFolder as storageDeleteFolder, reorderFolders as storageReorderFolders,
-   moveFolder as storageMoveFolder,
-} from '../lib/binderFolders'
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 interface UseBinderNavResult {
    subfolders:           BinderFolderRecord[]   // immediate children of the current folder
@@ -27,6 +21,7 @@ interface UseBinderNavResult {
  * via onChanged so both the nav and the document grid refresh together.
  */
 export function useBinderNav(currentFolderId: string, dataVersion: number, onChanged: () => void): UseBinderNavResult {
+   const backend = useBinderBackend()
    const [subfolders, setSubfolders]                     = useState<BinderFolderRecord[]>([])
    const [ancestors, setAncestors]                       = useState<BinderFolderRecord[]>([])
    const [folderDocumentCounts, setFolderDocumentCounts] = useState<Record<string, number>>({})
@@ -35,9 +30,9 @@ export function useBinderNav(currentFolderId: string, dataVersion: number, onCha
    useEffect(() => {
       let active = true
       Promise.all([
-         getFolderChildren(currentFolderId),
-         getFolderAncestors(currentFolderId),
-         listDocuments(),
+         backend.getFolderChildren(currentFolderId),
+         backend.getFolderAncestors(currentFolderId),
+         backend.listDocuments(),
       ]).then(([children, ancestorChain, allDocuments]) => {
          if (!active) return
          setSubfolders(children)
@@ -48,24 +43,24 @@ export function useBinderNav(currentFolderId: string, dataVersion: number, onCha
          setIsLoading(false)
       }).catch(() => { if (active) setIsLoading(false) })
       return () => { active = false }
-   }, [currentFolderId, dataVersion])
+   }, [currentFolderId, dataVersion, backend])
 
    const createFolder = useCallback(async (parentId: string, name: string) => {
-      const id = await storageCreateFolder(name, parentId)
+      const id = await backend.createFolder(parentId, name)
       onChanged()
       return id
-   }, [onChanged])
+   }, [onChanged, backend])
 
    const renameFolder = useCallback(async (id: string, name: string) => {
-      await storageRenameFolder(id, name)
+      await backend.renameFolder(id, name)
       onChanged()
-   }, [onChanged])
+   }, [onChanged, backend])
 
    const deleteFolder = useCallback(async (id: string, recursive: boolean) => {
-      const deletedDocumentIds = await storageDeleteFolder(id, { recursive })
+      const deletedDocumentIds = await backend.deleteFolder(id, { recursive })
       onChanged()
       return deletedDocumentIds
-   }, [onChanged])
+   }, [onChanged, backend])
 
    const reorderFolders = useCallback(async (orderedIds: string[]) => {
       // Optimistic: apply the new order in the same frame as the drop (the persist + re-read are
@@ -77,17 +72,17 @@ export function useBinderNav(currentFolderId: string, dataVersion: number, onCha
             .filter((folder): folder is BinderFolderRecord => folder !== undefined)
          return next.length === current.length ? next : current
       })
-      await storageReorderFolders(orderedIds)
+      await backend.reorderFolders(orderedIds)
       onChanged()
-   }, [onChanged])
+   }, [onChanged, backend])
 
    const moveFolder = useCallback(async (id: string, targetParentId: string) => {
       // Optimistic: the folder leaves the current level (nested into a sibling, or moved up), so
       // drop it from the visible list immediately; the re-read confirms.
       setSubfolders(current => current.filter(folder => folder.id !== id))
-      await storageMoveFolder(id, targetParentId)
+      await backend.moveFolder(id, targetParentId)
       onChanged()
-   }, [onChanged])
+   }, [onChanged, backend])
 
    return { subfolders, ancestors, folderDocumentCounts, isLoading, createFolder, renameFolder, deleteFolder, reorderFolders, moveFolder }
 }

@@ -3,10 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 
-// -- Lib Imports --
-import { getFolderAncestors } from '../lib/binderFolders'
-
 // -- Hook / Type Imports --
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 import { useBinderDocuments } from './useBinderDocuments'
 import { useBinderNav } from './useBinderNav'
 import type { BinderDocumentRecord, BinderFolderRecord } from '../types'
@@ -57,6 +55,7 @@ interface UseBinderDragAndDropOptions {
 export function useBinderDragAndDrop({
    docs, nav, navigateTo, currentFolder, currentFolderId, manualSortActive, clearDocumentSelection,
 }: UseBinderDragAndDropOptions) {
+   const backend = useBinderBackend()
    const { documents, handleMove, handleReorder } = docs
    const { subfolders, ancestors, moveFolder, reorderFolders } = nav
 
@@ -226,10 +225,10 @@ export function useBinderDragAndDrop({
    // Nest folder A into B, rejected if B is a descendant of A (would create a cycle). Among the
    // visible siblings a cycle is impossible, but the full ancestor walk is validated regardless.
    const nestFolder = useCallback(async (folderId: string, targetParentId: string) => {
-      const folderAncestors = await getFolderAncestors(targetParentId)
+      const folderAncestors = await backend.getFolderAncestors(targetParentId)
       if (folderAncestors.some(ancestor => ancestor.id === folderId)) return
       await moveFolder(folderId, targetParentId)
-   }, [moveFolder])
+   }, [moveFolder, backend])
 
    const handleDragEnd = useCallback((event: DragEndEvent) => {
       const droppedOnBack   = overBackRef.current

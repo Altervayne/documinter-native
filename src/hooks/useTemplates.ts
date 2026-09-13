@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BUILT_IN_TEMPLATES, captureTemplate } from '../lib/documentTemplate'
 import type { DocumentTemplate, TemplateChrome } from '../lib/documentTemplate'
-import { listTemplates, saveTemplate, deleteTemplate, renameTemplate } from '../lib/templateStore'
 import { downloadTemplate, loadTemplateFile } from '../lib/templateBackupFile'
 import { useToast } from '../contexts/ToastContext'
 import { useLang } from '../contexts/LangContext'
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 /**
  * Loads the saved document templates (newest-updated first) and exposes the template actions:
@@ -16,13 +16,14 @@ import { useLang } from '../contexts/LangContext'
 export function useTemplates(dataVersion: number, onChanged: () => void) {
    const { showToast } = useToast()
    const { t } = useLang()
+   const backend = useBinderBackend()
 
    const [stored, setStored]       = useState<DocumentTemplate[]>([])
    const [isLoading, setIsLoading] = useState(true)
 
    useEffect(() => {
       let active = true
-      listTemplates()
+      backend.listTemplates()
          .then(list => { if (active) { setStored(list); setIsLoading(false) } })
          .catch(error => {
             if (!active) return
@@ -31,40 +32,40 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
             showToast(t.binderActionFailed, { type: 'error' })
          })
       return () => { active = false }
-   }, [dataVersion, showToast, t])
+   }, [dataVersion, showToast, t, backend])
 
    // Capture a live document's chrome into a named template and store it (values blanked, pages
    // stripped, presentation/format normalized by captureTemplate).
    const handleSave = useCallback(async (name: string, source: TemplateChrome) => {
       try {
          const template = captureTemplate(name, source, crypto.randomUUID(), Date.now())
-         await saveTemplate(template)
+         await backend.saveTemplate(template)
          onChanged()
          showToast(t.templateSaved, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [onChanged, showToast, t])
+   }, [onChanged, showToast, t, backend])
 
    const handleRename = useCallback(async (id: string, name: string) => {
       try {
-         await renameTemplate(id, name, Date.now())
+         await backend.renameTemplate(id, name, Date.now())
          onChanged()
          showToast(t.templateRenamed, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [onChanged, showToast, t])
+   }, [onChanged, showToast, t, backend])
 
    const handleDelete = useCallback(async (id: string) => {
       try {
-         await deleteTemplate(id)
+         await backend.deleteTemplate(id)
          onChanged()
          showToast(t.templateDeleted, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [onChanged, showToast, t])
+   }, [onChanged, showToast, t, backend])
 
    // Duplicate any template (built-in or stored) into a fresh, editable, stored copy. The `builtIn`
    // flag is dropped so the copy is fully editable / deletable.
@@ -79,13 +80,13 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
             createdAt: now,
             updatedAt: now,
          }
-         await saveTemplate(copy)
+         await backend.saveTemplate(copy)
          onChanged()
          showToast(t.templateDuplicated, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [onChanged, showToast, t])
+   }, [onChanged, showToast, t, backend])
 
    // Download a template as a portable `.documinter-template.json` file.
    const handleExport = useCallback((template: DocumentTemplate) => {
@@ -98,13 +99,13 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
       loadTemplateFile(
          parsed => {
             const template = captureTemplate(parsed.name, parsed.chrome, crypto.randomUUID(), Date.now())
-            saveTemplate(template)
+            backend.saveTemplate(template)
                .then(() => { onChanged(); showToast(t.templateImported, { type: 'success' }) })
                .catch(() => showToast(t.binderActionFailed, { type: 'error' }))
          },
          () => showToast(t.templateImportInvalid, { type: 'error' }),
       )
-   }, [onChanged, showToast, t])
+   }, [onChanged, showToast, t, backend])
 
    const templates = [...BUILT_IN_TEMPLATES, ...stored]
 

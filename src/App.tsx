@@ -8,12 +8,10 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { mkSection, isEmptyDocument } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
-import { saveDocument, loadDocument, getDocumentFolderId, duplicateDocument, moveDocument, type LoadedDocument, type DocPresentation } from './lib/binderDocuments'
-import { getFolder } from './lib/binderFolders'
-import { collectBinderForTin, importTin, type TinImportSummary } from './lib/binderBackup'
+import type { LoadedDocument, DocPresentation } from './lib/binderDocuments'
+import type { TinImportSummary } from './lib/binderBackup'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
 import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
-import { saveTemplate } from './lib/templateStore'
 import {
    emptyHistory, recordEdit, applyUndo, applyRedo, canUndo, canRedo,
    COALESCE_MS, HISTORY_DEPTH_CAP,
@@ -29,6 +27,7 @@ import { useContainerMutations } from './hooks/useContainerMutations'
 import { DocumentMutationsContext } from './contexts/DocumentMutationsContext'
 import { LangProvider } from './contexts/LangContext'
 import { useToast } from './contexts/ToastContext'
+import { useBinderBackend } from './contexts/BinderBackendContext'
 
 // -- Component Imports --
 import { HeaderMenuBar } from './organisms/HeaderMenuBar'
@@ -167,6 +166,10 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
 }
 
 export default function App() {
+   // The active persistence backend. Every save / load / list goes through it, so the storage
+   // engine (IndexedDB now, filesystem later) can be swapped without touching the handlers below.
+   const backend = useBinderBackend()
+
    // Document state starts blank; the real document set is hydrated asynchronously from
    // IndexedDB on mount (see the hydration effect below). Documents live as a list of open tabs,
    // with exactly one tab active at a time; its content and identity drive the rest of the app.
@@ -403,7 +406,7 @@ export default function App() {
          try {
             if (restore.documentIds.length === 0 && legacy) {
                // Migrate legacy autosave to IndexedDB. Keep the old key until the write confirms.
-               const migratedId = await saveDocument(
+               const migratedId = await backend.saveDocument(
                   { meta: legacy.meta, sections: legacy.sections },
                   { docTheme: legacy.docTheme, docAccent: legacy.docAccent },
                )
@@ -415,7 +418,7 @@ export default function App() {
             // Load each persisted id in tab order, skipping any deleted since last session.
             const restoredTabs: OpenDocument[] = []
             for (const persistedId of restore.documentIds) {
-               const loaded = await loadDocument(persistedId)
+               const loaded = await backend.loadDocument(persistedId)
                if (cancelled) return
                if (loaded) restoredTabs.push(buildTabFromLoaded(loaded, persistedId))
             }
@@ -433,7 +436,7 @@ export default function App() {
       }
       hydrate()
       return () => { cancelled = true }
-   }, [applyRestoredTabs])
+   }, [applyRestoredTabs, backend])
 
    // Persist the open-tab set + active tab (only after hydration, so the initial blank can't
    // overwrite the stored set before it has been read). Tabs without a binder id aren't listed;
@@ -478,7 +481,7 @@ export default function App() {
          // Read the originating tab's latest identity at fire time (a prior cycle may have promoted it).
          const originatingTab = openDocumentsRef.current.find(document => document.tabKey === originatingTabKey)
          setTabSaveStatus(originatingTabKey, 'saving')
-         saveDocument(
+         backend.saveDocument(
             { meta, sections },
             { docTheme, docAccent, presentation, format },
             originatingTab?.documentId ?? undefined,
@@ -497,7 +500,7 @@ export default function App() {
       return () => {
          if (autosaveTimerRef.current !== null) clearTimeout(autosaveTimerRef.current)
       }
-   }, [meta, sections, docTheme, docAccent, presentation, format, setTabSaveStatus])
+   }, [meta, sections, docTheme, docAccent, presentation, format, setTabSaveStatus, backend])
 
    // Fade the "Saved" indicator out after 2.5 s
    useEffect(() => {
@@ -528,7 +531,7 @@ export default function App() {
       if (!flushTab) return null
       setTabSaveStatus(flushTabKey, 'saving')
       try {
-         const savedId = await saveDocument(
+         const savedId = await backend.saveDocument(
             { meta: flushTab.meta, sections: flushTab.sections },
             { docTheme: flushTab.docTheme, docAccent: flushTab.docAccent, presentation: flushTab.presentation, format: flushTab.format },
             flushTab.documentId ?? undefined,
@@ -545,7 +548,7 @@ export default function App() {
          showToast(t.saveFailed, { type: 'error' })
          return null
       }
-   }, [showToast, t, setTabSaveStatus])
+   }, [showToast, t, setTabSaveStatus, backend])
 
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
 
@@ -666,13 +669,13 @@ export default function App() {
    // File -> Save binder as Tin...: collect the whole binder and download it, stamped with today.
    const handleSaveBinderTin = useCallback(async () => {
       try {
-         const tin = await collectBinderForTin()
+         const tin = await backend.collectBinderForTin()
          await downloadTin(tin, tinDownloadName('documinter-binder', tin.exportedAt))
          showToast(t.tinExported, { type: 'success' })
       } catch {
          showToast(t.tinExportFailed, { type: 'error' })
       }
-   }, [showToast, t])
+   }, [showToast, t, backend])
 
    // File -> Open Tin...: pick a `.tin`, read its bytes, gunzip, parse. A corrupt gzip or a file that
    // is not a Tin errors out with no writes; a valid one opens the merge / replace mode dialog,
@@ -706,7 +709,7 @@ export default function App() {
    // remounts the Binder at root; a Merge just refreshes the list in place.
    const runTinImport = useCallback(async (tin: TinFile, mode: 'merge' | 'replace', targetFolderId: string) => {
       try {
-         const summary = await importTin(tin, mode, targetFolderId)
+         const summary = await backend.importTin(tin, mode, targetFolderId)
          if (mode === 'replace') {
             historyRef.current.clear()
             spawnSingleBlankTab()
@@ -718,7 +721,7 @@ export default function App() {
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [showToast, t, formatTinCounts, spawnSingleBlankTab])
+   }, [showToast, t, formatTinCounts, spawnSingleBlankTab, backend])
 
    // Merge chosen: graft into the target folder straight away (non-destructive).
    const handleTinMerge = useCallback(() => {
@@ -751,13 +754,13 @@ export default function App() {
       const openId = activeTab?.documentId ?? null
       if (openId) {
          try {
-            const folderId = await getDocumentFolderId(openId)
-            if (folderId && folderId !== '0') folder = (await getFolder(folderId)) ?? null
+            const folderId = await backend.getDocumentFolderId(openId)
+            if (folderId && folderId !== '0') folder = await backend.getFolder(folderId)
          } catch { /* fall back to root */ }
       }
       setBinderInitialFolder(folder)
       setBinderOpen(true)
-   }, [documentId, saveStatus, persistNow])
+   }, [documentId, saveStatus, persistNow, backend])
 
    // Pending action awaiting unsaved-changes confirmation: a dirty tab close (discard-and-close).
    // Opening a doc / creating one adds or focuses a tab, discarding nothing, so neither needs a guard.
@@ -795,7 +798,7 @@ export default function App() {
          return
       }
       try {
-         const loaded = await loadDocument(id)
+         const loaded = await backend.loadDocument(id)
          if (!loaded) { showToast(t.binderOpenFailed, { type: 'error' }); return }
          const newTab = buildTabFromLoaded(loaded, id)
          setOpenDocuments(documents => [...documents, newTab])
@@ -806,7 +809,7 @@ export default function App() {
          // Leave the binder open; nothing was added.
          showToast(t.binderOpenFailed, { type: 'error' })
       }
-   }, [activateTab, showToast, t])
+   }, [activateTab, showToast, t, backend])
 
    // The one New-document entry point: a dialog (New Document dialog) offering Blank or a
    // template with accent / theme / format overrides, then Create. Opened from the header New button,
@@ -884,9 +887,9 @@ export default function App() {
          ? (sourceTab.saveStatus !== 'clean' ? await persistNow() : sourceTab.documentId)
          : sourceTab.documentId
       if (!sourceDocumentId) return
-      const duplicateId = await duplicateDocument(sourceDocumentId)
+      const duplicateId = await backend.duplicateDocument(sourceDocumentId)
       await handleOpenDocument(duplicateId)
-   }, [persistNow, handleOpenDocument, activateTab])
+   }, [persistNow, handleOpenDocument, activateTab, backend])
 
    // Save As opens a dialog to name the copy + pick a destination folder. The fork happens on
    // confirm (handleConfirmSaveAs); cancel does nothing. The picker opens at the document's current
@@ -900,12 +903,12 @@ export default function App() {
       let initialFolder: BinderFolderRecord | null = null
       if (activeTab.documentId) {
          try {
-            const folderId = await getDocumentFolderId(activeTab.documentId)
-            if (folderId && folderId !== '0') initialFolder = (await getFolder(folderId)) ?? null
+            const folderId = await backend.getDocumentFolderId(activeTab.documentId)
+            if (folderId && folderId !== '0') initialFolder = await backend.getFolder(folderId)
          } catch { /* fall back to root */ }
       }
       setSaveAsDialog({ sourceTabKey, initialFolder })
-   }, [])
+   }, [backend])
 
    // Fork & switch: persist the active document so the ORIGINAL is a frozen binder record, duplicate
    // it (the copy keeps the document's own title verbatim), file the copy into the chosen folder,
@@ -924,14 +927,14 @@ export default function App() {
          ? await persistNow()
          : activeTab.documentId
       if (!sourceDocumentId) return
-      const copyId = await duplicateDocument(sourceDocumentId)
-      await moveDocument(copyId, destinationFolderId)
+      const copyId = await backend.duplicateDocument(sourceDocumentId)
+      await backend.moveDocument(copyId, destinationFolderId)
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === dialog.sourceTabKey
             ? { ...document, documentId: copyId }
             : document))
       showToast(t.savedAsCopy, { type: 'success' })
-   }, [saveAsDialog, persistNow, showToast, t])
+   }, [saveAsDialog, persistNow, showToast, t, backend])
 
    const handleCancelSaveAs = useCallback(() => setSaveAsDialog(null), [])
 
@@ -954,12 +957,12 @@ export default function App() {
             presentation: activeTab.presentation,
             format:       activeTab.format,
          }, crypto.randomUUID(), Date.now())
-         await saveTemplate(template)
+         await backend.saveTemplate(template)
          showToast(t.templateSaved, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })
       }
-   }, [showToast, t])
+   }, [showToast, t, backend])
 
    // Confirm the pending action (discard-and-close the dirty tab).
    const handleConfirmNavigation = useCallback(() => {

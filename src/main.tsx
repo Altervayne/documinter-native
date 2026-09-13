@@ -7,11 +7,14 @@ import 'react-pop-a-window/styles.css'
 import './index.css'
 import App from './App.tsx'
 import { ToastProvider } from './contexts/ToastContext'
+import { BinderBackendProvider } from './contexts/BinderBackendContext'
 
 createRoot(document.getElementById('root')!).render(
    <StrictMode>
-      <ToastProvider>
-         <App />
-      </ToastProvider>
+      <BinderBackendProvider>
+         <ToastProvider>
+            <App />
+         </ToastProvider>
+      </BinderBackendProvider>
    </StrictMode>,
 )

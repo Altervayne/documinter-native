@@ -8,15 +8,13 @@ import { Folder } from 'lucide-react'
 // -- Type Imports --
 import type { BinderFolderRecord } from '../types'
 
-// -- Lib Imports --
-import { getFolderChildren, getFolderAncestors } from '../lib/binderFolders'
-
 // -- Component Imports --
 import { BinderBreadcrumb } from '../organisms/Binder/BinderBreadcrumb'
 import { Button } from '../atoms/Button'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 interface SaveAsDialogProps {
    initialFolder: BinderFolderRecord | null   // the document's current folder (null = root)
@@ -34,6 +32,7 @@ const ROOT_FOLDER_ID = '0'
  */
 export function SaveAsDialog({ initialFolder, onConfirm, onCancel }: SaveAsDialogProps) {
    const { t } = useLang()
+   const backend = useBinderBackend()
    const [currentFolder, setCurrentFolder] = useState<BinderFolderRecord | null>(initialFolder)
    const [ancestors,     setAncestors]     = useState<BinderFolderRecord[]>([])
    const [subfolders,    setSubfolders]    = useState<BinderFolderRecord[]>([])
@@ -43,15 +42,15 @@ export function SaveAsDialog({ initialFolder, onConfirm, onCancel }: SaveAsDialo
       let cancelled = false
       const folderId = currentFolder?.id ?? ROOT_FOLDER_ID
       Promise.all([
-         getFolderChildren(folderId),
-         currentFolder ? getFolderAncestors(currentFolder.id) : Promise.resolve([]),
+         backend.getFolderChildren(folderId),
+         currentFolder ? backend.getFolderAncestors(currentFolder.id) : Promise.resolve([]),
       ]).then(([children, folderAncestors]) => {
          if (cancelled) return
          setSubfolders(children)
          setAncestors(folderAncestors)
       })
       return () => { cancelled = true }
-   }, [currentFolder])
+   }, [currentFolder, backend])
 
    useEffect(() => {
       function handleKeyDown(event: KeyboardEvent) {

@@ -4,14 +4,13 @@ import { useCallback, useState } from 'react'
 // -- Lib Imports --
 import { parseTemplateBackup } from '../lib/templateBackupFile'
 import { parseDocumentBackup } from '../lib/documentBackupFile'
-import { saveDocument } from '../lib/binderDocuments'
 import { captureTemplate } from '../lib/documentTemplate'
-import { saveTemplate } from '../lib/templateStore'
 import { gunzipToString, parseTin, type TinFile } from '../lib/tinFile'
 
 // -- Context Imports --
 import { useToast } from '../contexts/ToastContext'
 import { useLang } from '../contexts/LangContext'
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 interface UseBinderFileImportOptions {
    /** Folder a dropped document lands in (the folder currently being viewed). */
@@ -33,6 +32,7 @@ interface UseBinderFileImportOptions {
 export function useBinderFileImport({ currentFolderId, onImported, onTinDropped }: UseBinderFileImportOptions) {
    const { showToast } = useToast()
    const { t }         = useLang()
+   const backend       = useBinderBackend()
 
    const [isFileDragOver, setIsFileDragOver] = useState(false)
 
@@ -84,13 +84,13 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
             // null for a document backup, so this check routes the file by its actual content.
             const template = parseTemplateBackup(text)
             if (template) {
-               await saveTemplate(captureTemplate(template.name, template.chrome, crypto.randomUUID(), Date.now()))
+               await backend.saveTemplate(captureTemplate(template.name, template.chrome, crypto.randomUUID(), Date.now()))
                templatesImported++
                continue
             }
             const document = parseDocumentBackup(text)
             if (document) {
-               await saveDocument(document.state, document.presentation, undefined, currentFolderId)
+               await backend.saveDocument(document.state, document.presentation, undefined, currentFolderId)
                documentsImported++
                continue
             }
@@ -106,7 +106,7 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
       // Two toasts only in the rare mixed drop (documents AND templates in one selection), which is fine.
       if (documentsImported > 0) showToast(t.binderImportSuccess, { type: 'success' })
       if (templatesImported > 0) showToast(t.templateImported, { type: 'success' })
-   }, [currentFolderId, onImported, onTinDropped, showToast, t])
+   }, [currentFolderId, onImported, onTinDropped, showToast, t, backend])
 
    return { isFileDragOver, handleFileDragOver, handleFileDragLeave, handleFileDrop }
 }

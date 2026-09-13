@@ -21,7 +21,7 @@ import { AboutMenu } from '../molecules/AboutMenu'
 
 // -- Lib Imports --
 import { parseDocumentBackup } from '../lib/documentBackupFile'
-import { saveDocument, type DocPresentation } from '../lib/binderDocuments'
+import type { DocPresentation } from '../lib/binderDocuments'
 import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
 import { importMarkdownFile } from '../lib/markdown'
 import type { DocPresentationExtras } from '../lib/presentation'
@@ -33,6 +33,7 @@ import { Eye, Library, PanelLeftClose, CircleDot, Loader2, CircleCheck, Triangle
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
 import { useToast } from '../contexts/ToastContext'
+import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 // ====================
 //  Open format sniffing
@@ -196,6 +197,7 @@ export function HeaderMenuBar({
 }: HeaderMenuBarProps) {
    const { t, lang, setLang }              = useLang()
    const { showToast }                     = useToast()
+   const backend                           = useBinderBackend()
 
    const isDocumentMode = mode === 'document'
    const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
@@ -264,11 +266,11 @@ export function HeaderMenuBar({
             if (format === 'backup') {
                const parsed = parseDocumentBackup(text)
                if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
-               await saveDocument(parsed.state, parsed.presentation)
+               await backend.saveDocument(parsed.state, parsed.presentation)
             } else {
                const loaded = await importMarkdownFile(file)
                const state: DocState = { meta: loaded.meta, sections: loaded.sections }
-               await saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
+               await backend.saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
             }
             onDocumentImported()
             showToast(t.binderImportSuccess, { type: 'success' })
