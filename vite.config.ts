@@ -3,7 +3,6 @@ import { defineConfig } from 'vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
-import { VitePWA } from 'vite-plugin-pwa'
 
 // Read the app version from package.json at config-load time and expose it to the client
 // as the compile-time constant __APP_VERSION__ (see src/global.d.ts). This keeps the single
@@ -13,6 +12,10 @@ const { version: appVersion } = JSON.parse(
 )
 
 export default defineConfig({
+  // Relative asset URLs so the bundle resolves under the Tauri asset protocol, not just a web root.
+  base: './',
+  // Tauri watches the config output, so a cleared screen swallows its errors.
+  clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
@@ -24,56 +27,29 @@ export default defineConfig({
     // Rolldown bug is fixed.
     exclude: ['temml'],
   },
+  server: {
+    // Tauri's devUrl is pinned to this port, so a silent fallback would leave the window blank.
+    port: 5173,
+    strictPort: true,
+    watch: {
+      // The Rust side owns src-tauri, watching it would loop rebuilds.
+      ignored: ['**/src-tauri/**'],
+    },
+  },
+  build: {
+    // WebView2 on Windows tracks Chromium, the other platforms ship a Safari-era WebKit.
+    // No TAURI env (a plain web build) falls to the safari13 branch, which is the safe floor.
+    target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
+    // Rolldown-Vite drops the bundled esbuild, its minifier is Oxc. A plain 'esbuild'
+    // here fails to load (esbuild is no longer a dependency).
+    minify: process.env.TAURI_ENV_DEBUG ? false : 'oxc',
+    sourcemap: !!process.env.TAURI_ENV_DEBUG,
+  },
+  // TAURI_ENV_* vars must reach the client so the frontend can branch on platform/debug.
+  envPrefix: ['VITE_', 'TAURI_ENV_*'],
   plugins: [
     tailwindcss(),
     react(),
     babel({ presets: [reactCompilerPreset()] }),
-    VitePWA({
-      registerType: 'prompt',
-
-      manifest: {
-        name:             'Documinter',
-        short_name:       'Documinter',
-        description:      'Personal documentation builder. Write, preview, and export structured HTML docs.',
-        display:          'standalone',
-        background_color: '#0a0f0d',
-        theme_color:      '#0B5E4A',
-        start_url:        '/',
-        orientation:      'any',
-        icons: [
-          { src: 'pwa-64x64.png',             sizes: '64x64',   type: 'image/png' },
-          { src: 'pwa-192x192.png',            sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png',            sizes: '512x512', type: 'image/png' },
-          { src: 'maskable-icon-512x512.png',  sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-
-      workbox: {
-        // `mjs` is required so Temml's raw ESM asset (temml-[hash].mjs, loaded at
-        // runtime via `?url`, see src/lib/math.ts) is precached; without it the
-        // dynamic import fails offline and math stops rendering.
-        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,woff2}'],
-        runtimeCaching: [
-          {
-            // Google Fonts CSS manifest, can change between versions
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-fonts-stylesheets',
-              expiration: { maxEntries: 4, maxAgeSeconds: 7 * 24 * 60 * 60 },
-            },
-          },
-          {
-            // Google Fonts binary files, immutable, cache aggressively
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: { maxEntries: 10, maxAgeSeconds: 365 * 24 * 60 * 60 },
-            },
-          },
-        ],
-      },
-    }),
   ],
 })

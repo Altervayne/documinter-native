@@ -58,7 +58,6 @@ import { SaveAsDialog } from './molecules/SaveAsDialog'
 import { PromptDialog } from './molecules/PromptDialog'
 import { NewDocumentDialog, type NewDocumentChoice } from './molecules/NewDocumentDialog'
 import { ToastContainer } from './atoms/ToastContainer'
-import { UpdatePrompt } from './atoms/UpdatePrompt'
 
 // -- Markdown Imports --
 import { importMarkdownFile } from './lib/markdown'
@@ -1538,7 +1537,6 @@ export default function App() {
             )}
 
             <ToastContainer />
-            <UpdatePrompt />
          </LangProvider>
    )
 }
