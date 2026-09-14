@@ -42,8 +42,9 @@ export type TinIdFactory = () => string
 // # RECORD MAPPING  #
 // ###################
 
-/** BinderFolderRecord -> TinFolder (identical fields, picked explicitly to drop any stray props). */
-function toTinFolder(folder: BinderFolderRecord): TinFolder {
+/** BinderFolderRecord -> TinFolder (identical fields, picked explicitly to drop any stray props).
+ *  Exported so the filesystem backend collects a Tin with byte-identical record shape (not reinvented). */
+export function toTinFolder(folder: BinderFolderRecord): TinFolder {
    return {
       id:        folder.id,
       name:      folder.name,
@@ -55,8 +56,9 @@ function toTinFolder(folder: BinderFolderRecord): TinFolder {
 }
 
 /** Light placement (from the card record) + heavy body (from the loaded document) -> TinDocument.
- *  Drops a default format so a document that never touched Page Setup stays byte-clean. */
-function toTinDocument(record: BinderDocumentRecord, loaded: LoadedDocument): TinDocument {
+ *  Drops a default format so a document that never touched Page Setup stays byte-clean. Exported for
+ *  the filesystem backend's collect (shared so both backends emit the identical TinDocument shape). */
+export function toTinDocument(record: BinderDocumentRecord, loaded: LoadedDocument): TinDocument {
    return {
       id:        record.id,
       meta:      loaded.meta,
@@ -72,8 +74,9 @@ function toTinDocument(record: BinderDocumentRecord, loaded: LoadedDocument): Ti
    }
 }
 
-/** DocumentTemplate chrome + name -> TinTemplate. Built-ins are code, never exported. */
-function toTinTemplate(template: { name: string } & TemplateChrome): TinTemplate {
+/** DocumentTemplate chrome + name -> TinTemplate. Built-ins are code, never exported. Exported so the
+ *  filesystem backend maps its `.mintplate` templates into a Tin with the same shape. */
+export function toTinTemplate(template: { name: string } & TemplateChrome): TinTemplate {
    return {
       name:      template.name,
       meta:      template.meta,

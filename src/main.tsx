@@ -8,13 +8,22 @@ import './index.css'
 import App from './App.tsx'
 import { ToastProvider } from './contexts/ToastContext'
 import { BinderBackendProvider } from './contexts/BinderBackendContext'
+import { NativeBinderHost } from './organisms/NativeBinderHost'
+import { isTauri } from './lib/platform'
 
+// On native there is no default Binder: NativeBinderHost owns the active-Binder state, shows the Welcome
+// picker until one is open, and provides the filesystem backend itself (with its own ToastProvider + App).
+// On the web the mount is unchanged: the IndexedDB backend is the provider's default.
 createRoot(document.getElementById('root')!).render(
    <StrictMode>
-      <BinderBackendProvider>
-         <ToastProvider>
-            <App />
-         </ToastProvider>
-      </BinderBackendProvider>
+      {isTauri() ? (
+         <NativeBinderHost />
+      ) : (
+         <BinderBackendProvider>
+            <ToastProvider>
+               <App />
+            </ToastProvider>
+         </BinderBackendProvider>
+      )}
    </StrictMode>,
 )

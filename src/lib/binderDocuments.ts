@@ -10,36 +10,32 @@ import {
    openDatabase, requestToPromise, transactionDone,
    DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE, FOLDER_ID_INDEX, ROOT_FOLDER_ID,
 } from './binderDatabase'
-import { buildPreviewSections, extractDocumentText } from './documentPreview'
+import { extractDocumentText } from './documentPreview'
 import { matchesCriteria, documentComparator, type DocumentListFilter } from './binderSearch'
-import { migrateIds, migrateMeta, migrateFormatPageBreaks, migrateFormatBands } from './documentMigration'
-import { normalizePresentation, type DocPresentationExtras } from './presentation'
-import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
-import { cloneBlock } from './document'
+import { migrateMeta } from './documentMigration'
+import { isDefaultFormat, type DocFormat } from './format'
+import type { DocPresentationExtras } from './presentation'
+import {
+   RECORD_SCHEMA_VERSION,
+   buildDocumentRecord, buildDocumentContent, cloneSectionsWithFreshIds,
+   assembleLoadedDocument, migrateListRecord,
+   type LoadedDocument,
+} from './documentRecord'
 import type {
-   DocMeta, DocState, Section,
+   DocState,
    BinderDocumentRecord, BinderDocumentContent,
 } from '../types'
 
-export const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to freeform meta
-                                  // (v3 moved meta to the freeform { title, fields } shape;
-                                  //  v2 added contentText, the flattened block text for full-text search)
+// Re-export so existing importers (binderBackup) keep their `./binderDocuments` path while the source
+// of truth moves to documentRecord (both backends will share it).
+export { RECORD_SCHEMA_VERSION }
+export type { LoadedDocument }
 
 /** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
  *  image-bearing export/editor extras (watermark, ...); it stores on the HEAVY content record, not
  *  the light card record, see saveDocument. `format` (infinite width, later paged A4) rides the same
  *  bundle, absent = today's infinite/normal behavior. */
 export interface DocPresentation {
-   docTheme:  'light' | 'dark'
-   docAccent: string
-   presentation?: DocPresentationExtras
-   format?: DocFormat
-}
-
-/** Full editable document returned by loadDocument, DocState plus presentation. */
-export interface LoadedDocument {
-   meta:      DocMeta
-   sections:  Section[]
    docTheme:  'light' | 'dark'
    docAccent: string
    presentation?: DocPresentationExtras
@@ -91,31 +87,27 @@ export async function saveDocument(
    const lastOpenedAt = existing?.lastOpenedAt
    const sortOrder    = existing?.sortOrder ?? await nextDocumentSortOrder(documentsStore, folderId)
 
-   const record: BinderDocumentRecord = {
+   const record = buildDocumentRecord({
       id,
-      meta:          state.meta,
+      meta:         state.meta,
+      sections:     state.sections,
+      docTheme:     presentation.docTheme,
+      docAccent:    presentation.docAccent,
       createdAt,
-      updatedAt:     now,
+      updatedAt:    now,
       lastOpenedAt,
       folderId,
       sortOrder,
-      sectionTitles: state.sections.map(section => section.title),
-      contentText:   extractDocumentText(state.sections),
-      previewSections: buildPreviewSections(state.sections),
-      docTheme:      presentation.docTheme,
-      docAccent:     presentation.docAccent,
-      schemaVersion: RECORD_SCHEMA_VERSION,
-   }
+   })
    // The image-bearing presentation extras live on the HEAVY content record ONLY (never the light
    // card record above), so a full-bleed watermark base64 can't bloat the listDocuments() query.
    // `format` is tiny (no base64) but groups with presentation for seam consistency; only written
    // when it diverges from the default, so a document that never touched Page Setup stays byte-clean.
-   const content: BinderDocumentContent = {
-      id,
-      sections: state.sections,
-      ...(presentation.presentation ? { presentation: presentation.presentation } : {}),
-      ...(presentation.format && !isDefaultFormat(presentation.format) ? { format: presentation.format } : {}),
-   }
+   // The default-format guard is save-specific intent, so it lives here, not in buildDocumentContent.
+   const content = buildDocumentContent(id, state.sections, {
+      presentation: presentation.presentation,
+      format: presentation.format && !isDefaultFormat(presentation.format) ? presentation.format : undefined,
+   })
 
    documentsStore.put(record)
    contentStore.put(content)
@@ -132,19 +124,14 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
    const record  = await requestToPromise<BinderDocumentRecord | undefined>(recordRequest)
    const content = await requestToPromise<BinderDocumentContent | undefined>(contentRequest)
    if (!record || !content) return null
-   const migrated = migrateIds({ meta: record.meta, sections: content.sections })
-   return {
-      meta: migrated.meta,
-      sections: migrated.sections,
+   return assembleLoadedDocument({
+      meta: record.meta,
+      sections: content.sections,
       docTheme: record.docTheme,
       docAccent: record.docAccent,
-      // Presentation extras ride on the heavy content record; normalize defensively on read
-      // (clamp opacity, drop an empty-src watermark), the mirror of migrateMeta for metadata.
-      presentation: normalizePresentation(content.presentation),
-      // format normalizes to a concrete DocFormat even when absent (unlike presentation, which
-      // collapses to undefined), see normalizeFormat: absent -> DEFAULT_FORMAT (infinite/normal).
-      format: normalizeFormat(migrateFormatBands(migrateFormatPageBreaks(content.format, migrated.sections))),
-   }
+      presentation: content.presentation,
+      format: content.format,
+   })
 }
 
 /**
@@ -187,7 +174,7 @@ export async function listDocuments(filter?: DocumentListFilter): Promise<Binder
 
    // Light records stored before the freeform-metadata migration still carry the legacy flat meta.
    // Normalize on read so the cards + free-text search always see the { title, fields } shape.
-   records = records.map(record => ({ ...record, meta: migrateMeta(record.meta) }))
+   records = records.map(migrateListRecord)
 
    if (filter?.criteria) records = records.filter(record => matchesCriteria(record, filter.criteria!))
 
@@ -220,35 +207,28 @@ export async function duplicateDocument(id: string): Promise<string> {
    const newId = crypto.randomUUID()
    const now   = new Date().toISOString()
    // Deep-clone sections with fresh section + block ids (no aliasing between copies).
-   const clonedSections: Section[] = sourceContent.sections.map(section => ({
-      ...section,
-      id:     crypto.randomUUID(),
-      blocks: section.blocks.map(cloneBlock),
-   }))
+   const clonedSections = cloneSectionsWithFreshIds(sourceContent.sections)
    // The copy lands in the same folder, appended to the end, never-opened.
    const sortOrder = await nextDocumentSortOrder(documentsStore, sourceRecord.folderId)
 
-   const newRecord: BinderDocumentRecord = {
-      id:            newId,
-      meta:          migrateMeta(sourceRecord.meta),
-      createdAt:     now,
-      updatedAt:     now,
-      lastOpenedAt:  undefined,
-      folderId:      sourceRecord.folderId,
+   const newRecord = buildDocumentRecord({
+      id:           newId,
+      meta:         migrateMeta(sourceRecord.meta),
+      sections:     clonedSections,
+      docTheme:     sourceRecord.docTheme,
+      docAccent:    sourceRecord.docAccent,
+      createdAt:    now,
+      updatedAt:    now,
+      lastOpenedAt: undefined,
+      folderId:     sourceRecord.folderId,
       sortOrder,
-      sectionTitles: clonedSections.map(section => section.title),
-      contentText:   extractDocumentText(clonedSections),
-      previewSections: buildPreviewSections(clonedSections),
-      docTheme:      sourceRecord.docTheme,
-      docAccent:     sourceRecord.docAccent,
-      schemaVersion: RECORD_SCHEMA_VERSION,
-   }
-   const newContent: BinderDocumentContent = {
-      id: newId,
-      sections: clonedSections,
-      ...(sourceContent.presentation ? { presentation: sourceContent.presentation } : {}),
-      ...(sourceContent.format ? { format: sourceContent.format } : {}),
-   }
+   })
+   // Duplicate copies the source's presentation and format verbatim (no default-format guard): the
+   // source already stored only a divergent format, so a byte-clean source stays byte-clean.
+   const newContent = buildDocumentContent(newId, clonedSections, {
+      presentation: sourceContent.presentation,
+      format: sourceContent.format,
+   })
 
    documentsStore.put(newRecord)
    contentStore.put(newContent)

@@ -299,7 +299,9 @@ export function HeaderMenuBar({
              this bar plus WindowControls is the title bar. */}
          <div data-tauri-drag-region className="shrink-0 flex items-center gap-1 p-1 px-3 bg-raised border-b border-border z-200">
 
-            <div className="flex items-center gap-2 mr-2 shrink-0 select-none">
+            {/* The logo + wordmark are decorative, not interactive. pointer-events-none lets a click fall
+                through to the bar's drag region, so you can drag the window by grabbing the logo. */}
+            <div className="flex items-center gap-2 mr-2 shrink-0 select-none pointer-events-none">
                {theme === 'dark'
                   ? <LogoColor className="h-7 w-auto" />
                   : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
@@ -357,7 +359,10 @@ export function HeaderMenuBar({
                 of the title bar. */}
             <div data-tauri-drag-region className="flex-1" />
 
-            <div className="shrink-0 flex items-center mr-1">
+            {/* The save-status pill is a display, never clicked (it already sets pointer-events-none on
+                itself). pointer-events-none here too, so its reserved band drags the window like the rest
+                of the bar instead of swallowing the grab. */}
+            <div className="shrink-0 flex items-center mr-1 pointer-events-none">
                <SaveStatusIndicator
                   status={saveStatus}
                   neverSaved={neverSaved}
