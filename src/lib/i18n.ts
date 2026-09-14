@@ -707,6 +707,11 @@ export const translations = {
       updateAvailable: 'A new version of Documinter is available!',
       updateReload:    'Reload to update',
       updateDismiss:   'Dismiss',
+      // Native window caption buttons (desktop shell)
+      windowMinimize: 'Minimize',
+      windowMaximize: 'Maximize',
+      windowRestore:  'Restore',
+      windowClose:    'Close',
       // Toolbar menus
       menuFile:            'File',
       menuView:            'View',
@@ -1601,6 +1606,11 @@ export const translations = {
       updateAvailable: 'Une nouvelle version de Documinter est disponible !',
       updateReload:    'Recharger pour mettre à jour',
       updateDismiss:   'Ignorer',
+      // Native window caption buttons (desktop shell)
+      windowMinimize: 'Réduire',
+      windowMaximize: 'Agrandir',
+      windowRestore:  'Restaurer',
+      windowClose:    'Fermer',
       // Toolbar menus
       menuFile:            'Fichier',
       menuView:            'Vue',

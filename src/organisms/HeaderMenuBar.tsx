@@ -18,8 +18,10 @@ import { ViewMenu, type DockPanelToggle } from '../molecules/ViewMenu'
 import { PreferencesMenu } from '../molecules/PreferencesMenu'
 import { DocumentMenu } from '../molecules/DocumentMenu'
 import { AboutMenu } from '../molecules/AboutMenu'
+import { WindowControls } from '../molecules/WindowControls'
 
 // -- Lib Imports --
+import { isTauri } from '../lib/platform'
 import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocPresentation } from '../lib/binderDocuments'
 import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
@@ -291,7 +293,11 @@ export function HeaderMenuBar({
 
    return (
       <>
-         <div className="shrink-0 flex items-center gap-1 p-1 px-3 bg-raised border-b border-border z-200">
+         {/* data-tauri-drag-region turns the bar's empty areas into the native window drag handle.
+             Inert in the browser; inside Tauri it drags only when the grabbed target IS the region,
+             so the menus and buttons below stay clickable. The OS title bar is off in the shell, so
+             this bar plus WindowControls is the title bar. */}
+         <div data-tauri-drag-region className="shrink-0 flex items-center gap-1 p-1 px-3 bg-raised border-b border-border z-200">
 
             <div className="flex items-center gap-2 mr-2 shrink-0 select-none">
                {theme === 'dark'
@@ -347,8 +353,9 @@ export function HeaderMenuBar({
             )}
             <AboutMenu theme={theme} t={t} />
 
-            {/* Spacer, pushes actions to the far right */}
-            <div className="flex-1" />
+            {/* Spacer, pushes actions to the far right. Also a drag handle: the widest empty band
+                of the title bar. */}
+            <div data-tauri-drag-region className="flex-1" />
 
             <div className="shrink-0 flex items-center mr-1">
                <SaveStatusIndicator
@@ -408,6 +415,10 @@ export function HeaderMenuBar({
                   <Eye size={14} />{t.previewMode}
                </Button>
             )}
+
+            {/* Native caption buttons, flush to the top-right corner. Only in the Tauri shell, where
+                the OS title bar is off; in the browser isTauri() is false and nothing renders. */}
+            {isTauri() && <WindowControls />}
          </div>
 
          {exportOpen && (
