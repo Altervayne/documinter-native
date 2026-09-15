@@ -141,7 +141,7 @@ export function DocumentMenu({
                }`}
          >
             <FileText size={14} />
-            <span>{t.menuDocument}</span>
+            <span className="hdr-collapse">{t.menuDocument}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

@@ -76,7 +76,7 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
                }`}
          >
             <Info size={14} />
-            <span>{t.menuAbout}</span>
+            <span className="hdr-collapse">{t.menuAbout}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

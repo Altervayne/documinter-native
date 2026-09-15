@@ -731,6 +731,13 @@ export const translations = {
       welcomeBusyCreating:    'Creating...',
       welcomeBusyOpening:     'Opening...',
       welcomeNoticeMissingFolder: 'The last Binder folder could not be opened. It may have been moved or deleted.',
+      // Header Binder-switcher (native)
+      binderMenuSwitch:  'Switch Binder',
+      binderMenuCurrent: 'Current Binder',
+      binderMenuOthers:  'Switch to',
+      binderMenuOpen:    'Open a folder...',
+      binderMenuCreate:  'New Binder...',
+      binderMenuCancel:  'Cancel',
       // Toolbar menus
       menuFile:            'File',
       menuView:            'View',
@@ -1649,6 +1656,13 @@ export const translations = {
       welcomeBusyCreating:    'Création...',
       welcomeBusyOpening:     'Ouverture...',
       welcomeNoticeMissingFolder: 'Le dernier dossier de classeur n\'a pas pu être ouvert. Il a peut-être été déplacé ou supprimé.',
+      // Header Binder-switcher (native)
+      binderMenuSwitch:  'Changer de classeur',
+      binderMenuCurrent: 'Classeur actuel',
+      binderMenuOthers:  'Changer pour',
+      binderMenuOpen:    'Ouvrir un dossier...',
+      binderMenuCreate:  'Nouveau classeur...',
+      binderMenuCancel:  'Annuler',
       // Toolbar menus
       menuFile:            'Fichier',
       menuView:            'Vue',

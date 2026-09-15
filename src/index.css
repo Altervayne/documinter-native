@@ -236,6 +236,11 @@ html[data-theme="light"] {
 ::-webkit-scrollbar-track { background: var(--color-raised); }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
 
+/* Header responsive collapse: when the title bar runs low on width it gets .hdr-compact, and every
+   collapsible label (menu names, button labels, the wordmark, the save-status text) hides so the bar
+   shrinks to icons and the window controls always stay on screen. Driven by measurement in HeaderMenuBar. */
+.hdr-compact .hdr-collapse { display: none; }
+
 /* ##############################################################################
    Syntax highlight, editor panel token colours
    ##############################################################################

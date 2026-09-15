@@ -78,7 +78,7 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
                }`}
          >
             <Settings size={14} />
-            <span>{t.menuPreferences}</span>
+            <span className="hdr-collapse">{t.menuPreferences}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

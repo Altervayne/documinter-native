@@ -88,7 +88,7 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
                }`}
          >
             <Layout size={14} />
-            <span>{t.menuView}</span>
+            <span className="hdr-collapse">{t.menuView}</span>
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 

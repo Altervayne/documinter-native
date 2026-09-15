@@ -30,6 +30,7 @@ import App from '../App'
 import { ToastProvider } from '../contexts/ToastContext'
 import { BinderBackendProvider } from '../contexts/BinderBackendContext'
 import { LangProvider, useLang } from '../contexts/LangContext'
+import { NativeBinderProvider, type NativeBinderControls } from '../contexts/NativeBinderContext'
 import { WindowControls } from '../molecules/WindowControls'
 import { LogoColor } from '../atoms/Logo'
 import { createFilesystemBackend } from '../lib/filesystem/filesystemBackend'
@@ -37,7 +38,7 @@ import { slugify } from '../lib/text'
 import type { Lang } from '../lib/i18n'
 import {
    readBinderRegistry, writeBinderRegistry,
-   rememberBinder, setActivePath,
+   rememberBinder, setActivePath, binderNameFromPath,
    type KnownBinder,
 } from '../lib/native/binderRegistry'
 
@@ -129,7 +130,11 @@ function useNativeBinder(): NativeBinder {
    // Flows. Each opens the backend, remembers + persists the Binder, then flips to the app.
    // ====
 
-   const adoptBinder = (nextBackend: BinderBackend, path: string, name?: string): void => {
+   // Adopt a freshly opened backend as the active Binder, then dispose the one it replaces (if any). The
+   // new backend is always opened BEFORE this runs, so a failed open never reaches here and the current
+   // Binder keeps working; the key-remount on the changed activePath resets App and clears its tabs.
+   const finishOpen = (nextBackend: BinderBackend, path: string, name?: string): void => {
+      const previous = backend
       const updated = rememberBinder(readBinderRegistry(), { path, name })
       writeBinderRegistry(updated)
       setKnown(updated.known)
@@ -138,6 +143,7 @@ function useNativeBinder(): NativeBinder {
       setNotice(null)
       setError(null)
       setPhase('open')
+      if (previous && previous !== nextBackend) void previous.dispose()
    }
 
    const createBinder = async (name: string, parentDir?: string): Promise<void> => {
@@ -151,7 +157,7 @@ function useNativeBinder(): NativeBinder {
          // hit the scoped mkdir on a path that is not yet in scope. Covers first-run parent creation too.
          await invoke('create_binder_directory', { path: target })
          const nextBackend = await createFilesystemBackend(target)
-         adoptBinder(nextBackend, target, name)
+         finishOpen(nextBackend, target, name)
       } catch (failure) {
          setError(String(failure))
       } finally {
@@ -168,7 +174,7 @@ function useNativeBinder(): NativeBinder {
          if (typeof picked !== 'string') return
          await invoke('allow_binder_directory', { path: picked })
          const nextBackend = await createFilesystemBackend(picked)
-         adoptBinder(nextBackend, picked)
+         finishOpen(nextBackend, picked)
       } catch (failure) {
          setError(String(failure))
       } finally {
@@ -180,11 +186,10 @@ function useNativeBinder(): NativeBinder {
       setBusy(true)
       setError(null)
       try {
-         // Close the outgoing SQLite handle first; the key-remount (activePath changes below) then resets
-         // App so the old Binder's tabs and transient state are gone before the new backend renders.
-         if (backend) await backend.dispose()
+         // Open the new Binder first, then finishOpen disposes the outgoing one. A failed open (a deleted
+         // folder, say) leaves the current Binder untouched instead of tearing it down first.
          const nextBackend = await createFilesystemBackend(path)
-         adoptBinder(nextBackend, path)
+         finishOpen(nextBackend, path)
       } catch (failure) {
          setError(String(failure))
       } finally {
@@ -208,11 +213,27 @@ export function NativeBinderHost() {
    const binder = useNativeBinder()
 
    if (binder.phase === 'open' && binder.backend !== null && binder.activePath !== null) {
+      // The switcher (inside App) reads these controls to switch / open / create a Binder. activeName
+      // prefers the registry's remembered name, falling back to the folder name for a just-opened path.
+      const activeName = binder.known.find(entry => entry.path === binder.activePath)?.name
+         ?? binderNameFromPath(binder.activePath)
+      const controls: NativeBinderControls = {
+         activePath: binder.activePath,
+         activeName,
+         known:      binder.known,
+         busy:       binder.busy,
+         error:      binder.error,
+         switchBinder: binder.switchBinder,
+         openBinder:   binder.openBinder,
+         createBinder: binder.createBinder,
+      }
       return (
          <BinderBackendProvider key={binder.activePath} backend={binder.backend}>
-            <ToastProvider>
-               <App />
-            </ToastProvider>
+            <NativeBinderProvider value={controls}>
+               <ToastProvider>
+                  <App />
+               </ToastProvider>
+            </NativeBinderProvider>
          </BinderBackendProvider>
       )
    }
