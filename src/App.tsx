@@ -8,6 +8,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { mkSection, isEmptyDocument } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
+import { NameTakenError } from './lib/filesystem/filesystemBackend'
 import type { LoadedDocument, DocPresentation } from './lib/binderDocuments'
 import type { TinImportSummary } from './lib/binderBackup'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
@@ -379,8 +380,21 @@ export default function App() {
 
    // Keep a stable, always-current notifier so the autosave effect doesn't depend on t/showToast.
    const notifySaveFailedRef  = useRef<() => void>(() => {})
+   // A rename was rejected by the native backend (the title's stem collides with a sibling). Toast + revert
+   // the tab's title to the last saved (on-disk) value: the rename never happened, so the file still holds
+   // the previous title. Read it back and restore it. A ref, same rationale as notifySaveFailedRef.
+   const notifyNameTakenRef   = useRef<(tabKey: string, documentId: string | null) => void>(() => {})
    useEffect(() => {
       notifySaveFailedRef.current = () => showToast(t.saveFailed, { type: 'error' })
+      notifyNameTakenRef.current = (tabKey, documentId) => {
+         showToast(t.titleNameTaken, { type: 'error' })
+         if (documentId === null) return
+         void backend.loadDocument(documentId, { touch: false }).then(saved => {
+            if (!saved) return
+            setOpenDocuments(documents => documents.map(document =>
+               document.tabKey === tabKey ? { ...document, meta: { ...document.meta, title: saved.meta.title } } : document))
+         })
+      }
    })
 
    // Replace the open-tab set with a restored set (reload boot / legacy migration), activating the
@@ -493,7 +507,8 @@ export default function App() {
          }).catch(error => {
             console.error('[autosave] saveDocument failed:', error)
             setTabSaveStatus(originatingTabKey, 'dirty')
-            notifySaveFailedRef.current()
+            if (error instanceof NameTakenError) notifyNameTakenRef.current(originatingTabKey, originatingTab?.documentId ?? null)
+            else notifySaveFailedRef.current()
          })
       }, 1500)
       return () => {
@@ -529,6 +544,7 @@ export default function App() {
       const flushTab = openDocumentsRef.current.find(document => document.tabKey === flushTabKey)
       if (!flushTab) return null
       setTabSaveStatus(flushTabKey, 'saving')
+      const wasCreate = flushTab.documentId === null
       try {
          const savedId = await backend.saveDocument(
             { meta: flushTab.meta, sections: flushTab.sections },
@@ -536,15 +552,29 @@ export default function App() {
             flushTab.documentId ?? undefined,
             flushTab.pendingNewDocFolderId ?? undefined,
          )
-         setOpenDocuments(documents => documents.map(document =>
-            document.tabKey === flushTabKey
-               ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null }
-               : document))
+         // Native filename policy: a CREATE may bump the title to clear a stem collision in the target
+         // folder, so the tab's in-memory title can be stale. Re-read the saved title once and fold it into
+         // the same promotion update. Only on create (an update never bumps); a no-op for the web backend,
+         // which never bumps, so the re-read just returns the same title.
+         let savedTitle: string | null = null
+         if (wasCreate) {
+            const saved = await backend.loadDocument(savedId, { touch: false })
+            savedTitle = saved?.meta.title ?? null
+         }
+         setOpenDocuments(documents => documents.map(document => {
+            if (document.tabKey !== flushTabKey) return document
+            // Sync the possibly-bumped title only when the user has not edited it during the save round-trip.
+            const meta = (savedTitle !== null && savedTitle !== document.meta.title && document.meta.title === flushTab.meta.title)
+               ? { ...document.meta, title: savedTitle }
+               : document.meta
+            return { ...document, documentId: document.documentId ?? savedId, meta, saveStatus: 'saved', pendingNewDocFolderId: null }
+         }))
          return savedId
       } catch (error) {
          console.error('[persistNow] saveDocument failed:', error)
          setTabSaveStatus(flushTabKey, 'dirty')
-         showToast(t.saveFailed, { type: 'error' })
+         if (error instanceof NameTakenError) notifyNameTakenRef.current(flushTabKey, flushTab.documentId)
+         else showToast(t.saveFailed, { type: 'error' })
          return null
       }
    }, [showToast, t, setTabSaveStatus, backend])

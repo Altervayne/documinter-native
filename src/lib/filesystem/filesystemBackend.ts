@@ -17,8 +17,10 @@
  */
 
 import {
-   mkdir, readDir, readTextFile, writeTextFile, remove, rename, exists,
+   mkdir, readDir, readTextFile, writeTextFile, remove, rename, exists, watch,
+   type WatchEvent,
 } from '@tauri-apps/plugin-fs'
+import { invoke } from '@tauri-apps/api/core'
 
 import { DocumentIndex } from './documentIndex'
 import { serializeMint, parseMint, buildMintFile, type ParsedMint, type MintFile } from './mintFile'
@@ -31,7 +33,8 @@ import {
 import {
    DOCUMINTER_DIR, TEMPLATES_DIR, INDEX_FILE, MINT_EXTENSION, MINTPLATE_EXTENSION,
    isSystemFolderName, folderIdForRelativePath, relativeDirForFolderId,
-   parentFolderId, folderName, joinRelative, relativePathForDocument, mintFileName, mintplateFileName,
+   parentFolderId, folderName, joinRelative, relativePathForDocument,
+   sanitizeForFilename, mintFileName, nextAvailableTitle, mintplateFileName,
    dedupeFolderName,
 } from './binderPaths'
 import { buildDocumentRecord, cloneSectionsWithFreshIds, assembleLoadedDocument } from '../documentRecord'
@@ -42,13 +45,25 @@ import { remapTinForMerge, toTinFolder, toTinDocument, toTinTemplate } from '../
 import { TIN_SCHEMA_VERSION } from '../tinFile'
 import { ROOT_FOLDER_ID } from '../binderDatabase'
 
-import type { BinderBackend } from '../binderBackend'
+import type { BinderBackend, BinderChange } from '../binderBackend'
 import type { DocState, BinderDocumentRecord, BinderFolderRecord } from '../../types'
 import type { DocPresentation, LoadedDocument } from '../binderDocuments'
 import type { DocumentListFilter } from '../binderSearch'
 import type { DocumentTemplate } from '../documentTemplate'
 import type { TinImportSummary } from '../binderBackup'
 import type { TinFile, TinDocument } from '../tinFile'
+
+/**
+ * A rename was rejected because the new title's sanitized stem is already taken by a SIBLING document in
+ * the same folder. Thrown by saveDocument's update path (never the create paths, which bump silently) so
+ * the UI can catch it by instanceof and revert the title field with a "name already taken" message.
+ */
+export class NameTakenError extends Error {
+   constructor(message = 'A document with this name already exists in this folder') {
+      super(message)
+      this.name = 'NameTakenError'
+   }
+}
 
 /**
  * Open (or create) the filesystem backend rooted at an absolute Binder path. Creates `.documinter/`, opens
@@ -71,6 +86,9 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    if (!(await exists(rootPosix))) throw new Error(`Binder folder not found: ${binderRoot}`)
 
    await mkdir(absolutePath(DOCUMINTER_DIR), { recursive: true })
+   // Hide the cache folder on Windows (dot-prefix already hides it elsewhere). Fire-and-forget: a failure
+   // just leaves it visible, it does not block opening the Binder.
+   void invoke('set_path_hidden', { path: absolutePath(DOCUMINTER_DIR) }).catch(() => {})
    const index = await DocumentIndex.open(absolutePath(joinRelative(DOCUMINTER_DIR, INDEX_FILE)))
 
    // ====
@@ -80,8 +98,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    /** The last path segment of a relative posix path (a `.mint` file name). */
    const baseName = (path: string): string => path.slice(path.lastIndexOf('/') + 1)
 
-   /** The names already present at an ABSOLUTE directory (case-insensitive collision handling is
-    *  mintFileName's job; this just supplies the set). Missing directory reads as empty. */
+   /** The entry names already present at an ABSOLUTE directory. Missing directory reads as empty. */
    const takenNamesAt = async (absoluteDir: string): Promise<Set<string>> => {
       try {
          const entries = await readDir(absoluteDir)
@@ -91,14 +108,54 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       }
    }
 
-   /** The names already present in a Binder-relative directory. Missing directory reads as empty. */
-   const takenNames = (relativeDir: string): Promise<Set<string>> => takenNamesAt(absolutePath(relativeDir))
+   /** The sanitized `.mint` stems already present at an ABSOLUTE directory: each basename minus the
+    *  extension IS a sanitized stem, by the filename-policy invariant (stem === sanitizeForFilename(title)),
+    *  so the on-disk names are the source of truth for what a new/renamed title must clear. One stem may be
+    *  excluded (a rename excludes the document's own current file). Missing directory reads as empty. */
+   const takenStemsAt = async (absoluteDir: string, excludeStem?: string): Promise<Set<string>> => {
+      const names = await takenNamesAt(absoluteDir)
+      const stems = new Set<string>()
+      const excludeLower = excludeStem?.toLowerCase()
+      for (const name of names) {
+         if (!name.endsWith(MINT_EXTENSION)) continue
+         const stem = name.slice(0, -MINT_EXTENSION.length)
+         if (excludeLower !== undefined && stem.toLowerCase() === excludeLower) continue
+         stems.add(stem)
+      }
+      return stems
+   }
 
-   /** Case-insensitive membership, mirroring mintFileName's own collision compare. */
-   const takenHas = (taken: ReadonlySet<string>, name: string): boolean => {
-      const lower = name.toLowerCase()
-      for (const candidate of taken) if (candidate.toLowerCase() === lower) return true
-      return false
+   /** The sanitized `.mint` stems present in a Binder-relative directory (see takenStemsAt). */
+   const takenStems = (relativeDir: string, excludeStem?: string): Promise<Set<string>> =>
+      takenStemsAt(absolutePath(relativeDir), excludeStem)
+
+   /** The `.mint` stem of a relative document path (its basename minus the extension), the on-disk half
+    *  of the filename-policy invariant. */
+   const stemOfPath = (path: string): string => {
+      const name = baseName(path)
+      return name.endsWith(MINT_EXTENSION) ? name.slice(0, -MINT_EXTENSION.length) : name
+   }
+
+   /** Rewrite a relocated document's file so its stored title matches a uniqueness bump, keeping identity,
+    *  timestamps, theme, accent, presentation and format. Used by move / orphan-reflow when a collision in
+    *  the destination bumps the title, so the invariant stem === sanitizeForFilename(title) holds on disk
+    *  before the index is rebuilt from the file. */
+   const rewriteDocumentTitle = async (path: string, existing: BinderDocumentRecord, title: string): Promise<void> => {
+      const parsed = parseMint(await readTextFile(absolutePath(path)))
+      if (!parsed) return
+      const mint = buildMintFile({
+         id:           existing.id,
+         meta:         { ...migrateMeta(parsed.loaded.meta), title },
+         sections:     parsed.loaded.sections,
+         docTheme:     parsed.loaded.docTheme,
+         docAccent:    parsed.loaded.docAccent,
+         presentation: parsed.loaded.presentation,
+         format:       parsed.loaded.format,
+         createdAt:    existing.createdAt,
+         updatedAt:    existing.updatedAt,
+         lastOpenedAt: existing.lastOpenedAt,
+      })
+      await writeTextFile(absolutePath(path), serializeMint(mint))
    }
 
    /** The next append sortOrder in a folder, optionally excluding one document (a same-folder move). */
@@ -269,6 +326,36 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
          const id = entry.idHint ?? parsed.id
          if (id === null) continue
          const now = new Date().toISOString()
+
+         // Filename-wins reconcile: an Explorer rename made the on-disk stem diverge from the title's
+         // projection, so the FILENAME is the human intent. Adopt the basename as the title and rewrite the
+         // file so it is consistent again. Idempotent: a Documinter-written basename is itself a sanitized
+         // stem, so once title === basename the next pass finds sanitizeForFilename(title) === basename and
+         // does nothing. A raw hand-edit of meta.title with no matching rename is thus reverted here, which
+         // is the documented rule (rename the file, do not edit the JSON's title). Compare is case-sensitive
+         // so a case-only rename ("Report" -> "report") is adopted too.
+         const stem = stemOfPath(entry.path)
+         // Adopt-the-basename only when the basename is itself a valid sanitized stem. On a case-sensitive
+         // filesystem that allows characters we sanitize away (a colon on macOS / Linux), sanitize(stem)
+         // would never equal stem, so the mismatch could never be resolved and this would rewrite the file
+         // on every reconcile in a loop. Windows filenames are always already-sanitized, so this is a no-op
+         // there; on the other platforms it just leaves such a file's title untouched rather than looping.
+         if (sanitizeForFilename(parsed.loaded.meta.title) !== stem && sanitizeForFilename(stem) === stem) {
+            parsed.loaded.meta = { ...parsed.loaded.meta, title: stem }
+            await writeTextFile(absolutePath(entry.path), serializeMint(buildMintFile({
+               id,
+               meta:         parsed.loaded.meta,
+               sections:     parsed.loaded.sections,
+               docTheme:     parsed.loaded.docTheme,
+               docAccent:    parsed.loaded.docAccent,
+               presentation: parsed.loaded.presentation,
+               format:       parsed.loaded.format,
+               createdAt:    parsed.createdAt ?? now,
+               updatedAt:    parsed.updatedAt ?? now,
+               lastOpenedAt: parsed.lastOpenedAt ?? undefined,
+            })))
+         }
+
          documentRecords.push({
             record: buildDocumentRecord({
                id,
@@ -337,12 +424,33 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    ): Promise<string> => {
       const now = new Date().toISOString()
 
-      // Update in place: the id already lives in the index, so keep its file name, folder, createdAt and
-      // sortOrder and only rewrite the body + updatedAt.
+      // Update: the id already lives in the index. The title projects to the filename, so recompute the
+      // stem and compare it to the current on-disk one. Same stem -> rewrite the body in place (the title
+      // may still differ in ways the stem cannot carry, e.g. a colon). Different stem -> it is a rename:
+      // reject if the new stem collides with a SIBLING, else rename the file to the new stem.
       if (existingId) {
          const existingPath = await index.getPathById(existingId)
          const existingRecord = await index.getDocumentById(existingId)
          if (existingPath && existingRecord) {
+            const currentStem = stemOfPath(existingPath)
+            const newStem = sanitizeForFilename(state.meta.title)
+            // Case-sensitive on purpose (matches the reconcile rule): a case-only title edit ("Report" ->
+            // "report") renames the file too, so the invariant stem === sanitizeForFilename(title) stays exact.
+            const renaming = newStem !== currentStem
+
+            if (renaming) {
+               // Block the rename when a SIBLING already holds the target stem (the user is actively naming,
+               // so a clear "name taken" beats a silent bump). The compare is case-insensitive (the on-disk
+               // filesystem's own rule); the doc's own current file is excluded. Nothing is written yet here.
+               const siblingStems = await takenStems(relativeDirForFolderId(existingRecord.folderId), currentStem)
+               const collides = [...siblingStems].some(stem => stem.toLowerCase() === newStem.toLowerCase())
+               if (collides) throw new NameTakenError()
+            }
+
+            const path = renaming
+               ? relativePathForDocument(existingRecord.folderId, mintFileName(state.meta.title))
+               : existingPath
+
             const mint = buildMintFile({
                id:           existingId,
                meta:         state.meta,
@@ -355,7 +463,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
                updatedAt:    now,
                lastOpenedAt: existingRecord.lastOpenedAt,
             })
-            await writeTextFile(absolutePath(existingPath), serializeMint(mint))
+            if (renaming) await rename(absolutePath(existingPath), absolutePath(path))
+            await writeTextFile(absolutePath(path), serializeMint(mint))
             const record = buildDocumentRecord({
                id:           existingId,
                meta:         state.meta,
@@ -368,7 +477,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
                folderId:     existingRecord.folderId,
                sortOrder:    existingRecord.sortOrder,
             })
-            await index.upsertDocument(record, existingPath)
+            await index.upsertDocument(record, path)
             return existingId
          }
          // existingId passed but gone from the index: fall through to create, reusing the id (upsert).
@@ -377,13 +486,18 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       const id = existingId ?? crypto.randomUUID()
       const folderId = targetFolderId ?? ROOT_FOLDER_ID
       const directory = relativeDirForFolderId(folderId)
-      const fileName = mintFileName(state.meta.title, await takenNames(directory))
+      // Create bumps the title (never blocks): a new document landing on a taken stem takes the next free
+      // title ("Report" -> "Report 1"), which is then written into the file AND the record so the stored
+      // title matches the filename. A unique title passes through unchanged.
+      const title = nextAvailableTitle(state.meta.title, await takenStems(directory))
+      const meta = title === state.meta.title ? state.meta : { ...state.meta, title }
+      const fileName = mintFileName(meta.title)
       const path = relativePathForDocument(folderId, fileName)
       const sortOrder = await appendDocumentSort(folderId)
 
       const mint = buildMintFile({
          id,
-         meta:         state.meta,
+         meta,
          sections:     state.sections,
          docTheme:     presentation.docTheme,
          docAccent:    presentation.docAccent,
@@ -395,7 +509,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       await writeTextFile(absolutePath(path), serializeMint(mint))
       const record = buildDocumentRecord({
          id,
-         meta:         state.meta,
+         meta,
          sections:     state.sections,
          docTheme:     presentation.docTheme,
          docAccent:    presentation.docAccent,
@@ -461,10 +575,13 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       const newId = crypto.randomUUID()
       const now = new Date().toISOString()
       const clonedSections = cloneSectionsWithFreshIds(parsed.loaded.sections)
-      const meta = migrateMeta(parsed.loaded.meta)
+      const sourceMeta = migrateMeta(parsed.loaded.meta)
       const folderId = sourceRecord.folderId
       const directory = relativeDirForFolderId(folderId)
-      const fileName = mintFileName(meta.title, await takenNames(directory))
+      // The source is a sibling, so its stem is taken: the copy always bumps ("Report" -> "Report 1").
+      const title = nextAvailableTitle(sourceMeta.title, await takenStems(directory))
+      const meta = title === sourceMeta.title ? sourceMeta : { ...sourceMeta, title }
+      const fileName = mintFileName(meta.title)
       const newPath = relativePathForDocument(folderId, fileName)
       const sortOrder = await appendDocumentSort(folderId)
 
@@ -507,14 +624,17 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
          return
       }
 
+      // Cross-folder move: the file keeps its stem unless a sibling in the destination already holds it,
+      // in which case the title bumps ("Report" -> "Report 1") and the file is rewritten so the invariant
+      // stem === sanitizeForFilename(title) survives the move. reindexDocumentFromFile then reads the file
+      // back, so the record picks up the bumped title.
       const targetDirectory = relativeDirForFolderId(targetFolderId)
-      const taken = await takenNames(targetDirectory)
-      const currentName = baseName(oldPath)
-      const fileName = takenHas(taken, currentName) ? mintFileName(existing.meta.title, taken) : currentName
-      const newPath = relativePathForDocument(targetFolderId, fileName)
+      const title = nextAvailableTitle(existing.meta.title, await takenStems(targetDirectory))
+      const newPath = relativePathForDocument(targetFolderId, mintFileName(title))
       const sortOrder = await appendDocumentSort(targetFolderId)
 
       await rename(absolutePath(oldPath), absolutePath(newPath))
+      if (title !== existing.meta.title) await rewriteDocumentTitle(newPath, existing, title)
       await reindexDocumentFromFile(existing, newPath, targetFolderId, sortOrder)
    }
 
@@ -630,16 +750,19 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
          }
       } else {
          // Reflow the contained documents to root, appended in discovered order (mirror of the IndexedDB
-         // orphan reflow). Move the file to the Binder root, then re-index it under root.
+         // orphan reflow). A title bumps when its stem is already taken at root ("Report" -> "Report 1"),
+         // and the moved file is rewritten so the invariant holds; rootStems accumulates each write so two
+         // same-titled orphans land as distinct stems.
          let nextRootSort = await appendDocumentSort(ROOT_FOLDER_ID)
-         const takenRoot = await takenNames('')
+         const rootStems = await takenStems('')
          for (const document of affected) {
             const oldPath = await index.getPathById(document.id)
             if (oldPath === null) continue
-            const currentName = baseName(oldPath)
-            const fileName = takenHas(takenRoot, currentName) ? mintFileName(document.meta.title, takenRoot) : currentName
-            takenRoot.add(fileName)
+            const title = nextAvailableTitle(document.meta.title, rootStems)
+            const fileName = mintFileName(title)
+            rootStems.add(sanitizeForFilename(title))
             await rename(absolutePath(oldPath), absolutePath(fileName))
+            if (title !== document.meta.title) await rewriteDocumentTitle(fileName, document, title)
             await reindexDocumentFromFile(document, fileName, ROOT_FOLDER_ID, nextRootSort++)
          }
       }
@@ -953,9 +1076,14 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       for (const { document, folderPathId } of plan.documents) {
          const id        = crypto.randomUUID()
          const directory = relativeDirForFolderId(folderPathId)
-         const fileName  = mintFileName(document.meta.title, await takenNames(directory))
+         // Bump the title on a stem collision in the target folder (a graft may land beside a same-named
+         // document); the bumped title is what the file + record store, keeping the invariant exact. The
+         // directory is re-read each iteration, so an earlier graft in the same folder counts as taken.
+         const title     = nextAvailableTitle(document.meta.title, await takenStems(directory))
+         const graft     = title === document.meta.title ? document : { ...document, meta: { ...document.meta, title } }
+         const fileName  = mintFileName(title)
          const path      = relativePathForDocument(folderPathId, fileName)
-         const { loaded, mint } = prepareTinDocument(document, id)
+         const { loaded, mint } = prepareTinDocument(graft, id)
          await writeTextFile(absolutePath(path), serializeMint(mint))
          await index.upsertDocument(buildDocumentRecord({
             id,
@@ -1035,10 +1163,14 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
 
       for (const { document, folderPathId } of plan.documents) {
          const directory = relativeDirForFolderId(folderPathId)
-         const fileName  = mintFileName(document.meta.title, await takenNamesAt(stagingPath(directory)))
+         // Bump on a stem collision within the staged folder (the index is not live yet, so the staging
+         // directory itself is the source of taken stems). Verbatim id restore (a Replace matches the
+         // exported state), still healed through the migrators; the bumped title is what gets written.
+         const title     = nextAvailableTitle(document.meta.title, await takenStemsAt(stagingPath(directory)))
+         const restore   = title === document.meta.title ? document : { ...document, meta: { ...document.meta, title } }
+         const fileName  = mintFileName(title)
          const path      = relativePathForDocument(folderPathId, fileName)
-         // Verbatim id restore (a Replace matches the exported state), still healed through the migrators.
-         const { loaded, mint } = prepareTinDocument(document, document.id)
+         const { loaded, mint } = prepareTinDocument(restore, document.id)
          await writeTextFile(stagingPath(path), serializeMint(mint))
          documentUpserts.push({
             record: buildDocumentRecord({
@@ -1101,34 +1233,136 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       return mergeTin(tin, targetFolderId ?? ROOT_FOLDER_ID)
    }
 
+   // ####################
+   // # THE FILESYSTEM WATCHER (arc B)
+   // ####################
+   // External edits (Explorer add / rename / move / delete of a `.mint`, folder, or template) are
+   // reconciled live: a recursive plugin-fs watch on the Binder root coalesces raw events, we drop the ones
+   // we caused, and a short settle later we re-run the (idempotent) reconcile and notify subscribers so the
+   // binder view re-queries. Two drops keep the loop out: events during an in-app mute window (an ordinary
+   // save already updated the index, nothing to rescan) and events that are only our own `.documinter/`
+   // cache writes. The reconcile runs even with the binder view closed, so opening it later shows a folder
+   // that was edited in the meantime; the notify is simply a no-op while nobody is subscribed.
+
+   const WATCH_DEBOUNCE_MS = 400   // plugin-fs coalesces raw OS events over this window
+   const MUTE_MS           = 900   // ignore-our-own-writes window opened by each in-app mutation
+   const COALESCE_MS       = 150   // extra settle before reconciling, past any still-active mute
+
+   const listeners = new Set<(change: BinderChange) => void>()
+   let unwatch: (() => void) | null = null
+   let muteUntil = 0
+   let reconcileTimer: ReturnType<typeof setTimeout> | null = null
+   let reconciling = false
+   let pendingReconcile = false
+
+   // Every in-app write opens a mute window so a save / move / mkdir is not mistaken for an external edit.
+   const mute = (): void => { muteUntil = Date.now() + MUTE_MS }
+   const muteThen = <Args extends unknown[], Result>(operation: (...args: Args) => Result) =>
+      (...args: Args): Result => { mute(); return operation(...args) }
+
+   const notifyListeners = (): void => {
+      // Coarse on purpose: the binder view just re-runs its list reads. Snapshot first so a listener that
+      // unsubscribes during the loop cannot mutate the set mid-iteration.
+      for (const listener of [...listeners]) listener({ kind: 'all' })
+   }
+
+   const runReconcile = async (): Promise<void> => {
+      if (reconciling) { pendingReconcile = true; return }
+      reconciling = true
+      try {
+         await reconcile()
+      } catch (error) {
+         console.error('[binder] watcher reconcile failed:', error)
+      } finally {
+         reconciling = false
+      }
+      console.info('[binder][watch] reconciled, notifying', listeners.size, 'listener(s)')
+      notifyListeners()
+      // A change that arrived mid-reconcile (our own re-id file rewrites included) gets one more pass.
+      if (pendingReconcile) { pendingReconcile = false; void runReconcile() }
+   }
+
+   const scheduleReconcile = (): void => {
+      if (reconcileTimer !== null) clearTimeout(reconcileTimer)
+      reconcileTimer = setTimeout(() => { reconcileTimer = null; void runReconcile() }, COALESCE_MS)
+   }
+
+   const handleWatchEvent = (event: WatchEvent): void => {
+      const paths = Array.isArray(event.paths) ? event.paths : []
+      const muted = Date.now() < muteUntil
+      // Diagnostic (arc B bring-up): shows every raw event + why it was or was not acted on. Trim once stable.
+      console.info('[binder][watch] event', JSON.stringify(event.type), paths, '| muted:', muted, '| listeners:', listeners.size)
+      // Our own recent write: the in-app op already updated the index, so its file events are noise. This is
+      // what keeps an ordinary save from triggering a rescan (and why the binder view need not be open, the
+      // index stays fresh for external edits regardless). A rare external edit inside the window is caught by
+      // the next event or the next Binder open.
+      if (muted) { console.info('[binder][watch] ignored (self-write / muted)'); return }
+      // Loop guard: skip events that are ONLY our own cache writes. Reconcile constantly writes
+      // `.documinter/index.sqlite`, so if those reached scheduleReconcile they would reconcile forever. We
+      // match the `.documinter/` path SEGMENT (not a root prefix), so it holds regardless of how the OS
+      // normalizes the event path vs the Binder root (drive-letter case, short paths, and so on).
+      const isCachePath = (path: string): boolean => {
+         const normalized = path.replace(/\\/g, '/').toLowerCase()
+         return normalized.includes(`/${DOCUMINTER_DIR.toLowerCase()}/`) || normalized.endsWith(`/${DOCUMINTER_DIR.toLowerCase()}`)
+      }
+      if (paths.length > 0 && paths.every(isCachePath)) { console.info('[binder][watch] ignored (cache-only)'); return }
+      console.info('[binder][watch] scheduling reconcile')
+      scheduleReconcile()
+   }
+
    // ====
    // Assemble + reconcile, then hand back the backend
    // ====
 
    const backend: BinderBackend = {
-      // Documents
-      saveDocument, loadDocument, listDocuments, getDocumentFolderId,
-      deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
+      // Documents (mutations wrapped so their own file writes do not wake the watcher).
+      saveDocument: muteThen(saveDocument),
+      loadDocument, listDocuments, getDocumentFolderId,
+      deleteDocument:    muteThen(deleteDocument),
+      duplicateDocument: muteThen(duplicateDocument),
+      moveDocument:      muteThen(moveDocument),
+      reorderDocuments,   // index-only (sortOrder): its writes live under `.documinter`, already ignored
 
       // Folders
-      getFolder, createFolder, renameFolder, deleteFolder,
-      listAllFolders, getFolderChildren, getFolderAncestors, moveFolder, reorderFolders,
+      getFolder,
+      createFolder: muteThen(createFolder),
+      renameFolder: muteThen(renameFolder),
+      deleteFolder: muteThen(deleteFolder),
+      listAllFolders, getFolderChildren, getFolderAncestors,
+      moveFolder:   muteThen(moveFolder),
+      reorderFolders,     // index-only, same as reorderDocuments
 
       // Templates
-      saveTemplate, listTemplates, renameTemplate, deleteTemplate,
+      saveTemplate:   muteThen(saveTemplate),
+      listTemplates,
+      renameTemplate: muteThen(renameTemplate),
+      deleteTemplate: muteThen(deleteTemplate),
 
       // Bulk / Tin
-      collectBinderForTin, collectFolderSubtreeForTin, importTin,
+      collectBinderForTin, collectFolderSubtreeForTin,
+      importTin: muteThen(importTin),
 
       // The FS index is built fresh from the files (always current), so there is nothing to backfill.
       backfillSearchText: () => Promise.resolve(0),
 
-      // Inert until the arc-B filesystem watcher fires external changes.
-      subscribe: () => () => {},
+      // Live external-change subscription (arc B). Returns an unsubscribe; the watch itself runs for the
+      // whole Binder session and stops in dispose.
+      subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
 
-      dispose: () => index.close(),
+      dispose: async () => {
+         if (reconcileTimer !== null) clearTimeout(reconcileTimer)
+         if (unwatch) { try { unwatch() } catch { /* the watch is already gone */ } }
+         await index.close()
+      },
    }
 
    await reconcile()
+
+   // Start the live watcher now the index is in sync. Fire-and-forget: watch() is async but the backend
+   // is usable at once; if it fails the app just runs without live external-edit reconciliation.
+   void watch(rootPosix, handleWatchEvent, { recursive: true, delayMs: WATCH_DEBOUNCE_MS })
+      .then(stop => { unwatch = stop; console.info('[binder][watch] started on', rootPosix) })
+      .catch(error => console.error('[binder][watch] FAILED to start the filesystem watcher:', error))
+
    return backend
 }

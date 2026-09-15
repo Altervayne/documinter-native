@@ -30,6 +30,32 @@ async fn create_binder_directory(app: tauri::AppHandle, path: String) -> Result<
     .map_err(|error| error.to_string())
 }
 
+// ####################
+// # HIDE THE CACHE FOLDER
+// ####################
+// The `.documinter/` cache is dot-prefixed, which hides it on macOS / Linux, but Windows Explorer shows
+// dot-folders. This sets the Windows hidden attribute (via attrib, no extra crate, no console flash). A
+// no-op off Windows. Called after the cache folder is created; setting it again is harmless.
+#[tauri::command]
+fn set_path_hidden(path: String) -> Result<(), String> {
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let windows_path = path.replace('/', "\\");
+    std::process::Command::new("attrib")
+      .args(["+h", &windows_path])
+      .creation_flags(CREATE_NO_WINDOW)
+      .output()
+      .map_err(|error| error.to_string())?;
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = path;
+  }
+  Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -44,8 +70,9 @@ pub fn run() {
     // Persists the runtime-granted Binder-folder scope across restarts.
     .plugin(tauri_plugin_persisted_scope::init())
     // App commands. allow_binder_directory grants an existing Binder folder to the fs scope at runtime;
-    // create_binder_directory creates a new one (via std::fs, ungated) and grants it.
-    .invoke_handler(tauri::generate_handler![allow_binder_directory, create_binder_directory])
+    // create_binder_directory creates a new one (via std::fs, ungated) and grants it; set_path_hidden
+    // hides the `.documinter/` cache on Windows.
+    .invoke_handler(tauri::generate_handler![allow_binder_directory, create_binder_directory, set_path_hidden])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

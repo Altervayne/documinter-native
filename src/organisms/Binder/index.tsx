@@ -117,6 +117,12 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       return () => { active = false }
    }, [bumpData, backend])
 
+   // Live external-change subscription (native filesystem backend, arc B). When the watcher reconciles an
+   // Explorer edit it fires a BinderChange; bumping the shared data version re-reads the nav + grid +
+   // templates together. On the IndexedDB backend subscribe is inert (nothing edits the store behind the
+   // app's back), so this is a harmless no-op there.
+   useEffect(() => backend.subscribe(bumpData), [backend, bumpData])
+
    const templates = useTemplates(dataVersion, bumpData)
    const nav  = useBinderNav(currentFolderId, dataVersion, bumpData)
    const docs = useBinderDocuments(
