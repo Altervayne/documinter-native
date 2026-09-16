@@ -77,4 +77,10 @@ describe('highlight, added languages', () => {
       const output = highlight('**bold**', 'markdown')
       expect(output).toContain('<span class="tok-bold">**bold**</span>')
    })
+
+   it('XML: tags and attributes', () => {
+      const output = highlight('<note id="1">hi</note>', 'xml')
+      expect(output).toContain('<span class="tok-kw">&lt;note</span>')
+      expect(output).toContain('<span class="tok-fn">id</span>')
+   })
 })

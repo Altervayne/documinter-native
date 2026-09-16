@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { PlainEditable } from '../../../atoms/PlainEditable'
-import { highlight, LANG_LABELS } from '../../../lib/highlight'
+import { CodeLangPicker } from '../../../molecules/CodeLangPicker'
+import { highlight } from '../../../lib/highlight'
 import { useLang } from '../../../contexts/LangContext'
-import type { Block, CodeLang } from '../../../types'
+import type { Block } from '../../../types'
 
 interface CodeBlockProps {
    block: Block
@@ -18,25 +19,8 @@ export function CodeBlock({ block, patch, readOnly }: CodeBlockProps) {
    return (
       <>
          {!readOnly && (
-            <div className="flex items-center gap-1 p-2 -mb-4 flex-wrap">
-               <span className="text-xs opacity-40 font-mono mr-1">lang:</span>
-               {(Object.keys(LANG_LABELS) as CodeLang[]).map(langOption => (
-                  <button
-                     key={langOption}
-                     onClick={() => patch({ lang: langOption })}
-                     className={[
-                        'px-2.5 py-1 text-xs rounded-md border cursor-pointer transition-all',
-                        lang === langOption ? 'font-semibold' : 'border-current/20 opacity-50 hover:opacity-80',
-                     ].join(' ')}
-                     style={lang === langOption ? {
-                        color:       'var(--doc-accent, var(--color-accent))',
-                        borderColor: 'var(--doc-accent, var(--color-accent))',
-                        background:  'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, transparent)',
-                     } : undefined}
-                  >
-                     {LANG_LABELS[langOption]}
-                  </button>
-               ))}
+            <div className="flex items-center p-2 -mb-4">
+               <CodeLangPicker value={lang} onChange={nextLang => patch({ lang: nextLang })} />
             </div>
          )}
          {!readOnly && codeEditing ? (

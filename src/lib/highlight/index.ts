@@ -11,13 +11,14 @@ import { bash } from './languages/bash'
 import { json } from './languages/json'
 import { yaml } from './languages/yaml'
 import { html } from './languages/html'
+import { xml } from './languages/xml'
 import { css } from './languages/css'
 import { markdown } from './languages/markdown'
 import { plain } from './languages/plain'
 
 const LANGUAGES = {
    windev, js: javascript, ts: typescript, python, rust, c, sql,
-   bash, json, yaml, html, css, markdown, plain,
+   bash, json, yaml, html, xml, css, markdown, plain,
 }
 
 /** Highlight a code block, wrapping each source line so long lines wrap (with a hanging indent) rather
@@ -39,6 +40,7 @@ export const LANG_LABELS: Record<CodeLang, string> = {
    json:     'JSON',
    yaml:     'YAML',
    html:     'HTML',
+   xml:      'XML',
    css:      'CSS',
    markdown: 'Markdown',
    plain:    'Plaintext',

@@ -9,7 +9,7 @@ export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang =
    | 'windev' | 'js' | 'ts' | 'python' | 'rust' | 'c' | 'sql'
-   | 'bash' | 'json' | 'yaml' | 'html' | 'css' | 'markdown' | 'plain'
+   | 'bash' | 'json' | 'yaml' | 'html' | 'xml' | 'css' | 'markdown' | 'plain'
 
 /** One list-marker style, per SUB-LIST of a `list` block (never `checklist`). A sub-list is one
  *  `<ul>`/`<ol>`: the root items form one, each item's non-empty `children` another. First five are
