@@ -24,7 +24,7 @@ import { WindowControls } from '../molecules/WindowControls'
 // -- Lib Imports --
 import { isTauri } from '../lib/platform'
 import { parseDocumentBackup } from '../lib/documentBackupFile'
-import type { DocPresentation } from '../lib/binderDocuments'
+import type { DocPresentation } from '../lib/documentRecord'
 import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
 import { importMarkdownFile } from '../lib/markdown'
 import { openTextFile } from '../lib/platform/fileTransfer'

@@ -2,35 +2,20 @@
 // # BINDER BACKEND                                                                              #
 // #                                                                                             #
 // # The persistence seam. The whole app talks to one BinderBackend interface, so the storage    #
-// # engine can be swapped without touching a single call site. createIndexedDbBackend delegates #
-// # over the binder*.ts / templateStore.ts / binderBackup.ts free functions, which hold the     #
-// # IndexedDB logic. The filesystem backend implements the same interface against files + a     #
-// # rebuildable index.                                                                          #
+// # engine stays behind a single boundary. The filesystem backend implements it against `.mint` #
+// # files + a rebuildable index; the interface keeps that swappable.                            #
 // ###############################################################################################
-
-// -- Lib Imports --
-import {
-   saveDocument, loadDocument, listDocuments, getDocumentFolderId, getDocumentRecord,
-   deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
-   backfillSearchText,
-} from './binderDocuments'
-import {
-   getFolder, createFolder, renameFolder, deleteFolder,
-   listAllFolders, getFolderChildren, getFolderAncestors, moveFolder, reorderFolders,
-} from './binderFolders'
-import { saveTemplate, listTemplates, renameTemplate, deleteTemplate } from './templateStore'
-import { collectBinderForTin, collectFolderSubtreeForTin, importTin } from './binderBackup'
 
 // -- Type Imports --
 import type { DocState, BinderDocumentRecord, BinderFolderRecord } from '../types'
-import type { DocPresentation, LoadedDocument } from './binderDocuments'
+import type { DocPresentation, LoadedDocument } from './documentRecord'
 import type { DocumentListFilter } from './binderSearch'
 import type { DocumentTemplate } from './documentTemplate'
 import type { TinFile } from './tinFile'
-import type { TinImportSummary } from './binderBackup'
+import type { TinImportSummary } from './tinMapping'
 
-/** An external content change the UI reconciles by re-querying. IndexedDB never fires one; the
- *  filesystem backend fires on Explorer add / change / delete / move / rename. Coarse on purpose. */
+/** An external content change the UI reconciles by re-querying. The filesystem backend fires on
+ *  Explorer add / change / delete / move / rename. Coarse on purpose. */
 export type BinderChange =
    | { kind: 'documents' }
    | { kind: 'folders' }
@@ -55,9 +40,8 @@ export interface BinderBackend {
     *  check: it compares this record's updatedAt to the version a tab last synced to. */
    getDocumentRecord(id: string): Promise<BinderDocumentRecord | null>
    getDocumentFolderId(id: string): Promise<string | null>
-   /** The document id stored at a Binder-relative path, or null. Native-only: it backs the `.mint`
-    *  file-association open (a launched file's path -> its document). The IndexedDB backend has no paths
-    *  and omits it. */
+   /** The document id stored at a Binder-relative path, or null. Backs the `.mint` file-association
+    *  open (a launched file's path -> its document). A backend with no path model omits it. */
    resolveDocumentByRelativePath?(relativePath: string): Promise<string | null>
    deleteDocument(id: string): Promise<void>
    duplicateDocument(id: string): Promise<string>
@@ -86,63 +70,9 @@ export interface BinderBackend {
    collectFolderSubtreeForTin(rootFolderId: string): Promise<TinFile>
    importTin(tin: TinFile, mode: 'merge' | 'replace', targetFolderId?: string): Promise<TinImportSummary>
 
-   // ===== IndexedDB-ONLY MIGRATION =====
-   /** Populate contentText on pre-full-text-search records (one-time, idempotent). IndexedDB-only:
-    *  the filesystem backend builds its index fresh, so it no-ops this. */
-   backfillSearchText(): Promise<number>
-
    // ===== REACTIVITY + LIFECYCLE =====
-   /** External-change subscription. Returns an unsubscribe. The IndexedDB backend never fires. */
+   /** External-change subscription. Returns an unsubscribe. */
    subscribe(listener: (change: BinderChange) => void): () => void
-   /** Release resources on Binder switch / app close. IndexedDB is a no-op. */
+   /** Release resources on Binder switch / app close. */
    dispose(): Promise<void>
-}
-
-/**
- * The IndexedDB backend: thin delegation over the binder*.ts / templateStore.ts / binderBackup.ts
- * functions. Two boundary normalizations differ from a pass-through (createFolder arg order,
- * getFolder undefined -> null); the rest forward verbatim. subscribe / dispose are inert.
- */
-export function createIndexedDbBackend(): BinderBackend {
-   return {
-      // ===== DOCUMENTS =====
-      saveDocument,
-      loadDocument,
-      listDocuments,
-      getDocumentRecord,
-      getDocumentFolderId,
-      deleteDocument,
-      duplicateDocument,
-      moveDocument,
-      reorderDocuments,
-
-      // ===== FOLDERS =====
-      getFolder: async (id: string) => (await getFolder(id)) ?? null,
-      createFolder: (parentId: string, name: string) => createFolder(name, parentId),
-      renameFolder,
-      deleteFolder,
-      listAllFolders,
-      getFolderChildren,
-      getFolderAncestors,
-      moveFolder,
-      reorderFolders,
-
-      // ===== TEMPLATES =====
-      saveTemplate,
-      listTemplates,
-      renameTemplate,
-      deleteTemplate,
-
-      // ===== BULK (Tin) =====
-      collectBinderForTin,
-      collectFolderSubtreeForTin,
-      importTin,
-
-      // ===== IndexedDB-ONLY MIGRATION =====
-      backfillSearchText,
-
-      // ===== REACTIVITY + LIFECYCLE =====
-      subscribe: () => () => {},
-      dispose: () => Promise.resolve(),
-   }
 }

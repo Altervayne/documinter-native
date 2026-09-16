@@ -11,7 +11,6 @@
  * the pure reconcile planner (indexReconcile.ts) plus the pure envelope/path helpers. Everything that can
  * be pure was pushed into those modules; this file is the thin I/O shell that drives them.
  *
- * backfillSearchText no-ops: the FS index is rebuilt fresh from the files, so it is always current.
  * subscribe feeds the live external-change watcher; dispose stops the watch and closes the index.
  */
 
@@ -40,16 +39,16 @@ import { buildDocumentRecord, cloneSectionsWithFreshIds, assembleLoadedDocument 
 import { migrateMeta } from '../documentMigration'
 import { matchesCriteria, documentComparator } from '../binderSearch'
 import { captureTemplate } from '../documentTemplate'
-import { remapTinForMerge, toTinFolder, toTinDocument, toTinTemplate } from '../binderBackup'
+import { remapTinForMerge, toTinFolder, toTinDocument, toTinTemplate } from '../tinMapping'
 import { TIN_SCHEMA_VERSION } from '../tinFile'
-import { ROOT_FOLDER_ID } from '../binderDatabase'
+import { ROOT_FOLDER_ID } from '../binderConstants'
 
 import type { BinderBackend, BinderChange } from '../binderBackend'
 import type { DocState, BinderDocumentRecord, BinderFolderRecord } from '../../types'
-import type { DocPresentation, LoadedDocument } from '../binderDocuments'
+import type { DocPresentation, LoadedDocument } from '../documentRecord'
 import type { DocumentListFilter } from '../binderSearch'
 import type { DocumentTemplate } from '../documentTemplate'
-import type { TinImportSummary } from '../binderBackup'
+import type { TinImportSummary } from '../tinMapping'
 import type { TinFile, TinDocument } from '../tinFile'
 
 /**
@@ -173,7 +172,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
     * body is deliberate: the index's own light records carry an EMPTY contentText (search text lives only
     * in the FTS table), so rebuilding a record from the file is the only way to keep the searchable text
     * intact across a move / reorder. Timestamps + presentation come from the existing index record so a
-    * structural move never bumps updatedAt (mirrors the IndexedDB move, which leaves updatedAt alone).
+    * structural move never bumps updatedAt (a move is a placement change, not a content edit).
     */
    const reindexDocumentFromFile = async (
       existing: BinderDocumentRecord, path: string, folderId: string, sortOrder: number,
@@ -543,7 +542,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    const listDocuments = async (filter?: DocumentListFilter): Promise<BinderDocumentRecord[]> => {
       // The SQL side applies the folder scope + the free-text FTS match. The returned light records carry
       // an EMPTY contentText, so re-running the text match in JS would wrongly drop everything; clear the
-      // text field and apply only the date / never-opened predicates here, then sort for IDB parity.
+      // text field and apply only the date / never-opened predicates here, then sort into canonical order.
       const records = await index.queryDocuments({ folderId: filter?.folderId, text: filter?.criteria?.text })
       let result = records
       if (filter?.criteria) {
@@ -620,7 +619,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       const oldPath = await index.getPathById(id)
       if (!existing || oldPath === null) return
 
-      // Same folder: only the append sortOrder changes (mirrors the IndexedDB move to the end).
+      // Same folder: only the append sortOrder changes (a same-folder move lands at the end).
       if (targetFolderId === existing.folderId) {
          await reindexDocumentFromFile(existing, oldPath, targetFolderId, await appendDocumentSort(targetFolderId, id))
          return
@@ -708,9 +707,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    const createFolder = async (parentId: string, name: string): Promise<string> => {
       const parentDir = relativeDirForFolderId(parentId)
       // Native-canonical: dedupe the sibling folder name Explorer-style ("Drafts" -> "Drafts 2") so two
-      // same-name siblings never collapse onto one directory. A folder's id IS its path, so a clash cannot
-      // be two identities; this is a DELIBERATE divergence from the IndexedDB backend, which allowed
-      // same-name siblings (distinct UUIDs).
+      // same-name siblings never collapse onto one directory. A folder's id IS its path here, so two
+      // siblings sharing a name cannot be distinct identities; the dedupe keeps them apart.
       const uniqueName = dedupeFolderName(name, await siblingFolderNames(parentDir))
       const relativePath = joinRelative(parentDir, uniqueName)
       const folderId = folderIdForRelativePath(relativePath)
@@ -751,10 +749,9 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
             deletedDocumentIds.push(document.id)
          }
       } else {
-         // Reflow the contained documents to root, appended in discovered order (mirror of the IndexedDB
-         // orphan reflow). A title bumps when its stem is already taken at root ("Report" -> "Report 1"),
-         // and the moved file is rewritten so the invariant holds; rootStems accumulates each write so two
-         // same-titled orphans land as distinct stems.
+         // Reflow the contained documents to root, appended in discovered order. A title bumps when its
+         // stem is already taken at root ("Report" -> "Report 1"), and the moved file is rewritten so the
+         // invariant holds; rootStems accumulates each write so two same-titled orphans land as distinct stems.
          let nextRootSort = await appendDocumentSort(ROOT_FOLDER_ID)
          const rootStems = await takenStems('')
          for (const document of affected) {
@@ -881,14 +878,14 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       await writeTextFile(absolutePath(joinRelative(TEMPLATES_DIR, fileName)), serializeTemplateFile(template))
    }
 
-   /** All stored templates, newest-updated first (mirrors templateStore.listTemplates ordering). */
+   /** All stored templates, newest-updated first. */
    const listTemplates = async (): Promise<DocumentTemplate[]> => {
       const entries = await readTemplateEntries()
       return entries.map(entry => entry.template).sort((first, second) => second.updatedAt - first.updatedAt)
    }
 
    /** Rename a template (touches updatedAt); no-op when the id is absent. Routes through saveTemplate so
-    *  the file is re-slugged the same way a name change on save is. Mirrors templateStore.renameTemplate. */
+    *  the file is re-slugged the same way a name change on save is. */
    const renameTemplate = async (id: string, name: string, now: number): Promise<void> => {
       const entries = await readTemplateEntries()
       const target  = entries.find(entry => entry.template.id === id)
@@ -917,8 +914,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    const IMPORT_BACKUP_DIR  = joinRelative(DOCUMINTER_DIR, 'import-backup')
 
    /** Heal one Tin document through the shared read pipeline (id / meta / page-break / band migrators +
-    *  presentation / format normalization), exactly as the IndexedDB Tin import does, then build the
-    *  on-disk envelope under `id`. Returns the migrated body too, so the caller can build the matching
+    *  presentation / format normalization), then build the on-disk envelope under `id`. Returns the
+    *  migrated body too, so the caller can build the matching
     *  index record without migrating twice. */
    const prepareTinDocument = (document: TinDocument, id: string): { loaded: LoadedDocument; mint: MintFile } => {
       const loaded = assembleLoadedDocument({
@@ -945,7 +942,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    }
 
    /** Read one indexed document's file back into a TinDocument (full body, base64 kept). Reuses the
-    *  IndexedDB backend's toTinDocument so both backends emit byte-identical record shape. */
+    *  shared toTinDocument mapper so the exported record shape stays canonical. */
    const readTinDocument = async (record: BinderDocumentRecord): Promise<TinDocument | null> => {
       const path = await index.getPathById(record.id)
       if (path === null) return null
@@ -1016,7 +1013,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
          if (tinDocument) documents.push(tinDocument)
       }
 
-      // A subtree Tin carries structure + documents only, never the app-wide templates (matches IDB).
+      // A subtree Tin carries structure + documents only, never the app-wide templates.
       return {
          documinterTin: true,
          schemaVersion: TIN_SCHEMA_VERSION,
@@ -1103,7 +1100,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       }
 
       // Each Tin template is re-captured as a fresh stored template (new id + timestamps); the format
-      // carries only name + chrome, so it is always re-captured, never written verbatim (matches IDB).
+      // carries only name + chrome, so it is always re-captured, never written verbatim.
       for (const template of tin.templates) {
          await saveTemplate(captureTemplate(template.name, template, crypto.randomUUID(), Date.now()))
       }
@@ -1114,7 +1111,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    /**
     * Wipe the Binder and restore a Tin verbatim, as crash-safely as plugin-fs primitives allow.
     *
-    * The IndexedDB backend does this in one transaction that rolls back on failure. A filesystem has no
+    * A single database transaction could do this atomically, rolling back on failure. A filesystem has no
     * such transaction, so this uses a build-then-swap: the ENTIRE new tree is materialized in a staging
     * area first (folders, verbatim-id `.mint` documents, `.mintplate` templates), touching nothing live,
     * then the swap moves the existing Binder content ASIDE into a backup area (rename, not delete) and
@@ -1339,9 +1336,6 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       // Bulk / Tin
       collectBinderForTin, collectFolderSubtreeForTin,
       importTin: muteThen(importTin),
-
-      // The FS index is built fresh from the files (always current), so there is nothing to backfill.
-      backfillSearchText: () => Promise.resolve(0),
 
       // Live external-change subscription. Returns an unsubscribe; the watch itself runs for the whole
       // Binder session and stops in dispose.

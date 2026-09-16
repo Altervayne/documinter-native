@@ -2,7 +2,7 @@
  * tinMergePlan.ts, the PURE "Tin folder graph -> filesystem paths" planner.
  *
  * A Tin carries folders as an abstract graph: each folder has an id and a parentId, and those ids may be
- * anything (UUIDs from an IndexedDB export, relative paths from a filesystem export, or the fresh UUIDs
+ * anything (opaque UUIDs from an older export, relative paths from a filesystem export, or the fresh UUIDs
  * remapTinForMerge mints for a merge). The filesystem backend cannot store that directly: on disk a
  * folder's id IS its relative path, built from its parent's path plus its own name. This module walks the
  * graph down from a real target path id and resolves every folder to its concrete path id (mkdir target),

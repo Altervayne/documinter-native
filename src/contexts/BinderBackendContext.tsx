@@ -1,32 +1,27 @@
 /*
- * The active BinderBackend that drives every persistence call. The provider defaults to the
- * IndexedDB backend; a native build supplies a filesystem backend and swaps it on Binder switch. A
- * lazily-created IndexedDB singleton backs any render outside a provider, so tests and un-wrapped
- * mounts keep working.
+ * The active BinderBackend that drives every persistence call. The native host builds a filesystem
+ * backend per Binder and supplies it here, swapping it on a Binder switch. There is no default backend:
+ * a consumer must sit under a provider.
  */
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */
 import { createContext, useContext, useState, type ReactNode } from 'react'
-import { createIndexedDbBackend, type BinderBackend } from '../lib/binderBackend'
+import type { BinderBackend } from '../lib/binderBackend'
 
 const BinderBackendContext = createContext<BinderBackend | null>(null)
 
-// Built on first use, so importing this module never opens the database on its own.
-let fallbackBackend: BinderBackend | null = null
-function getFallbackBackend(): BinderBackend {
-   if (!fallbackBackend) fallbackBackend = createIndexedDbBackend()
-   return fallbackBackend
-}
-
-/** The provider's backend, or the shared IndexedDB fallback when no provider is mounted. */
+/** The provider's backend. Throws when no provider is mounted, so a missing host surfaces loudly
+ *  instead of silently reading a phantom store. */
 export function useBinderBackend(): BinderBackend {
-   return useContext(BinderBackendContext) ?? getFallbackBackend()
+   const backend = useContext(BinderBackendContext)
+   if (backend === null) throw new Error('useBinderBackend used outside a BinderBackendProvider')
+   return backend
 }
 
-/** Supplies one backend to the subtree, held stable for the provider's life; the initial `backend`
- *  prop wins, and a native Binder switch remounts the provider under a new key to replace it. */
-export function BinderBackendProvider({ backend, children }: { backend?: BinderBackend; children: ReactNode }) {
-   const [backendInstance] = useState<BinderBackend>(() => backend ?? createIndexedDbBackend())
+/** Supplies one backend to the subtree, held stable for the provider's life; a native Binder switch
+ *  remounts the provider under a new key to replace it. */
+export function BinderBackendProvider({ backend, children }: { backend: BinderBackend; children: ReactNode }) {
+   const [backendInstance] = useState<BinderBackend>(() => backend)
    return (
       <BinderBackendContext.Provider value={backendInstance}>
          {children}

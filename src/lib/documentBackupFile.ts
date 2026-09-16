@@ -1,6 +1,6 @@
 /*
  * Manual .documinter.json backup download + load. Pure file I/O over the editable DocState plus
- * per-document presentation, no IndexedDB. parseDocumentBackup runs id migration so older backups
+ * per-document presentation, no binder store. parseDocumentBackup runs id migration so older backups
  * still load.
  */
 
@@ -9,7 +9,7 @@ import { saveTextFile, openTextFile } from './platform/fileTransfer'
 import { migrateIds, migrateFormatPageBreaks, migrateFormatBands } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
-import type { DocPresentation } from './binderDocuments'
+import type { DocPresentation } from './documentRecord'
 import type { DocMeta, DocState, Section } from '../types'
 
 /** DocState plus per-document presentation (theme + accent + extras) and format, so a re-import

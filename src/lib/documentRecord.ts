@@ -28,6 +28,16 @@ export interface LoadedDocument {
    updatedAt: string
 }
 
+/** Persisted per-document alongside the DocState. `presentation` carries the image-bearing export /
+ *  editor extras (watermark, ...); `format` rides the same bundle, absent means infinite / normal
+ *  behavior. Storage-agnostic, so both backends bundle the same shape. */
+export interface DocPresentation {
+   docTheme:  'light' | 'dark'
+   docAccent: string
+   presentation?: DocPresentationExtras
+   format?: DocFormat
+}
+
 // ####################
 // # LIGHT RECORD BUILD #
 // ####################

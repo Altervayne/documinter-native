@@ -1,6 +1,6 @@
 /*
- * Legacy localStorage autosave. The live autosave path is IndexedDB-backed; these helpers only
- * read and clear the old `documinter-autosave` key during the one-time migration on mount.
+ * Legacy localStorage autosave. The live autosave path saves through the binder backend; these
+ * helpers only read and clear the old `documinter-autosave` key during the one-time migration on mount.
  */
 
 import { migrateIds } from './documentMigration'

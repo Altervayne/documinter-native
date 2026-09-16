@@ -6,7 +6,7 @@
  */
 
 import { slugify } from '../text'
-import { ROOT_FOLDER_ID } from '../binderDatabase'
+import { ROOT_FOLDER_ID } from '../binderConstants'
 
 // #############
 // # CONSTANTS #
@@ -156,7 +156,7 @@ export function mintplateFileName(name: string, taken: ReadonlySet<string>): str
 
 /** Pick a sibling folder name not already taken, appending " 2", " 3", ... (Explorer's convention, not the
  *  "-2" stem scheme, since a folder name is a display name). A folder's id IS its path, so two same-name
- *  siblings cannot coexist; this is the deliberate divergence from the IndexedDB backend (distinct UUIDs). */
+ *  siblings cannot coexist, so the dedupe keeps two same-named siblings apart. */
 export function dedupeFolderName(desiredName: string, takenSiblingNames: ReadonlySet<string>): string {
    const takenLower = new Set<string>()
    for (const name of takenSiblingNames) takenLower.add(name.toLowerCase())

@@ -10,7 +10,7 @@
  * so the rowid stays stable across edits, then rewrites the FTS row for that rowid; delete removes both.
  * The text MATCH runs in SQL here; the caller composes the pure `documentComparator` + the NON
  * text parts of `matchesCriteria` (dates, never-opened) on the returned records, so ordering matches the
- * IndexedDB backend exactly.
+ * canonical binderSearch order exactly.
  *
  * Every value is bound (never string-interpolated) and every call runs a single statement (plugin-sql
  * executes one statement per execute/select).
@@ -195,7 +195,7 @@ export class DocumentIndex {
     * List light records within an optional folder scope + optional free-text FTS match. Applies ONLY the
     * folder scope and the text MATCH in SQL; sort and the date / never-opened criteria are the caller's
     * to compose (documentComparator + the non-text matchesCriteria), so the result order equals the
-    * IndexedDB backend's. An empty / all-punctuation `text` (escapeFtsQuery -> '') skips the MATCH.
+    * canonical binderSearch order. An empty / all-punctuation `text` (escapeFtsQuery -> '') skips the MATCH.
     */
    async queryDocuments(filter: DocumentIndexQuery): Promise<BinderDocumentRecord[]> {
       const matchExpression = filter.text ? escapeFtsQuery(filter.text) : ''

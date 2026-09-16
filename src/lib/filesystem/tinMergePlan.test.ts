@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { planTinMerge } from './tinMergePlan'
-import { ROOT_FOLDER_ID } from '../binderDatabase'
+import { ROOT_FOLDER_ID } from '../binderConstants'
 import type { TinFolder, TinDocument } from '../tinFile'
 import type { DocMeta } from '../../types'
 
@@ -19,7 +19,7 @@ function document(id: string, folderId: string, sortOrder = 0): TinDocument {
 }
 
 describe('planTinMerge, whole-tree rebuild at the root (replace)', () => {
-   // An IndexedDB-style export: folder ids are opaque UUIDs, resolved to path ids by name.
+   // A UUID-keyed export: folder ids are opaque UUIDs, resolved to path ids by name.
    const folders = [
       folder('fa', 'Work', ROOT_FOLDER_ID),
       folder('fb', '2026', 'fa'),

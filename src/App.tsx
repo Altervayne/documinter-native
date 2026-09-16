@@ -12,8 +12,8 @@ import { NameTakenError } from './lib/filesystem/filesystemBackend'
 import { parseMint } from './lib/filesystem/mintFile'
 import { classifyDiskChange } from './lib/native/diskConflict'
 import { binderRelativePath, readLaunchFileText } from './lib/native/launchFile'
-import type { LoadedDocument, DocPresentation } from './lib/binderDocuments'
-import type { TinImportSummary } from './lib/binderBackup'
+import type { LoadedDocument, DocPresentation } from './lib/documentRecord'
+import type { TinImportSummary } from './lib/tinMapping'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
 import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
 import {
@@ -415,7 +415,7 @@ export default function App() {
          const legacy  = readAutosave()
          try {
             if (restore.documentIds.length === 0 && legacy) {
-               // Migrate legacy autosave to IndexedDB. Keep the old key until the write confirms.
+               // Migrate a legacy localStorage autosave into the binder. Keep the old key until the write confirms.
                const migratedId = await backend.saveDocument(
                   { meta: legacy.meta, sections: legacy.sections },
                   { docTheme: legacy.docTheme, docAccent: legacy.docAccent },
@@ -435,8 +435,8 @@ export default function App() {
             if (restoredTabs.length > 0) applyRestoredTabs(restoredTabs, restore.activeDocumentId)
             // else: no surviving tabs, keep the initial blank.
          } catch {
-            // IndexedDB unavailable / read failed. If legacy data exists, keep showing it in memory
-            // as an unsaved document (the legacy key stays intact for a future retry).
+            // Backend read failed. If legacy data exists, keep showing it in memory as an unsaved
+            // document (the legacy key stays intact for a future retry).
             if (!cancelled && legacy && restore.documentIds.length === 0) {
                applyRestoredTabs([buildTabFromLoaded({ ...legacy, updatedAt: '' }, null)], null)
             }
@@ -571,8 +571,7 @@ export default function App() {
    // ############################################
    // The filesystem backend fires subscribe() when an Explorer edit / deletion reconciles. A document open in
    // a tab is then reconciled against its on-disk record: a clean tab silently reloads, a deleted file turns
-   // the tab into an unsaved scratch (content kept), and a dirty tab raises a conflict the user resolves. The
-   // IndexedDB backend never fires subscribe, so this whole path is inert on the web.
+   // the tab into an unsaved scratch (content kept), and a dirty tab raises a conflict the user resolves.
 
    // Tabs (by key) whose open document changed on disk while dirty, awaiting a keep-mine / load-disk choice.
    // Resolved one at a time (the head); the multi-tab case is rare.
@@ -629,8 +628,7 @@ export default function App() {
       })()
    }, [backend, showToast, t, reloadTabFromDisk])
 
-   // A second subscriber alongside the binder view's: the backend hands external changes to both. Inert on the
-   // IndexedDB backend (its subscribe never fires).
+   // A second subscriber alongside the binder view's: the backend hands external changes to both.
    useEffect(() => backend.subscribe(onExternalChange), [backend, onExternalChange])
 
    // Drop closed tabs from the conflict queue (a folder delete can close several open tabs at once), so the

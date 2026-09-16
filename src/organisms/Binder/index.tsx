@@ -105,18 +105,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    const [sortBy, setSortBy]   = useState<DocumentSortBy>('updatedAt')
    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
-   // One-time: backfill contentText on documents saved before full-text search existed.
-   useEffect(() => {
-      let active = true
-      backend.backfillSearchText()
-         .then(updated => { if (active && updated > 0) bumpData() })
-         .catch(error => console.error('[binder] search-text backfill failed:', error))
-      return () => { active = false }
-   }, [bumpData, backend])
-
-   // Live external-change subscription (filesystem backend): when the watcher reconciles an Explorer
-   // edit, bumping the data version re-reads nav + grid + templates. Inert on the IndexedDB backend,
-   // where nothing edits the store behind the app's back.
+   // Live external-change subscription: when the watcher reconciles an Explorer edit, bumping the data
+   // version re-reads nav + grid + templates.
    useEffect(() => backend.subscribe(bumpData), [backend, bumpData])
 
    const templates = useTemplates(dataVersion, bumpData)

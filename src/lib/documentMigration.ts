@@ -1,7 +1,7 @@
 /*
  * Legacy-format upgrade for stored documents: brings any historical shape (numeric ids,
  * pre-InlineContent string fields, old list-item formats) up to the current model. Shared by the
- * localStorage, JSON-import, and IndexedDB read paths. Pure, no side effects.
+ * localStorage, JSON-import, and binder read paths. Pure, no side effects.
  */
 
 import { parseInlineContent, stripTrailingNewlines } from './inline'

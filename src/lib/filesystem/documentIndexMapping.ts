@@ -183,10 +183,10 @@ export function rowToFolderRecord(row: FolderRow): BinderFolderRecord {
 
 /**
  * Build the single searchable text blob fed into documents_fts.search_text. This MUST equal the exact
- * text `matchesText` in binderSearch.ts searches, so the SQL FTS match sees the same haystack the
- * IndexedDB backend does: title + every meta field's "label value" + every section title + contentText.
- * Mirrors matchesText field-for-field (same order, same join spacing, same lowercase), so the two
- * backends index identical content. This is the ONE source of truth for what goes into the FTS column.
+ * text `matchesText` in binderSearch.ts searches, so the SQL FTS match sees the same haystack binderSearch
+ * scans: title + every meta field's "label value" + every section title + contentText. Mirrors matchesText
+ * field-for-field (same order, same join spacing, same lowercase), so search results stay consistent. This
+ * is the ONE source of truth for what goes into the FTS column.
  */
 export function buildDocumentSearchText(record: BinderDocumentRecord): string {
    const fieldText = record.meta.fields.map(field => `${field.label} ${field.value}`).join(' ')

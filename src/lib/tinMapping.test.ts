@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { remapTinForMerge } from './binderBackup'
+import { remapTinForMerge } from './tinMapping'
 import { TIN_SCHEMA_VERSION, type TinFile } from './tinFile'
 
 // A sequential id generator so the remap is deterministic: folder ids become 'new-1', 'new-2', ...
