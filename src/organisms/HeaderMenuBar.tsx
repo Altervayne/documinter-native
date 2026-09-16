@@ -353,12 +353,12 @@ export function HeaderMenuBar({
 
             {/* Logo + wordmark are decorative: pointer-events-none lets a click fall through to the drag
                 region, so grabbing the logo drags the window. The wordmark folds away first (hdr-collapse). */}
-            <div className="flex items-center gap-2 mr-1 shrink-0 select-none pointer-events-none">
+            <div className="flex items-center gap-2 mr-3 shrink-0 select-none pointer-events-none">
                {theme === 'dark'
-                  ? <LogoColor className="h-7 w-auto" />
-                  : <LogoMono className="h-7 w-auto" style={{ color: 'var(--color-accent)' }} />
+                  ? <LogoColor className="h-6 w-auto" />
+                  : <LogoMono className="h-6 w-auto" style={{ color: 'var(--color-accent)' }} />
                }
-               <span className="hdr-collapse font-mono text-sm font-bold text-accent tracking-tight">documinter</span>
+               <span className="hdr-collapse font-mono text-lg font-bold text-accent tracking-tight">Documinter</span>
             </div>
 
             {/* Native only: the open Binder's name + switch / open / create. Renders nothing on the web
