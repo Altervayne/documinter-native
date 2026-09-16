@@ -9,12 +9,9 @@ export type Side = 'left' | 'right'
 export type CalloutStyle = 'info' | 'valid' | 'warning' | 'danger'
 export type CodeLang = 'windev' | 'js' | 'sql' | 'python' | 'c' | 'html' | 'css' | 'plain'
 
-/** One list-marker style, chosen per SUB-LIST of a `list` block (never a `checklist`). A sub-list is
- *  one `<ul>`/`<ol>`: the root items form one, and every item's non-empty `children` form another.
- *  The first five render an unordered list (`<ul>`), the last five an ordered list (`<ol>`). `dot`,
- *  `circle` and `square` map to the native CSS list-style-types; `dash` and `arrow` are drawn via
- *  a `::marker` content override (see lib/listMarkers.ts). See `Block.listMarker` (the root
- *  sub-list's marker) and `ListItem.childMarker` (an item's own child sub-list's marker). */
+/** One list-marker style, per SUB-LIST of a `list` block (never `checklist`). A sub-list is one
+ *  `<ul>`/`<ol>`: the root items form one, each item's non-empty `children` another. First five are
+ *  unordered, last five ordered; `dash` and `arrow` render via a `::marker` override (lib/listMarkers.ts). */
 export type ListMarker =
    | 'dot' | 'circle' | 'square' | 'dash' | 'arrow'
    | 'decimal' | 'lower-alpha' | 'upper-alpha' | 'lower-roman' | 'upper-roman'
@@ -23,26 +20,23 @@ export type ListMarker =
 // # INLINE CONTENT MODEL #
 // ########################
 
-/** A single contiguous run of text with a uniform set of inline formatting flags.
- *  Invariant: text.length > 0, empty runs are always filtered before storing.
- *  '\n' characters in text represent line breaks (rendered as <br>). */
+/** A contiguous run of text with uniform inline formatting. Invariant: text.length > 0 (empty runs are
+ *  filtered before storing); '\n' is a line break (rendered as <br>). */
 export interface InlineRun {
    text:           string
    bold?:          boolean
    italic?:        boolean
    underline?:     boolean
    strikethrough?: boolean
-   color?:         string     // CSS color value; not wired to any UI control
-   highlight?:     string     // CSS color value; not wired to any UI control
+   color?:         string     // not wired to any UI control
+   highlight?:     string     // not wired to any UI control
    link?:          string     // href, combines freely with all other flags
 }
 
-/** A paragraph of inline-formatted text: a flat, ordered sequence of runs. */
 export type InlineContent = InlineRun[]
 
-/** A cursor (or collapsed selection) position within an InlineContent array.
- *  Canonical form at a run boundary: prefer { runIndex: N+1, offset: 0 }
- *  over { runIndex: N, offset: run[N].text.length }. */
+/** A cursor position within an InlineContent array. Canonical at a run boundary: prefer
+ *  { runIndex: N+1, offset: 0 } over { runIndex: N, offset: run[N].text.length }. */
 export interface CursorPosition {
    runIndex: number
    offset:   number
@@ -52,8 +46,8 @@ export interface CursorPosition {
 // # EDITOR UI STATE #
 // ###################
 
-/** Active inline-formatting state shown by the FormatToolbar for the current selection.
- *  Shared between the toolbar and the inline-color picker hook. */
+/** Active inline-formatting state for the current selection, shared by the FormatToolbar and the
+ *  inline-color picker hook. */
 export interface FormatState {
    bold:           boolean
    italic:         boolean
@@ -72,21 +66,16 @@ export interface ListItem {
    richText?: InlineContent
    children:  ListItem[]
    checked?:  boolean   // checklist items only; absent = unchecked
-   /** `list` only (never `checklist`): the marker style for THIS item's `children` sub-list. Only
-    *  meaningful when the item has children; absent means that child sub-list renders `dot`, so an
-    *  untouched list stays byte-identical (the field is never stored as `dot`). */
+   /** `list` only: marker style for THIS item's `children` sub-list. Absent renders `dot` and is never
+    *  stored as `dot`, so an untouched list stays byte-identical. */
    childMarker?: ListMarker
 }
 
-/**
- * The optional annotation overlay carried by an `image` block. Its PRESENCE on the block switches
- * the image from the plain `<img>` path into marked-up mode (self-contained SVG render + the
- * `imagemarkup` fence serializer). `width`/`height` are the base image's natural pixel dimensions,
- * the source of truth for the normalized-0..1 overlay coordinate system's viewBox aspect ratio,
- * kept even when the block's `src` is empty (a `.mint`/`.md` reopen drops the base64 pixels). The
- * base image itself lives on the block's own `src`/`alt`/`caption`, NEVER duplicated here; the
- * pure renderer/fence consume an `ImageMarkupSpec` reconstructed from those fields (see
- * `lib/imageMarkupBlock.ts`). `elements` is the ordered overlay stack (array order = z-order). */
+/** Optional annotation overlay on an `image` block. Its PRESENCE switches the image into marked-up mode
+ *  (SVG render + `imagemarkup` fence). `width`/`height` are the base image's natural pixel dimensions,
+ *  the viewBox aspect for the normalized-0..1 overlay coords, kept even when `src` is empty (a .mint/.md
+ *  reopen drops the base64). The base image stays on the block's `src`/`alt`/`caption`, never duplicated
+ *  here. `elements` is the overlay stack, array order = z-order. */
 export interface ImageMarkupOverlay {
    width:    number
    height:   number
@@ -98,51 +87,41 @@ export interface Block {
    type: BlockType
    richText?: InlineContent  // p, h3, h4, callout
    style?: CalloutStyle  // callout
-   calloutColor?: string // callout: optional custom hex override on top of `style`'s preset; absent = use the preset
+   calloutColor?: string // callout: custom hex override of the `style` preset; absent = use the preset
    code?: string         // code
    lang?: CodeLang       // code, default 'windev'
-   latex?: string        // math: LaTeX source (rendered to MathML in-app + on export)
+   latex?: string        // math: LaTeX source
    mathScale?: number    // math: display font-size multiplier; undefined/1 = normal (see lib/mathScale.ts)
-   graph?: GraphSpec     // graph: chart type + data + presentation options (rendered to inline SVG)
-   diagram?: DiagramSpec // diagram: nodes + edges + options (rendered to inline SVG)
-   imageMarkup?: ImageMarkupOverlay // image: optional annotation overlay; presence = markup mode (SVG render + imagemarkup fence)
+   graph?: GraphSpec     // graph: chart type + data + options (inline SVG)
+   diagram?: DiagramSpec // diagram: nodes + edges + options (inline SVG)
+   imageMarkup?: ImageMarkupOverlay // image: annotation overlay; presence = markup mode
    items?: ListItem[]    // list, checklist
-   /** `list` only (never `checklist`): the marker style of the ROOT sub-list (the top-level items).
-    *  Each item's own child sub-list carries its marker on `ListItem.childMarker`, so two sibling
-    *  sub-lists at the same nesting are independent. Absent means the root sub-list renders a `dot`
-    *  (the historical behaviour), so an untouched document stays byte-identical; a `dot` value is
-    *  never stored (normalised to absent). The field IS serialized to the lossless JSON backup;
-    *  portable Markdown keeps only the ordered/unordered distinction each sub-list already carries
-    *  positionally (the Markdown importer still honours an authored `<!-- list-marker -->` comment). */
+   /** `list` only: marker style of the ROOT sub-list. Absent renders `dot` and is never stored as `dot`,
+    *  so an untouched document stays byte-identical. Serialized to the JSON backup; Markdown keeps only
+    *  the ordered/unordered distinction, though its importer honours an authored `<!-- list-marker -->`. */
    listMarker?: ListMarker
    richHeaders?: InlineContent[]    // table
    richRows?:    InlineContent[][]  // table
    src?: string          // image: base64 data URL
-   alt?: string          // image: alt text
-   caption?: string      // image: optional caption
-   align?: 'left' | 'center' | 'right'  // image: horizontal alignment, default center
+   alt?: string          // image
+   caption?: string      // image: caption
+   align?: 'left' | 'center' | 'right'  // image: default center
    imageHeight?: number                  // image: constrained display height in px; undefined = unconstrained
    ratio?: number        // container: left column width 0.1-0.9, default 0.5
    left?: Block[]        // container: left column blocks (no nested containers)
    right?: Block[]       // container: right column blocks
    handle?: string       // optional anchor ID for deep-linking (e.g. "my-note" -> href="#my-note")
-   /** Paged-format keep-together: hold this splittable block (`p` / `list` / `checklist`) whole on one
-    *  page instead of letting the paginator split it across sheets. Only ever `true` or absent (never
-    *  `false`), so an untouched document stays byte-identical and the JSON backup carries only the flag
-    *  when set. Layout chrome, JSON-only: read inside `paginate`, never emitted to `.mint` / `.md`. */
+   /** Paged keep-together: hold this splittable block (`p`/`list`/`checklist`) whole on one page. Only
+    *  ever `true` or absent, so an untouched document stays byte-identical. Layout chrome, JSON-only:
+    *  read in `paginate`, never emitted to `.mint`/`.md`. */
    keepTogether?: true
-   /** Paged-format keep-with-next: never let a page break fall AFTER this block, so it stays on the same
-    *  sheet as the block that follows it (a caption pinned to the chart under it, say). Extends the
-    *  automatic keep-with-next the paginator already gives headings to any block the author opts in. Only
-    *  ever `true` or absent (never `false`), same as `keepTogether`, so an untouched document stays
-    *  byte-identical and the JSON backup carries the field only when set. Layout chrome, JSON-only: read
-    *  inside `paginate`, never emitted to `.mint` / `.md`. */
+   /** Paged keep-with-next: never break AFTER this block, so it stays on the same page as the block that
+    *  follows (a caption pinned under its chart). Only ever `true` or absent, like `keepTogether`. Layout
+    *  chrome, JSON-only: read in `paginate`, never emitted to `.mint`/`.md`. */
    keepWithNext?: true
-   /** RENDER-ONLY, set by the paginator on a shallow-copied `p` fragment when a paragraph is split
-    *  across page sheets. Names the fragment's char range within the model richText and whether it is
-    *  the final piece, so a renderer can identify a fragment and its offset (paragraphs carry no item
-    *  ids to match on, unlike lists). Transient: the model block never carries it and no serializer
-    *  reads it, so it never reaches any .mint / .md / .documinter.json output. Absent on a whole block. */
+   /** RENDER-ONLY, set by the paginator on a shallow-copied `p` fragment split across pages. Holds the
+    *  fragment's char range in richText and whether it is the tail (paragraphs carry no item ids to match
+    *  on, unlike lists). Transient: never on the model block, never serialized. Absent on a whole block. */
    paragraphFragment?: { charStart: number; charEnd: number; isTail: boolean }
 }
 
@@ -153,11 +132,7 @@ export interface Section {
    blocks: Block[]
 }
 
-/** One user-defined document metadata field: a freeform label paired with a freeform value.
- *  `position` places the field in the row above or below the title. `color` tints the field
- *  text: undefined = the default muted meta gray, 'accent' = var(--doc-accent) tracked live, or
- *  any literal hex. `showLabel` controls whether the label (and its colon) render in the read
- *  view + export: undefined/true = show (default), false = value-only. */
+/** One user-defined document metadata field: a freeform label paired with a freeform value. */
 export interface MetaField {
    id:        string   // stable id, from the same generator as mkBlock/mkSection (crypto.randomUUID)
    label:     string
@@ -189,9 +164,8 @@ export interface OpenDocument {
    /** Export-only / editor-only presentation extras (watermark, ...); absent = default behavior.
     *  Rides on the same seams as docTheme / docAccent; NEVER serialized to Markdown. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite canvas width, or paged A4); absent = default infinite/
-    *  normal-width behavior. Rides on the SAME seams as presentation; NEVER serialized to
-    *  Markdown (chrome, not content, see lib/format.ts). */
+   /** Page format (infinite width, or paged A4); absent = default infinite. Rides on the same seams as
+    *  presentation; NEVER serialized to Markdown (chrome, not content, see lib/format.ts). */
    format?: DocFormat
    documentId:            string | null   // binder record id; null until first save
    saveStatus:            SaveStatus       // per-tab dirty/saving/saved cycle
@@ -218,10 +192,9 @@ export interface BinderFolderRecord {
    sortOrder: number    // manual sort position among siblings
 }
 
-/** Lightweight binder record (the `documents` object store). Returned by
- *  listDocuments(): everything a card needs, WITHOUT the heavy sections array.
- *  NOTE: lastOpenedAt / folderId / sortOrder are binder-only and are NEVER serialized
- *  to any export format (HTML/MD/JSON), exports operate on DocState only. */
+/** Lightweight binder record (the `documents` store), returned by listDocuments(): everything a card
+ *  needs WITHOUT the heavy sections array. lastOpenedAt / folderId / sortOrder are binder-only, never
+ *  serialized to any export (exports operate on DocState only). */
 export interface BinderDocumentRecord {
    id:              string             // crypto.randomUUID()
    meta:            DocMeta
@@ -233,8 +206,8 @@ export interface BinderDocumentRecord {
    sectionTitles:   string[]           // all section titles (cheap; count = .length)
    contentText:     string             // flattened plain text of every block (for full-text search)
    previewSections: PreviewSection[]   // first N blocks, section-grouped, image src stripped, no base64
-   docTheme:        'light' | 'dark'   // per-document presentation
-   docAccent:       string             // per-document presentation
+   docTheme:        'light' | 'dark'
+   docAccent:       string
    schemaVersion:   number
 }
 
@@ -243,13 +216,11 @@ export interface BinderDocumentRecord {
 export interface BinderDocumentContent {
    id:       string
    sections: Section[]
-   /** Image-bearing presentation extras (watermark base64, ...) live on the HEAVY content store, not
-    *  the light record listDocuments() reads for every card, a full-bleed base64 must never bloat
-    *  the card-list query. Absent on documents saved before presentation existed. */
+   /** Image-bearing presentation extras (watermark base64, ...) live on the HEAVY store, not the light
+    *  card record, so a full-bleed base64 never bloats the card-list query. Absent on older documents. */
    presentation?: DocPresentationExtras
-   /** Document page format (infinite width, or paged A4); grouped with presentation on the heavy
-    *  store for seam consistency, even though it carries no base64. Absent on documents saved before
-    *  format existed, or on a document that never left the default (see isDefaultFormat). */
+   /** Page format; grouped with presentation on the heavy store for seam consistency though it carries
+    *  no base64. Absent on a document that never left the default (see isDefaultFormat). */
    format?: DocFormat
 }
 
@@ -268,12 +239,8 @@ export interface PaneLeaf {
    paneId: PaneId
 }
 
-/**
- * A split pane, two children separated by a resizable divider.
- * `orientation: 'h'` -> children sit left / right (horizontal divider)
- * `orientation: 'v'` -> children sit top / bottom (vertical divider)
- * `ratio` is children[0]'s fraction of the total axis length, clamped [0.15, 0.85].
- */
+/** A split pane: two children with a resizable divider. `orientation: 'h'` = left/right, `'v'` =
+ *  top/bottom. `ratio` is children[0]'s fraction of the axis, clamped [0.15, 0.85]. */
 export interface PaneSplit {
    kind:        'split'
    orientation: 'h' | 'v'
@@ -289,8 +256,8 @@ export interface ContainerMutations {
    updateBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string, patch: Partial<Block>) => void
    addBlock:       (secId: string, blkId: string, side: Side, type: BlockType) => void
    insertBlockAt:  (secId: string, blkId: string, side: Side, index: number, type: BlockType) => void
-   /** Inserts an already-built block right after `innerBlkId` (no `mkBlock` default, the caller
-    *  supplies the full block, e.g. the graph<->table one-shot extract actions). */
+   /** Inserts an already-built block after `innerBlkId`: the caller supplies the full block (no
+    *  `mkBlock` default), e.g. the graph<->table extract actions. */
    insertBlockAfter: (secId: string, blkId: string, side: Side, innerBlkId: string, newBlock: Block) => void
    duplicateBlock: (secId: string, blkId: string, side: Side, innerBlkId: string) => void
    removeBlock:    (secId: string, blkId: string, side: Side, innerBlkId: string) => void

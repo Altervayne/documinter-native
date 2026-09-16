@@ -36,15 +36,9 @@ interface RichEditableProps {
 }
 
 /**
- * Rich inline-content editor backed by a contentEditable element.
- *
- * Accepts InlineContent as data; emits InlineContent on commit (blur, only if changed).
- * FormatToolbar targets this element via the data-rich="true" attribute.
- *
- * The onCursorChange callback emits a typed CursorPosition derived from the browser
- * Selection API. This is the designated replacement slot for a future custom cursor
- * engine: when that engine arrives, only this component's internals change. Nothing
- * outside the component needs to know how cursor position is tracked.
+ * Rich inline-content editor over a contentEditable element. Accepts InlineContent, emits it on blur
+ * only if changed. FormatToolbar targets this element via the data-rich="true" attribute, and
+ * onCursorChange emits a typed CursorPosition derived from the Selection API.
  */
 export function RichEditable({
    tag: Tag = 'p',
@@ -67,20 +61,14 @@ export function RichEditable({
    const editing         = useRef(false)
    const snapshotOnFocus = useRef<InlineContent>([])
 
-   // ========================
-   //  Mount + readOnly toggle
-   // ========================
-   // Re-runs when readOnly changes because React removes managed children when
-   // switching readOnly=true -> false, leaving the element blank.
+   // Repopulate on a readOnly toggle: React removes managed children when readOnly goes true -> false,
+   // leaving the element blank.
    useLayoutEffect(() => {
       if (!ref.current) return
       ref.current.innerHTML = renderInlineContent(content)
    }, [readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
-   // ======================
-   //  External content sync
-   // ======================
-   // Sync from prop only when not actively editing, to avoid clobbering mid-edit.
+   // Sync from the prop only when not actively editing, to avoid clobbering mid-edit.
    useEffect(() => {
       if (!ref.current || editing.current) return
       const rendered = renderInlineContent(content)
@@ -89,9 +77,6 @@ export function RichEditable({
       }
    }, [content])
 
-   // =======================
-   //  Cursor change listener
-   // =======================
    useEffect(() => {
       if (!onCursorChange || !ref.current) return
       const element = ref.current
@@ -106,9 +91,6 @@ export function RichEditable({
       return () => document.removeEventListener('selectionchange', handleSelectionChange)
    }, [onCursorChange])
 
-   // ===============
-   //  Read-only path
-   // ===============
    if (readOnly) {
       return (
          <Tag
@@ -120,9 +102,6 @@ export function RichEditable({
       )
    }
 
-   // ==============
-   //  Editable path
-   // ==============
    return (
       <Tag
          ref={ref}
@@ -140,7 +119,7 @@ export function RichEditable({
             onFocus?.()
          }}
          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
-            // External handler runs first; if it calls preventDefault, skip internal logic
+            // The external handler runs first and can preventDefault to claim the key (e.g. list items).
             onKeyDown?.(event)
             if (event.defaultPrevented) return
 
@@ -148,12 +127,10 @@ export function RichEditable({
                if (singleLine) {
                   event.preventDefault()
                } else {
-                  // No external handler or Shift+Enter: insert a <br> (paragraph mode)
-                  // With external handler, bare Enter is handled externally (e.g. list items)
+                  // No external handler or Shift+Enter: insert a <br>. execCommand is deprecated but is
+                  // the only cross-browser way to do it without splitting the contenteditable element.
                   if (!onKeyDown || event.shiftKey) {
                      event.preventDefault()
-                     // execCommand is deprecated but remains the only cross-browser way
-                     // to insert a <br> without splitting the element in contenteditable
                      document.execCommand('insertLineBreak')
                   } else {
                      event.preventDefault()
@@ -162,7 +139,7 @@ export function RichEditable({
             }
          }}
          onPaste={(event: React.ClipboardEvent<HTMLElement>) => {
-            // Always paste as plain text to prevent injecting foreign HTML or styles
+            // Plain text only, so no foreign HTML or styles get injected.
             event.preventDefault()
             const text = event.clipboardData.getData('text/plain')
             document.execCommand('insertText', false, text)

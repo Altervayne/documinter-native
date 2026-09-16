@@ -1,20 +1,15 @@
-/**
- * imageFormat.ts, Format detection for the "pass through unchanged" image import path.
- *
- * SVGs and animated raster images (animated GIF/WebP/APNG) must never go through the canvas
- * re-encode in image.ts / imageDownscale.ts: canvas rasterizes vector art and always flattens
- * animation to a single frame. This module is the pure detection layer both callers share.
- *
- * The animation detectors work on raw bytes (no DOM), so they are plain unit-testable functions.
+/*
+ * Format detection for the "embed unchanged" import path. SVGs and animated rasters (GIF/WebP/APNG)
+ * must skip the canvas re-encode in image.ts / imageDownscale.ts, which rasterizes vector art and
+ * flattens animation. Detectors work on raw bytes, no DOM.
  */
 
-/** True if the file is an SVG, by MIME type or by its .svg extension (case-insensitive). */
+/** True by MIME type or by a .svg extension (case-insensitive). */
 export function isSvgFile(file: File): boolean {
    if (file.type === 'image/svg+xml') return true
    return /\.svg$/i.test(file.name)
 }
 
-/** Reads a File as a base64 data URL, verbatim, no canvas involved. */
 export function readFileAsDataUrl(file: File): Promise<string> {
    return new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -24,7 +19,7 @@ export function readFileAsDataUrl(file: File): Promise<string> {
    })
 }
 
-/** Reads a little-endian/big-endian-agnostic ASCII tag at an offset, defensively. */
+/** True when the bytes at `offset` equal `ascii`; out-of-bounds is false, never a throw. */
 function bytesEqualAscii(bytes: Uint8Array, offset: number, ascii: string): boolean {
    if (offset < 0 || offset + ascii.length > bytes.length) return false
    for (let index = 0; index < ascii.length; index += 1) {
@@ -33,11 +28,8 @@ function bytesEqualAscii(bytes: Uint8Array, offset: number, ascii: string): bool
    return true
 }
 
-/**
- * Counts GIF image frames by walking the block stream, short-circuiting the moment a second
- * frame (0x2C image separator) is found. Defensive against truncated/out-of-bounds data: any
- * read past the end of the buffer just stops the walk and returns the count found so far.
- */
+/** True when a GIF has 2+ image frames. Walks the block stream and short-circuits on the second
+ *  0x2C image separator; a read past the buffer end just stops the walk. */
 function isAnimatedGif(bytes: Uint8Array): boolean {
    if (!bytesEqualAscii(bytes, 0, 'GIF87a') && !bytesEqualAscii(bytes, 0, 'GIF89a')) return false
 
@@ -96,11 +88,8 @@ function isAnimatedGif(bytes: Uint8Array): boolean {
    return false
 }
 
-/**
- * WebP is animated if its VP8X extended-format chunk has the animation flag (bit 0x02 of the
- * flags byte at offset 20) set, or if an ANIM chunk (which only appears in animated files) is
- * present anywhere in the RIFF chunk list.
- */
+/** True when a WebP is animated: the VP8X animation flag (bit 0x02 at offset 20), or an ANIM chunk
+ *  anywhere in the RIFF chunk list. */
 function isAnimatedWebp(bytes: Uint8Array): boolean {
    if (!bytesEqualAscii(bytes, 0, 'RIFF') || !bytesEqualAscii(bytes, 8, 'WEBP')) return false
 
@@ -109,7 +98,6 @@ function isAnimatedWebp(bytes: Uint8Array): boolean {
       if ((flags & 0x02) !== 0) return true
    }
 
-   // Fall back to scanning the RIFF chunk list for an ANIM chunk.
    let offset = 12
    while (offset + 8 <= bytes.length) {
       const fourCc = String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3])
@@ -146,11 +134,8 @@ function isAnimatedPng(bytes: Uint8Array): boolean {
    return false
 }
 
-/**
- * Detects whether an image's raw bytes are an animated GIF, WebP, or PNG (APNG). Pure and
- * defensive: malformed or truncated input never throws, it just returns the best answer found
- * so far (usually false).
- */
+/** True when raw bytes are an animated GIF, WebP, or APNG. Defensive: malformed input returns false,
+ *  never throws. */
 export function isAnimatedImageBytes(bytes: Uint8Array, mimeType: string): boolean {
    try {
       if (mimeType === 'image/gif' || bytesEqualAscii(bytes, 0, 'GIF87a') || bytesEqualAscii(bytes, 0, 'GIF89a')) {
@@ -168,10 +153,8 @@ export function isAnimatedImageBytes(bytes: Uint8Array, mimeType: string): boole
    }
 }
 
-/**
- * Reads a file's bytes once and reports whether it should be embedded raw (SVG or animated
- * raster), sparing callers a second arrayBuffer() read of the same file.
- */
+/** Whether a file should embed raw (SVG or animated raster), returning the bytes it read so callers
+ *  don't re-read the file. */
 export async function shouldEmbedRaw(file: File): Promise<{ raw: boolean; bytes: Uint8Array }> {
    if (isSvgFile(file)) {
       return { raw: true, bytes: new Uint8Array(0) }

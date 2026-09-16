@@ -1,11 +1,7 @@
 /**
- * Scrolls a canvas element into view and briefly flashes it with the accent
- * colour to confirm the navigation landed.
- *
- * Uses IntersectionObserver so the flash fires immediately when the target is
- * already visible, or fires once the smooth-scroll brings it into the viewport.
- * requestAnimationFrame after intersection ensures the layout has settled before
- * the animation class is applied.
+ * Scroll a canvas element into view and flash it with the accent colour. IntersectionObserver so the
+ * flash fires whether the target is already visible or only once the smooth-scroll reaches it; the rAF
+ * waits for layout to settle before adding the animation class.
  */
 export function scrollAndFlash(
    selector:    string,

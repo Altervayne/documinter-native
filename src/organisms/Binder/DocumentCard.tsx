@@ -24,10 +24,9 @@ interface DocumentCardProps {
 }
 
 /**
- * A document card: scaled preview (left) + metadata (right). The whole card is grabbable,
- * drag it onto a nav folder to move it, or (under manual sort) onto another card to reorder.
- * A 5px drag threshold keeps single-click (select) and double-click (open) working; the
- * more-actions button and right-click open the context menu.
+ * A document card: scaled preview (left) + metadata (right). The whole card is grabbable: drag onto
+ * a nav folder to move it, or (under manual sort) onto another card to reorder. A 5px drag threshold
+ * keeps single-click (select) and double-click (open) working.
  */
 export function DocumentCard({
    record, isActive, isOpen, isSelected, reorderable, onSelect, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onSaveAsTemplate,
@@ -38,7 +37,7 @@ export function DocumentCard({
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
       useSortable({ id: `doc:${record.id}` })
    // Apply the sortable position transform only when reordering is live; otherwise (drag-to-folder
-   // in a non-manual sort) the dragged card is just hidden, siblings must not shift around.
+   // in a non-manual sort) the dragged card is just hidden and siblings must not shift.
    const style = reorderable
       ? { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
       : { opacity: isDragging ? 0 : 1 }

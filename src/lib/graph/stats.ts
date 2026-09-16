@@ -1,22 +1,14 @@
-/**
- * stats.ts, the pure statistics behind the graph block's computed overlays (mean / median /
- * linear trendline). NO SVG, NO theme, NO React, just numbers in, numbers out, exactly the
- * house pattern of scale.ts: a small, deterministic, thoroughly unit-tested math module that
- * carries the whole numeric correctness of the overlay feature.
- *
- * Every function is NULL-GAP-SAFE: a series carries `(number | null)[]`, and a null (a gap the
- * chart draws as a break) contributes NO point to any statistic. Non-finite values (NaN, +/-Inf)
- * are treated exactly like null, so a bad datum can never leak a NaN into a result.
+/*
+ * The pure statistics behind the graph block's computed overlays. Numbers in, numbers out, no SVG
+ * or theme. Every function is null-gap-safe: a null or non-finite cell contributes no point to any
+ * statistic, so a bad datum never leaks a NaN into a result.
  */
 
 // #########
 // # MEAN  #
 // #########
 
-/**
- * The arithmetic mean of the finite values, skipping every null / undefined / non-finite cell.
- * Returns null when no finite value survives (there is no center to draw).
- */
+/** The arithmetic mean of the finite values. Null when no finite value survives. */
 export function mean(values: readonly (number | null)[]): number | null {
    let sum = 0
    let count = 0
@@ -33,10 +25,8 @@ export function mean(values: readonly (number | null)[]): number | null {
 // # MEDIAN  #
 // ###########
 
-/**
- * The median of the finite values (a sorted copy; the two middle values are averaged for an even
- * count). Skips null / undefined / non-finite cells. Returns null when no finite value survives.
- */
+/** The median of the finite values (two middle values averaged for an even count). Null when no
+ *  finite value survives. */
 export function median(values: readonly (number | null)[]): number | null {
    const finite: number[] = []
    for (const value of values) {
@@ -56,11 +46,9 @@ export function median(values: readonly (number | null)[]): number | null {
 
 /** One ordinary-least-squares fit: the line `y = slope * x + intercept` plus its goodness of fit. */
 export interface LinearFit {
-   /** The slope `m` of the fitted line. */
    slope: number
-   /** The intercept `b` of the fitted line (its value at x = 0). */
    intercept: number
-   /** The coefficient of determination R^2 in [0, 1] (1 = a perfect fit). */
+   /** R^2 in [0, 1] (1 = a perfect fit). */
    rSquared: number
    /** How many finite points the fit was computed over. */
    count: number
@@ -72,13 +60,9 @@ export interface Point {
    y: number
 }
 
-/**
- * Ordinary-least-squares fit of a value series on its CATEGORY INDEX: each finite cell at position
- * `index` contributes the point `(index, value)`, and a null / non-finite cell contributes NOTHING
- * (a gap at index 3 leaves no (3, y) pair, so the fit is not pulled toward a phantom zero). This is
- * the trendline over categorical x; the continuous-x scatter form reuses {@link linearRegressionXY}
- * directly. Returns null when fewer than 2 finite points survive.
- */
+/** OLS fit of a value series on its CATEGORY INDEX: a finite cell at `index` contributes `(index,
+ *  value)`, a gap contributes nothing (so the fit is not pulled toward a phantom zero). Null when
+ *  fewer than 2 finite points survive. */
 export function linearRegression(values: readonly (number | null)[]): LinearFit | null {
    const points: Point[] = []
    for (let index = 0; index < values.length; index++) {
@@ -161,11 +145,8 @@ export function linearRegressionXY(points: readonly Point[]): LinearFit | null {
 // # SPREAD (VARIANCE / SD) #
 // ##########################
 
-/**
- * The SAMPLE variance of the finite values (divide by n-1, Bessel's correction), skipping every
- * null / undefined / non-finite cell. Returns null when fewer than 2 finite values survive (a
- * single point has no spread to speak of, and n-1 would be zero).
- */
+/** The SAMPLE variance of the finite values (divide by n-1, Bessel's correction). Null when fewer
+ *  than 2 finite values survive (n-1 would be zero). */
 export function variance(values: readonly (number | null)[]): number | null {
    const finite: number[] = []
    for (const value of values) {
@@ -184,10 +165,7 @@ export function variance(values: readonly (number | null)[]): number | null {
    return sumSquares / (finite.length - 1)
 }
 
-/**
- * The SAMPLE standard deviation (the square root of the sample {@link variance}). Null when fewer
- * than 2 finite values survive, matching variance.
- */
+/** The SAMPLE standard deviation (sqrt of the sample {@link variance}). Null when variance is null. */
 export function stddev(values: readonly (number | null)[]): number | null {
    const varianceValue = variance(values)
    if (varianceValue === null) return null
@@ -198,10 +176,7 @@ export function stddev(values: readonly (number | null)[]): number | null {
 // # EXTENT #
 // ##########
 
-/**
- * The min and max of the finite values, skipping every null / undefined / non-finite cell. Returns
- * null when no finite value survives (there is no range to draw).
- */
+/** The min and max of the finite values. Null when no finite value survives. */
 export function extent(values: readonly (number | null)[]): { min: number; max: number } | null {
    let min = Infinity
    let max = -Infinity
@@ -218,14 +193,10 @@ export function extent(values: readonly (number | null)[]): { min: number; max: 
 // # MOVING AVERAGE  #
 // ###################
 
-/**
- * The TRAILING moving average: `output[index]` is the mean of the finite values within the window
- * ENDING at `index` (that is, the slots `index - window + 1 .. index`), skipping null / undefined /
- * non-finite cells inside the window. The output preserves the input length and index alignment:
- * an early index that does not yet have a full window behind it is `null`, and so is any index whose
- * window happens to hold no finite value at all. `window` is clamped to at least 2 (a window of one
- * is just the raw series, nothing to average).
- */
+/** The TRAILING moving average: `output[index]` is the mean of the finite values in the window
+ *  ENDING at `index` (slots `index - window + 1 .. index`). Preserves input length and alignment; an
+ *  index without a full window behind it, or whose window holds no finite value, is null. `window`
+ *  is clamped to >= 2. */
 export function movingAverage(values: readonly (number | null)[], window: number): (number | null)[] {
    const size = Number.isFinite(window) ? Math.max(2, Math.floor(window)) : 2
    const result: (number | null)[] = []
@@ -252,25 +223,21 @@ export function movingAverage(values: readonly (number | null)[], window: number
 // ##########################
 
 /** A least-squares polynomial fit: coefficients in ASCENDING power order (`coefficients[0]` is the
- *  constant term), plus the goodness of fit against the original y. */
+ *  constant term), plus R^2 against the original y. */
 export interface PolynomialFit {
    coefficients: number[]
    rSquared: number
 }
 
-/** A two-parameter curve fit (`a`, `b`) plus its R^2 on the ORIGINAL (un-transformed) y scale, shared
- *  by the exponential / logarithmic / power models. */
+/** A two-parameter curve fit (`a`, `b`) plus its R^2 on the ORIGINAL y scale, shared by the
+ *  exponential / logarithmic / power models. */
 export interface CurveFit {
    a: number
    b: number
    rSquared: number
 }
 
-/**
- * Evaluate a polynomial (coefficients in ascending power order, `coefficients[0]` the constant term)
- * at `x` via Horner's method. Shared by {@link polynomialFit}'s R^2 pass and the renderer's curve
- * sampling so both read the same coefficient convention.
- */
+/** Evaluate a polynomial (ascending power order) at `x` via Horner's method. */
 export function evaluatePolynomial(coefficients: readonly number[], x: number): number {
    let result = 0
    for (let power = coefficients.length - 1; power >= 0; power--) {
@@ -279,12 +246,9 @@ export function evaluatePolynomial(coefficients: readonly number[], x: number): 
    return result
 }
 
-/**
- * The coefficient of determination R^2 for a set of points against an arbitrary prediction function,
- * `1 - SS_res / SS_tot`. A flat set (SS_tot === 0) returns 1 (a constant is perfectly explained by a
- * constant), mirroring {@link linearRegressionXY}'s own degenerate guard. Used by every non-linear
- * fit below to report its R^2 on the ORIGINAL y scale (not the log-transformed scale it was fit on).
- */
+/** R^2 for points against an arbitrary prediction function, `1 - SS_res / SS_tot`. A flat set
+ *  (SS_tot === 0) returns 1. Lets every non-linear fit report R^2 on the ORIGINAL y scale, not the
+ *  log-transformed one it was fit on. */
 function coefficientOfDetermination(points: readonly Point[], predict: (x: number) => number): number {
    if (points.length === 0) return 0
    let sumY = 0
@@ -302,14 +266,12 @@ function coefficientOfDetermination(points: readonly Point[], predict: (x: numbe
    return 1 - residualSumSquares / totalSumSquares
 }
 
-/**
- * Solve the square linear system `matrix * solution = vector` by Gaussian elimination with partial
- * pivoting. Returns null when the system is singular (a near-zero pivot) or the solution is not
- * finite, so a degenerate fit falls out as "draws nothing" rather than NaN geometry.
- */
+/** Solve `matrix * solution = vector` by Gaussian elimination with partial pivoting. Null when the
+ *  system is singular or the solution is non-finite, so a degenerate fit draws nothing rather than
+ *  NaN geometry. */
 function solveLinearSystem(matrix: number[][], vector: number[]): number[] | null {
    const size = vector.length
-   // One augmented copy so the caller's arrays are never mutated.
+   // Augmented copy so the caller's arrays are never mutated.
    const augmented = matrix.map((row, index) => [...row, vector[index]])
    for (let column = 0; column < size; column++) {
       // Partial pivot: swap in the row with the largest magnitude in this column.
@@ -321,7 +283,6 @@ function solveLinearSystem(matrix: number[][], vector: number[]): number[] | nul
       const swap = augmented[column]
       augmented[column] = augmented[pivotRow]
       augmented[pivotRow] = swap
-      // Eliminate this column from every other row.
       for (let row = 0; row < size; row++) {
          if (row === column) continue
          const factor = augmented[row][column] / augmented[column][column]
@@ -338,13 +299,9 @@ function solveLinearSystem(matrix: number[][], vector: number[]): number[] | nul
    return solution
 }
 
-/**
- * Least-squares polynomial fit of `degree` over the finite `(x, y)` points, built from the normal
- * equations (a Vandermonde system folded into power sums, then solved by {@link solveLinearSystem}).
- * Returns coefficients in ascending power order plus R^2 against the original y. Null when there are
- * fewer than `degree + 1` DISTINCT x values (an underdetermined system), the degree is below 1, or
- * the normal equations come out singular.
- */
+/** Least-squares polynomial fit of `degree` over the finite points, via the normal equations. Null
+ *  when there are fewer than `degree + 1` distinct x values, the degree is below 1, or the system is
+ *  singular. */
 export function polynomialFit(points: readonly Point[], degree: number): PolynomialFit | null {
    if (!Number.isFinite(degree) || degree < 1) return null
    const finite: Point[] = []
@@ -357,7 +314,7 @@ export function polynomialFit(points: readonly Point[], degree: number): Polynom
    if (distinctX.size < degree + 1) return null
 
    const order = degree + 1
-   // Power sums SUM(x^k) for k in 0..2*degree feed every entry of the normal-equations matrix.
+   // Power sums SUM(x^k), k in 0..2*degree, feed every entry of the normal-equations matrix.
    const powerSums = new Array(2 * degree + 1).fill(0)
    const rightHandSide = new Array(order).fill(0)
    for (const point of finite) {
@@ -384,12 +341,9 @@ export function polynomialFit(points: readonly Point[], degree: number): Polynom
    return { coefficients, rSquared }
 }
 
-/**
- * Exponential fit `y = a * e^(b*x)`, obtained by an ordinary linear least-squares fit on `(x, ln y)`
- * then mapping back (`b = slope`, `a = e^intercept`). Only points with `y > 0` take part (the log is
- * undefined otherwise, so such points are dropped); null when fewer than 2 usable points survive or
- * the underlying linear fit is degenerate. R^2 is reported on the ORIGINAL y scale.
- */
+/** Exponential fit `y = a * e^(b*x)`, a linear fit on `(x, ln y)` mapped back. Only points with
+ *  `y > 0` take part; null when fewer than 2 usable points survive or the linear fit is degenerate.
+ *  R^2 is on the ORIGINAL y scale. */
 export function exponentialFit(points: readonly Point[]): CurveFit | null {
    const usable: Point[] = []
    for (const point of points) {
@@ -406,11 +360,8 @@ export function exponentialFit(points: readonly Point[]): CurveFit | null {
    return { a, b, rSquared }
 }
 
-/**
- * Logarithmic fit `y = a + b * ln(x)`, an ordinary linear least-squares fit on `(ln x, y)` (so its
- * R^2 is already on the original y scale, y being untouched). Only points with `x > 0` take part;
- * null when fewer than 2 usable points survive or the underlying linear fit is degenerate.
- */
+/** Logarithmic fit `y = a + b * ln(x)`, a linear fit on `(ln x, y)`. Only points with `x > 0` take
+ *  part; null when fewer than 2 usable points survive or the linear fit is degenerate. */
 export function logarithmicFit(points: readonly Point[]): CurveFit | null {
    const usable: Point[] = []
    for (const point of points) {
@@ -426,11 +377,9 @@ export function logarithmicFit(points: readonly Point[]): CurveFit | null {
    return { a, b, rSquared }
 }
 
-/**
- * Power fit `y = a * x^b`, a linear least-squares fit on `(ln x, ln y)` mapped back (`b = slope`,
- * `a = e^intercept`). Only points with `x > 0` AND `y > 0` take part; null when fewer than 2 usable
- * points survive or the underlying linear fit is degenerate. R^2 is reported on the ORIGINAL y scale.
- */
+/** Power fit `y = a * x^b`, a linear fit on `(ln x, ln y)` mapped back. Only points with `x > 0` AND
+ *  `y > 0` take part; null when fewer than 2 usable points survive or the linear fit is degenerate.
+ *  R^2 is on the ORIGINAL y scale. */
 export function powerFit(points: readonly Point[]): CurveFit | null {
    const usable: Point[] = []
    for (const point of points) {

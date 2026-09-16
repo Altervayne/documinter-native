@@ -13,11 +13,9 @@ interface DocumentMiniPreviewProps {
 }
 
 /**
- * A read-only miniature of a document. Renders the real `.doc-render` markup with doc.css
- * verbatim, wrapped in the same accent-bordered "paper" the editor canvas uses, then uniformly
- * transform-scaled down to fit its container, identical stylization to the canvas, just smaller.
- * Reuses the export block renderer so it stays faithful. Purely visual: `pointer-events: none`,
- * `overflow: hidden`, fills its container (the parent sets the dimensions).
+ * A read-only miniature of a document. Renders the real `.doc-render` markup with doc.css verbatim,
+ * reusing the export block renderer so it stays faithful, then transform-scales it down to fill its
+ * container. Purely visual: no pointer events, and the parent sets the dimensions.
  */
 export function DocumentMiniPreview({ meta, previewSections, docTheme, docAccent, className }: DocumentMiniPreviewProps) {
    const rootClass = ['rounded-sm doc-mini-preview', docTheme === 'dark' ? 'doc-dark' : '', className ?? ''].filter(Boolean).join(' ')

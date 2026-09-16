@@ -19,11 +19,10 @@ interface UseInlineColorPickerOptions {
 }
 
 /**
- * Owns the FormatToolbar's font-color and highlight-color pickers: their open/closed
- * state, the recent-custom-colors backlog, and the model-level color application
- * (`applyInlineColor`). Only one picker is open at a time. The toolbar keeps the
- * orchestrating selectionchange listener and reads the `*OpenRef`s to suppress it
- * while a picker is open, and calls `close*()` on outside clicks.
+ * Owns the FormatToolbar's font-color and highlight-color pickers: open/closed state, the
+ * recent-custom-colors backlog, and the model-level color application. Only one picker is open at a
+ * time. The toolbar keeps the orchestrating selectionchange listener, reads the `*OpenRef`s to suppress
+ * it while a picker is open, and calls `close*()` on outside clicks.
  */
 export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlineColorPickerOptions) {
    const [fontColorOpen,      setFontColorOpen]      = useState(false)
@@ -57,8 +56,7 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
       fontColorOpenRef.current = false
    }
 
-   // Stable: the toolbar's orchestrator effect closes pickers on outside clicks, so
-   // their identity must not change between renders.
+   // Stable identity: the toolbar's orchestrator effect closes pickers on outside clicks.
    const closeFontColorPicker = useCallback(() => {
       fontColorOpenRef.current = false
       setFontColorOpen(false)
@@ -69,19 +67,8 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
       setHighlightColorOpen(false)
    }, [])
 
-   /**
-    * Apply or clear a color field on the current selection.
-    *
-    * Strategy:
-    *   1. Restore the saved range back into the selection.
-    *   2. Find the [data-rich] contenteditable element that owns the selection.
-    *   3. Read its current InlineContent via domToInlineContent.
-    *   4. Compute flat char offsets for the selection start and end.
-    *   5. Call applyColorToRange, which produces a new InlineContent.
-    *   6. Rewrite element.innerHTML via renderInlineContent.
-    *   7. Restore the selection range in the new DOM.
-    *   8. The next blur event on RichEditable will commit the new content normally.
-    */
+   /** Apply or clear a color field on the current selection, rewriting the owning [data-rich] element's
+    *  innerHTML in place; the next RichEditable blur commits the new content normally. */
    function applyInlineColor(field: 'color' | 'highlight', colorValue: string | undefined) {
       const sel = window.getSelection()
       if (savedRangeRef.current) {
@@ -110,20 +97,17 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
       richElement.innerHTML = renderInlineContent(updatedContent)
       restoreSelectionRange(richElement, startChar, endChar)
 
-      // The innerHTML rewrite above destroyed the nodes savedRangeRef pointed at. Refreshing it
-      // here lets repeated applies (the ColorPicker emits onChange continuously while dragging)
-      // restore a valid range each time instead of a detached one. Closing the picker is left to
-      // the discrete callers (quick-pick swatch / remove), so a live drag stays open.
+      // The innerHTML rewrite destroyed the nodes savedRangeRef pointed at. Refresh it so repeated
+      // applies (ColorPicker emits onChange while dragging) restore a valid range, not a detached one.
+      // Callers close the picker, so a live drag stays open.
       const restoredSelection = window.getSelection()
       if (restoredSelection && restoredSelection.rangeCount > 0) {
          savedRangeRef.current = restoredSelection.getRangeAt(0).cloneRange()
       }
 
-      // Re-derive the active colors from the settled selection so the button indicators reflect
-      // the committed model. Deferred to the next frame so the innerHTML rewrite and selection
-      // restore have committed; reading colorValue directly would be clobbered by the debounced
-      // selectionchange re-read that follows. Both fields are re-derived so font and highlight
-      // indicators stay consistent regardless of which one was just picked.
+      // Re-derive the active colors from the settled selection so the button indicators match the model.
+      // Deferred a frame so the rewrite + selection restore have committed; both fields are re-derived so
+      // font and highlight indicators stay consistent regardless of which one was picked.
       requestAnimationFrame(() => {
          const settledSelection = window.getSelection()
          if (!settledSelection || settledSelection.rangeCount === 0) return
@@ -136,9 +120,8 @@ export function useInlineColorPicker({ savedRangeRef, setFormatState }: UseInlin
          }))
       })
 
-      // Record settled custom colors (those not in the curated palette) into the recents
-      // backlog. Debounced so dragging the ColorPicker, which emits onChange continuously,
-      // records only the final value the user lands on, not every intermediate hue.
+      // Record a settled custom color (not in the curated palette) into recents. Debounced so a
+      // ColorPicker drag records only the final value, not every intermediate hue.
       const palette: readonly string[] = field === 'color' ? FONT_COLOR_PALETTE : HIGHLIGHT_COLOR_PALETTE
       if (colorValue !== undefined && !palette.includes(colorValue)) {
          if (recentColorTimerRef.current) clearTimeout(recentColorTimerRef.current)

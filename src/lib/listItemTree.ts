@@ -1,26 +1,12 @@
-/**
- * listItemTree.ts, Pure recursive algorithms over the ListItem tree.
- *
- * Used by ListBlock (keyboard + drag edits) and WysiwygBlock (context-menu list actions).
- * No React, no DOM, no side effects, every function returns a new tree.
- *
- * Exports:
- *   mutateListItem              , walk + transform a matching item (null transform removes it)
- *   updateListItemRichText      , replace a single item's rich text
- *   removeListItemById          , delete an item anywhere in the tree
- *   moveListItemUp / Down       , swap an item with its sibling
- *   indentListItem              , make an item the last child of its previous sibling
- *   unindentListItem            , move an item one level up (path-based)
- *   reorderListItemsUnderParent , DnD reorder of siblings under a parent (null = root)
- *   insertListItemAfter         , insert a new item immediately after a given item
- *   getListItemContext          , an item's depth / index / sibling count (for the context menu)
- *   setItemChildMarker          , set / clear the marker of one item's child sub-list (marker picker)
+/*
+ * Pure recursive transforms over the ListItem tree (keyboard, drag, and context-menu list edits).
+ * No React, no DOM, no side effects; every function returns a new tree.
  */
 
 import { arrayMove } from '@dnd-kit/sortable'
 import type { ListItem, ListMarker } from '../types'
 
-/** Walk the tree and apply a transform to the matching item. Returning null removes the item. */
+/** Walk the tree and apply a transform to the matching item; returning null removes it. */
 export function mutateListItem(
    items: ListItem[],
    itemId: string,
@@ -83,10 +69,8 @@ export function indentListItem(items: ListItem[], itemId: string): ListItem[] {
    return items.map(item => ({ ...item, children: indentListItem(item.children, itemId) }))
 }
 
-/**
- * Find the path from the root to the item with the given ID.
- * Returns an array of indices: path[0] is the index in `items`, path[1] in that item's children, etc.
- */
+/** Path of child-indices from the root to the item, or null. path[0] indexes `items`, path[1] that
+ *  item's children, and so on. */
 function findItemPath(items: ListItem[], targetId: string, path: number[] = []): number[] | null {
    for (let index = 0; index < items.length; index++) {
       if (items[index].id === targetId) return [...path, index]
@@ -96,13 +80,10 @@ function findItemPath(items: ListItem[], targetId: string, path: number[] = []):
    return null
 }
 
-/**
- * Walk the tree following `path` and, at the grandparent level (path.length - 2),
- * remove the target from its parent's children and insert it after the parent.
- */
+/** At the grandparent level (path.length - 2), pull the target out of its parent's children and
+ *  reinsert it right after the parent. */
 function unindentByPath(items: ListItem[], path: number[], depth: number): ListItem[] {
    if (depth === path.length - 2) {
-      // We are at the grandparent level. The parent is at path[depth].
       const parentIndex     = path[depth]
       const itemIndexInParent = path[depth + 1]
       const parent          = items[parentIndex]
@@ -122,13 +103,10 @@ function unindentByPath(items: ListItem[], path: number[], depth: number): ListI
    })
 }
 
-/**
- * Move the item with the given ID exactly one level up (to be a sibling of its parent,
- * placed immediately after its parent). If the item is already at the root level, no-op.
- */
+/** Move the item one level up, to sit right after its parent. Root-level items are a no-op. */
 export function unindentListItem(items: ListItem[], itemId: string): ListItem[] {
    const path = findItemPath(items, itemId)
-   // path.length < 2 means the item is at the root, can't unindent further
+   // path.length < 2: already at the root.
    if (!path || path.length < 2) return items
    return unindentByPath(items, path, 0)
 }
@@ -167,7 +145,7 @@ export interface ListItemContext {
    siblingsCount:  number
 }
 
-/** Find a list item's position context for enabling/disabling context menu actions. */
+/** An item's depth / index / sibling count, for enabling or disabling context-menu actions. */
 export function getListItemContext(items: ListItem[], targetId: string, depth = 0): ListItemContext | null {
    for (let index = 0; index < items.length; index++) {
       if (items[index].id === targetId) return { depth, indexInParent: index, siblingsCount: items.length }
@@ -177,11 +155,8 @@ export function getListItemContext(items: ListItem[], targetId: string, depth = 
    return null
 }
 
-/**
- * Set (or clear, when `marker` is undefined) the `childMarker` of the named item, returning a new
- * tree. Only the path down to that item is copied; every untouched subtree keeps its reference.
- * `childMarker` styles the item's child sub-list, so the picker calls this for any row but the root.
- */
+/** Set (or clear, when `marker` is undefined) an item's `childMarker`, which styles its child
+ *  sub-list. Only the path to that item is copied; untouched subtrees keep their reference. */
 export function setItemChildMarker(items: ListItem[], itemId: string, marker: ListMarker | undefined): ListItem[] {
    return mutateListItem(items, itemId, item => {
       if (marker === undefined) {

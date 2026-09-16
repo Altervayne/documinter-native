@@ -50,23 +50,19 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-/** The radial families: a single series whose CATEGORIES are the colored slices. They share the
- *  single-series table shape with the simple `bar` (which also renders series[0] only); the
- *  distinction the table keeps between them is wording + the per-category color default. */
+/** The radial families: a single series whose CATEGORIES are the colored slices. Share the single-
+ *  series table shape with the simple `bar`, differing only in wording + the per-category color default. */
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 
-/** Sortable id prefixes: the grid gives each category row and series column a POSITIONAL synthetic
- *  id (`category-<index>` / `series-<index>`) since neither carries a stable model id. onDragEnd
- *  parses the index back out and routes to the matching pure move helper. */
+/** Sortable id prefixes: neither a category row nor a series column carries a stable model id, so
+ *  each takes a POSITIONAL id that onDragEnd parses back into the matching pure move helper. */
 const CATEGORY_ID_PREFIX = 'category-'
 const SERIES_ID_PREFIX   = 'series-'
 
 /**
- * One DndContext hosts BOTH sortable axes (category rows + series columns), so a single modifier
- * locks each drag to its own axis by inspecting the active id: a series-column drag glides
- * horizontally (y pinned), a category-row drag glides vertically (x pinned). Keeping both axes in
- * one context (rather than nesting two) means a SortableContext always binds to the intended
- * DndContext; the id prefix is what keeps a row-drag and a column-drag from crossing wires.
+ * One DndContext hosts BOTH axes; this modifier locks each drag to its own by reading the active id
+ * (series columns glide horizontally, category rows vertically). One context means a SortableContext
+ * always binds to it, and the id prefix keeps a row-drag and a column-drag from crossing wires.
  */
 const AXIS_LOCK_MODIFIER: Modifier = ({ transform, active }) => {
    const activeId = active ? String(active.id) : ''
@@ -95,10 +91,8 @@ interface GraphDataGridProps {
    onCommitField: () => void
 }
 
-/** The transient raw text of the one numeric cell being typed into (survives un-parseable
- *  mid-typing states like "1." or "-" without losing the keystroke, see handleCellChange).
- *  `categoryIndex`/`seriesIndex` are MODEL coordinates (setCell's row/series), independent of which
- *  axis renders as table rows. `invalid` flags non-numeric text so the cell shows a warning ring. */
+/** The raw text of the one numeric cell being typed into, so a mid-typing "1." or "-" survives.
+ *  `categoryIndex`/`seriesIndex` are MODEL coordinates; `invalid` flags non-numeric text. */
 interface EditingCell {
    categoryIndex: number
    seriesIndex:   number
@@ -106,8 +100,7 @@ interface EditingCell {
    invalid:       boolean
 }
 
-/** Which swatch popover is open: a per-series color (multi-series column header) or a per-category
- *  color (single-series table, a radial slice or a simple-bar bar). */
+/** Which swatch popover is open: a per-series color (multi-series) or a per-category color (single-series). */
 type ColorTarget =
    | { kind: 'series'; index: number; rect: DOMRect }
    | { kind: 'slice';  index: number; rect: DOMRect }
@@ -120,18 +113,15 @@ interface GridContextMenu {
    y:     number
 }
 
-/** The drag-handle wiring a sortable row/header hands back to the parent-rendered grip: the
- *  activator ref + the ARIA/listener props dnd-kit needs on the grab affordance. */
+/** The drag-handle wiring a sortable row/header hands to the grip: the activator ref + dnd-kit's ARIA/listener props. */
 type DragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
 
 // ###########
 // # HELPERS #
 // ###########
 
-/**
- * Parse a clipboard payload as TSV: rows split on newlines, columns split on tabs. Normalizes
- * CRLF/CR, drops a single trailing newline, and returns [] for an empty payload. Never throws.
- */
+/** Parse a clipboard payload as TSV (rows on newlines, columns on tabs). Normalizes line endings,
+ *  drops a single trailing newline, returns [] for an empty payload. Never throws. */
 function parseTsvClipboard(text: string): string[][] {
    const normalized = text.replace(/\r\n?/g, '\n').replace(/\n$/, '')
    if (normalized === '') return []
@@ -143,11 +133,8 @@ function isMultiCellPaste(grid: string[][]): boolean {
    return grid.length > 1 || grid.some(row => row.length > 1)
 }
 
-/**
- * Parse one pasted / typed cell into `number | null`, mirroring the fence parser: surrounding
- * whitespace and thousands-grouping commas are stripped, an empty or non-numeric cell becomes
- * `null` (a gap the renderer handles per type).
- */
+/** Parse one cell into `number | null`, mirroring the fence parser: whitespace and grouping commas
+ *  stripped, an empty or non-numeric cell becomes `null` (a gap). */
 function parseCellNumber(raw: string): number | null {
    const cleaned = raw.trim().replace(/\s+/g, '').replace(/,/g, '')
    if (cleaned === '') return null
@@ -170,11 +157,8 @@ interface SortableCategoryRowProps {
    children: (handle: DragHandleProps) => React.ReactNode
 }
 
-/**
- * A `<tr>` category row made vertically sortable. The row is the sortable NODE; the actual grab
- * affordance (the grip in the leading cell) is wired via the render-prop `handle` so that typing in
- * a cell input never starts a drag, only the grip carries the listeners.
- */
+/** A `<tr>` category row made vertically sortable. The row is the sortable node, but only the grip
+ *  (wired via the render-prop `handle`) carries the drag listeners, so typing in a cell never drags. */
 function SortableCategoryRow({ categoryIndex, children }: SortableCategoryRowProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
       useSortable({ id: `${CATEGORY_ID_PREFIX}${categoryIndex}` })
@@ -198,11 +182,8 @@ interface SortableSeriesHeaderProps {
    children:      (handle: DragHandleProps) => React.ReactNode
 }
 
-/**
- * A `<th>` series column header made horizontally sortable. Like the row, the header cell is the
- * sortable node while only the grip carries the drag listeners, so editing the series name never
- * initiates a reorder. A raised z-index while dragging keeps the moving header above its neighbors.
- */
+/** A `<th>` series column header made horizontally sortable. Like the row, only the grip drags, so
+ *  editing the series name never reorders. A raised z-index keeps the moving header above its neighbors. */
 function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: SortableSeriesHeaderProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
       useSortable({ id: `${SERIES_ID_PREFIX}${seriesIndex}` })
@@ -230,34 +211,24 @@ function SortableSeriesHeader({ seriesIndex, onContextMenu, children }: Sortable
 // #############
 
 /**
- * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series
- * or MANY (not radial-vs-cartesian, a simple `bar` is single-series and shares the radial shape).
- * BOTH shapes use categories = ROWS (scroll vertically, uncapped), which unifies their layout
- * and keeps the horizontally-bounded axis (<= MAX_SERIES) as the columns:
+ * The editable data table for a graph block, ADAPTING to whether the chart type draws ONE series or
+ * MANY (a simple `bar` is single-series and shares the radial shape). BOTH shapes use categories =
+ * ROWS (uncapped) and keep the bounded axis (<= MAX_SERIES) as the columns:
  *
- *   - MULTI-SERIES (grouped/stacked bar, line, area): rows = categories (a sticky leading column
- *     with each category's label + drag handle), columns = series (a sticky header row of the
- *     series' color swatch + name + remove + drag handle, plus a trailing "+" to add a series up to
- *     MAX_SERIES). A "+ Category" footer row adds a category. Body cells are numeric, category x
- *     series.
- *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows, each is
- *     the category's own color swatch (per-category color) + label + its single value + remove, with
- *     a "+" footer that adds a category. No series axis. Radial reads "slice" and defaults each
- *     swatch to a palette slot per index; simple bar reads "bar"/"category" and defaults each swatch
- *     to the ONE series' uniform base color. Both write `categoryColors` via `setCategoryColor`.
+ *   - MULTI-SERIES (grouped/stacked bar, line, area): rows = categories, columns = series (swatch +
+ *     name + remove + grip, plus a trailing "+"). Body cells are numeric, category x series.
+ *   - SINGLE-SERIES (pie/donut AND simple bar): the one series' CATEGORIES are the rows (swatch +
+ *     label + value + remove), no series axis. Radial defaults each swatch to a palette slot per
+ *     index; simple bar defaults to the one series' uniform base. Both write `categoryColors`.
  *
- * Both shapes share: the draft/commit model (numeric typing drafts on every keystroke and commits
- * on blur; structural + color edits commit immediately; a TSV paste auto-grows the grid and commits
- * once); vertical drag-reorder of category rows (multi-series ALSO horizontally reorders series
- * columns); and a right-click context menu on rows (and, multi-series, columns) for positional
- * insert / delete. All structural edits route through the pure `graphEdit` helpers, so the arrays
- * stay rectangular and never drop below one row/column.
+ * Both share the draft/commit model (numeric typing drafts and commits on blur; structural + color
+ * edits commit immediately; a TSV paste auto-grows the grid), drag-reorder, and a positional
+ * insert/delete context menu. All structural edits route through the pure `graphEdit` helpers.
  */
 export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: GraphDataGridProps) {
    const { labels, series, categoryColors } = spec.data
-   // Radial keeps its "slice" identity; a simple `bar` is ALSO single-series (it renders series[0]
-   // only), so it shares the category-row table shape, the difference is only wording + the
-   // per-category color default (radial = a palette slot per index; bar = the one uniform base).
+   // A simple `bar` is ALSO single-series, sharing the category-row shape; the difference is only
+   // wording + the per-category color default (radial = a palette slot per index; bar = uniform base).
    const isRadial = RADIAL_TYPES.has(spec.type)
    const isSingleSeries = isRadial || spec.type === 'bar'
 
@@ -267,15 +238,11 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    const singleSeriesAddLabel    = isRadial ? t.graphAddSlice : t.graphAddCategory
    const singleSeriesRemoveLabel = isRadial ? t.graphRemoveSlice : t.graphRemoveCategory
    const singleSeriesColorLabel  = isRadial ? t.graphSliceColor : t.graphBarColor
-   // The category-delete wording differs between the single-series (radial "slice") and multi-series
-   // tables; the insert-before/after wording stays category-generic for both.
+   // Only the delete wording differs by single/multi series; insert stays category-generic.
    const categoryDeleteLabel     = isSingleSeries ? singleSeriesRemoveLabel : t.graphRemoveCategory
 
-   /**
-    * The swatch display color for a single-series row: radial defaults to a palette slot PER index
-    * (multicolor slices), simple bar defaults to the ONE series' uniform base color, and either is
-    * overridden by an explicit `categoryColors[index]`.
-    */
+   /** The swatch color for a single-series row: radial defaults to a palette slot per index, simple
+    *  bar to the one series' uniform base, either overridden by `categoryColors[index]`. */
    function singleSeriesSwatchColor(categoryIndex: number): string {
       if (isRadial) return resolveSeriesColor(categoryIndex, categoryColors?.[categoryIndex], theme)
       const uniformBase = resolveSeriesColor(0, series[0]?.color, theme)
@@ -291,16 +258,14 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // Which row/column right-click menu is open (null = none), and where it was invoked.
    const [contextMenu, setContextMenu] = useState<GridContextMenu | null>(null)
 
-   // One pointer sensor with a 5px activation threshold (matching the list/section grids) so a click
-   // that lands on the grip but doesn't move never registers as a drag.
+   // 5px activation threshold, so a click on the grip that doesn't move never registers as a drag.
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
    // ================
    //  Drag reorder
    // ================
-   // One handler for both axes: the active id's prefix says which axis is dragging, and both the
-   // active and over id must share that prefix (an axis-locked drag should never resolve across
-   // axes, but the guard makes it impossible). Reorders route through the pure move helpers.
+   // One handler for both axes: the id prefix says which axis, and both ids must share it, so an
+   // axis-locked drag can never resolve across axes. Reorders route through the pure move helpers.
    function handleDragEnd(event: DragEndEvent): void {
       const { active, over } = event
       if (!over || active.id === over.id) return
@@ -319,8 +284,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ================
    //  Cell rendering
    // ================
-   // Show the transient raw text while a cell is being typed into; otherwise the stored number
-   // (an empty string for a null gap, the muted dash placeholder then reads the cell as a gap).
+   // The transient raw text while typing; otherwise the stored number (empty for a null gap).
    function cellText(categoryIndex: number, seriesIndex: number, value: number | null | undefined): string {
       if (editingCell && editingCell.categoryIndex === categoryIndex && editingCell.seriesIndex === seriesIndex) {
          return editingCell.text
@@ -347,8 +311,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       const parsed = Number(trimmed)
       const isValid = Number.isFinite(parsed)
       setEditingCell({ categoryIndex, seriesIndex, text: rawText, invalid: !isValid })
-      // Only push a parseable number into the model; an intermediate like "1." keeps the raw text
-      // visible (via editingCell) but leaves the last valid value in place until it parses.
+      // Only push a parseable number; an intermediate like "1." keeps the raw text and the last value.
       if (isValid) {
          onDraft(setCell(spec, categoryIndex, seriesIndex, parsed))
       }
@@ -362,10 +325,8 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ================
    //  Paste (TSV)
    // ================
-   // A rectangular paste from a spreadsheet fills the numeric grid from the focused cell. With
-   // categories = rows and series = columns, pasted ROWS map to CATEGORIES (downward, uncapped) and
-   // pasted COLUMNS map to SERIES (rightward, capped at MAX_SERIES), matching the grid's orientation.
-   // Non-numeric cells land as null. Applied over the pure transforms, committed once.
+   // A rectangular paste fills the grid from the focused cell: pasted rows map to categories
+   // (uncapped), columns to series (capped at MAX_SERIES). Non-numeric cells land as null; committed once.
    function handleMultiSeriesPaste(event: React.ClipboardEvent<HTMLInputElement>, focusCategoryIndex: number, focusSeriesIndex: number): void {
       const grid = parseTsvClipboard(event.clipboardData.getData('text/plain'))
       if (!isMultiCellPaste(grid)) return // a plain single value falls through to normal typing.
@@ -394,8 +355,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       event.preventDefault()
       setEditingCell(null)
       let next = spec
-      // Each pasted row is one category (slice / bar), filling downward from the focused row. Two
-      // columns read as (label, value); a single column is values only.
+      // Each pasted row is one category. Two columns read as (label, value); one column is values only.
       for (let rowOffset = 0; rowOffset < grid.length; rowOffset++) {
          const categoryIndex = focusCategoryIndex + rowOffset
          while (categoryIndex >= next.data.labels.length) next = addCategory(next)
@@ -492,8 +452,7 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
       )
    }
 
-   /** The grip affordance a sortable row/header hands its listeners to. `orientation` only swaps the
-    *  icon (vertical for rows, horizontal for series columns); the dnd wiring is identical. */
+   /** The grip a sortable row/header hands its listeners to; `orientation` only swaps the icon. */
    function dragHandle(handle: DragHandleProps, orientation: 'row' | 'column', ariaLabel: string): React.ReactElement {
       return (
          <span
@@ -534,7 +493,6 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
    // ################
    const multiSeriesTable = (
       <table className="graph-grid-table">
-         {/* =============== Series header row (sortable columns) =============== */}
          <thead>
             <tr>
                <th className="graph-grid-corner" title={t.graphAxisHint}>{t.graphAxisHint}</th>
@@ -585,7 +543,6 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                </th>
             </tr>
          </thead>
-         {/* =============== Category rows (sortable) =============== */}
          <tbody>
             <SortableContext items={categoryIds} strategy={verticalListSortingStrategy}>
                {labels.map((label, categoryIndex) => (
@@ -627,7 +584,6 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                   </SortableCategoryRow>
                ))}
             </SortableContext>
-            {/* =============== Add-category footer =============== */}
             <tr>
                <th className="graph-lead-cell graph-add-row-cell" scope="row">
                   <button
@@ -693,7 +649,6 @@ export function GraphDataGrid({ spec, theme, t, onEditStart, onDraft, onCommit, 
                   </SortableCategoryRow>
                ))}
             </SortableContext>
-            {/* =============== Add-category footer =============== */}
             <tr>
                <th className="graph-lead-cell graph-add-row-cell" scope="row">
                   <button
@@ -771,17 +726,14 @@ export interface GraphSeriesColorPopoverProps {
 }
 
 /**
- * Floating color popover reused for the per-series swatch (cartesian), the per-slice swatch
- * (radial), AND (exported for `molecules/EquationEditor.tsx`) the per-equation swatch on a
- * `function` chart: the react-piqua-color ColorPicker plus a "reset to default" action that clears
- * the override so the mark falls back to its palette slot. Portaled to document.body and viewport-
- * clamped, mirroring MetaFieldColorPopover's shell.
+ * Floating color popover reused for the per-series, per-slice, and (exported for the equation
+ * editor) per-equation swatches: the ColorPicker plus a reset that clears the override back to the
+ * palette slot. Portaled and viewport-clamped, mirroring MetaFieldColorPopover's shell.
  */
 export function GraphSeriesColorPopover({ anchorRect, value, title, resetLabel, onPick, onReset, onClose }: GraphSeriesColorPopoverProps) {
    const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'rect', rect: anchorRect })
 
-   // Dismiss on a pointerdown outside the popover, ignoring the swatch trigger (its own click
-   // toggles the popover via the parent, so we must not also close it here and fight that).
+   // Dismiss on outside pointerdown, ignoring the swatch trigger (its own click toggles the popover).
    useEffect(() => {
       function handlePointerDown(event: PointerEvent) {
          const target = event.target as HTMLElement

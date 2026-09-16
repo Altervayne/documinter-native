@@ -42,11 +42,11 @@ export function useToast(): ToastContextValue {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
    const [toasts, setToasts] = useState<ToastEntry[]>([])
 
-   // Tracks latest toasts without stale closures in the dismiss helpers
+   // The dismiss helpers read this to avoid stale closures over `toasts`.
    const toastsRef = useRef<ToastEntry[]>([])
    toastsRef.current = toasts
 
-   // Map of toast id -> auto-dismiss timer, plus id+"-remove" -> removal timer
+   // toast id -> auto-dismiss timer, plus id+"-remove" -> removal timer.
    const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
    const markExiting = useCallback((id: string) => {

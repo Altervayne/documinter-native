@@ -1,20 +1,9 @@
-/**
- * index.ts, the public entry point for the home-grown image-markup (annotation) renderer.
- *
- * `renderImageMarkupToSvg(spec)` is the ONLY export a caller needs: it wraps the base image (or a
- * neutral placeholder when `src` is empty) plus the overlay stack in a self-contained, responsive
- * `<svg>` (viewBox + width:100%), with the accessible root `<title>`/`<desc>`. Mirrors the graph
- * block's `renderGraphToSvg` / the math block's `renderLatexToMathML`: a pure, synchronous function
- * producing a self-contained markup string with zero runtime and zero external fonts/assets (the
- * base image is the one exception, inlined as a `data:` URI when present), safe to inline verbatim
- * into the HTML export.
- *
- * NO async gate (unlike Math/Temml) and NO theme argument (unlike Graph): annotation colors are
- * the author's explicit per-element choices, not resolved from the document theme. It NEVER
- * throws: a missing/empty `src` renders a neutral placeholder ground instead of the image, and a
- * malformed element's coordinates clamp to 0 via the shared svg.ts number formatting rather than
- * emitting `NaN`/`Infinity`, the "invalid never breaks the document" contract every graphic block
- * here honors.
+/*
+ * The public entry point for the image-markup (annotation) renderer. `renderImageMarkupToSvg(spec)`
+ * wraps the base image (or a neutral placeholder when `src` is empty) plus the overlay stack in one
+ * self-contained, responsive `<svg>`: pure, synchronous, zero runtime, safe to inline into the export.
+ * NO theme argument, unlike Graph: annotation colors are the author's explicit per-element choices.
+ * Never throws; a malformed coordinate clamps to 0 rather than emitting NaN/Infinity.
  */
 
 import { titleElement, descElement, selfClosingElement } from '../svg'
@@ -27,12 +16,8 @@ const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 /** Neutral placeholder ground color when there is no base image to draw (empty `src`). */
 const PLACEHOLDER_FILL = '#e2e8f0'
 
-/**
- * Render an image-markup spec to a complete, self-contained SVG string. Pure, synchronous,
- * deterministic, and total. `spec.src` is inlined verbatim (a `data:` URI or ''); an empty `src`
- * (the `.mint`/`.md` reopen case, see `lib/imageMarkupFence.ts`) renders a flat neutral rect in
- * its place so the overlay still has a ground to sit on rather than floating on nothing.
- */
+/** Render an image-markup spec to a complete, self-contained SVG string. `spec.src` is inlined
+ *  verbatim; an empty `src` (the reopen case) renders a flat neutral rect so the overlay has a ground. */
 export function renderImageMarkupToSvg(spec: ImageMarkupSpec): string {
    const { vbWidth, vbHeight } = computeViewBox(spec.width, spec.height)
 
@@ -53,13 +38,10 @@ export function renderImageMarkupToSvg(spec: ImageMarkupSpec): string {
 }
 
 /**
- * Render ONLY the overlay elements (no base image, no accessible title/desc) into a bare, responsive
- * `<svg>` whose viewBox matches the base image aspect ratio. This is an EDITOR-ONLY helper: the
- * interactive block layers this transparent element-overlay over a plain `<img>` of the base image
- * so a live drag re-renders just the (cheap) shapes each pointer-move without re-parsing the base
- * image's heavy base64 `data:` URI every frame. It does NOT change the export path, which still goes
- * through {@link renderImageMarkupToSvg} (base image + overlay, self-contained). Pure + total, same
- * as the full renderer.
+ * ONLY the overlay elements (no base image, no title/desc) in a bare `<svg>` matching the image aspect.
+ * EDITOR-ONLY: the block layers this transparent overlay over a plain `<img>`, so a live drag
+ * re-renders just the cheap shapes without re-parsing the heavy base64 `data:` URI every frame. The
+ * export path is unaffected and still goes through {@link renderImageMarkupToSvg}.
  */
 export function renderMarkupOverlayToSvg(elements: MarkupElement[], width: number, height: number): string {
    const { vbWidth, vbHeight } = computeViewBox(width, height)
@@ -78,11 +60,7 @@ function describeMarkup(elementCount: number, hasImage: boolean): string {
    return `Annotated image with ${elementCount} ${elementWord} over ${imagePart}.`
 }
 
-/**
- * Wrap inner markup in the responsive `<svg>` root with the accessible title/desc. `role="img"` +
- * `<title>` + `<desc>` give it an accessible name and summary; the viewBox + inline
- * `width:100%;height:auto` make it scale to its column with no runtime resize.
- */
+/** Wrap inner markup in the responsive `<svg>` root with the accessible title/desc. */
 function wrapSvg(accessibleTitle: string, accessibleDesc: string, vbWidth: number, vbHeight: number, body: string): string {
    const open =
       `<svg xmlns="http://www.w3.org/2000/svg" role="img"` +

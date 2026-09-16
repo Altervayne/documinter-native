@@ -1,7 +1,3 @@
-// #################
-// # BUILD-TIME GLOBALS #
-// #################
-
-// Injected by Vite's `define` (see vite.config.ts) from package.json's version field,
-// so the About menu can show the app version without importing package.json into the bundle.
+// Injected by Vite's `define` from package.json's version, so the About menu can show the version
+// without bundling package.json.
 declare const __APP_VERSION__: string

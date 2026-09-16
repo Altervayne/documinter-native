@@ -1,22 +1,9 @@
-/**
- * edit.ts, PURE structural + geometric transforms for the diagram (nodes + links) interactive editor.
- *
- * PURE DATA / PURE FUNCTIONS, side-effect free, imports only the diagram types + the (pure, DOM-free)
- * geometry helpers. Each function takes a DiagramSpec (or a node) and returns a BRAND-NEW value with
- * one edit applied, NEVER mutating the input. This is the single tested place the node editor's
- * pointer-driven add / move / resize / delete / hit-test / label / style operations live (mirrors
- * `lib/imageMarkup/edit.ts` for the image-markup block and `lib/graphEdit.ts` for the graph block):
- * the editor component (`blocks/DiagramBlock.tsx` + the `molecules/Diagram*` panels) is thin glue
- * over these helpers, so the interaction math is all unit-tested here rather than in the UI.
- *
- * Covers both nodes and edges. Every node transform leaves edges untouched except `removeNode`,
- * which also drops every edge incident to the deleted node, so the model never keeps a dangling
- * reference.
- *
- * Coordinate convention (see types.ts): every geometric field is in ABSTRACT DIAGRAM UNITS, not
- * screen pixels. Pointer coordinates are mapped into this space via {@link pointerToDiagramPoint}
- * against the on-screen canvas rect + the canvas viewBox. Model writes round to whole diagram units
- * (see {@link roundUnit}) so a hand-edited fence table stays clean and the SVG output is compact.
+/*
+ * PURE structural + geometric transforms for the diagram interactive editor. Each function returns a
+ * BRAND-NEW value with one edit applied, never mutating the input, so the editor component stays thin
+ * glue and the interaction math is unit-tested here. `removeNode` also drops every edge incident to
+ * the deleted node, so the model never keeps a dangling reference. Every geometric field is in
+ * ABSTRACT DIAGRAM UNITS; model writes round to whole units (see {@link roundUnit}).
  */
 
 import type { DiagramSpec, DiagramNode, DiagramEdge, NodeShape, EdgeArrow, EdgeRouting } from './types'
@@ -40,11 +27,8 @@ export interface NodeBox {
    height: number
 }
 
-/**
- * The numeric render viewBox of the editor canvas, in diagram units. The editor holds this FIXED for
- * an editing session so dragging a node never reflows the coordinate frame under the pointer (unlike
- * the read-only block, which autofits). Maps 1:1 with the on-screen canvas via {@link pointerToDiagramPoint}.
- */
+/** The editor canvas viewBox in diagram units, held FIXED for a session so dragging never reflows
+ *  the coordinate frame under the pointer (unlike the read-only block, which autofits). */
 export interface DiagramViewBox {
    minX:   number
    minY:   number
@@ -52,7 +36,7 @@ export interface DiagramViewBox {
    height: number
 }
 
-/** A minimal DOM-rect shape (only the fields the mapping needs), so this stays DOM-free + testable. */
+/** A minimal DOM-rect shape, so this stays DOM-free + testable. */
 export interface CanvasRect {
    left:   number
    top:    number
@@ -61,14 +45,9 @@ export interface CanvasRect {
 }
 
 /**
- * The EPHEMERAL editor view transform: a zoom + pan applied ON TOP of the fixed editor frame
- * ({@link DiagramViewBox}). It maps a diagram-unit point to a "view-space" point (the coordinate
- * space the container displays 1:1 with the fixed frame):
- *
- *     viewX = scale * diagramX + translateX      viewY = scale * diagramY + translateY
- *
- * It is NEVER persisted to the document or serialized (a given spec renders byte-identically); it
- * only reshapes what the editor canvas shows. Held as editor-local state, reset/refit on window open.
+ * The EPHEMERAL editor view transform: a zoom + pan on top of the fixed frame, mapping a diagram
+ * point to view space (`view = scale * diagram + translate`). Never persisted or serialized; it only
+ * reshapes what the canvas shows.
  */
 export interface ViewTransform {
    scale:      number
@@ -77,10 +56,8 @@ export interface ViewTransform {
 }
 
 /**
- * A single alignment guide drawn while a node is dragged. A 'vertical' guide is a constant-x line
- * (a left/center/right alignment); a 'horizontal' guide is a constant-y line (top/center/bottom).
- * `position` is that constant coordinate; `from`/`to` are the span endpoints on the OTHER axis
- * (the cross-axis extent covering every involved node), all in diagram units.
+ * A single alignment guide drawn while a node is dragged. A 'vertical' guide is a constant-x line, a
+ * 'horizontal' one constant-y; `position` is that constant, `from`/`to` the span on the other axis.
  */
 export interface AlignmentGuide {
    orientation: 'vertical' | 'horizontal'
@@ -89,34 +66,29 @@ export interface AlignmentGuide {
    to:          number
 }
 
-/**
- * The result of an alignment-snap probe for a dragged node: the snapped LEFT (`snapX`) and/or TOP
- * (`snapY`) the node should take (absent on an axis with no snap), plus the guide lines to draw.
- */
+/** The snapped LEFT (`snapX`) and/or TOP (`snapY`) a dragged node should take, plus the guides. */
 export interface AlignmentSnapResult {
    snapX?:  number
    snapY?:  number
    guides:  AlignmentGuide[]
 }
 
-/** A node resize handle: the eight corner + edge midpoints of the node's bounding box. */
+/** The eight corner + edge midpoints of a node's box. */
 export type NodeResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
-/** A connection port on a node's perimeter (the four mid-edge sides), the source/target of an edge drag. */
+/** A connection port on a node's perimeter (the four mid-edge sides), source/target of an edge drag. */
 export type NodePort = 'n' | 'e' | 's' | 'w'
 
-/** A port's identity + its position (diagram units), sitting just OUTSIDE the node border (see PORT_GAP). */
+/** A port's identity + position, sitting just OUTSIDE the node border (see PORT_GAP). */
 export interface NodePortPoint {
    port:  NodePort
    point: Point
 }
 
 /**
- * A style patch for an edge. A KEY PRESENT with a value SETS it; the enumerated fields (`arrow`,
- * `routing`, `dashed`) drop back to lean when set to their render default (so a spec never carries a
- * redundant `arrow: 'end'` / `routing: 'straight'` / `dashed: false`, matching the fence's lean
- * serialization). `stroke` follows the node override convention: a key present with `undefined`
- * CLEARS the override (theme default returns); a key absent leaves that field untouched.
+ * A style patch for an edge. A key present with a value SETS it, but the enumerated fields drop back
+ * to lean at their render default (no redundant `arrow: 'end'`). `stroke` follows the override
+ * convention: present-`undefined` CLEARS it, absent leaves it.
  */
 export interface EdgeStylePatch {
    arrow?:   EdgeArrow
@@ -125,17 +97,16 @@ export interface EdgeStylePatch {
    stroke?:  string | undefined
 }
 
-/** A handle's identity + its position (diagram units), for rendering the selection chrome. */
+/** A handle's identity + position, for rendering the selection chrome. */
 export interface NodeHandlePoint {
    handle: NodeResizeHandle
    point:  Point
 }
 
 /**
- * A style patch for a node. A KEY PRESENT with `undefined` CLEARS that override (the field is dropped
- * so the renderer's theme default kicks back in and the fence serializes lean); a key absent leaves
- * that field untouched. `shape` has no "clear" (a node always has a shape), so an undefined `shape`
- * is ignored.
+ * A style patch for a node. A key present with `undefined` CLEARS that override (dropped so the theme
+ * default returns and the fence stays lean); absent leaves it. `shape` has no clear, so an undefined
+ * `shape` is ignored.
  */
 export interface NodeStylePatch {
    shape?:     NodeShape
@@ -148,62 +119,44 @@ export interface NodeStylePatch {
 // # CONSTANTS #
 // #############
 
-/** Smallest a node may be resized to (diagram units), so a shape never collapses to zero. */
+/** Smallest a node may be resized to, so a shape never collapses to zero. */
 export const NODE_MIN_WIDTH = 24
 export const NODE_MIN_HEIGHT = 20
 
 /** The eight box handles, in a stable order (corners then edge midpoints). */
 export const NODE_BOX_HANDLES: NodeResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
-/** How close (diagram units) a pointer must be to a handle to grab it for a resize. */
 export const NODE_HANDLE_HIT_TOLERANCE = 10
 
-/**
- * How far (diagram units) a node's connection ports sit OUTSIDE its border. Offsetting the ports
- * clear of the border keeps them from colliding with the mid-edge resize handles (which sit ON the
- * border) and reads as the familiar "hover a node, drag from a floating port" affordance.
- */
+/** How far the connection ports sit OUTSIDE the border, clear of the mid-edge resize handles that
+ *  sit ON it, reading as the familiar floating-port affordance. */
 export const PORT_GAP = 10
 
-/** How close (diagram units) a pointer must be to a port to grab it for an edge-connect drag. */
 export const PORT_HIT_TOLERANCE = 8
 
-/**
- * How close (diagram units) a pointer must be to an edge's polyline to select it. The caller passes a
- * value converted from a constant screen-pixel threshold through the current zoom (like the alignment
- * snap), so a thin line stays comfortably clickable at any scale. Also the default when omitted.
- */
+/** Edge-select tolerance. The caller converts a screen-pixel threshold through the current zoom, so
+ *  a thin line stays clickable at any scale. Also the default when omitted. */
 export const EDGE_HIT_TOLERANCE = 6
 
-/** Padding + minimum extent for the fixed editor canvas (see {@link computeEditorCanvas}). */
 export const EDITOR_CANVAS_PADDING = 40
 export const EDITOR_CANVAS_MIN_WIDTH = 320
 export const EDITOR_CANVAS_MIN_HEIGHT = 220
 
-/** The allowed zoom range for the editor view transform (clamped in {@link clampViewScale}). */
 export const VIEW_MIN_SCALE = 0.25
 export const VIEW_MAX_SCALE = 4
 
-/** The identity view transform (scale 1, no pan): the editor's initial + reset state. */
 export const IDENTITY_VIEW_TRANSFORM: ViewTransform = { scale: 1, translateX: 0, translateY: 0 }
 
-/** Padding (diagram units) left around the content when fitting the view to it. */
 export const FIT_VIEW_PADDING = 24
 
-/**
- * How near (diagram units, after the caller converts a screen-pixel threshold through the current
- * zoom) two alignment lines must be to snap. Also the default when a caller omits the threshold.
- */
+/** Snap distance. The caller converts a screen-pixel threshold through the current zoom; also the
+ *  default when omitted. */
 export const ALIGNMENT_SNAP_THRESHOLD = 6
 
-/** Two alignment lines within this many diagram units are treated as coincident when spanning guides. */
+/** Two alignment lines within this distance count as coincident when spanning guides. */
 export const GUIDE_MATCH_EPSILON = 0.5
 
-/**
- * The user-resizable editor-canvas HEIGHT in SCREEN pixels: a sensible default plus a clamp range so
- * the editing surface can be grown for room to work but never gets uselessly tiny or absurdly tall.
- * Ephemeral editor state, never persisted; the stored spec is unaffected.
- */
+/** User-resizable editor-canvas height (screen px), default + clamp range. Never persisted. */
 export const CANVAS_MIN_HEIGHT = 200
 export const CANVAS_MAX_HEIGHT = 900
 export const CANVAS_DEFAULT_HEIGHT = 380
@@ -218,15 +171,13 @@ export function roundUnit(value: number): number {
    return Math.round(value)
 }
 
-/** Replace the node sharing `next.id` in the spec, preserving order (no-op if the id is absent). */
+/** Replace the node sharing `next.id`, preserving order (no-op if the id is absent). */
 export function setNode(spec: DiagramSpec, next: DiagramNode): DiagramSpec {
    return { ...spec, nodes: spec.nodes.map(node => (node.id === next.id ? next : node)) }
 }
 
-/** Alias kept internal to this module for readability at the many call sites below. */
 const replaceNode = setNode
 
-/** Find a node by id, or null. */
 export function findNode(spec: DiagramSpec, id: string): DiagramNode | null {
    return spec.nodes.find(node => node.id === id) ?? null
 }
@@ -235,32 +186,23 @@ export function findNode(spec: DiagramSpec, id: string): DiagramNode | null {
 // # VIEW TRANSFORM   #
 // ####################
 
-/** Clamp a scale into the allowed zoom range ({@link VIEW_MIN_SCALE}..{@link VIEW_MAX_SCALE}). */
 export function clampViewScale(scale: number): number {
    if (!Number.isFinite(scale)) return 1
    return Math.min(VIEW_MAX_SCALE, Math.max(VIEW_MIN_SCALE, scale))
 }
 
-/** Map a diagram-unit point into view space: `view = scale * point + translate`. */
 export function applyViewTransform(point: Point, view: ViewTransform): Point {
    return { x: view.scale * point.x + view.translateX, y: view.scale * point.y + view.translateY }
 }
 
-/**
- * Map a view-space point back to diagram units: `point = (view - translate) / scale`. The exact
- * inverse of {@link applyViewTransform}. A zero/non-finite scale falls back to 1 (never divides by 0).
- */
+/** Inverse of {@link applyViewTransform}. A zero/non-finite scale falls back to 1. */
 export function invertViewTransform(point: Point, view: ViewTransform): Point {
    const scale = Number.isFinite(view.scale) && view.scale !== 0 ? view.scale : 1
    return { x: (point.x - view.translateX) / scale, y: (point.y - view.translateY) / scale }
 }
 
-/**
- * Produce a new view transform that zooms to `nextScale` (clamped) while keeping the diagram point
- * currently under `viewCursor` (a VIEW-SPACE point, e.g. from {@link screenToFramePoint}) pinned in
- * place, the "zoom toward the cursor" behavior. Derives the diagram point under the cursor from the
- * OLD transform, then chooses the translation that lands it back under the cursor at the new scale.
- */
+/** Zoom to `nextScale` (clamped) while keeping the diagram point under `viewCursor` (view space)
+ *  pinned: zoom toward the cursor. */
 export function zoomViewToward(view: ViewTransform, viewCursor: Point, nextScale: number): ViewTransform {
    const scale = clampViewScale(nextScale)
    const anchor = invertViewTransform(viewCursor, view)
@@ -271,12 +213,8 @@ export function zoomViewToward(view: ViewTransform, viewCursor: Point, nextScale
    }
 }
 
-/**
- * Compute a view transform that FRAMES every node within the fixed editor `frame` (view-space
- * `0 0 W H`), centered, with `padding` diagram units of breathing room and the scale clamped to the
- * zoom range. An empty diagram (no nodes) returns the identity transform. Used by the fit / reset
- * control and can be the initial view when a diagram is reopened.
- */
+/** A view transform that frames every node within `frame`, centered, with `padding` breathing room
+ *  and the scale clamped. An empty diagram returns the identity transform. */
 export function fitViewToContent(
    spec: DiagramSpec, frame: DiagramViewBox, padding: number = FIT_VIEW_PADDING,
 ): ViewTransform {
@@ -303,17 +241,11 @@ export function fitViewToContent(
 }
 
 /**
- * Derive the editor canvas's render VIEWPORT (the viewBox to draw through) in diagram units from the
- * fixed reference `frame` (the scale-1 viewport size + the container aspect) and the current view
- * transform. This is the heart of the unbounded-canvas model: nodes are drawn at their ABSOLUTE
- * diagram coordinates and only this viewport window limits what is visible, so nothing is ever clipped
- * to a fixed frame and any node is reachable by panning/zooming the viewport.
- *
- * Inverting `viewX = scale*d + translate` for the container edges (view-space 0 and W/H) gives the
- * visible diagram rectangle:  minX = -translateX / scale,  width = frame.width / scale  (same for y).
- * With the identity transform this is exactly `0 0 frame.width frame.height`. A zero/non-finite scale
- * falls back to 1. The viewport always shares the frame's aspect ratio (width/height = frame ratio),
- * so it maps onto the aspect-locked container with no letterbox.
+ * The editor canvas's render viewBox in diagram units, from the fixed `frame` and the view transform.
+ * The heart of the unbounded-canvas model: nodes draw at absolute coordinates and only this window
+ * limits what is visible, so any node is reachable by panning/zooming. Inverting the view transform
+ * for the container edges gives `minX = -translateX / scale`, `width = frame.width / scale`. Zero/
+ * non-finite scale falls back to 1; the viewport shares the frame aspect, so no letterbox.
  */
 export function viewportViewBox(frame: { width: number; height: number }, view: ViewTransform): DiagramViewBox {
    const scale = Number.isFinite(view.scale) && view.scale !== 0 ? view.scale : 1
@@ -326,23 +258,18 @@ export function viewportViewBox(frame: { width: number; height: number }, view: 
    }
 }
 
-/** Clamp a requested editor-canvas height (screen px) into the allowed range (non-finite falls back to default). */
+/** Clamp a requested editor-canvas height (screen px); non-finite falls back to the default. */
 export function clampCanvasHeight(height: number): number {
    if (!Number.isFinite(height)) return CANVAS_DEFAULT_HEIGHT
    return Math.min(CANVAS_MAX_HEIGHT, Math.max(CANVAS_MIN_HEIGHT, height))
 }
 
 /**
- * Build the editor's fixed reference frame from a stable reference WIDTH (diagram units) and the
- * measured on-screen container size (screen px), so the frame's aspect ratio EXACTLY matches the
- * container's. This is the correctness keystone for a user-resizable-height canvas: the container is
- * no longer aspect-locked to a fixed frame, so instead the frame FOLLOWS the container aspect. That
- * keeps the per-axis screen-to-diagram map ({@link screenToFramePoint} / {@link pointerToDiagramPoint})
- * and the meet/none SVG viewBox mutually consistent + undistorted at any height, the pointer mapping
- * stays pixel-accurate, and (since {@link viewportViewBox} preserves the frame aspect) so does the
- * unbounded-canvas viewport clip. A taller container makes a taller frame, which makes a taller
- * viewport, so more vertical diagram is visible at the same zoom. Height = referenceWidth / (containerWidth / containerHeight);
- * a degenerate container (unmeasured / zero) falls back to a square-ish frame. Origin is (0, 0).
+ * The editor's fixed reference frame, whose aspect ratio EXACTLY matches the container's. This is what
+ * makes a user-resizable-height canvas correct: the frame follows the container aspect, so the
+ * screen-to-diagram map and the SVG viewBox stay consistent and undistorted at any height. Height =
+ * referenceWidth / (containerWidth / containerHeight); a degenerate container falls back to a
+ * square-ish frame. Origin is (0, 0).
  */
 export function frameFromContainer(
    referenceWidth: number, containerWidth: number, containerHeight: number,
@@ -358,11 +285,9 @@ export function frameFromContainer(
 // ####################
 
 /**
- * Map a pointer's viewport coordinates to a VIEW-SPACE point (the coordinate space the container
- * displays 1:1 with the fixed `frame`), relative to the on-screen canvas `rect`. Transform-INDEPENDENT
- * (it does not apply the zoom/pan): the same screen pixel over the same rect always yields the same
- * view-space point, which is what a pan delta and a zoom anchor need. A zero-size rect maps to the
- * frame origin rather than dividing by zero.
+ * Map a pointer's viewport coordinates to a VIEW-SPACE point relative to the canvas `rect`. Transform
+ * INDEPENDENT (no zoom/pan applied): the same screen pixel over the same rect always yields the same
+ * point, which a pan delta and a zoom anchor need. A zero-size rect maps to the frame origin.
  */
 export function screenToFramePoint(clientX: number, clientY: number, rect: CanvasRect, frame: DiagramViewBox): Point {
    const x = rect.width  > 0 ? frame.minX + (clientX - rect.left) / rect.width  * frame.width  : frame.minX
@@ -371,12 +296,9 @@ export function screenToFramePoint(clientX: number, clientY: number, rect: Canva
 }
 
 /**
- * Map a pointer's viewport coordinates to a point in DIAGRAM units, composing the editor `view`
- * transform (zoom/pan) on top of the fixed `frame`: screen -> view space (via {@link screenToFramePoint})
- * -> diagram units (via {@link invertViewTransform}). With the identity transform (the default) this is
- * the plain proportional frame map, so callers that pass no `view` are unaffected. The editor canvas
- * fills a container whose aspect ratio equals the frame's, so the screen-to-view map is a straight scale
- * on each axis (no letterbox math). The result is NOT rounded, model writes round at mutation time.
+ * Map a pointer's viewport coordinates to DIAGRAM units, composing the `view` transform on top of the
+ * fixed `frame`: screen -> view space -> diagram units. The identity transform (the default) is the
+ * plain proportional frame map. NOT rounded; model writes round at mutation time.
  */
 export function pointerToDiagramPoint(
    clientX: number, clientY: number, rect: CanvasRect, frame: DiagramViewBox,
@@ -385,12 +307,8 @@ export function pointerToDiagramPoint(
    return invertViewTransform(screenToFramePoint(clientX, clientY, rect, frame), view)
 }
 
-/**
- * Compute a FIXED editor-canvas extent (diagram units) covering the current content with padding and
- * floored at a sane minimum. Origin is always (0, 0): the seed diagram's nodes are positive, so the
- * canvas frames them from the top-left; the extent is the padded content bounding box's far corner.
- * Held fixed for the editing session so the coordinate frame stays stable while nodes are dragged.
- */
+/** A FIXED editor-canvas extent covering the content with padding, floored at a minimum. Origin is
+ *  always (0, 0); held fixed for the session so the frame stays stable while nodes are dragged. */
 export function computeEditorCanvas(spec: DiagramSpec): { width: number; height: number } {
    const points: Point[] = []
    for (const node of spec.nodes) points.push(...nodeCornerPoints(node))
@@ -411,7 +329,7 @@ export function computeEditorCanvas(spec: DiagramSpec): { width: number; height:
 // # BOUNDING BOX     #
 // ####################
 
-/** A node's axis-aligned bounding box (its own x/y/width/height, normalized non-negative). */
+/** A node's axis-aligned bounding box (width/height normalized non-negative). */
 export function nodeBox(node: DiagramNode): NodeBox {
    const width  = Math.max(0, node.width)
    const height = Math.max(0, node.height)
@@ -422,13 +340,8 @@ export function nodeBox(node: DiagramNode): NodeBox {
 // # CREATE / ADD   #
 // ##################
 
-/**
- * Build a new node of `shape`, sized at the default node box and CENTERED on `center` (diagram
- * units). A HEADING shape (`banner` / `chevron`) seeds at the wider, shorter heading size instead
- * (see {@link isHeadingShape}), so it reads as a step/phase heading immediately; every other shape
- * keeps the general default. The label is seeded from `label`; style overrides start empty (theme
- * defaults). Coordinates are rounded to whole units.
- */
+/** Build a new node of `shape` centered on `center`. A HEADING shape seeds at the wider, shorter
+ *  heading size (see {@link isHeadingShape}); style overrides start empty (theme defaults). */
 export function createNode(shape: NodeShape, center: Point, label: string, id: string): DiagramNode {
    const heading = isHeadingShape(shape)
    const width  = heading ? DIAGRAM_HEADING_NODE_WIDTH  : DIAGRAM_DEFAULT_NODE_WIDTH
@@ -449,14 +362,8 @@ export function addNode(spec: DiagramSpec, node: DiagramNode): DiagramSpec {
    return { ...spec, nodes: [...spec.nodes, node] }
 }
 
-/**
- * Clone `node` into a fresh node with a NEW id (from `idFactory`) and its top-left nudged by `offset`
- * diagram units on BOTH axes, so the copy sits visibly clear of the original rather than exactly on
- * top. Every other field, shape, label, size, and the optional fill/stroke/textColor overrides, is
- * carried through unchanged by the spread. Position is rounded to whole units like every model write.
- * PURE: the caller inserts the result with {@link addNode}. Backs both the Ctrl+C -> Ctrl+V paste and the
- * right-click "Duplicate node" action.
- */
+/** Clone `node` with a NEW id and its top-left nudged by `offset` on both axes, so the copy sits
+ *  clear of the original. The caller inserts the result with {@link addNode}. */
 export function duplicateNode(node: DiagramNode, idFactory: () => string, offset: number): DiagramNode {
    return {
       ...node,
@@ -466,11 +373,7 @@ export function duplicateNode(node: DiagramNode, idFactory: () => string, offset
    }
 }
 
-/**
- * Remove the node with `id` AND every edge incident to it (so the model never keeps a dangling edge
- * reference after a node delete). No-op for the node if the id is absent; incident edges are still
- * filtered defensively.
- */
+/** Remove the node with `id` AND every edge incident to it, so the model never keeps a dangling edge. */
 export function removeNode(spec: DiagramSpec, id: string): DiagramSpec {
    return {
       ...spec,
@@ -483,23 +386,16 @@ export function removeNode(spec: DiagramSpec, id: string): DiagramSpec {
 // # MOVE #
 // ########
 
-/**
- * Translate the node `id` by (deltaX, deltaY) diagram units, returning a new spec. The delta is
- * applied to the node's stored top-left and rounded to whole units. No clamping: the fixed editor
- * canvas is generous and a node may be dragged anywhere (the read-only block autofits to whatever the
- * final positions are). No-op if the id is absent.
- */
+/** Translate the node `id` by (deltaX, deltaY), returning a new spec. No clamping: a node may be
+ *  dragged anywhere and the read-only block autofits. No-op if the id is absent. */
 export function moveNode(spec: DiagramSpec, id: string, deltaX: number, deltaY: number): DiagramSpec {
    const node = findNode(spec, id)
    if (!node) return spec
    return replaceNode(spec, translateNode(node, deltaX, deltaY))
 }
 
-/**
- * Translate a single node by (deltaX, deltaY), returning a new node with the moved, rounded top-left.
- * Used by a live move-drag, which applies the delta to the node captured AT DRAG START (the "origin"),
- * so repeated moves never accumulate rounding error the way an incremental per-move delta would.
- */
+/** Translate one node, returning a new node with the moved, rounded top-left. A live move-drag applies
+ *  the delta to the node captured AT DRAG START, so repeated moves never accumulate rounding error. */
 export function translateNode(node: DiagramNode, deltaX: number, deltaY: number): DiagramNode {
    return { ...node, x: roundUnit(node.x + deltaX), y: roundUnit(node.y + deltaY) }
 }
@@ -508,11 +404,8 @@ export function translateNode(node: DiagramNode, deltaX: number, deltaY: number)
 // # RESIZE #
 // ##########
 
-/**
- * Move the given `handle` of the node `id` to `point` (diagram units), keeping the opposite edge(s)
- * fixed and re-deriving x/y/width/height, floored at {@link NODE_MIN_WIDTH}/{@link NODE_MIN_HEIGHT}
- * so the box never inverts or collapses. No-op if the id is absent.
- */
+/** Move the `handle` of the node `id` to `point`, keeping the opposite edge(s) fixed and re-deriving
+ *  the box, floored at the min size so it never inverts. No-op if the id is absent. */
 export function resizeNode(spec: DiagramSpec, id: string, handle: NodeResizeHandle, point: Point): DiagramSpec {
    const node = findNode(spec, id)
    if (!node) return spec
@@ -531,8 +424,7 @@ function resizeNodeBox(node: DiagramNode, handle: NodeResizeHandle, point: Point
    if (handle === 'nw' || handle === 'n' || handle === 'ne') top = point.y
    if (handle === 'sw' || handle === 's' || handle === 'se') bottom = point.y
 
-   // Floor the size so an edge dragged past its opposite one stops at the minimum rather than
-   // inverting the box (no flip this pass).
+   // Floor the size so an edge dragged past its opposite one stops at the minimum, never inverting.
    if (right - left < NODE_MIN_WIDTH) {
       if (handle === 'nw' || handle === 'w' || handle === 'sw') left = right - NODE_MIN_WIDTH
       else right = left + NODE_MIN_WIDTH
@@ -555,19 +447,15 @@ function resizeNodeBox(node: DiagramNode, handle: NodeResizeHandle, point: Point
 // # LABEL / STYLE #
 // ################
 
-/** Set the label of the node `id`, returning a new spec (no-op if the id is absent). */
+/** Set the label of the node `id` (no-op if the id is absent). */
 export function updateNodeLabel(spec: DiagramSpec, id: string, label: string): DiagramSpec {
    const node = findNode(spec, id)
    if (!node) return spec
    return replaceNode(spec, { ...node, label })
 }
 
-/**
- * Apply a style patch to the node `id`. A patch key present with a value SETS that override; a key
- * present with `undefined` CLEARS it (the field is deleted so the renderer's theme default returns
- * and the fence serializes lean); an absent key is left untouched. `shape` is set only when defined
- * (a node always has a shape). No-op if the id is absent.
- */
+/** Apply a style patch to the node `id`: a value SETS, present-`undefined` CLEARS (theme default
+ *  returns), absent leaves untouched. `shape` is set only when defined. No-op if the id is absent. */
 export function updateNodeStyle(spec: DiagramSpec, id: string, patch: NodeStylePatch): DiagramSpec {
    const node = findNode(spec, id)
    if (!node) return spec
@@ -580,7 +468,7 @@ export function updateNodeStyle(spec: DiagramSpec, id: string, patch: NodeStyleP
    return replaceNode(spec, next)
 }
 
-/** Set an optional override from the patch when the key is present; a present-but-undefined clears it. */
+/** Set an optional override when the key is present; present-`undefined` clears it. */
 function applyOverride(node: DiagramNode, key: 'fill' | 'stroke' | 'textColor', patch: NodeStylePatch): void {
    if (!(key in patch)) return
    const value = patch[key]
@@ -592,11 +480,8 @@ function applyOverride(node: DiagramNode, key: 'fill' | 'stroke' | 'textColor', 
 // # HIT TEST #
 // ############
 
-/**
- * Return the TOPMOST node under `point` (last in the array = drawn on top = hit first), or null. Every
- * shape hit-tests against its bounding box grown by `tolerance`, so a diamond/ellipse click near the
- * box's corner still selects it (deliberately forgiving). No shape-exact hit-testing.
- */
+/** The TOPMOST node under `point` (last = drawn on top = hit first), or null. Every shape hit-tests
+ *  against its bounding box grown by `tolerance` (deliberately forgiving, no shape-exact test). */
 export function hitTestNode(spec: DiagramSpec, point: Point, tolerance = 0): DiagramNode | null {
    for (let index = spec.nodes.length - 1; index >= 0; index -= 1) {
       const box = nodeBox(spec.nodes[index])
@@ -608,7 +493,7 @@ export function hitTestNode(spec: DiagramSpec, point: Point, tolerance = 0): Dia
    return null
 }
 
-/** The eight resize handles of a node, with their positions in diagram units. */
+/** The eight resize handles of a node, with their positions. */
 export function nodeHandlePoints(node: DiagramNode): NodeHandlePoint[] {
    const { x, y, width, height } = node
    const midX = x + width / 2
@@ -626,11 +511,8 @@ export function nodeHandlePoints(node: DiagramNode): NodeHandlePoint[] {
    return NODE_BOX_HANDLES.map(handle => ({ handle, point: positions[handle] }))
 }
 
-/**
- * Return the resize handle of `node` within `tolerance` (diagram units) of `point` (nearest wins), or
- * null. Used by the editor to decide, on pointer-down over the SELECTED node, whether the press
- * begins a resize (on a handle) rather than a move (on the body).
- */
+/** The resize handle of `node` within `tolerance` of `point` (nearest wins), or null. Decides, on
+ *  pointer-down over the selected node, whether the press begins a resize rather than a move. */
 export function hitTestNodeHandle(
    node: DiagramNode, point: Point, tolerance = NODE_HANDLE_HIT_TOLERANCE,
 ): NodeResizeHandle | null {
@@ -650,22 +532,18 @@ export function hitTestNodeHandle(
 // # ALIGNMENT SNAP #
 // #################
 
-/** A box's three vertical reference lines (left / horizontal-center / right), in diagram units. */
+/** A box's three vertical reference lines (left / center / right). */
 function boxVerticalLines(box: NodeBox): number[] {
    return [box.x, box.x + box.width / 2, box.x + box.width]
 }
 
-/** A box's three horizontal reference lines (top / vertical-center / bottom), in diagram units. */
+/** A box's three horizontal reference lines (top / center / bottom). */
 function boxHorizontalLines(box: NodeBox): number[] {
    return [box.y, box.y + box.height / 2, box.y + box.height]
 }
 
-/**
- * The signed offset (`otherLine - draggedLine`) that snaps the NEAREST pair of reference lines
- * within `threshold`, or null when none is close enough. Applying this offset to the dragged box's
- * position slides the matching dragged line exactly onto the matching other line. The first nearest
- * pair wins ties, so the result is deterministic.
- */
+/** The signed offset (`otherLine - draggedLine`) snapping the NEAREST pair within `threshold`, or
+ *  null. First nearest pair wins ties, so the result is deterministic. */
 function nearestLineSnap(draggedLines: number[], otherLines: number[][], threshold: number): number | null {
    let best: number | null = null
    let bestDistance = Infinity
@@ -689,12 +567,8 @@ function crossExtentOf(orientation: 'vertical' | 'horizontal', box: NodeBox): [n
    return orientation === 'vertical' ? [box.y, box.y + box.height] : [box.x, box.x + box.width]
 }
 
-/**
- * Build the single alignment guide for `movingBox` at `position` on the given axis, or null when no
- * OTHER box has a reference line coincident (within {@link GUIDE_MATCH_EPSILON}) with `position`. The
- * guide spans the cross-axis extent of `movingBox` plus every coincident other box. Shared by the
- * move-snap ({@link axisGuides}) and the resize-snap ({@link computeResizeSnaps}) guide builders.
- */
+/** The single alignment guide for `movingBox` at `position`, or null when no OTHER box has a line
+ *  coincident (within {@link GUIDE_MATCH_EPSILON}). Spans the moving box + every coincident box. */
 function buildAxisGuide(
    orientation: 'vertical' | 'horizontal', position: number, movingBox: NodeBox, others: NodeBox[],
 ): AlignmentGuide | null {
@@ -708,13 +582,8 @@ function buildAxisGuide(
    return { orientation, position, from: Math.min(...crossValues), to: Math.max(...crossValues) }
 }
 
-/**
- * The guide lines for a snapped axis. For each reference line of the (already-snapped) dragged box
- * that coincides (within {@link GUIDE_MATCH_EPSILON}) with a reference line of any other box, emit one
- * guide at that position spanning the cross-axis extent of the dragged box + every coincident other
- * box. Vertical guides (constant x) span in y; horizontal guides (constant y) span in x. Deduplicated
- * by rounded position so two dragged lines landing on the same coordinate emit a single guide.
- */
+/** The guide lines for a snapped axis: one guide per reference line of the snapped box that coincides
+ *  with an other box's line. Deduplicated by rounded position. */
 function axisGuides(orientation: 'vertical' | 'horizontal', shifted: NodeBox, others: NodeBox[]): AlignmentGuide[] {
    const referenceLines = orientation === 'vertical' ? boxVerticalLines : boxHorizontalLines
 
@@ -732,13 +601,9 @@ function axisGuides(orientation: 'vertical' | 'horizontal', shifted: NodeBox, ot
 }
 
 /**
- * Probe the dragged node against every other node for edge/center alignment and return the snap it
- * should take plus the guide lines to draw. Compares the dragged box's left/center/right (x) and
- * top/center/bottom (y) against every other box's corresponding lines; within `threshold` (diagram
- * units, the caller converts a constant screen-pixel threshold through the current zoom), the axis
- * snaps to the nearest matching line, INDEPENDENTLY on x and y (either, both, or neither). Guides span
- * the involved boxes. PURE: no distribution/equal-spacing guides this pass; the caller applies the
- * returned `snapX`/`snapY` as a normal node move (so serialization stays byte-identical).
+ * Probe the dragged node against every other for edge/center alignment. Compares left/center/right and
+ * top/center/bottom against every other box's lines; within `threshold` the axis snaps to the nearest
+ * matching line, INDEPENDENTLY on x and y. The caller applies `snapX`/`snapY` as a normal node move.
  */
 export function computeAlignmentSnaps(
    dragged: NodeBox, others: NodeBox[], threshold: number = ALIGNMENT_SNAP_THRESHOLD,
@@ -778,11 +643,8 @@ export interface MovingEdges {
    bottom?: boolean
 }
 
-/**
- * The box edges a resize `handle` drags. A side handle moves one edge (e -> right, w -> left, n -> top,
- * s -> bottom); a corner moves the two edges meeting at it (se -> right + bottom, nw -> left + top, and so on).
- * The opposite edge(s) stay fixed, exactly matching {@link resizeNode}'s geometry.
- */
+/** The box edges a resize `handle` drags: a side handle moves one edge, a corner moves the two
+ *  meeting at it. Matches {@link resizeNode}'s geometry. */
 export function resizeHandleEdges(handle: NodeResizeHandle): MovingEdges {
    return {
       left:   handle === 'nw' || handle === 'w' || handle === 'sw',
@@ -799,16 +661,11 @@ export interface ResizeSnapResult {
 }
 
 /**
- * Snap the MOVING edge(s) of an in-progress resized `rect` (already computed by {@link resizeNode} /
- * {@link resizeNodeBox} for the current handle) to nearby other-node edge/center lines, and report the
- * guide lines to draw. Unlike {@link computeAlignmentSnaps}, which slides the WHOLE box by one offset
- * (a move), this snaps ONLY the edges the `handle` drags (see {@link resizeHandleEdges}), leaving the
- * opposite edge pinned, so the box's SIZE changes to meet the neighbor. Each moving vertical edge
- * (left/right) snaps to the nearest other left/center/right within `threshold`; each moving horizontal
- * edge (top/bottom) to the nearest other top/center/bottom. The result is re-floored to
- * {@link NODE_MIN_WIDTH}/{@link NODE_MIN_HEIGHT} (backing the snap off if it would collapse the box),
- * and a guide is emitted for every snapped moving edge that lands on an other line. PURE: the caller
- * applies `rect` as the node's new geometry (rounding at write time), so serialization stays lean.
+ * Snap the MOVING edge(s) of an in-progress resized `rect` to nearby other-node edge/center lines.
+ * Unlike {@link computeAlignmentSnaps} (which slides the whole box), this snaps only the edges the
+ * `handle` drags (see {@link resizeHandleEdges}), leaving the opposite edge pinned, so the box's SIZE
+ * changes to meet the neighbor. Re-floored to the min size, backing the snap off if it would collapse
+ * the box. A guide is emitted for every snapped moving edge that lands on an other line.
  */
 export function computeResizeSnaps(
    rect: NodeBox, handle: NodeResizeHandle, others: NodeBox[], threshold: number = ALIGNMENT_SNAP_THRESHOLD,
@@ -840,8 +697,7 @@ export function computeResizeSnaps(
       if (offset !== null) bottom += offset
    }
 
-   // Re-floor: a snap that would shrink the box past the minimum backs off on the MOVING edge, keeping
-   // the pinned edge fixed (mirrors resizeNodeBox's flooring so a snap can never invert/collapse a box).
+   // Re-floor: a snap past the minimum backs off on the MOVING edge, keeping the pinned edge fixed.
    if (right - left < NODE_MIN_WIDTH) {
       if (edges.left) left = right - NODE_MIN_WIDTH
       else right = left + NODE_MIN_WIDTH
@@ -853,8 +709,8 @@ export function computeResizeSnaps(
 
    const snapped: NodeBox = { x: left, y: top, width: right - left, height: bottom - top }
 
-   // A guide for each snapped moving edge that coincides with an other line (moving edges only, so a
-   // resize never draws a guide for the pinned side that happened to already align).
+   // A guide only for a snapped MOVING edge, so a resize never draws one for a pinned side that
+   // happened to already align.
    const guides: AlignmentGuide[] = []
    const pushGuide = (guide: AlignmentGuide | null): void => { if (guide) guides.push(guide) }
    if (edges.left)   pushGuide(buildAxisGuide('vertical',   snapped.x,                    snapped, others))
@@ -884,7 +740,6 @@ export function deleteEdge(spec: DiagramSpec, id: string): DiagramSpec {
    return { ...spec, edges: (spec.edges ?? []).filter(edge => edge.id !== id) }
 }
 
-/** Find an edge by id, or null. */
 export function findEdge(spec: DiagramSpec, id: string): DiagramEdge | null {
    return (spec.edges ?? []).find(edge => edge.id === id) ?? null
 }
@@ -894,10 +749,8 @@ export function setEdge(spec: DiagramSpec, next: DiagramEdge): DiagramSpec {
    return { ...spec, edges: (spec.edges ?? []).map(edge => (edge.id === next.id ? next : edge)) }
 }
 
-/**
- * Set the label of the edge `id`. An empty (or whitespace-only) label DROPS the field so the fence
- * serializes lean and the renderer draws no mid-edge label. No-op if the id is absent.
- */
+/** Set the label of the edge `id`. An empty label DROPS the field so the fence stays lean. No-op if
+ *  the id is absent. */
 export function updateEdgeLabel(spec: DiagramSpec, id: string, label: string): DiagramSpec {
    const edge = findEdge(spec, id)
    if (!edge) return spec
@@ -907,12 +760,8 @@ export function updateEdgeLabel(spec: DiagramSpec, id: string, label: string): D
    return setEdge(spec, next)
 }
 
-/**
- * Apply a style patch to the edge `id`. `arrow`/`routing`/`dashed` set the field, but a value equal
- * to the render default is DROPPED (a lean spec never stores `arrow: 'end'` / `routing: 'straight'` /
- * `dashed: false`); `stroke` follows the node override convention (present-`undefined` clears it,
- * absent leaves it). No-op if the id is absent.
- */
+/** Apply a style patch to the edge `id`. A value equal to the render default is DROPPED (a lean spec
+ *  never stores `arrow: 'end'`); `stroke` clears on present-`undefined`. No-op if the id is absent. */
 export function updateEdgeStyle(spec: DiagramSpec, id: string, patch: EdgeStylePatch): DiagramSpec {
    const edge = findEdge(spec, id)
    if (!edge) return spec
@@ -941,11 +790,8 @@ export function updateEdgeStyle(spec: DiagramSpec, id: string, patch: EdgeStyleP
 // # PORT GEOMETRY  #
 // #################
 
-/**
- * A node's four connection ports (N / E / S / W mid-edges), each offset `gap` diagram units OUTSIDE
- * the node border. These are the affordance an author drags FROM to draw an edge; offsetting them
- * clear of the border keeps them distinct from the mid-edge resize handles that sit ON the border.
- */
+/** A node's four connection ports (N/E/S/W mid-edges), each offset `gap` OUTSIDE the border. The
+ *  author drags FROM these to draw an edge; the offset keeps them clear of the resize handles. */
 export function nodePorts(node: DiagramNode, gap: number = PORT_GAP): NodePortPoint[] {
    const { x, y, width, height } = node
    const midX = x + width / 2
@@ -958,11 +804,8 @@ export function nodePorts(node: DiagramNode, gap: number = PORT_GAP): NodePortPo
    ]
 }
 
-/**
- * Return the connection port of `node` within `tolerance` (diagram units) of `point` (nearest wins),
- * or null. Used on pointer-down over a hovered node to decide whether the press begins an edge-connect
- * drag rather than a node move.
- */
+/** The connection port of `node` within `tolerance` of `point` (nearest wins), or null. Decides, on
+ *  pointer-down over a hovered node, whether the press begins an edge-connect drag rather than a move. */
 export function hitTestPort(
    node: DiagramNode, point: Point, tolerance: number = PORT_HIT_TOLERANCE,
 ): NodePort | null {
@@ -1005,13 +848,9 @@ export function distanceToPolyline(point: Point, polyline: Point[]): number {
    return minimum
 }
 
-/**
- * Return the edge whose drawn polyline passes within `tolerance` (diagram units) of `point`, nearest
- * wins; later edges (drawn on top) win a tie. Reconstructs each edge's polyline via the SHARED
- * {@link edgePolyline} (honoring waypoints + routing), so the hit area matches exactly what the
- * renderer draws. A dangling edge (missing endpoint node) is skipped. Returns null when no edge is
- * close enough.
- */
+/** The edge whose drawn polyline passes within `tolerance` of `point` (nearest wins, later edges win a
+ *  tie), or null. Reconstructs each polyline via the SHARED {@link edgePolyline} so the hit area
+ *  matches what the renderer draws. A dangling edge is skipped. */
 export function hitTestEdge(spec: DiagramSpec, point: Point, tolerance: number = EDGE_HIT_TOLERANCE): DiagramEdge | null {
    const nodesById = new Map<string, DiagramNode>()
    for (const node of spec.nodes) nodesById.set(node.id, node)

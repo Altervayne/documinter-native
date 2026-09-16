@@ -14,10 +14,7 @@ interface BinderFolderMenuProps {
    onDelete:       () => void
 }
 
-/**
- * Folder context menu, shared by the overflow button and right-click. A thin adapter over the
- * shared <ContextMenu>: it owns the portal, the viewport clamp, keyboard nav, and dismissal.
- */
+/** Folder context menu, shared by the overflow button and right-click. Thin adapter over <ContextMenu>. */
 export function BinderFolderMenu({ x, y, onClose, onRename, onNewSubfolder, onExportTin, onDelete }: BinderFolderMenuProps) {
    const { t } = useLang()
 

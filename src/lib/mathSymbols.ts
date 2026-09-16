@@ -1,31 +1,18 @@
-/**
- * mathSymbols.ts, the assisted-input catalog for the math block's symbol palette.
- *
- * PURE DATA, side-effect free. This module deliberately imports NOTHING that loads
- * Temml (lib/math.ts kicks off the raw-asset load on import) or lucide (lib/constants.ts):
- * the palette component renders the glyphs by feeding each entry's `latex` to the
- * renderer itself. Keeping the catalog import-clean means the serializers and any test
- * can pull it in without dragging in the Temml load or an icon bundle.
- *
- * The palette is PURE UI over the existing `latex` field of a math block. It makes NO
- * model or serialization change: inserting a snippet only edits the LaTeX source text,
- * exactly as if the user had typed it. The ```math fence is untouched.
- *
- * Every display `latex` in this catalog renders cleanly through Temml's `renderToString`
- * with `throwOnError` set, so a button never shows broken markup.
+/*
+ * The math block's symbol-palette catalog. Pure data, side-effect free: imports NOTHING that loads
+ * Temml (lib/math.ts) or lucide (lib/constants.ts), so serializers and tests can pull it in cheaply.
+ * Inserting a snippet only edits the block's `latex` source text; the ```math fence is untouched.
+ * Every entry's display `latex` renders cleanly through Temml with throwOnError, so no button ever
+ * shows broken markup.
  */
 
 // #############
 // # CONSTANTS #
 // #############
 
-/**
- * Caret sentinel. A single Private-Use-Area character marks, inside an entry's `insert`
- * string, where the caret should land after the snippet is dropped into the source. It is
- * never a character a user would type, so it can be located and stripped unambiguously.
- * When a non-empty selection is active at insert time the selected text is placed at this
- * marker (wrap-selection behaviour); otherwise the caret simply lands there.
- */
+/** Caret sentinel: a Private-Use-Area char inside an entry's `insert` marking where the caret lands
+ *  (or where an active selection is wrapped). Never a character a user types, so it strips
+ *  unambiguously. */
 export const MATH_CARET_MARKER = ''
 
 // #########
@@ -46,19 +33,13 @@ export type MathSymbolCategoryKey =
    | 'fonts'
    | 'symbolsMisc'
 
-/** One palette entry. */
 export interface MathSymbolEntry {
-   /** Human label, used for the tooltip / aria-label and matched by the filter. */
+   /** Tooltip / aria-label, also matched by the filter. */
    name:   string
-   /**
-    * The LaTeX rendered onto the button so it is scannable by sight. Always renderable
-    * (never contains the caret marker), a clean glyph or a small representative template.
-    */
+   /** The LaTeX rendered onto the button. Always renderable, never carries the caret marker. */
    latex:  string
-   /**
-    * The string injected into the source. Often identical to `latex`; templated entries
-    * differ by carrying a single MATH_CARET_MARKER placeholder (and empty argument slots).
-    */
+   /** The string injected into the source. Often identical to `latex`; templated entries carry a
+    *  single MATH_CARET_MARKER placeholder and empty argument slots. */
    insert: string
 }
 
@@ -495,16 +476,9 @@ export const MATH_SYMBOL_CATEGORIES: MathSymbolCategory[] = [
 // # CARET  #
 // ##########
 
-/**
- * Resolve an entry's `insert` string against the currently selected text and return the
- * literal text to splice in plus the resulting caret offset (relative to that text).
- *
- * Pure and deterministic, the whole caret contract lives here so it is unit-testable
- * without a DOM. Rules:
- *   - No marker: the snippet replaces the selection outright; the caret lands at its end.
- *   - Marker present: the selection (possibly empty) is placed at the marker; the caret
- *     lands just after that placed text. The marker itself is always stripped.
- */
+/** Resolve an entry's `insert` against the selected text: the literal text to splice plus the caret
+ *  offset into it. No marker: the snippet replaces the selection, caret at its end. Marker present:
+ *  the selection (maybe empty) is placed at the marker, caret just after it; the marker is stripped. */
 export function buildSnippetInsertion(insert: string, selectedText: string): SnippetInsertion {
    const markerIndex = insert.indexOf(MATH_CARET_MARKER)
    if (markerIndex === -1) {

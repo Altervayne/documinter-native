@@ -14,13 +14,9 @@ interface ImageBlockProps {
    readOnly?: boolean
 }
 
-/**
- * The image block. A plain image (no `block.imageMarkup` overlay) renders and edits exactly as it
- * always has (byte-identical output). Once markup is added (the "Add markup" affordance below, or a
- * legacy `image-markup` block migrated in), rendering + editing hand off to {@link ImageMarkupEditor},
- * which owns the annotation canvas + floating tool window. Markup is a feature ON an image, not a
- * separate block type.
- */
+/** The image block. A plain image (no `block.imageMarkup`) renders and edits byte-identically; once
+ *  markup is added, rendering + editing hand off to ImageMarkupEditor. Markup is a feature ON an
+ *  image, not a separate block type. */
 export function ImageBlock({ block, patch, readOnly }: ImageBlockProps) {
    if (block.imageMarkup) return <ImageMarkupEditor block={block} patch={patch} readOnly={readOnly} />
    return <PlainImageBlock block={block} patch={patch} readOnly={readOnly} />
@@ -40,9 +36,8 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
       patch({ src })
    }
 
-   // Turn markup on for this image: capture the base image's natural dimensions (the overlay's
-   // normalized-0..1 coordinate system needs the aspect ratio) by decoding the current src, then
-   // flip the block into markup mode and open the annotation editor in the same gesture.
+   // Turn markup on: decode the base image's natural dimensions (the overlay's normalized-0..1 coords
+   // need the aspect ratio), flip the block into markup mode, and open the editor in one gesture.
    async function handleAddMarkup() {
       const { width, height } = block.src ? await decodeImageSize(block.src) : { width: 0, height: 0 }
       patch({ imageMarkup: { width, height, elements: [] } })
@@ -91,7 +86,7 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
 
       return (
          <div>
-            {/* Figure: only the image, so its width drives alignment with no min-width from controls */}
+            {/* Figure holds only the image, so its width drives alignment with no min-width from controls. */}
             <div className={`flex ${flexAlign}`}>
                <figure className="doc-figure" style={{ maxWidth: '100%' }}>
                   <div className="relative select-none rounded-md overflow-hidden">
@@ -107,7 +102,6 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                         }}
                      />
 
-                     {/* Drag handle */}
                      {!readOnly && (
                         <div
                            className="absolute bottom-0 left-0 right-0 flex justify-center items-center py-0.5 cursor-ns-resize opacity-40 hover:opacity-100 transition-opacity bg-linear-to-t from-black/55 to-transparent"
@@ -117,15 +111,14 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                         </div>
                      )}
 
-                     {/* Height badge during drag */}
                      {!readOnly && draggingHeight !== null && (
                         <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-xs font-mono bg-black/50 text-white pointer-events-none">
                            {draggingHeight} px
                         </div>
                      )}
 
-                     {/* Annotate + remove, overlaid on the image so the controls row below has room in a
-                         cramped column container. Hidden mid-drag so they never sit under the size badge. */}
+                     {/* Annotate + remove, overlaid so the controls row below has room in a cramped
+                         column. Hidden mid-drag so they never sit under the size badge. */}
                      {!readOnly && draggingHeight === null && (
                         <div className="absolute top-2 right-2 flex items-center gap-1">
                            <button
@@ -152,7 +145,6 @@ function PlainImageBlock({ block, patch, readOnly }: ImageBlockProps) {
                </figure>
             </div>
 
-            {/* Controls: full-width, below the aligned figure */}
             <PlainEditable
                tag="p"
                className="image-field image-alt"

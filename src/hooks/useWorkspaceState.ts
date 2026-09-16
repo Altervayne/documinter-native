@@ -53,11 +53,9 @@ export interface WorkspaceStateResult {
 }
 
 /**
- * Manages workspace panel layout state with position-preserving toggle semantics.
- *
- * When a panel is toggled off, the full layout snapshot goes into `storedPositions`. Toggling it
- * back on restores that snapshot only if `hasExactPanels` confirms its panel set matches the
- * current target set (prevents restoring a stale sibling arrangement).
+ * Workspace panel layout state with position-preserving toggle semantics: toggling a panel off snapshots
+ * the full layout into `storedPositions`, toggling it back on restores that snapshot only if
+ * `hasExactPanels` confirms its panel set still matches, else drops the stale arrangement.
  */
 export function useWorkspaceState(): WorkspaceStateResult {
    const [storage, setStorage] = useState<WorkspaceStorage>(loadStorage)

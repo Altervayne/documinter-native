@@ -32,11 +32,10 @@ const PICKER_FALLBACK = '#6b7280'
 
 interface CalloutStylePickerProps {
    current: CalloutStyle
-   /** Optional custom hex override; when set, it takes precedence over `current` visually
-    *  (the presets render unselected, the callout is following its own color, not a preset). */
+   /** Custom hex override; when set it wins over `current` and the presets render unselected. */
    customColor?: string
    onChange: (style: CalloutStyle) => void
-   /** Applies live while adjusting the custom color (mirrors GraphSeriesColorPopover's onPick). */
+   /** Applies live while adjusting the custom color. */
    onCustomColorChange: (hex: string) => void
    /** Clears the custom color back to following `current`'s preset. */
    onClearCustomColor: () => void
@@ -117,12 +116,9 @@ interface CalloutColorPopoverProps {
    onClose:    () => void
 }
 
-/**
- * Floating color popover for the callout's custom-color swatch, the react-piqua-color
- * ColorPicker plus a "clear to preset" action. Mirrors GraphSeriesColorPopover's shell
- * (molecules/GraphDataGrid.tsx) and MetaFieldColorPopover's dismissal pattern, kept local here
- * rather than imported so the callout block doesn't reach into the graph editor module.
- */
+/** Floating color popover for the callout's custom-color swatch: the ColorPicker plus a "clear to
+ *  preset" action. Kept local rather than imported so the callout block never reaches into the graph
+ *  editor module. */
 function CalloutColorPopover({ anchorRect, value, title, resetLabel, onPick, onReset, onClose }: CalloutColorPopoverProps) {
    const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'rect', rect: anchorRect })
 

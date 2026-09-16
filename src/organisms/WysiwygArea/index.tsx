@@ -55,12 +55,11 @@ import type { Block, DocMeta, Mode, Section } from '../../types'
 
 import './doc.css'
 
-// A stable empty set for the too-tall default, so a missing prop never allocates a fresh Set per render.
+// A stable empty set, so a missing tooTallPageIds prop never allocates a fresh Set per render.
 const EMPTY_TOO_TALL_PAGE_IDS: Set<string> = new Set()
 
-// The quiet corner "type" caption a paged sheet wears beside its number: it names how the sheet came to
-// be, mirroring the Pages panel's wording. Page 1 (origin 'first', or an unstamped page) reads as no
-// particular type, so it gets none.
+// The corner caption naming how a paged sheet came to be, mirroring the Pages panel's wording. Page 1
+// (origin 'first', or unstamped) has no particular type, so it gets none.
 function pageTypeLabel(origin: Page['origin'], t: T): string | null {
    if (origin === 'manual')       return t.pageSorterManualBreak
    if (origin === 'continuation') return t.pageSorterContinuation
@@ -84,57 +83,53 @@ interface WysiwygAreaProps {
    onAddSection?: () => void
    readOnly?: boolean
    // ==========================================================
-   //  Document-level actions, reused (not reimplemented) by the background context menu, the
-   //  exact same handlers App.tsx already threads into HeaderMenuBar.
+   //  Document-level actions, shared with HeaderMenuBar (the background context menu reuses these,
+   //  it does not reimplement them).
    // ==========================================================
    onDocThemeChange?:  (theme: 'light' | 'dark') => void
    onDocAccentChange?: (hex: string) => void
-   /** Commit the document's page format (infinite width, later paged A4); undefined clears it. Records a
-    *  'format' undo entry: used by the Page setup panel, margins, bands, and the on-sheet remove button. */
+   /** Commit the document's page format; undefined clears it. Records a 'format' undo entry. */
    onFormatChange?: (next: DocFormat | undefined) => void
-   /** Commit a page-break-only format change under its OWN undo kind, so a block-menu break toggle never
-    *  coalesces into an adjacent margin / width / band edit. The block context menu's break path uses this. */
+   /** Commit a page-break-only change under its OWN undo kind, so a break toggle never coalesces into
+    *  an adjacent margin / width / band edit. */
    onPageBreakChange?: (next: DocFormat | undefined) => void
-   /** Non-recording format write for the reconcile pass (re-anchor a break whose anchor was deleted): it
-    *  persists + autosaves but records NO history entry, since it follows an already-recorded delete. */
+   /** Non-recording format write for the reconcile pass: persists + autosaves but records NO history
+    *  entry, since it follows an already-recorded delete. */
    onReconcileFormat?: (next: DocFormat | undefined) => void
-   /** Commit sections AND format in ONE undo entry. Paged block DnD (blank-page drop, cross-page moves)
-    *  changes both the flow and the break markers, so it funnels here for a single-entry drag. */
+   /** Commit sections AND format in ONE undo entry. Paged block DnD changes both the flow and the
+    *  break markers, so it funnels here for a single-entry drag. */
    onCommitSectionsAndFormat?: (sections: Section[], format: DocFormat | undefined) => void
-   /** Opens the same File -> Export... / Ctrl+E dialog owned by App.tsx. */
    onOpenExport?: () => void
    onManualSave?: () => void
-   /** Opens the same File -> Save As... dialog owned by App.tsx (fork-and-switch to a copy). */
+   /** File -> Save As... (fork-and-switch to a copy). */
    onSaveAs?: () => void
    // ==========================================================
-   //  Launchers for the document-editor panels (Presentation / Navigation / Page setup), reused by the
-   //  document background context menu here, the same handlers App threads into HeaderMenuBar. Each
-   //  reveals its dockable panel (App wires them to the dock's revealPanel).
+   //  Launchers for the document-editor dock panels (Presentation / Navigation / Page setup), shared
+   //  with HeaderMenuBar. Each reveals its dockable panel.
    // ==========================================================
    onOpenPresentation?: () => void
    onOpenNav?:          () => void
    onOpenFormat?:       () => void
-   /** Editor/preview toggle, for the background menu's optional "Toggle preview" item. */
+   /** Editor/preview toggle, for the background menu's "Toggle preview" item. */
    previewMode?: Mode
    onSetMode?:   (mode: Mode) => void
    // ==========================================================
-   //  Deterministic paged layout (App-owned). App computes ONE page layout from the document via the
-   //  offscreen paginator (computeDocumentPages) and feeds it here, so the canvas, the Pages panel, Preview,
-   //  and the PDF/HTML export all render the identical pages. The editor no longer measures anything.
+   //  Deterministic paged layout (App-owned). App runs ONE offscreen paginator and feeds the result
+   //  here, so canvas, Pages panel, Preview, and export render identical pages. The editor no longer
+   //  measures anything.
    // ==========================================================
-   /** The paginated pages to render in paged mode (empty in infinite mode, where the canvas renders one
-    *  continuous sheet instead). */
+   /** The pages to render in paged mode (empty in infinite mode, one continuous sheet instead). */
    pages?:          Page[]
-   /** Pages whose sole atomic block is taller than the physical sheet, computed alongside `pages` from the
-    *  same measurement so the "block too tall" note never disagrees with the layout it annotates. */
+   /** Pages whose sole atomic block is taller than the sheet, computed alongside `pages` from the same
+    *  measurement so the "too tall" note never disagrees with the layout it annotates. */
    tooTallPageIds?: Set<string>
-   /** The paragraph currently held whole for editing through the out-of-flow overlay (App-owned so it
-    *  survives a tab switch). A render-only signal: it never feeds pagination. */
+   /** The paragraph held whole for editing through the out-of-flow overlay (App-owned so it survives a
+    *  tab switch). Render-only: it never feeds pagination. */
    focusedParagraphId?: string | null
-   /** Set / clear the focused paragraph: a fragment press sets it, a blur clears it. */
+   /** A fragment press sets the focused paragraph, a blur clears it. */
    onParagraphFocusChange?: (blockId: string | null) => void
-   /** Overwrite the active document's chrome with a dragged template's, keeping its content: the
-    *  Templates panel drop-to-apply gesture, same effect as the panel card's own "Apply" action. */
+   /** Overwrite the active document's chrome with a dragged template's, keeping its content (the
+    *  Templates panel drop-to-apply gesture). */
    onApplyTemplate?: (template: DocumentTemplate) => void
 }
 
@@ -150,50 +145,36 @@ export function WysiwygArea({
    const { t } = useLang()
    const { reorderSections, moveBlockAcross, updateBlock } = useDocumentMutations()
 
-   // A stable, collision-free id for this sheet's tiled-watermark SVG <pattern> (React's useId,
-   // unique per component instance, colons stripped since the id rides inside a raw `url(#...)`
-   // string), guards against <defs> id clashes if multiple watermarked sheets are ever mounted
-   // at once.
+   // Collision-free id for this sheet's tiled-watermark SVG <pattern> (useId, colons stripped since
+   // it rides inside a raw `url(#...)`), so multiple watermarked sheets never clash in <defs>.
    const watermarkPatternId = `doc-watermark-pattern-${useId().replace(/:/g, '')}`
 
-   // Header logo (presentation): rendered in .page-header, above or beside the title. undefined
-   // means no logo renders.
    const header = presentation?.header
 
    // ==========================================================
    //  Freeform metadata fields, whole-array patches to onUpdateMeta
    // ==========================================================
-   // Fields live in one flat, ordered array; each carries a `position` ('above' | 'below') that
-   // places it in the row above or below the title. All handlers are id-based and compute the next
-   // whole array, keeping the existing onUpdateMeta({ fields }) merge pattern.
+   // One flat, ordered array; each field's `position` ('above' | 'below') places it in the row above
+   // or below the title. All handlers are id-based and compute the next whole array.
    const fields = meta.fields
 
    // Which field's color popover is open, plus the field rect that anchors it.
    const [colorPopover, setColorPopover] = useState<{ fieldId: string; rect: DOMRect } | null>(null)
-   // The field whose right-click context menu is open, at the cursor. `rect` is the field's box,
-   // reused to anchor the color popover when the menu's Color... item is chosen.
+   // The field whose right-click menu is open. `rect` is the field's box, reused to anchor the color
+   // popover when the menu's Color... item is chosen.
    const [fieldMenu, setFieldMenu] = useState<{ fieldId: string; x: number; y: number; rect: DOMRect } | null>(null)
    // ==========================================================
-   //  Document background context menu (document-level actions)
+   //  Document background context menu
    // ==========================================================
-   // Catch-all: bound high on the outer canvas container (below), so it fires for a right-click
-   // ANYWHERE on the document background, the gutter around the sheet, the sheet's own padding,
-   // gaps between/around/below sections, and empty space inside a section. It relies on
-   // propagation, not a target check: a right-click on a block (useBlockContextMenu's
-   // openContextMenu) or on section chrome (WysiwygSection's handleSectionContextMenu) already
-   // calls stopPropagation, so those never reach this handler, see the field-menu stopPropagation
-   // just below for the third source that needed the same guard added. Bound in BOTH editor and
-   // preview (readOnly) mode, it's the one menu preview keeps reachable (blocks/sections/fields
-   // already self-disable their own context menus under readOnly, see WysiwygSection.tsx /
-   // WysiwygBlock.tsx), so a right-click still reaches theme/accent/export/save/preview-toggle.
+   // Catch-all bound high on the outer canvas container, firing for a right-click ANYWHERE on the
+   // document background. It relies on propagation, not a target check: a block, section chrome, or a
+   // metadata field already calls stopPropagation, so none reach here. Bound in BOTH editor and
+   // preview mode (blocks/sections/fields self-disable their own menus under readOnly), so a
+   // right-click in preview still reaches theme/accent/export/save/preview-toggle.
    const [backgroundMenu, setBackgroundMenu] = useState<{ x: number; y: number } | null>(null)
-   // Whether Custom is the background menu's selected accent choice, a genuine selection, on par
-   // with clicking a preset swatch, NOT a disclosure toggle. Selecting it applies the current
-   // docAccent (smooth hand-off) and reveals the inline ColorPicker directly under the accent
-   // swatch grid (AccentSwatchGrid) rather than a detached popover, the same inline-under-the-entry
-   // pattern the top-bar Document dropdown uses (DocumentMenu's own customAccentSelected). The
-   // context menu's own viewport-clamped positioning (useViewportClampedPosition, re-measured via
-   // ResizeObserver) re-clamps as the menu grows.
+   // Custom is a genuine accent selection, on par with a preset swatch, not a disclosure toggle:
+   // selecting it applies the current docAccent and reveals the inline ColorPicker under the swatch
+   // grid, matching the top-bar Document dropdown.
    const [customAccentSelected, setCustomAccentSelected] = useState(false)
 
    function handleBackgroundContextMenu(event: React.MouseEvent) {
@@ -208,10 +189,9 @@ export function WysiwygArea({
    }
 
    // ==========================================================
-   //  Drop-to-apply a template dragged from the Templates dock panel (native HTML5 DnD, a separate
-   //  event system from the dnd-kit block DndContext below, so the two never collide). Only wired up
-   //  when the canvas is editable and a template really is being dragged (guarded on the custom MIME
-   //  in lib/templateDrag.ts), so an ordinary file drag or block drag passes through untouched.
+   //  Drop-to-apply a template dragged from the Templates dock panel (native HTML5 DnD, separate from
+   //  the dnd-kit block DndContext below, so the two never collide). Guarded on the custom MIME
+   //  (lib/templateDrag.ts), so a file or block drag passes through untouched.
    // ==========================================================
    const templateDropEnabled = Boolean(onApplyTemplate) && !readOnly
    const [isTemplateDragOver, setIsTemplateDragOver] = useState(false)
@@ -225,8 +205,8 @@ export function WysiwygArea({
 
    function handleTemplateDragLeave(event: React.DragEvent) {
       if (!templateDropEnabled || !event.dataTransfer.types.includes(TEMPLATE_DRAG_MIME)) return
-      // Native dragleave also fires when crossing between child elements, only clear when the
-      // cursor has actually left the canvas container.
+      // Native dragleave also fires when crossing between child elements; only clear when the cursor
+      // has actually left the canvas container.
       if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
       setIsTemplateDragOver(false)
    }
@@ -239,11 +219,8 @@ export function WysiwygArea({
       if (template) onApplyTemplate?.(template)
    }
 
-   // The document-background context menu shares its entry list with the top-bar "Document" dropdown
-   // (HeaderMenuBar) via the single buildDocumentMenuEntries source of truth, so the two surfaces can
-   // never drift in label or order. Only the surface-specific openers differ: here selecting "Custom
-   // accent..." sets this surface's own selected-flag (and clicking a preset clears it), and the
-   // preview toggle routes through onSetMode.
+   // Shares its entry list with the top-bar "Document" dropdown via buildDocumentMenuEntries, so the
+   // two surfaces can't drift in label or order. Only the surface-specific openers differ here.
    function buildBackgroundMenuEntries(): ContextMenuEntry[] {
       return buildDocumentMenuEntries({
          t,
@@ -275,9 +252,8 @@ export function WysiwygArea({
    function addField(position: 'above' | 'below') {
       onUpdateMeta({ fields: [...fields, { id: crypto.randomUUID(), label: '', value: '', position }] })
    }
-   // Insert a blank field into a zone at a zone-relative index (translated to the flat array), for
-   // the context menu's "Add field before / after". An index past the zone's end appends after its
-   // last member; an empty zone lands at the end of the flat array.
+   // Insert a blank field at a zone-relative index, translated to the flat array. An index past the
+   // zone's end appends after its last member; an empty zone lands at the end of the flat array.
    function addFieldAt(position: 'above' | 'below', zoneIndex: number) {
       const zoneFlatIndices = fields.reduce<number[]>((indices, field, flatIndex) => {
          if (field.position === position) indices.push(flatIndex)
@@ -301,8 +277,7 @@ export function WysiwygArea({
       onUpdateMeta({ fields: fields.map(field =>
          field.id === id ? { ...field, position: field.position === 'above' ? 'below' : 'above' } : field) })
    }
-   // Toggle whether the label renders in the read view + export. Flipping back to the default
-   // (absent/true) drops the showLabel key rather than storing it explicitly, keeping the model clean.
+   // Flipping back to the default drops the showLabel key rather than storing true, keeping the model clean.
    function toggleFieldLabel(id: string) {
       onUpdateMeta({ fields: fields.map(field => {
          if (field.id !== id) return field
@@ -317,8 +292,8 @@ export function WysiwygArea({
          return { ...field, color }
       }) })
    }
-   // Reorder a field left/right within its own zone: swap it with the nearest same-zone neighbor
-   // in the flat array, so the other zone's fields keep their positions.
+   // Swap the field with its nearest same-zone neighbor in the flat array, so the other zone's
+   // fields keep their positions.
    function moveFieldWithinZone(id: string, direction: -1 | 1) {
       const current = fields.find(field => field.id === id)
       if (!current) return
@@ -336,8 +311,7 @@ export function WysiwygArea({
       onUpdateMeta({ fields: nextFields })
    }
 
-   // Resolve a field color to an inline `color` value: undefined lets CSS supply the muted gray,
-   // 'accent' tracks the document accent live, any other string is a literal hex.
+   // undefined lets CSS supply the muted gray, 'accent' tracks the document accent, else a literal hex.
    function resolveFieldColor(color: string | undefined): string | undefined {
       if (color === undefined) return undefined
       if (color === 'accent')  return 'var(--doc-accent)'
@@ -348,9 +322,6 @@ export function WysiwygArea({
    const popoverField  = colorPopover ? fields.find(field => field.id === colorPopover.fieldId) : undefined
    const menuField     = fieldMenu ? fields.find(field => field.id === fieldMenu.fieldId) : undefined
 
-   // Build the right-click context-menu entries for a field: insert before/after, reorder within the
-   // zone (disabled at the ends), flip zone (label reflects the current side), toggle the label,
-   // open the color popover (anchored to the field's rect), and delete.
    function buildFieldMenuEntries(field: typeof fields[number], fieldRect: DOMRect): ContextMenuEntry[] {
       const zoneFields = fields.filter(entry => entry.position === field.position)
       const zoneIndex  = zoneFields.findIndex(entry => entry.id === field.id)
@@ -392,9 +363,8 @@ export function WysiwygArea({
                   style={{ color: resolveFieldColor(field.color) }}
                   onContextMenu={event => {
                      event.preventDefault()
-                     // Stopped so the field menu takes precedence over the new document-background
-                     // catch-all context menu (bound higher up, on the outer canvas container),
-                     // otherwise both menus would open at once.
+                     // Stopped so the field menu takes precedence over the document-background
+                     // catch-all; otherwise both menus would open at once.
                      event.stopPropagation()
                      const rect = event.currentTarget.getBoundingClientRect()
                      setFieldMenu({ fieldId: field.id, x: event.clientX, y: event.clientY, rect })
@@ -454,63 +424,56 @@ export function WysiwygArea({
       ).filter((handle): handle is string => !!handle),
    [sections])
 
-   // The document-wide `handle -> table cells` catalog a linked graph resolves against. Same
-   // `useMemo`-over-`sections` seam as `allHandles`, one axis over; `collectTableSources` walks
-   // container columns too. Recomputes on any table edit -> every linked GraphBlock re-resolves.
+   // The document-wide `handle -> table cells` catalog a linked graph resolves against
+   // (collectTableSources walks container columns too). Recomputes on any table edit.
    const documentTables = useMemo(
       () => collectTableSources(sections.flatMap(section => section.blocks)),
    [sections])
 
-   // The full "Link to a table..." picker listing (the editor UX): every table, handled or
-   // not, with enough addressing to route a link/handle-assignment mutation back at a pick. Same
-   // `useMemo`-over-`sections` seam as `documentTables`, one axis over (see `LinkableTable`).
+   // The full "Link to a table..." picker listing: every table, handled or not, with enough
+   // addressing to route a link/handle-assignment back at a pick.
    const linkableTables = useMemo(() => collectLinkableTables(sections), [sections])
 
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-   // One shared block+section DnD context lives on the canvas (see the render). `activeSectionId`
-   // drives the section drop-indicator; `activeBlockId` + width drive the block drag ghost and the
-   // per-section bottom drop zones. Both are set from the merged handlers below, keyed by drag type.
+   // One shared block+section DnD context lives on the canvas. `activeSectionId` drives the section
+   // drop-indicator; `activeBlockId` + width drive the block drag ghost and the bottom drop zones.
    const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
    const [activeBlockId, setActiveBlockId]     = useState<string | null>(null)
    const [activeBlockWidth, setActiveBlockWidth] = useState<number | null>(null)
 
-   // The infinite-canvas sheet width. Absent format, bare infinite, or an explicit 'normal' width
-   // all resolve to the same 860px (see resolveDocumentSheetWidthPx), so an untouched document's
-   // editor renders unchanged.
+   // Infinite-canvas sheet width. Absent format, bare infinite, or 'normal' all resolve to the same
+   // 860px, so an untouched document's editor renders unchanged.
    const sheetWidthPx = resolveDocumentSheetWidthPx(format)
 
    // ==========================================================
    //  The paged (A4) page model
    // ==========================================================
-   // `paged` = a non-infinite kind. In paged mode the flat section/block flow is partitioned into
-   // discrete A4 sheets at the break markers (format.pages); infinite mode stays untouched and
-   // byte-identical. The Section/Block model is never restructured, pages are derived.
+   // In paged mode the flat section/block flow is partitioned into A4 sheets at the break markers
+   // (format.pages); infinite mode stays byte-identical. The model is never restructured, pages are
+   // derived.
    const paged        = !!format && format.kind !== 'infinite'
    const pageBreaks   = useMemo<PageBreak[]>(() => format?.pages ?? [], [format])
 
    // ==========================================================
    //  Deterministic pagination (App-owned, offscreen)
    // ==========================================================
-   // The canvas no longer measures its own sheets. App runs ONE offscreen paginator (computeDocumentPages)
-   // that is a pure function of (model, format, theme, ...) and feeds the resulting pages + too-tall ids in
-   // as props, so the editor, the Pages panel, Preview, and the PDF/HTML export render byte-identical pages.
-   // In infinite mode there are no pages, so the canvas renders one continuous sheet (`derivedPages` null).
+   // The canvas no longer measures its own sheets: App runs ONE offscreen paginator and feeds the
+   // pages + too-tall ids in as props, so editor, Pages panel, Preview, and export render identical
+   // pages. Infinite mode has no pages, so `derivedPages` is null and the canvas renders one sheet.
    const derivedPages: Page[] | null = paged ? pages : null
 
    // ==========================================================
    //  Paragraph focus: an out-of-flow edit overlay
    // ==========================================================
-   // An overflowing paragraph stays split into read-only fragments across sheets AT ALL TIMES (pagination
-   // no longer holds it whole, so nothing in flow moves on focus). Pressing a fragment instead floats one
-   // contiguous editable holding the WHOLE paragraph, pinned over the first fragment (see the overlay
-   // geometry + renderParagraphEditOverlay below): typing / caret / backspace behave natively because it
-   // is a single element, and because the overlay is position:absolute nothing in flow shifts on focus or
-   // blur. The focused id lives in App so it survives a tab and drives the measurement freeze; here we
-   // drive the request / blur signals, the overlay geometry, and the caret placement.
+   // An overflowing paragraph stays split into read-only fragments across sheets AT ALL TIMES.
+   // Pressing a fragment floats one contiguous editable holding the WHOLE paragraph, pinned over the
+   // first fragment: typing / caret / backspace behave natively (a single element), and because the
+   // overlay is position:absolute nothing in flow shifts on focus or blur. The focused id lives in
+   // App so it survives a tab; here we drive the request / blur signals, geometry, and caret.
    //
    // `focusedParagraphIdRef` mirrors the prop but is written EAGERLY on request / clear, so the blur
-   // that fires synchronously when focus hands off from one paragraph to another reads the incoming id
-   // (not the outgoing render's stale prop) and correctly skips clearing.
+   // firing synchronously when focus hands off between paragraphs reads the incoming id (not the
+   // outgoing render's stale prop) and correctly skips clearing.
    const focusedParagraphIdRef = useRef<string | null>(focusedParagraphId)
    focusedParagraphIdRef.current = focusedParagraphId
    // The pending caret to place once the requested paragraph has reflowed whole into the DOM.
@@ -528,15 +491,14 @@ export function WysiwygArea({
    }
 
    function notifyParagraphFocus(blockId: string): void {
-      // Any paragraph editable gained focus (a direct click on a whole paragraph, or the reflowed
-      // fragment once it mounts). Holding it as the focused id freezes measurement while it is edited, so
-      // a paragraph typed past a page boundary from scratch is protected too, not only fragment reflows.
+      // Any paragraph editable gained focus. Holding it as the focused id freezes measurement while
+      // it is edited, so a paragraph typed past a page boundary from scratch is protected too.
       setFocusedParagraph(blockId)
    }
 
    function notifyParagraphBlur(blockId: string): void {
-      // Only clear when THIS paragraph is still the focused one: a press on another paragraph's fragment
-      // (or a focus hand-off) has already moved the focused id forward, so its blur must not undo it.
+      // Only clear when THIS paragraph is still focused: a press on another fragment has already moved
+      // the focused id forward, so its blur must not undo it.
       if (focusedParagraphIdRef.current !== blockId) return
       focusedParagraphIdRef.current = null
       onParagraphFocusChange?.(null)
@@ -549,13 +511,11 @@ export function WysiwygArea({
       notifyBlur:   notifyParagraphBlur,
    }
 
-   // Where the edit overlay pins, measured from the live DOM in the `.doc-pages` STACK coordinate space (not
-   // a single sheet's): top/left place the whole-paragraph editable over the first fragment, `tailRects` are
-   // the paragraph's remaining fragments on later sheets, whose stale slice text a scrim covers while the
-   // overlay floats above. Stack-relative because the overlay must be a PEER of the sheets: a child of the
-   // first sheet paints behind later sibling sheets (sibling DOM order beats a descendant's z-index), which
-   // clipped the overlay at the next sheet's edge. null when no paragraph is focused or the focused one fits
-   // whole on a single sheet (that case edits in flow, no overlay).
+   // Where the edit overlay pins, in the `.doc-pages` STACK coordinate space: top/left place the
+   // whole-paragraph editable over the first fragment, `tailRects` are the later-sheet fragments whose
+   // stale slice text a scrim covers. Stack-relative because the overlay must be a PEER of the sheets:
+   // a child of the first sheet paints behind later sibling sheets and got clipped at the next sheet's
+   // edge. null when no paragraph is focused or the focused one fits whole (that case edits in flow).
    const [paragraphOverlay, setParagraphOverlay] = useState<{
       blockId:   string
       topPx:     number
@@ -563,29 +523,24 @@ export function WysiwygArea({
       tailRects: Array<{ topPx: number; leftPx: number; widthPx: number; heightPx: number }>
    } | null>(null)
 
-   // Measure the focused paragraph's fragments and derive the overlay geometry. A useLayoutEffect (not a
-   // passive one) so the measurement + overlay mount land BEFORE paint, which the rAF caret effect below
-   // relies on: by the time its frame fires, the overlay editable is in the DOM. A paragraph that renders
-   // as a single whole editable (short, unsplit) has one [data-block-id] element and gets NO overlay; only
-   // a paragraph split into 2+ fragments across sheets floats one. Reads live rects because block heights
-   // vary, so the fragments' on-stack positions cannot be predicted without measuring them.
+   // Measure the focused paragraph's fragments and derive the overlay geometry. useLayoutEffect (not
+   // passive) so the mount lands BEFORE paint, which the rAF caret effect below relies on. A short,
+   // unsplit paragraph has one [data-block-id] element and gets NO overlay; only a 2+ fragment split
+   // floats one. Reads live rects because block heights vary, so on-stack positions can't be predicted.
    useLayoutEffect(() => {
-      // The paged canvas container, reached through the DOM: `.doc-pages` is unique to the editor canvas
-      // (the Pages panel renders an HTML string, not these [data-block-id] nodes), matching the caret
-      // effect's own query. This overlay geometry reads the LIVE rendered fragments to position itself; it
-      // is independent of where the pages themselves came from (App's offscreen paginator).
+      // `.doc-pages` is unique to the editor canvas (the Pages panel renders an HTML string, not these
+      // [data-block-id] nodes). Reads the LIVE fragments, independent of where the pages came from.
       const container = document.querySelector<HTMLElement>('.doc-pages')
       if (!focusedParagraphId || !container) { setParagraphOverlay(null); return }
       const fragments = Array.from(container.querySelectorAll<HTMLElement>('[data-block-id]'))
          .filter(element => element.getAttribute('data-block-id') === focusedParagraphId)
       if (fragments.length < 2) { setParagraphOverlay(null); return }
-      // Offsets are taken against the `.doc-pages` box so they land in the stack's own coordinate space
-      // (where the overlay lives as a peer of the sheets). Both rects are viewport-relative, so subtracting
-      // cancels the scroll of the ancestor scroll container: the result is a stable layout offset, and the
-      // absolutely-positioned overlay scrolls together with the sheets since it shares this coordinate space.
+      // Offsets taken against the `.doc-pages` box land in the stack's coordinate space. Both rects
+      // are viewport-relative, so subtracting cancels the ancestor scroll: a stable layout offset, and
+      // the absolute overlay scrolls with the sheets since it shares this space.
       const containerRect = container.getBoundingClientRect()
-      // Measure the fragment's TEXT element (the bare p / h3 / h4 the fragment renders), not its wrapper,
-      // so the overlay's own text element lands on the same baseline and nothing appears to jump.
+      // Measure the fragment's TEXT element (the bare p / h3 / h4), not its wrapper, so the overlay's
+      // own text lands on the same baseline and nothing appears to jump.
       const rectOf = (wrapper: HTMLElement) => {
          const textElement = wrapper.querySelector<HTMLElement>('p, h3, h4') ?? wrapper
          const textRect    = textElement.getBoundingClientRect()
@@ -596,8 +551,8 @@ export function WysiwygArea({
       setParagraphOverlay({ blockId: focusedParagraphId, topPx: first.topPx, leftPx: first.leftPx, tailRects })
    }, [focusedParagraphId])
 
-   // The paragraph the overlay edits, looked up in the model so the overlay holds the WHOLE richText (not a
-   // fragment slice) and commits back to the right section. A split paragraph is always a top-level block.
+   // Looked up in the model so the overlay holds the WHOLE richText (not a fragment slice) and commits
+   // back to the right section. A split paragraph is always a top-level block.
    const overlayParagraph: { sectionId: string; block: Block } | null = (() => {
       if (!paragraphOverlay) return null
       for (const section of sections) {
@@ -607,10 +562,9 @@ export function WysiwygArea({
       return null
    })()
 
-   // Once the overlay editable has mounted, focus it and drop the caret at the pressed offset. rAF defers
-   // past the overlay's mount + innerHTML injection so the text nodes the caret addresses are present. The
-   // overlay holds the whole paragraph, so `caretOffset` (already model-absolute, mapped by the pressed
-   // fragment) needs no fragment math; the query targets the overlay's own editable, not an in-flow one.
+   // Once the overlay editable has mounted, focus it and drop the caret at the pressed offset. rAF
+   // defers past the mount + innerHTML injection so the addressed text nodes are present. `caretOffset`
+   // is already model-absolute, so no fragment math; the query targets the overlay's own editable.
    useEffect(() => {
       const pending = pendingParagraphCaretRef.current
       if (!pending || pending.blockId !== focusedParagraphId) return
@@ -625,9 +579,8 @@ export function WysiwygArea({
       return () => cancelAnimationFrame(frame)
    }, [focusedParagraphId])
 
-   // Build the format for a new page-break list, preserving kind/width/margins. An empty list drops the
-   // `pages` key entirely (an untouched, non-default format stays clean). Pure, so the DnD paths can fold
-   // it into a combined sections+format commit.
+   // Format for a new page-break list, preserving kind/width/margins. An empty list drops the `pages`
+   // key entirely. Pure, so the DnD paths can fold it into a combined sections+format commit.
    function formatWithPageBreaks(nextPages: PageBreak[]): DocFormat | undefined {
       const base = normalizeFormat(format)
       if (nextPages.length === 0) {
@@ -637,16 +590,15 @@ export function WysiwygArea({
       return { ...base, pages: nextPages }
    }
 
-   // Commit a new page-break list as a 'format' edit (the on-sheet remove button and the reconcile
-   // fallback). Records under the shared 'format' undo kind.
+   // Commit a page-break list under the shared 'format' undo kind (on-sheet remove button, reconcile
+   // fallback).
    function commitPageBreaks(nextPages: PageBreak[]): void {
       if (!onFormatChange) return
       onFormatChange(formatWithPageBreaks(nextPages))
    }
 
-   // Commit a block-menu break toggle under its own 'page-break' undo kind (falling back to 'format' if the
-   // dedicated lever is absent), so an explicit break is a discrete step that never merges into a nearby
-   // margin / width / band edit.
+   // Commit a block-menu break toggle under its own 'page-break' undo kind (falling back to 'format'),
+   // so an explicit break is a discrete step that never merges into a nearby margin / width / band edit.
    function commitPageBreakEdit(nextPages: PageBreak[]): void {
       const commit = onPageBreakChange ?? onFormatChange
       if (!commit) return
@@ -654,21 +606,19 @@ export function WysiwygArea({
    }
 
 
-   // Reconcile-on-change: re-anchor a break whose anchor block was deleted to its surviving
-   // predecessor (a boundary stays put, leaving a blank page where its content is gone) and refresh a
-   // stale sectionId. The previous flow is needed to find that predecessor, so it is tracked in a ref.
-   // Inlined (not via commitPageBreaks) so the effect's own guard, only fire when the reconciled list
-   // actually differs, keeps it loop-free.
+   // Reconcile-on-change: re-anchor a break whose anchor block was deleted onto its surviving
+   // predecessor (the boundary stays put, leaving a blank page) and refresh a stale sectionId. The
+   // previous flow finds that predecessor, so it is tracked in a ref. Inlined so the effect's own
+   // "only fire when the list differs" guard keeps it loop-free.
    const previousSectionsRef = useRef(sections)
    useEffect(() => {
-      // The reconcile write is a follow-on to whatever changed the flow (usually a block delete), not a
-      // fresh user action, so it goes through the NON-recording setter to persist without a second undo
-      // entry. Falls back to the recording committer only if the dedicated lever is not wired.
+      // A follow-on to whatever changed the flow, not a fresh user action, so it goes through the
+      // NON-recording setter to persist without a second undo entry. Falls back to the recording one.
       const commitReconciled = onReconcileFormat ?? onFormatChange
       const previousSections = previousSectionsRef.current
       previousSectionsRef.current = sections
-      // A read-only surface (Preview) must never mutate the model. Keep the ref fresh above so editing
-      // resumes with an accurate previous flow, then bail before any reconcile write while read-only.
+      // Preview must never mutate the model. Keep the ref fresh above so editing resumes with an
+      // accurate previous flow, then bail before any reconcile write.
       if (readOnly) return
       const currentPages = format?.pages
       if (!commitReconciled || !currentPages || currentPages.length === 0) return
@@ -688,9 +638,9 @@ export function WysiwygArea({
       }
    }, [sections, format, onFormatChange, onReconcileFormat, readOnly])
 
-   // The page-break API the block context menu consumes (published via PageBreaksContext so the deep
-   // WysiwygBlock subtree needn't be prop-drilled). Read-only surfaces (no onFormatChange) still
-   // report `paged` for rendering but the mutating calls no-op.
+   // The page-break API the block context menu consumes, published via PageBreaksContext so the deep
+   // WysiwygBlock subtree needn't be prop-drilled. Read-only surfaces still report `paged`, but the
+   // mutating calls no-op.
    const pageBreaksApi: PageBreaksApi = {
       paged,
       canStartOnNewPage: blockId => canStartOnNewPage(sections, blockId),
@@ -700,8 +650,8 @@ export function WysiwygArea({
       mergeWithPrevious: blockId => commitPageBreakEdit(mergeBlockWithPrevious(pageBreaks, sections, blockId)),
    }
 
-   // The title element, factored out so the "beside" logo placement can wrap it inside the same
-   // flex row without duplicating the PlainEditable props.
+   // Factored out so the "beside" logo placement can wrap it in the same flex row without duplicating
+   // the PlainEditable props.
    const titleElement = (
       <PlainEditable
          tag="h1"
@@ -709,16 +659,15 @@ export function WysiwygArea({
          onBlur={value => onUpdateMeta({ title: value.trim() })}
          singleLine
          readOnly={readOnly}
-         // Carve-out from the document background catch-all (bound on the outer canvas container):
-         // stop the right-click here so it never bubbles into the document menu, WITHOUT
-         // preventDefault, the title keeps the native browser context menu (copy/paste/spellcheck).
+         // Stop the right-click so it never bubbles into the background catch-all, but no
+         // preventDefault, so the title keeps the native browser menu (copy/paste/spellcheck).
          onContextMenu={event => event.stopPropagation()}
       />
    )
 
-   // Scope collisions to the active drag's kind: a section drag only sees section targets; a block
-   // drag only sees block targets + the per-section bottom zones. Without this, closestCenter would
-   // let a section drop resolve onto a block (and vice versa), producing a no-op or a wrong move.
+   // Scope collisions to the active drag's kind: a section drag only sees section targets, a block
+   // drag only block targets + bottom zones. Without this, closestCenter could resolve a section drop
+   // onto a block (and vice versa), a no-op or a wrong move.
    const collisionDetection: CollisionDetection = args => {
       const activeType = args.active.data.current?.type
       const droppableContainers = args.droppableContainers.filter(container => {
@@ -767,9 +716,8 @@ export function WysiwygArea({
          return
       }
 
-      // Drop onto a blank page: the dragged block becomes that page's only content. Sections + breaks
-      // commit together in ONE undo entry. Handled before the normal move since a blank page carries no
-      // BlockLoc.
+      // Drop onto a blank page: the dragged block becomes that page's only content, sections + breaks
+      // in ONE undo entry. Handled before the normal move since a blank page carries no BlockLoc.
       if (over.data.current?.type === 'blank-page' && paged && onCommitSectionsAndFormat && derivedPages) {
          const pageId = String(over.data.current.pageId)
          const targetIndex = derivedPages.findIndex(page => page.id === pageId)
@@ -788,9 +736,8 @@ export function WysiwygArea({
       const overType = over.data.current?.type
       const movedBlockId = String(active.id)
 
-      // Drop onto a page-end zone: append the block after that page's last block (whether the page ends
-      // mid-section or at a section end), and move the page boundary onto the appended block so it stays
-      // on THIS page. This is the only append target for a page that ends inside a section.
+      // Drop onto a page-end zone: append the block after that page's last block, and move the page
+      // boundary onto it so it stays on THIS page. The only append target for a page ending mid-section.
       if (overType === 'page-end' && paged && onCommitSectionsAndFormat && derivedPages) {
          const pageId     = String(over.data.current?.pageId)
          const targetPage = derivedPages.find(page => page.id === pageId)
@@ -806,8 +753,7 @@ export function WysiwygArea({
          if (anchorBlockId && anchorSectionId && anchorBlockId !== movedBlockId) {
             const anchorSection = sections.find(section => section.id === anchorSectionId)
             const anchorIndex   = anchorSection ? anchorSection.blocks.findIndex(block => block.id === anchorBlockId) : -1
-            // Insert right after the page's last block (before its section successor, or appended when
-            // the block ends the section).
+            // Insert right after the page's last block (before its section successor, or appended).
             const successorId = anchorSection && anchorIndex >= 0 && anchorIndex < anchorSection.blocks.length - 1
                ? anchorSection.blocks[anchorIndex + 1].id : null
             let nextPages = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
@@ -817,8 +763,8 @@ export function WysiwygArea({
                      ? { ...pageBreak, after: { sectionId: anchorSectionId!, blockId: movedBlockId } }
                      : pageBreak)
             }
-            // Move + re-anchor commit together, so the whole drag is a single undo entry. relocateBlock is
-            // the same pure transform moveBlockAcross runs, computed here so it can join the format write.
+            // Move + re-anchor commit together as a single undo entry. relocateBlock is the same pure
+            // transform moveBlockAcross runs, computed here so it can join the format write.
             const nextSections = relocateBlock(sections, from, movedBlockId, { kind: 'section', sectionId: anchorSectionId }, successorId)
             onCommitSectionsAndFormat(nextSections, formatWithPageBreaks(nextPages))
          }
@@ -831,9 +777,8 @@ export function WysiwygArea({
       // Containers are one level deep: never drop a container block into a container column.
       if (active.data.current?.blockType === 'container' && to.kind === 'column') return
       const beforeBlockId = overType === 'block' ? String(over.id) : null
-      // Paged: keep a boundary where the page ended when its own anchor block is dragged away (the moved
-      // block that STARTS a page is not an anchor, so it needs no handling here), and commit the move +
-      // the re-anchor together as ONE undo entry. Infinite: a plain sections-only move.
+      // Paged: keep a boundary where the page ended when its anchor block is dragged away, and commit
+      // the move + re-anchor as ONE undo entry. Infinite: a plain sections-only move.
       if (paged && onCommitSectionsAndFormat) {
          const reanchored   = reanchorMovedBlocks(pageBreaks, sections, [movedBlockId])
          const nextSections = relocateBlock(sections, from, movedBlockId, to, beforeBlockId)
@@ -846,16 +791,13 @@ export function WysiwygArea({
    // ==========================================================
    //  Render helpers (shared by the infinite single sheet + the paged A4 sheets)
    // ==========================================================
-   // Background watermark layer, parametrized by <pattern> id so each paged sheet gets its own
-   // collision-free id. Guarded on the optional field (an absent watermark means nothing renders).
-   // The tiled and single branches match export.ts exactly (shared string builders), so editor +
-   // export never drift.
+   // Background watermark layer, parametrized by <pattern> id so each paged sheet gets its own. The
+   // tiled and single branches match export.ts (shared string builders), so editor + export can't drift.
    function renderWatermarkLayer(patternId: string): React.ReactNode {
       if (!presentation?.watermark?.src) return null
       const watermark = presentation.watermark
-      // The clip wrapper is NOT transformed, so it clips the rotated inner .doc-watermark (or the
-      // tiled pattern svg) to the sheet box - the sheet's own overflow can't do this (see doc-watermark-clip
-      // in doc.css for why the editor .doc-page can't just get overflow:hidden directly).
+      // The clip wrapper is NOT transformed, so it clips the rotated inner .doc-watermark (or tiled
+      // pattern svg) to the sheet box; the sheet's own overflow can't (see doc-watermark-clip in doc.css).
       if (watermark.tile) {
          return (
             <div className="doc-watermark-clip" aria-hidden="true">
@@ -885,9 +827,8 @@ export function WysiwygArea({
       )
    }
 
-   // The page header (title / metadata zones / logo + the field color popover & menu). Renders once:
-   // on the single infinite sheet, or on page 1 only in paged mode (matching a real document's first
-   // page).
+   // Title / metadata zones / logo + the field color popover and menu. Renders once: on the single
+   // infinite sheet, or on page 1 only in paged mode.
    function renderPageHeader(): React.ReactNode {
       return (
          <div className="page-header">
@@ -934,7 +875,7 @@ export function WysiwygArea({
       )
    }
 
-   // The empty-document state (no sections). Renders on the single sheet, or the last paged sheet.
+   // The empty-document state (no sections), on the single sheet or the last paged sheet.
    function renderEmptyDocState(): React.ReactNode {
       if (sections.length !== 0) return null
       return !readOnly && onAddSection ? (
@@ -956,8 +897,7 @@ export function WysiwygArea({
       )
    }
 
-   // The new-section affordance at the document tail (mirrors each section's add-block row). Renders on
-   // the single sheet, or the last paged sheet.
+   // The new-section affordance at the document tail, on the single sheet or the last paged sheet.
    function renderTailAddSection(): React.ReactNode {
       if (readOnly || !onAddSection || sections.length === 0) return null
       return (
@@ -974,8 +914,8 @@ export function WysiwygArea({
       )
    }
 
-   // Infinite mode: the whole section flow. The DnD context is the shared one on the canvas (see the
-   // render), so this only owns the section SortableContext; readOnly renders a plain map (no DnD).
+   // Infinite mode: the whole section flow. The DnD context is the shared one on the canvas, so this
+   // only owns the section SortableContext; readOnly renders a plain map.
    function renderInfiniteSections(): React.ReactNode {
       if (readOnly) {
          return (
@@ -995,8 +935,8 @@ export function WysiwygArea({
                   <WysiwygSection section={sec} index={index} isLastSection={index === sections.length - 1} activeSectionId={activeSectionId} activeBlockId={activeBlockId} />
                </div>
             ))}
-            {/* The last-slot target for section reorder: without it the noopStrategy + newIdx-1
-                compensation can only land a dragged section BEFORE the last one. */}
+            {/* Last-slot reorder target: without it the noopStrategy + newIdx-1 compensation can only
+                land a dragged section BEFORE the last one. */}
             {activeSectionId != null && sections.length > 1 && (
                <BottomDropZone id="section-end-zone" data={{ type: 'section-zone' }} />
             )}
@@ -1004,8 +944,8 @@ export function WysiwygArea({
       )
    }
 
-   // One page slice (a section's contribution to a page) becomes a WysiwygSection over the subset.
-   // A unique sortableId + sectionDragDisabled keep a split section's two slices from clashing dnd ids.
+   // A section's contribution to a page becomes a WysiwygSection over the subset. A unique sortableId
+   // + sectionDragDisabled keep a split section's two slices from clashing dnd ids.
    function renderPageSlice(slice: PageSlice, page: Page): React.ReactNode {
       const sectionIndex = sections.findIndex(candidate => candidate.id === slice.section.id)
       return (
@@ -1027,15 +967,12 @@ export function WysiwygArea({
       )
    }
 
-   // The running header / footer bands for one sheet: absolutely positioned rows in the top / bottom
-   // margin band, on every page. Rendered from the SAME `renderPageBandHtml` the export uses (via
-   // dangerouslySetInnerHTML) so editor and export never drift; the per-doc margin positions are inline.
+   // The header / footer bands for one sheet: absolutely positioned rows in the margin band, on every
+   // page. Rendered from the SAME `renderPageBandHtml` the export uses, so editor and export can't drift.
    function renderBands(pageIndex: number, total: number, margins: PageMargins): React.ReactNode {
       const bandCtx = { pageIndex, pageCount: total, madeWith: t.madeWithDocuminter, pageWord: t.pageNumberWordPage, ofWord: t.pageNumberWordOf }
       const headerHtml = renderPageBandHtml(resolveHeader(format), bandCtx)
-      // The editor shows only what the author placed (the optional footer page number); the Documinter
-      // credit is stamped in on export only, so the editor reads the raw stored footer, not the derived
-      // band that injects the credit.
+      // The editor reads the raw stored footer; the Documinter credit is stamped in on export only.
       const footerHtml = renderPageBandHtml(format?.footer ?? {}, bandCtx)
       const bandStyle = (edge: 'header' | 'footer'): React.CSSProperties => {
          const style: React.CSSProperties = { position: 'absolute', left: millimetresToPx(margins.left), right: millimetresToPx(margins.right) }
@@ -1051,14 +988,12 @@ export function WysiwygArea({
       )
    }
 
-   // The out-of-flow edit surface for the focused split paragraph, rendered ONCE at the `.doc-pages` stack
-   // level (a peer of the sheets, not a child of one) so it floats above every sheet it spans: a child of
-   // the first sheet paints behind later sibling sheets and got clipped at the next sheet's top edge. It is
-   // absolute against the position:relative `.doc-pages`, pinned over the first fragment, opaque so the
-   // read-only fragment stays covered and the seam vanishes while editing. Each later fragment the paragraph
-   // reaches gets a scrim hiding its stale slice text under the floating overlay. The editable sits in an
-   // inner `.doc-render` (dark-tagged via the outer div) so it keeps the document paragraph typography now
-   // that it no longer lives inside a sheet's `.doc-render`; its padding is zeroed so the text stays pinned.
+   // The out-of-flow edit surface for the focused split paragraph, rendered ONCE at the `.doc-pages`
+   // stack level (a peer of the sheets) so it floats above every sheet it spans; a child of the first
+   // sheet got clipped at the next sheet's top edge. Absolute against the relative `.doc-pages`, pinned
+   // over the first fragment, opaque so the read-only fragment stays covered. Each later fragment gets a
+   // scrim hiding its stale slice text. The editable sits in a padding-less inner `.doc-render` so it
+   // keeps document typography now that it no longer lives inside a sheet's `.doc-render`.
    function renderParagraphEditOverlay(): React.ReactNode {
       if (!paragraphOverlay || !overlayParagraph) return null
       const darkClass = docTheme === 'dark' ? 'doc-dark' : ''
@@ -1075,9 +1010,8 @@ export function WysiwygArea({
                data-para-overlay
                className={`doc-para-edit-overlay ${darkClass}`}
                style={{ top: `${paragraphOverlay.topPx}px`, left: `${paragraphOverlay.leftPx}px`, width: `${contentBoxWidthPx(format)}px`, '--doc-accent': docAccent } as React.CSSProperties}
-               // While the paragraph is being edited in this floating overlay, keep a right-click on the
-               // native browser menu (copy / paste / spellcheck) instead of letting it bubble to the
-               // document background menu. Stop propagation only, no preventDefault (same as the title).
+               // Keep a right-click on the native browser menu instead of the background one. Stop
+               // propagation only, no preventDefault (same as the title).
                onContextMenu={event => event.stopPropagation()}
             >
                <div className="doc-render" style={{ padding: 0 }}>
@@ -1094,25 +1028,23 @@ export function WysiwygArea({
       )
    }
 
-   // One paged A4 sheet: sized to the kind's portrait/landscape px, inset by the margins, with a page
-   // label and (for pages 2..N) a remove-break affordance. Page 1 carries the document header; the
-   // last page carries the empty-state / tail add-section.
+   // One paged A4 sheet: sized to the kind's px, inset by the margins, with a page label and (for
+   // pages 2..N) a remove-break affordance. Page 1 carries the header; the last page the empty-state.
    function renderPageSheet(page: Page, pageIndex: number, total: number): React.ReactNode {
       const margins     = format?.margins ?? DEFAULT_A4_MARGINS
       const isLandscape = format?.kind === 'a4-landscape'
       const sheetWidth  = isLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
       const sheetHeight = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
       const isLastPage  = pageIndex === total - 1
-      // A page with no slices is an intentional blank page (a stacked / trailing break), EXCEPT the
-      // empty document's sole page, which keeps its add-section empty state. So a slice-less page shows
-      // the blank-page drop target whenever the document holds content or there is more than one page.
+      // A slice-less page is an intentional blank page (stacked / trailing break), EXCEPT the empty
+      // document's sole page, which keeps its add-section empty state. So it shows the blank-page drop
+      // target whenever the document holds content or there is more than one page.
       const hasContent    = sections.some(section => section.blocks.length > 0)
       const showBlankDrop = page.slices.length === 0 && (hasContent || total > 1) && !readOnly && !!onFormatChange
-      // The one overflow auto-reflow cannot resolve: a single atomic block taller than the whole sheet.
-      // Surfaced only in edit mode (matching the hook's `enabled` gate) as a note, never a break.
+      // The one overflow auto-reflow cannot resolve: a single atomic block taller than the sheet.
+      // Surfaced only in edit mode, as a note, never a break.
       const showTooTall = !readOnly && !!onFormatChange && tooTallPageIds.has(page.id)
-      // A quiet corner label naming HOW this sheet came to be (a manual break, a block continuation, a
-      // paginator push). Page 1 has no meaningful "type", so it gets none.
+      // A corner label naming HOW this sheet came to be. Page 1 has no meaningful type, so none.
       const typeLabel = pageTypeLabel(page.origin, t)
       return (
          <div
@@ -1163,21 +1095,17 @@ export function WysiwygArea({
                        dragging={activeBlockId != null}
                     />
                   : page.slices.map(slice => renderPageSlice(slice, page))}
-               {/* The page's append target: dropping a block here puts it at the end of THIS page, even
-                   when the page ends inside a section (the section bottom zone is suppressed in paged
-                   mode). Only mounted mid block-drag on a page that holds content. */}
+               {/* Append target: drops a block at the end of THIS page even when it ends inside a
+                   section (the section bottom zone is suppressed in paged mode). Mounted mid-drag only. */}
                {!showBlankDrop && !readOnly && onFormatChange && activeBlockId != null
                   && page.slices.some(slice => slice.blocks.length > 0) && (
                   <BottomDropZone id={`page-end-${page.id}`} data={{ type: 'page-end', pageId: page.id }} />
                )}
                {isLastPage && !showBlankDrop && (<>{renderEmptyDocState()}{renderTailAddSection()}</>)}
             </div>
-            {/* The one overflow auto-reflow cannot resolve: a single atomic block (a figure, table, code,
-                or a paragraph / list the author pinned with "Keep on one page") taller than the whole
-                sheet. A hatched shade covers the part that spills past the A4 bottom-margin line so it is
-                obvious WHICH slice overflows, topped by a note pill straddling that line. Both are pinned
-                and absolutely positioned so they never alter page flow. Splittable blocks reflow on their
-                own and never reach here. */}
+            {/* A single atomic block taller than the sheet, the one overflow auto-reflow can't resolve.
+                A hatched shade covers the part spilling past the bottom-margin line so it is obvious
+                WHICH slice overflows, topped by a note pill. Both absolute, so they never alter flow. */}
             {showTooTall && (
                <>
                   <div
@@ -1208,9 +1136,8 @@ export function WysiwygArea({
       )
    }
 
-   // The document background context menu. Rendered ONCE (portaled / fixed), not per paged sheet. The
-   // document editors (Presentation / Navigation / Page setup) live as dockable panels now, so no
-   // per-document windows mount here.
+   // The document background context menu, rendered ONCE, not per paged sheet. The document editors
+   // live as dockable panels now, so no per-document windows mount here.
    function renderDocWindowsAndMenus(): React.ReactNode {
       return (
          <>
@@ -1245,16 +1172,15 @@ export function WysiwygArea({
             onDrop={handleTemplateDrop}
          >
             {(() => {
-               // The canvas body: paged sheets or the single infinite sheet. Both modes render blocks
-               // through WysiwygSection, whose block SortableContexts all live under the ONE shared DnD
-               // context below (so a drag can cross sections and, in paged mode, sheets).
+               // Paged sheets or the single infinite sheet. Both render blocks through WysiwygSection,
+               // whose SortableContexts all live under the ONE shared DnD context below, so a drag can
+               // cross sections and, in paged mode, sheets.
                const canvasBody = paged && derivedPages ? (
                   // Paged (A4) mode: the flat flow partitioned into stacked A4 sheets.
                   <div className="doc-pages">
                      {derivedPages.map((page, pageIndex) => renderPageSheet(page, pageIndex, derivedPages.length))}
-                     {/* The focused split paragraph's edit overlay + tail scrims, mounted as a peer of the
-                         sheets (not inside one) so the overlay floats above every sheet it spans instead of
-                         being clipped behind the next one. Absolute against the position:relative stack. */}
+                     {/* Mounted as a peer of the sheets (not inside one) so it floats above every sheet
+                         it spans instead of being clipped behind the next. Absolute against the stack. */}
                      {!readOnly && renderParagraphEditOverlay()}
                   </div>
                ) : (
@@ -1283,13 +1209,13 @@ export function WysiwygArea({
                   <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={resetDrag}>
                      {canvasBody}
                      {/* Shared block drag ghost (sections use an opacity dim + insertion bar, no ghost).
-                         The overlay is hoisted out of the .doc-render sheet, so it re-establishes the
-                         doc theme scope (.doc-dark + --doc-accent + a padding-less .doc-render) itself;
-                         otherwise the ghost text would render in the app theme, unreadable on a dark doc. */}
+                         Hoisted out of the .doc-render sheet, so it re-establishes the doc theme scope
+                         itself; otherwise the ghost text would render in the app theme, unreadable on a
+                         dark doc. */}
                      <DragOverlay>
                         {activeBlockId && (() => {
-                           // Find the dragged block across section bodies AND container columns (an inner
-                           // block isn't in section.blocks) so the ghost renders for both.
+                           // Across section bodies AND container columns (an inner block isn't in
+                           // section.blocks), so the ghost renders for both.
                            const found = findBlockOnCanvas(sections, activeBlockId)
                            const sourceSection = found?.section
                            const activeBlock   = found?.block
@@ -1310,13 +1236,11 @@ export function WysiwygArea({
             })()}
             {renderDocWindowsAndMenus()}
          </div>
-         {/* Template drop overlay: a peer of the scroll area, pinned to the relative flex row (like the
-             overflow navigator below) so it stays centered in the visible canvas while a long document
-             scrolls, instead of riding the scrolled content and sliding off the top. */}
+         {/* Pinned to the relative flex row (not the scroll area) so it stays centered in the visible
+             canvas while a long document scrolls, instead of riding the content off the top. */}
          {isTemplateDragOver && (
             <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
-               {/* A white shadow on the icon + label so the accent-tinted text keeps contrast over
-                   whatever document content the translucent overlay sits on top of. */}
+               {/* White shadow so the accent-tinted text keeps contrast over the content below. */}
                <div
                   className="flex flex-col items-center gap-2.5"
                   style={{ filter: 'drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9))' }}
@@ -1326,9 +1250,8 @@ export function WysiwygArea({
                </div>
             </div>
          )}
-         {/* Floating overflow navigator: a Find-bar-style pill naming how many blocks overflow their
-             sheet and stepping through them. Sits over the canvas (a peer of the scroll area, pinned to
-             the relative flex row) so it stays put while the canvas scrolls. Editor-only, paged-only. */}
+         {/* Find-bar-style pill naming how many blocks overflow their sheet and stepping through them.
+             Pinned to the relative flex row so it stays put while the canvas scrolls. Editor + paged only. */}
          {!readOnly && derivedPages && (
             <OverflowNavigator pageIds={derivedPages.filter(page => tooTallPageIds.has(page.id)).map(page => page.id)} />
          )}

@@ -23,9 +23,8 @@ import { useLang } from '../contexts/LangContext'
 // # CONSTANTS #
 // #############
 
-// The rendered thumbnail width in px; each thumbnail is a scaled-down render of the page's real A4
-// sheet (renderBlocksToDocHtml at full sheet px, CSS-scaled), so this width divided by the sheet
-// width gives the scale factor. Small + read-only, so it stays cheap.
+// Thumbnail width in px; each thumbnail is a page's real A4 sheet rendered at full px and CSS-scaled,
+// so this width over the sheet width gives the scale factor.
 const THUMBNAIL_WIDTH_PX = 150
 
 // #########
@@ -51,9 +50,8 @@ interface PagesPanelBodyProps {
    onJump:        (pageId: string) => void
 }
 
-// A drag unit: an author (or paginator-pushed) lead page plus the continuation sheets that a block
-// flowing off it produced. Grouping keeps a block's start + its continuations moving as one, so the
-// drop indicator only ever lands BETWEEN blocks, never in the middle of one that spans sheets.
+// A drag unit: a lead page plus the continuation sheets a block flowing off it produced. Grouping
+// keeps a block's start + continuations moving as one, so a drop only lands BETWEEN blocks.
 interface PageGroup {
    lead:    Page
    members: { page: Page; index: number }[]   // lead first, then its continuations; index = flat page index
@@ -63,9 +61,8 @@ interface PageGroup {
 // # HELPERS #
 // ###########
 
-// Fold the flat page list into drag-unit groups. A group opens at any page that is NOT a continuation
-// (origin 'first' | 'manual' | 'auto-start', or an unstamped page) and swallows the continuation sheets
-// immediately after it. A stray leading continuation (should never happen) simply opens its own group.
+// Fold the flat page list into drag-unit groups. A group opens at any non-continuation page and swallows
+// the continuation sheets right after it; a stray leading continuation opens its own group.
 function groupPagesIntoDragUnits(pages: Page[]): PageGroup[] {
    const groups: PageGroup[] = []
    pages.forEach((page, index) => {
@@ -107,9 +104,8 @@ function PageThumbnail({
    canDelete, onJump, onDuplicate, onDelete, onInsertAfter, onRemoveBreak,
 }: PageThumbnailProps) {
    const { t } = useLang()
-   // An auto page (continuation or auto-start) is a reflow / push the paginator created, not an author-made
-   // page: it cannot be duplicated, deleted, or inserted after, so it carries no actions menu. Jump-to-page
-   // still works. A manual page additionally carries a dissolvable break (remove-break merges it back up).
+   // An auto page (continuation or auto-start) is a paginator push, not author-made: no duplicate / delete
+   // / insert, so no actions menu (jump still works). A manual page also carries a dissolvable break.
    const isAutoPage    = isAutoPageId(page.id)
    const isManualBreak = page.origin === 'manual'
 
@@ -131,8 +127,7 @@ function PageThumbnail({
       openMenuAt(rect.right, rect.bottom)
    }
 
-   // The menu's items are exactly the former inline actions, same handlers and labels: insert-after,
-   // duplicate, remove-break (manual pages only), delete (disabled on a single-page document).
+   // Insert-after, duplicate, remove-break (manual pages only), delete (disabled on a single-page document).
    const menuEntries: ContextMenuEntry[] = [
       { label: t.formatInsertPageAfter, icon: <FilePlus2 size={13} />,          onSelect: () => onInsertAfter(pageIndex) },
       { label: t.pageSorterDuplicate,   icon: <Copy size={13} />,               onSelect: () => onDuplicate(pageIndex) },
@@ -142,10 +137,8 @@ function PageThumbnail({
       { label: t.pageSorterDelete, icon: <Trash2 size={13} />, danger: true, disabled: !canDelete, onSelect: () => onDelete(pageIndex) },
    ]
 
-   // Renders the page into self-contained doc HTML the same way the export builds it: the document header
-   // (title + meta) on the first page, then each section slice's `<h2>` heading + its blocks, so the
-   // thumbnail reflects the real page. Rendered at the real sheet px inside a scaled wrapper. Image blocks
-   // use the cheap placeholder (a thumbnail needs no full base64 fidelity); graphs / diagrams are inline SVG.
+   // Renders the page into self-contained doc HTML the same way the export does, so the thumbnail
+   // reflects the real page. Image blocks use the cheap placeholder (no base64 needed at thumbnail size).
    const html = renderPagePreviewHtml(page, {
       isFirstPage: pageIndex === 0,
       meta, sections, accent: docAccent, theme: docTheme,
@@ -169,8 +162,8 @@ function PageThumbnail({
                className="page-thumb-scaler"
                style={{ width: `${sheetWidthPx}px`, height: `${sheetHeightPx}px`, transform: `scale(${scale})` }}
             >
-               {/* .doc-dark rides the frame (an ANCESTOR), so the `.doc-dark .doc-render ...` descendant
-                   rules match AND the frame's own dark canvas background fills below short content. */}
+               {/* .doc-dark rides the frame (an ANCESTOR), so the `.doc-dark .doc-render` descendant rules
+                   match AND the frame's own dark canvas fills below short content. */}
                <div
                   className="doc-render page-thumb-render"
                   style={{
@@ -185,9 +178,8 @@ function PageThumbnail({
             </div>
          </button>
 
-         {/* Kebab: the actions menu's second trigger, tucked over the sheet's top-right corner so it never
-             shoves the layout. Revealed on hover / focus for a clean resting state, keyboard-reachable.
-             onPointerDown stops the group drag from arming when the button is pressed. */}
+         {/* Kebab: the actions menu's second trigger, over the sheet's top-right corner, revealed on
+             hover / focus. onPointerDown stops the group drag from arming when the button is pressed. */}
          {!isAutoPage && (
             <button
                type="button"
@@ -210,8 +202,8 @@ function PageThumbnail({
                </span>
             )}
             {isAutoPage && (
-               // An auto sheet has no independent page controls: it just labels its kind. A continuation
-               // carries a block flowing off the previous page; an auto-start begins fresh pushed content.
+               // An auto sheet just labels its kind: a continuation carries a block flowing off the
+               // previous page, an auto-start begins fresh pushed content.
                <span className="page-thumb-continuation">
                   {page.origin === 'auto-start' ? t.pageSorterAutoPage : t.pageSorterContinuation}
                </span>
@@ -251,9 +243,8 @@ function PageThumbGroup({
    group, pageCount, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
    canDelete, onJump, onDuplicate, onDelete, onInsertAfter, onRemoveBreak,
 }: PageThumbGroupProps) {
-   // The GROUP is the sortable / drag unit, keyed on its lead page id. A group led by an author page
-   // ('first' or 'manual', a real page) reorders; one led by a paginator push ('auto-start', an auto id)
-   // is frozen in place, so the drop indicator only appears between reorderable groups.
+   // The GROUP is the drag unit, keyed on its lead page id. A group led by an author page reorders; one
+   // led by a paginator push ('auto-start') is frozen, so drops only land between reorderable groups.
    const isReorderable = !isAutoPageId(group.lead.id)
    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
       useSortable({ id: group.lead.id, disabled: !isReorderable })
@@ -297,17 +288,13 @@ function PageThumbGroup({
 // # COMPONENT #
 // #############
 
-/**
- * The Pages panel's body: the scrollable column of page thumbnails with drag-reorder, jump-to-page,
- * and per-page actions (a "..." menu + right-click). This is the panel content only, with no surrounding
- * aside, header, rail, or dock chrome, so it renders identically whether hosted by the dock or a floating
- * window. Pages are DERIVED from the document's break markers; every action routes through the pure page
- * transforms upstream (the parent supplies the handlers).
+/** The Pages panel's body: the scrollable column of page thumbnails with drag-reorder, jump-to-page, and
+ *  per-page actions ("..." menu + right-click). Chrome-free, so it renders the same docked or floating.
+ *  Pages are DERIVED from the document's break markers; every action routes through the parent's handlers.
  *
- * Pages are folded into GROUPS (a block's start page + its continuation sheets) and the group is the drag
- * unit, so reordering never tries to split a block that spans sheets. A group's reorder still calls
- * onReorder with its lead page's flat index, which the upstream hook maps to the forced-break model.
- */
+ *  Pages fold into GROUPS (a block's start page + its continuation sheets) and the group is the drag unit,
+ *  so reordering never splits a block that spans sheets. A group's reorder calls onReorder with its lead
+ *  page's flat index, which the upstream hook maps to the forced-break model. */
 export function PagesPanelBody({
    pages, meta, sections, docTheme, docAccent, margins, sheetWidthPx, sheetHeightPx,
    onReorder, onDuplicate, onDelete, onInsertAfter, onRemoveBreak, onAddPage, onSaveAsPdf, onJump,
@@ -325,8 +312,8 @@ export function PagesPanelBody({
       setDraggingLeadId(null)
       const { active, over } = event
       if (!over || active.id === over.id) return
-      // Both ids are group LEAD page ids: their flat index in `pages` is the display index the upstream
-      // hook already maps to the forced-break model, so this stays byte-identical to the per-page wiring.
+      // Both ids are group LEAD page ids; their flat index in `pages` is the display index the upstream
+      // hook maps to the forced-break model.
       const fromIndex = pages.findIndex(page => page.id === active.id)
       const toIndex   = pages.findIndex(page => page.id === over.id)
       if (fromIndex !== -1 && toIndex !== -1) onReorder(fromIndex, toIndex)

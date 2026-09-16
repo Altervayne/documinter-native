@@ -24,10 +24,7 @@ interface TreeBlockMenuProps {
 // # COMPONENT #
 // #############
 
-/**
- * Panel-tree block right-click menu: Duplicate + Delete. Thin adapter over the shared
- * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
- */
+/** Panel-tree block right-click menu (Duplicate + Delete); thin adapter over the shared <ContextMenu>. */
 export function TreeBlockMenu({ secId, blockId, position, onClose }: TreeBlockMenuProps) {
    const documentMutations = useDocumentMutations()
    const { t } = useLang()

@@ -6,10 +6,7 @@ import type { RefObject } from 'react'
 // # TYPES #
 // #########
 
-/**
- * A viewport-coordinate click point (context menus open at the cursor), or an anchor
- * rectangle for dropdowns/pickers that flip above/below their trigger button.
- */
+/** A viewport-coordinate click point (menus at the cursor), or an anchor rect for pickers that flip above/below their trigger. */
 export type ClampAnchor =
    | { type: 'point'; x: number; y: number }
    | { type: 'rect';  rect: DOMRect; preferAbove?: boolean }
@@ -25,21 +22,17 @@ interface ClampedResult<ElementType extends HTMLElement> {
 // # CONSTANTS #
 // #############
 
-// A small but visible gap kept between a clamped popover's box and every viewport edge, enough
-// that the menu (and its softened drop-shadow) never reads as flush-with / spilling-off the edge.
-// Exported so popovers taller than the viewport (e.g. BlockContextMenu, which can reach roughly
-// 650px) can cap their own height to the same margin instead of hardcoding a second value.
+// Gap kept between a clamped popover and every viewport edge. Exported so a popover taller than the
+// viewport can cap its own height to the same margin instead of hardcoding a second value.
 export const DEFAULT_MARGIN = 12
 
 // ############
 // # INTERNAL #
 // ############
 
-// Two-sided clamp: never past the far edge (Math.min) and never before the near edge (Math.max).
-// The near-edge floor matters because a Math.min-only clamp lets `viewport - size - margin` go
-// negative and push the popover off-screen.
-// Exported so the draggable-window primitive reuses the exact same clamp rule rather than
-// re-deriving it (single source of truth for "can never leave the viewport").
+// Two-sided clamp. The near-edge floor (Math.max) matters because a Math.min-only clamp lets
+// `viewport - size - margin` go negative and push the popover off-screen. Exported so the
+// draggable-window primitive reuses the exact same rule.
 export function clampAxis(desired: number, size: number, viewportSize: number, margin: number): number {
    return Math.max(margin, Math.min(desired, viewportSize - size - margin))
 }
@@ -78,12 +71,9 @@ function computePosition(
 // #############
 
 /**
- * Positions a portaled popover so it stays fully on-screen on both axes.
- *
- * The popover's size is measured from the actual rendered node (layout effect + ref) rather than
- * estimated from an item count: heights here are dynamic (a context menu grows with its rows,
- * BlockContextMenu can reach roughly 650px), and an estimate can undershoot enough to push the
- * popover off-screen. Recomputes on window resize so an open popover follows the viewport.
+ * Positions a portaled popover to stay fully on-screen on both axes. Size is measured from the rendered
+ * node (layout effect + ref), not estimated from a row count, since an undershoot would push it
+ * off-screen; recomputes on window resize so an open popover follows the viewport.
  */
 export function useViewportClampedPosition<ElementType extends HTMLElement = HTMLDivElement>(
    anchor: ClampAnchor,
@@ -96,8 +86,7 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
       height: window.innerHeight,
    }))
 
-   // Measure the rendered popover before paint (synchronous, so there is no visible flicker as the
-   // 0x0 first pass is corrected). This captures the real box on mount rather than an estimate.
+   // Measure before paint (synchronous) so the 0x0 first pass is corrected without a visible flicker.
    useLayoutEffect(() => {
       const element = ref.current
       if (!element) return
@@ -105,10 +94,8 @@ export function useViewportClampedPosition<ElementType extends HTMLElement = HTM
       setSize({ width: rect.width, height: rect.height })
    }, [])
 
-   // A menu's content isn't always stable while open, e.g. the document-background context
-   // menu's accent section expands an inline ColorPicker in place, growing the menu's own box.
-   // Re-measure whenever the rendered size actually changes so the clamp keeps the (now taller)
-   // popover fully on-screen instead of freezing the stale mount-time box.
+   // A menu can grow while open (the accent section expands an inline ColorPicker in place), so
+   // re-measure on size changes to keep the taller box on-screen rather than freezing the mount-time size.
    useEffect(() => {
       const element = ref.current
       if (!element || typeof ResizeObserver === 'undefined') return

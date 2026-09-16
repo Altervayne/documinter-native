@@ -32,21 +32,17 @@ interface TemplatesPanelBodyProps {
 // # COMPONENT #
 // #############
 
-/**
- * The Templates panel's body: a docked, vertically-stacked mirror of the Binder's Templates view.
- * Owns its own `useTemplates` instance (built-ins first, then the user's stored templates) so its
- * mutations refresh the list in place without any App-level list state. Chrome-free, so it renders
- * identically whether the dock hosts it or it floats in a window. Its cards are also drag sources
- * (enableApplyDrag): dragging one onto the canvas applies it, the same effect as the Apply button,
- * via the native HTML5 drag channel in lib/templateDrag.ts.
- */
+/** The Templates panel's body: a docked, vertically-stacked mirror of the Binder's Templates view.
+ *  Owns its own `useTemplates` instance so mutations refresh the list in place without App-level state.
+ *  Chrome-free, so it renders the same docked or floating. Its cards are also drag sources
+ *  (enableApplyDrag): dragging one onto the canvas applies it, same as the Apply button. */
 export function TemplatesPanelBody({ currentChrome, onUse, onApply }: TemplatesPanelBodyProps) {
    const { t } = useLang()
    const [version, setVersion] = useState(0)
    const templates = useTemplates(version, () => setVersion(current => current + 1))
 
-   // Text-input dialog shared by "save current as template" and "rename template", same grammar as
-   // the Binder's own dialog (keyed by mode so one PromptDialog instance covers both).
+   // Text-input dialog shared by "save current as template" and "rename template", keyed by mode so one
+   // PromptDialog instance covers both.
    const [nameDialog, setNameDialog] = useState<
       | { mode: 'save' }
       | { mode: 'rename'; templateId: string; initialName: string }

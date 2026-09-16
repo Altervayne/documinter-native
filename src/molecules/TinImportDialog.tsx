@@ -5,7 +5,7 @@ import { Button } from '../atoms/Button'
 import { useLang } from '../contexts/LangContext'
 
 interface TinImportDialogProps {
-   /** Counts from the parsed Tin's own arrays, shown so the user knows what is in the bundle. */
+   /** Counts from the parsed Tin, shown so the user knows what is in the bundle. */
    templates:  number
    folders:    number
    documents:  number
@@ -15,10 +15,9 @@ interface TinImportDialogProps {
 }
 
 /**
- * Import-mode chooser for a Tin: Merge (graft the bundle into the current binder) or Replace (wipe
- * the binder and restore the Tin). Same portal + backdrop chrome as ConfirmDialog, but with two
- * described option rows instead of one confirm button; Replace is a destructive step, so it hands
- * off to a second confirmation rather than acting here. Backdrop click and Escape cancel.
+ * Import-mode chooser for a Tin: Merge (graft into the current binder) or Replace (wipe and
+ * restore). Replace is destructive, so it hands off to a second confirmation rather than acting
+ * here. Backdrop click and Escape cancel.
  */
 export function TinImportDialog({ templates, folders, documents, onMerge, onReplace, onCancel }: TinImportDialogProps) {
    const { t } = useLang()

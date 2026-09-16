@@ -9,11 +9,8 @@ interface BinderFolderDeleteDialogProps {
    onCancel:  () => void
 }
 
-/**
- * Folder-deletion confirm. A checkbox chooses between keeping the contents (the default: documents
- * and subfolders are moved to the root) and recursively deleting everything inside. The warning
- * text tracks the checkbox so the consequence of confirming is always spelled out.
- */
+/** Folder-deletion confirm. The checkbox chooses between moving the contents to the root (default)
+ *  and recursively deleting everything inside; the warning text tracks it. */
 export function BinderFolderDeleteDialog({ onConfirm, onCancel }: BinderFolderDeleteDialogProps) {
    const { t } = useLang()
    const [recursive, setRecursive] = useState(false)

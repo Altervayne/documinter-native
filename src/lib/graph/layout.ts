@@ -1,25 +1,17 @@
-/**
- * layout.ts, the DOM-free plot-area layout engine for the cartesian core.
- *
- * PURE FUNCTIONS. This is the trickiest pure piece: an SVG string has NO DOM, so text cannot
- * be measured. Axis-tick, axis-caption, and legend widths are ESTIMATED from character count
- * times an average glyph advance for the chart font-size. The estimate intentionally runs a
- * little wide (over-reserving margin) rather than risk clipping, the same limitation every
- * server-side SVG chart lives with.
- *
- * The renderer draws into a fixed internal coordinate space (CANVAS_WIDTH x CANVAS_HEIGHT);
- * the <svg> is then made responsive with a viewBox + width:100% (see index.ts), so no runtime
- * resize is needed.
+/*
+ * The DOM-free plot-area layout engine for the cartesian core. An SVG string has no DOM, so text
+ * cannot be measured: tick, caption, and legend widths are ESTIMATED from character count times an
+ * average glyph advance, run deliberately wide so margins over-reserve rather than clip. The
+ * renderer draws into a fixed CANVAS_WIDTH x CANVAS_HEIGHT space, made responsive by viewBox +
+ * width:100% (see index.ts).
  */
 
 // #############
 // # CONSTANTS #
 // #############
 
-/** The fixed internal drawing width (the viewBox width). */
+/** The fixed internal drawing size (the viewBox). */
 export const CANVAS_WIDTH = 720
-
-/** The fixed internal drawing height (the viewBox height). */
 export const CANVAS_HEIGHT = 440
 
 /** Font sizes for the chart's text roles (internal coordinate units). */
@@ -28,16 +20,12 @@ export const AXIS_CAPTION_FONT_SIZE = 12
 export const TICK_FONT_SIZE = 11
 export const LEGEND_FONT_SIZE = 12
 
-/**
- * Average glyph advance as a fraction of the font-size, for the system-ui sans the chart
- * inherits. Deliberately generous (~0.6em) so estimated widths over-reserve rather than clip.
- */
+/** Average glyph advance as a fraction of the font-size, generous so estimated widths over-reserve. */
 export const AVERAGE_CHAR_WIDTH_RATIO = 0.6
 
 /** A uniform outer breathing margin around the whole canvas. */
 const OUTER_PADDING = 14
 
-/** The legend swatch size and the gaps around legend pieces. */
 const LEGEND_SWATCH_SIZE = 12
 const LEGEND_SWATCH_TEXT_GAP = 6
 const LEGEND_ITEM_GAP = 20
@@ -47,11 +35,8 @@ const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
 // # TEXT WIDTH ESTIMATION  #
 // ##########################
 
-/**
- * Estimate the rendered pixel width of `text` at `fontSize`, with no DOM to measure against.
- * `characters x fontSize x AVERAGE_CHAR_WIDTH_RATIO`. This is the honest constraint of
- * string-generated SVG: it is an estimate, tuned to over-reserve. Empty text is zero width.
- */
+/** Estimate the pixel width of `text` at `fontSize` with no DOM: characters x fontSize x
+ *  AVERAGE_CHAR_WIDTH_RATIO, tuned to over-reserve. Empty text is zero width. */
 export function estimateTextWidth(text: string, fontSize: number): number {
    if (text.length === 0) return 0
    return text.length * fontSize * AVERAGE_CHAR_WIDTH_RATIO
@@ -74,24 +59,21 @@ export function widestTextWidth(texts: string[], fontSize: number): number {
 /** One positioned legend item: its label plus the x offset of its swatch within its row. */
 export interface LegendItem {
    label: string
-   /** The x offset of the swatch's left edge, relative to the row's left edge. */
+   /** X offset of the swatch's left edge, relative to the row's left edge. */
    offsetX: number
-   /** The total width this item occupies (swatch + gap + text). */
+   /** Total width this item occupies (swatch + gap + text). */
    width: number
 }
 
-/** A laid-out legend: rows of positioned items, plus the width of the widest row (to center it). */
+/** A laid-out legend: rows of positioned items, plus the widest row's width (to center it). */
 export interface LegendLayout {
    rows: LegendItem[][]
    rowCount: number
    widestRowWidth: number
 }
 
-/**
- * Flow legend labels into rows that fit within `availableWidth`. Each item is a swatch + gap +
- * estimated text width; items are separated by LEGEND_ITEM_GAP. A single item that is wider
- * than the available width still gets its own row (it is never dropped). Deterministic.
- */
+/** Flow legend labels into rows fitting `availableWidth`. A single item wider than that still gets
+ *  its own row rather than being dropped. */
 export function layoutLegend(labels: string[], availableWidth: number): LegendLayout {
    const rows: LegendItem[][] = []
    let currentRow: LegendItem[] = []
@@ -157,24 +139,20 @@ export interface CartesianLayout {
    plot: PlotRect
 }
 
-/** Inputs the cartesian layout needs to size its margins (all already stringified where text). */
+/** Inputs the cartesian layout needs to size its margins. */
 export interface CartesianLayoutInput {
    hasTitle: boolean
    xCaption: string | undefined
    yCaption: string | undefined
-   /** The formatted y-axis tick labels, to size the left margin from their widest. */
+   /** Formatted y-axis tick labels, to size the left margin from their widest. */
    yTickLabels: string[]
    /** How many legend rows to reserve at the bottom (0 = no legend). */
    legendRowCount: number
 }
 
-/**
- * Compute the margins + plot rect for a cartesian chart on the fixed canvas. The left margin
- * grows with the widest y-tick label and an optional rotated y-caption; the bottom margin
- * reserves the x-tick labels, an optional x-caption, and the legend rows; the top margin
- * reserves the title. Plot width/height are clamped non-negative so tiny canvases never
- * produce inverted rects.
- */
+/** Compute the margins + plot rect for a cartesian chart. The left margin grows with the widest
+ *  y-tick label + optional y-caption; the bottom reserves x-ticks, x-caption, and legend; the top
+ *  reserves the title. Plot width/height clamp non-negative. */
 export function computeCartesianLayout(input: CartesianLayoutInput): CartesianLayout {
    const yTickWidth = widestTextWidth(input.yTickLabels, TICK_FONT_SIZE)
 

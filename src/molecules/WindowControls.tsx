@@ -1,8 +1,7 @@
 /*
- * Native window caption buttons (Windows layout: minimize / maximize-restore / close, flush to the
- * top-right corner). Rendered only inside the Tauri shell, where the OS title bar is turned off and
- * HeaderMenuBar stands in for it. Each button drives the current window through the Tauri API; the
- * maximize glyph tracks the real window state so it flips to a restore glyph while maximized.
+ * Native window caption buttons (Windows layout: minimize / maximize-restore / close). Rendered
+ * only inside the Tauri shell, where the OS title bar is off and HeaderMenuBar stands in. The
+ * maximize glyph tracks the real window state, flipping to a restore glyph while maximized.
  */
 
 // -- React Imports --
@@ -21,8 +20,8 @@ export function WindowControls() {
    const { t } = useLang()
    const [maximized, setMaximized] = useState(false)
 
-   // Keep the maximize/restore glyph in sync with the real window. onResized fires on maximize,
-   // restore and manual resize alike, so re-reading isMaximized there covers every transition.
+   // onResized fires on maximize, restore and manual resize alike, so re-reading isMaximized there
+   // keeps the glyph in sync across every transition.
    useEffect(() => {
       const appWindow = getCurrentWindow()
       let unlisten: (() => void) | undefined
@@ -54,9 +53,8 @@ export function WindowControls() {
       getCurrentWindow().close()
    }
 
-   // Flush to the top-right corner: negative margins cancel the header's own padding so the row
-   // reaches the window edge like real caption buttons. A left divider separates it from the app
-   // cluster. Not a drag region, these are interactive controls.
+   // Negative margins cancel the header padding so the row reaches the window edge like real caption
+   // buttons. Not a drag region, these are interactive controls.
    return (
       <div className="flex items-stretch self-stretch -my-1 -mr-3 ml-1 border-l border-border">
          <button

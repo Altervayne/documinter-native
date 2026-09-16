@@ -48,17 +48,14 @@ const FENCE_LANG_TO_CODE_LANG: Record<string, CodeLang> = {
 // # PRIVATE HELPERS, SERIALISATION #
 // ###################################
 
-/** Serialises InlineContent to its inline text syntax via the shared inline serializer. */
 function serializeInline(content: InlineContent | undefined): string {
    return inlineContentToMintdown(content ?? [])
 }
 
-/** Renders list items recursively with two-space indentation per level. In checklist mode each
- *  item carries a GFM task-list marker (`[x]` checked / `[ ]` unchecked) right after the dash.
- *  For a plain list, `marker` is the CURRENT sub-list's marker: an ORDERED marker emits the
- *  1-based sibling index as `${n}. `, an unordered marker emits `- ` (the historical default, so a
- *  sub-list with no marker stays byte-identical). Portable Markdown keeps only that ordered/
- *  unordered distinction; the alpha/roman refinement rides the lossless JSON backup, not the text. */
+/** Render list items recursively, two spaces per level. Checklist mode prefixes each with a GFM
+ *  `[x]`/`[ ]` marker; otherwise `marker` is the sub-list's marker, ordered ones emitting `${n}. `
+ *  and unordered `- `. Portable Markdown keeps only the ordered/unordered split; the alpha/roman
+ *  refinement rides the JSON backup. */
 function serializeListItems(
    items: ListItem[],
    depth: number,
@@ -83,10 +80,8 @@ function serializeListItems(
    return lines.join('\n')
 }
 
-/** Serialises a single block to its Markdown representation.
- *  For h3/h4 blocks that carry a handle, the handle is emitted inline as {#slug}.
- *  For all other block types, the caller is responsible for emitting the
- *  <!-- handle: slug --> comment BEFORE this function's output. */
+/** Serialize one block to Markdown. h3/h4 handles are emitted inline as {#slug}; every other block's
+ *  handle is emitted by the caller as a <!-- handle: slug --> comment before this output. */
 export function serializeBlock(block: Block): string {
    switch (block.type) {
       case 'p': {
@@ -125,20 +120,17 @@ export function serializeBlock(block: Block): string {
       }
 
       case 'math': {
-         // A ```math fence carrying the raw LaTeX source, exactly mirroring the code fence.
-         // The rendered MathML is not serialized; it is re-derived from the LaTeX on load.
+         // Raw LaTeX in a ```math fence; the MathML is re-derived from it on load.
          const latex = block.latex ?? ''
          const fence = /^```\s*$/m.test(latex) ? '````' : '```'
-         // Portable Markdown stays bare `math` (GitHub disables its native math rendering when the
-         // info string carries any suffix), so the display scale is never emitted here; it rides
-         // the lossless JSON backup instead.
+         // Stays bare `math`: GitHub disables its native math rendering when the info string carries
+         // any suffix, so the display scale rides the JSON backup, not here.
          return `${fence}math\n${latex}\n${fence}`
       }
 
       case 'graph': {
-         // A ```graph fence: chart type + options on the info string, data as a Markdown pipe
-         // table body. `type=` is load-bearing; a graph fence is Documinter-specific. The rendered
-         // SVG is never serialized; it is re-derived from this spec on load.
+         // A ```graph fence: type + options on the info string, data as a pipe-table body. `type=` is
+         // load-bearing; Documinter-specific. The SVG is re-derived from this spec on load.
          const spec = block.graph
          if (!spec) return '```graph type=bar\n|  |\n| --- |\n```'
          const { info, body } = graphSpecToFence(spec)
@@ -146,9 +138,8 @@ export function serializeBlock(block: Block): string {
       }
 
       case 'diagram': {
-         // A ```diagram fence: options on the info string, TWO pipe tables (nodes + edges) in the
-         // body separated by a blank line. Documinter-specific. The rendered SVG is never
-         // serialized; it is re-derived from this spec on load.
+         // A ```diagram fence: options on the info string, two pipe tables (nodes + edges) in the
+         // body split by a blank line. Documinter-specific. The SVG is re-derived on load.
          const spec = block.diagram
          if (!spec) {
             const { info, body } = diagramSpecToFence({ nodes: [], edges: [], options: {} })
@@ -162,8 +153,6 @@ export function serializeBlock(block: Block): string {
          const items = block.items ?? []
          if (items.length === 0) return ''
          const rootMarker = markerOrDefault(block.listMarker)
-         // Portable Markdown keeps just the native ordered/unordered distinction each sub-list
-         // already carries positionally; the alpha/roman refinement rides the lossless JSON backup.
          return serializeListItems(items, 0, { marker: rootMarker })
       }
 
@@ -195,11 +184,9 @@ export function serializeBlock(block: Block): string {
       }
 
       case 'image': {
-         // A marked-up image serializes as a ```imagemarkup fence: base dims + alt/caption on the
-         // info string, one overlay element per body line. See imageMarkupFence.ts: the
-         // base64 `src` is NEVER emitted, so a `.md` reopen restores every
-         // annotation but with an empty `src`. A PLAIN image (no overlay) keeps its own convention
-         // below, byte-identical. The rendered SVG is never serialized, re-derived from the spec.
+         // A marked-up image serializes as a ```imagemarkup fence (see imageMarkupFence.ts): the
+         // base64 `src` is NEVER emitted, so a reopen restores every annotation with an empty `src`.
+         // A plain image keeps its own convention below, byte-identical.
          if (block.imageMarkup) {
             const { info, body } = imageMarkupSpecToFence(imageBlockToMarkupSpec(block))
             return body ? `\`\`\`${info}\n${body}\n\`\`\`` : `\`\`\`${info}\n\`\`\``
@@ -219,7 +206,7 @@ export function serializeBlock(block: Block): string {
             return outputLines.join('\n')
          }
 
-         // Base64 data URL or no src, emit as comment with attributes only.
+         // Base64 data URL or no src: emit as a comment with attributes only.
          const attrs: string[] = [`alt="${alt}"`]
          if (block.caption)                               attrs.push(`caption="${block.caption}"`)
          if (block.align && block.align !== 'center')     attrs.push(`align="${block.align}"`)
@@ -268,17 +255,15 @@ export function serializeBlock(block: Block): string {
 // # PRIVATE HELPERS, PARSING #
 // #############################
 
-/** Maps a fence language tag string to a CodeLang (falls back to 'plain'). */
+/** Maps a fence language tag to a CodeLang, falling back to 'plain'. */
 function normalizeFenceLang(tag: string): CodeLang {
    return FENCE_LANG_TO_CODE_LANG[tag.toLowerCase()] ?? 'plain'
 }
 
-/**
- * Builds the block for a closed fence from its full info string and body. The first token is the
- * language tag; a ```math fence becomes a math block carrying the raw LaTeX, and any following
- * `scale=<step>` token sets its display scale (junk / out-of-range values are ignored). Every
- * other tag becomes a code block. The scale token is read on import but never emitted on export.
- */
+/** Build the block for a closed fence from its full info string and body. The first token is the
+ *  language tag: `math` becomes a math block (a following `scale=<step>` token sets its display scale,
+ *  read on import but never emitted), `graph`/`diagram`/`imagemarkup` their block types, everything
+ *  else a code block. */
 function buildFenceBlock(fenceInfo: string, body: string): Block {
    const tokens  = fenceInfo.trim().split(/\s+/)
    const langTag = tokens[0] ?? ''
@@ -290,30 +275,25 @@ function buildFenceBlock(fenceInfo: string, body: string): Block {
       return block
    }
    if (langTag.toLowerCase() === 'graph') {
-      // Pass the FULL info string (not the pre-split tokens) so the graph parser can tokenize
-      // quoted options itself. Malformed fences degrade gracefully inside fenceToGraphSpec.
+      // Pass the FULL info string so the parser tokenizes quoted options itself; malformed fences
+      // degrade gracefully inside fenceToGraphSpec.
       return { id: crypto.randomUUID(), type: 'graph', graph: fenceToGraphSpec(fenceInfo, body) }
    }
    if (langTag.toLowerCase() === 'diagram') {
-      // Pass the FULL info string so the diagram parser can tokenize quoted options itself; the
-      // two-table body (nodes + edges) is parsed by fenceToDiagramSpec. Malformed fences degrade
-      // gracefully (bad fields default, dangling edges kept for the renderer to skip), never throw.
+      // Full info string so the parser tokenizes quoted options; the two-table body (nodes + edges)
+      // is parsed by fenceToDiagramSpec. Malformed fences degrade gracefully, never throw.
       return { id: crypto.randomUUID(), type: 'diagram', diagram: fenceToDiagramSpec(fenceInfo, body) }
    }
    if (langTag.toLowerCase() === 'imagemarkup') {
-      // Pass the FULL info string so the parser can tokenize quoted alt/caption values itself.
-      // Reads into an `image` block WITH a markup overlay (the standalone block type is gone).
-      // `src` always comes back empty (no base64 in this format, see imageMarkupFence.ts);
-      // malformed fences degrade gracefully (unknown element kinds skipped), never throw.
+      // Reads into an `image` block with a markup overlay; `src` always comes back empty (no base64
+      // in this format). Malformed fences degrade gracefully, never throw.
       return markupSpecToImageBlock(crypto.randomUUID(), fenceToImageMarkupSpec(fenceInfo, body))
    }
    return { id: crypto.randomUUID(), type: 'code', lang: normalizeFenceLang(langTag), code: body }
 }
 
-/** Splits a Markdown pipe-table row into trimmed cell strings,
- *  correctly handling backslash-escaped pipes (\|). */
+/** Split a Markdown pipe-table row into trimmed cells, handling backslash-escaped pipes (\|). */
 export function parsePipeTableRow(line: string): string[] {
-   // Strip leading/trailing pipe and surrounding whitespace.
    const inner = line.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
    const cells: string[] = []
    let current            = ''
@@ -336,8 +316,8 @@ export function parsePipeTableRow(line: string): string[] {
    return cells
 }
 
-/** Builds a nested ListItem tree from indented `- text` lines. In checklist mode each line's
- *  leading `[ ]`/`[x]` task-list marker is stripped and recorded as the item's `checked` flag. */
+/** Build a nested ListItem tree from indented `- text` lines. In checklist mode each line's leading
+ *  `[ ]`/`[x]` marker is stripped and recorded as the item's `checked` flag. */
 export function buildListTree(lines: string[], checklist = false): ListItem[] {
    interface StackEntry { depth: number; item: ListItem }
 
@@ -388,10 +368,9 @@ export function buildListTree(lines: string[], checklist = false): ListItem[] {
    return roots
 }
 
-/** Parses a `<!-- list-marker: lower-alpha -->` comment into its single sub-list marker, or null
- *  when the line is not that comment. Leading indentation is allowed (a nested sub-list's comment
- *  sits at the child indent). An unknown token degrades to `'dot'` rather than throw, so a
- *  hand-authored or future-versioned token can never break a load. */
+/** Parse a `<!-- list-marker: lower-alpha -->` comment into its sub-list marker, or null when the
+ *  line is not that comment. Leading indentation is allowed (a nested sub-list's comment sits at the
+ *  child indent). An unknown token degrades to `'dot'` rather than throw. */
 export function parseListMarkerComment(line: string): ListMarker | null {
    const match = line.match(/^\s*<!-- list-marker: (.+?) -->\s*$/)
    if (!match) return null
@@ -399,18 +378,12 @@ export function parseListMarkerComment(line: string): ListMarker | null {
    return ALL_LIST_MARKERS.includes(trimmed) ? trimmed : 'dot'
 }
 
-/**
- * Builds a `list` Block from accumulated list lines, recognising both unordered (`- `) and ordered
- * (`1. `) items plus interleaved `<!-- list-marker -->` comment lines, rebuilding the nested tree.
- *
- * Each sub-list gets its own marker. A comment sits immediately before a sub-list's first item, at
- * that sub-list's indent, and is AUTHORITATIVE for it: the root sub-list's comment (arriving as
- * `rootMarkerOverride` from the scanner, since it is a column-0 line before the list) sets
- * `block.listMarker`; a nested sub-list's comment sets the owning parent item's `childMarker`. With
- * no comment, the marker is derived from the base syntax, an ordered sub-list becomes `'decimal'`,
- * an unordered one stays `dot`. A `dot` marker is never stored (absent field), so a plain list
- * round-trips back byte-identical.
- */
+/** Build a `list` Block from accumulated list lines: unordered (`- `) and ordered (`1. `) items plus
+ *  interleaved `<!-- list-marker -->` comments, rebuilding the nested tree. Each sub-list gets its own
+ *  marker; a comment before a sub-list's first item, at that indent, is authoritative (the root's
+ *  arrives as `rootMarkerOverride`, setting `block.listMarker`; a nested one sets the parent's
+ *  `childMarker`). With no comment the marker follows the syntax: ordered becomes `'decimal'`,
+ *  unordered stays `dot`. A `dot` marker is never stored, so a plain list round-trips byte-identical. */
 export function buildListBlockFromLines(lines: string[], rootMarkerOverride?: ListMarker): Block {
    interface StackEntry { depth: number; item: ListItem }
 
@@ -508,7 +481,7 @@ export function buildTableBlock(lines: string[]): Block {
    const tableLines = lines.filter(line => line.trimStart().startsWith('|'))
 
    if (tableLines.length < 2) {
-      // Degenerate: not enough lines for header + separator, return as paragraph.
+      // Too few lines for header + separator: fall back to a paragraph.
       return {
          id:       crypto.randomUUID(),
          type:     'p',
@@ -533,16 +506,9 @@ export function buildTableBlock(lines: string[]): Block {
 // # PUBLIC API, DOCUMENTTOMARKDOWN #
 // ###################################
 
-/**
- * Serialises the full document state to a UTF-8 Markdown string.
- * Pure. No side effects. No DOM access. Deterministic.
- *
- * Format overview:
- *   - Document metadata block at the top, followed by `---`.
- *   - Each section preceded by `<!-- section-id: uuid -->` then `## Title`.
- *   - Each block preceded by a blank line and an optional handle comment.
- *   - h3/h4 handles are emitted inline as ` {#slug}` rather than a comment.
- */
+/** Serialize the full document to a UTF-8 Markdown string. Pure, deterministic. Metadata block then
+ *  `---`; each section as `<!-- section-id: uuid -->` + `## Title`; each block preceded by a blank
+ *  line and an optional handle comment (h3/h4 handles inline as ` {#slug}`). */
 export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
    const parts: string[] = []
 
@@ -585,17 +551,10 @@ export function documentToMarkdown(sections: Section[], meta: DocMeta): string {
 // # PUBLIC API, MARKDOWNTODOCUMENT #
 // ###################################
 
-/**
- * Parses a Markdown string produced by `documentToMarkdown` (or hand-authored
- * in the same format) into a DocState.
- *
- * Guarantees:
- *   - Never throws, any valid or invalid input returns a usable DocState.
- *   - O(n) single-pass line scanner.
- *   - Content before the first `##` heading is treated as preamble and discarded.
- *   - Sections with `<!-- section-id: uuid -->` preserve their UUIDs; sections
- *     without one receive newly-generated UUIDs.
- */
+/** Parse a Markdown string from `documentToMarkdown` (or hand-authored in the same format) into
+ *  sections + meta. Never throws; single-pass O(n) scan. Content before the first `##` is discarded as
+ *  preamble. A `<!-- section-id: uuid -->` preserves its section's UUID; sections without one get a
+ *  fresh UUID. */
 export function markdownToDocument(source: string): { sections: Section[], meta: DocMeta } {
    const lines = source.split('\n')
 
@@ -1036,10 +995,7 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 // # PUBLIC API, IMPORTMARKDOWNFILE / EXPORTMARKDOWNFILE #
 // ########################################################
 
-/**
- * Reads a .md File object and parses it via markdownToDocument.
- * Thin async wrapper, all parsing logic lives in markdownToDocument.
- */
+/** Read a .md File and parse it via markdownToDocument. */
 export async function importMarkdownFile(
    file: File,
 ): Promise<{ sections: Section[], meta: DocMeta }> {
@@ -1047,10 +1003,7 @@ export async function importMarkdownFile(
    return markdownToDocument(source)
 }
 
-/**
- * Triggers a browser download of the document as a .md file.
- * The filename is derived from the document title via slugify.
- */
+/** Trigger a browser download of the document as a .md file, named from the title via slugify. */
 export function exportMarkdownFile(sections: Section[], meta: DocMeta): void {
    const content  = documentToMarkdown(sections, meta)
    const filename = `${slugify(meta.title) || 'document'}.md`

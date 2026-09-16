@@ -1,14 +1,11 @@
 // ###############################################################################################
 // # DOCK LAYOUT MODEL                                                                           #
 // #                                                                                             #
-// # The pure data model and transforms for the side-panel docking system. A DockLayout is a     #
-// # flat structure: each side (left / right) holds at most one Column, a Column is a top-to-    #
-// # bottom stack of Groups, and a Group is a tabbed container of one or more Panels. Docks      #
-// # attach only to the left or right edge of the workspace; there is no top or bottom dock.     #
-// # Vertical arrangement exists only as group stacking inside a column.                         #
-// #                                                                                             #
-// # Every function here is pure and returns a new layout, mirroring the discipline of the       #
-// # center-pane engine in lib/paneTree.ts so the whole thing stays unit-testable with no React. #
+// # The pure data model and transforms for the side-panel docking system. A DockLayout is flat: #
+// # each side (left / right) holds at most one Column, a Column stacks Groups top-to-bottom, and#
+// # a Group is a tabbed container of Panels. Docks attach only to a left or right edge; vertical#
+// # arrangement exists only as group stacking in a column. Every function is pure and returns a #
+// # new layout, mirroring lib/paneTree.ts so the whole thing stays unit-testable with no React. #
 // ###############################################################################################
 
 // #########
@@ -17,7 +14,6 @@
 
 export type DockSide = 'left' | 'right'
 
-// The registered side-panel ids. Extend this union as new panels register (see lib/panelRegistry).
 // A given panel id appears in a DockLayout at most once: the no-duplicates rule.
 export type PanelId = 'structure' | 'pages' | 'anchors' | 'pagesetup' | 'presentation' | 'documentnav' | 'templates'
 
@@ -105,11 +101,9 @@ function withSide(layout: DockLayout, side: DockSide, column: DockColumn | null)
 }
 
 /**
- * Removes `panelId` from wherever it lives, everywhere. A group that loses its last panel is dropped;
- * a column that loses its last group becomes null; if the removed panel was a group's active tab, the
- * active tab falls back to the group's new first panel. Because a panel exists in at most one place,
- * this touches at most one group, but scanning both sides keeps it total and simple. This is the
- * detach step every insert transform runs first, which is what enforces the no-duplicates rule.
+ * Removes `panelId` from wherever it lives. A group that loses its last panel is dropped, a column
+ * that loses its last group becomes null, and a removed active tab falls back to the group's new
+ * first panel. Every insert transform runs this detach first, which is what enforces no-duplicates.
  */
 function detachPanel(layout: DockLayout, panelId: PanelId): DockLayout {
    const strip = (column: DockColumn | null): DockColumn | null => {
@@ -246,9 +240,8 @@ export function removePanel(layout: DockLayout, panelId: PanelId): DockLayout {
    return detachPanel(layout, panelId)
 }
 
-/** Merges a panel into an existing group as a tab at `tabIndex`, making it that group's active tab.
- *  This is the "tabbing" reconfiguration. No-op when the target group no longer exists after detach
- *  (for example when the panel was alone in the very group it was asked to merge into). */
+/** Merges a panel into an existing group as a tab at `tabIndex`, made active. The "tabbing"
+ *  reconfiguration. No-op when the target group is gone after detach (the panel was alone in it). */
 export function mergePanelIntoGroup(
    layout:        DockLayout,
    panelId:       PanelId,
@@ -292,10 +285,9 @@ export function movePanelToSide(layout: DockLayout, panelId: PanelId, side: Dock
    return insertNewGroup(detached, panelId, side, endIndex, newGroupId)
 }
 
-/** Moves a panel into its own new group directly before or after a target group (drag-drop onto the
- *  upper / lower half of a group). Resolved by target id AFTER the detach, so an index shift from
- *  removing the panel's old group can never land it in the wrong slot. No-op when the target group no
- *  longer exists after detaching (for example dropping a panel adjacent to the group it lived alone in). */
+/** Moves a panel into its own new group before or after a target group (drop onto its upper / lower
+ *  half). Resolved by target id AFTER the detach, so an index shift from removing the panel's old
+ *  group never lands it in the wrong slot. No-op when the target group is gone after detach. */
 export function movePanelAdjacentToGroup(
    layout:        DockLayout,
    panelId:       PanelId,

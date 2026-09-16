@@ -39,8 +39,7 @@ import { HEADER_LOGO_MAX_EDGE } from '../lib/presentation'
 interface FormatPanelBodyProps {
    /** The active document's format (undefined = today's infinite/normal-width default). */
    format?: DocFormat
-   /** Commit a new format object (or undefined to clear it back to the default), a real document
-    *  change, mirrors PresentationPanelBody's onChange. */
+   /** Commit a new format (or undefined to clear back to the default), a real document change. */
    onChange: (next: DocFormat | undefined) => void
 }
 
@@ -55,25 +54,20 @@ const MARGIN_MAX_MM = 40
 // #############
 
 /**
- * The document-level Page setup editor body, chrome-free so the same form serves both the floating
- * FormatWindow (Document -> Page setup...) and a docked side panel. It exposes the format KIND
- * (Infinite / A4 Portrait / A4 Landscape) plus the infinite-canvas WIDTH (infinite only) and the page
- * MARGINS (A4 only). Switching kind is non-destructive: the section/block content is untouched, and
- * any page breaks (format.pages) ride along across a kind switch (they simply aren't rendered in
- * infinite mode), so an A4 -> infinite -> A4 round-trip preserves the pagination.
+ * The document-level Page setup editor body, chrome-free so the same form serves the floating
+ * FormatWindow (Document -> Page setup...) and a docked side panel. It exposes the format KIND, the
+ * infinite-canvas WIDTH (infinite only), and the page MARGINS (A4 only). Switching kind is
+ * non-destructive: content is untouched and page breaks ride along (unrendered in infinite mode), so
+ * an A4 -> infinite -> A4 round-trip preserves the pagination.
  *
- * Margins are always four independent values on the model; the editor offers three ways to edit them
- * (all sides at once, vertical/horizontal pairs, or each side on its own), picked up from the current
- * values on open and held as local UI state (see deriveMarginMode in lib/format.ts).
- *
- * The outer `.doc-settings-panel` owns the scroll + padding so the body fills its host (a docked panel
- * or the floating window body, whose padding is neutralized for `.doc-settings-panel` in doc.css).
+ * Margins are always four independent values on the model; the editor offers three ways to edit them,
+ * derived from the current values on open and held as local UI state (see deriveMarginMode).
+ * `.doc-settings-panel` owns the scroll + padding so the body fills its host (padding neutralized in doc.css).
  */
 export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    const { t } = useLang()
    const logoInputRef = useRef<HTMLInputElement>(null)
-   // Normalize defensively so the controls always read a concrete, valid format, mirroring how
-   // PresentationPanelBody reads straight off the (already-optional) presentation prop.
+   // Normalize defensively so the controls always read a concrete, valid format.
    const resolved = normalizeFormat(format)
    const kind = resolved.kind
    const isInfinite = kind === 'infinite'
@@ -82,10 +76,8 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    const isCustom = typeof width === 'object'
    const customWidthPx = isCustom ? width.custom : resolveInfiniteWidthPx(width)
 
-   // Margins default to 20mm on every side. The editing mode (how many inputs the editor shows) is
-   // local UI state, derived once from the incoming margins when the editor opens, so a document
-   // already using four equal or arbitrary margins opens on the view that matches without forcing a
-   // choice; the model underneath always keeps four independent values regardless of mode.
+   // The editing mode (how many inputs show) is local UI state, derived once from the incoming margins
+   // on open so the editor matches the document's values; the model always keeps four independent values.
    const margins = resolved.margins ?? DEFAULT_A4_MARGINS
    const uniformMarginMm = margins.top
    const [marginMode, setMarginMode] = useState<MarginMode>(() => deriveMarginMode(margins))
@@ -100,8 +92,7 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    }
 
    function handleKindChange(nextKind: PageKind): void {
-      // Preserve width / margins / pages across the switch (each is ignored by the other kind, but
-      // keeping them makes the switch reversible without data loss).
+      // Preserve width / margins / pages across the switch so it is reversible without data loss.
       onChange({ ...resolved, kind: nextKind })
    }
 
@@ -120,8 +111,8 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
       onChange({ ...resolved, margins: { ...margins, [side]: nextMm } })
    }
 
-   // Switching mode only reshapes how the four values are grouped for editing; it also coalesces
-   // them so the new mode's inputs start from something coherent instead of an arbitrary spread.
+   // Switching mode reshapes how the four values group for editing, coalescing them so the new mode's
+   // inputs start coherent instead of an arbitrary spread.
    function handleMarginModeChange(nextMode: MarginMode): void {
       setMarginMode(nextMode)
       if (nextMode === 'allEqual') {
@@ -147,8 +138,8 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    // Page-number format examples read as text (the label IS the glyph), so no leading icon.
    const styleOptions: SegmentedIconToggleOption<PageNumberStyle>[] = PAGE_NUMBER_STYLES.map(style => ({ value: style, label: styleLabels[style] }))
 
-   // Off / Left / Center / Right position buttons; `blocked` greys out the position the sibling control
-   // already holds, so a header page number and header text can never share a position.
+   // `blocked` greys out the position the sibling control already holds, so a header page number and
+   // header text can never share a position.
    function positionOptions(blocked: PositionChoice): SegmentedIconToggleOption<PositionChoice>[] {
       return [
          { value: 'off',    label: t.formatBandNone,   icon: <Ban size={15} /> },
@@ -176,23 +167,22 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    const modelHeaderText = readText(header)
    const footerNumber    = readNumber(resolved.footer ?? {})
 
-   // An empty text/brand slot has no persistent model form (an item with neither text nor logo normalizes
-   // away), so a freshly picked position would snap straight back to "None". Hold that intent in local UI
-   // state until real text or a logo fills the slot; once the model carries content, the model wins.
+   // An empty text/brand slot normalizes away (neither text nor logo), so a freshly picked position would
+   // snap back to "None". Hold that intent in local UI state until real text or a logo fills the slot;
+   // once the model carries content, the model wins.
    const [localTextPosition, setLocalTextPosition] = useState<PositionChoice>(modelHeaderText.position)
    const headerTextPosition = modelHeaderText.position !== 'off' ? modelHeaderText.position : localTextPosition
    const headerText = { position: headerTextPosition, text: modelHeaderText.text, image: modelHeaderText.image }
 
    // Rebuild the whole header from its two controls, so setting one never disturbs the other. The text
-   // slot can carry text AND / OR a logo image.
+   // slot can carry text and / or a logo image.
    function commitHeader(number: { position: PositionChoice; style: PageNumberStyle }, text: { position: PositionChoice; text: string; image?: BandImage }): void {
       const next: PageBand = {}
       if (number.position !== 'off') next[number.position] = { kind: 'pageNumber', style: number.style }
       if (text.position !== 'off')   next[text.position]   = { kind: 'content', ...(text.text ? { text: text.text } : {}), ...(text.image ? { image: text.image } : {}) }
       onChange({ ...resolved, header: next })
    }
-   // Pick a logo image for the header text/brand slot: downscale to base64 (capped small for a margin
-   // band), keeping whatever text is already there.
+   // Downscale a picked logo to base64 (capped small for a margin band), keeping any existing text.
    async function handleLogoFile(file: File | undefined): Promise<void> {
       if (!file || !file.type.startsWith('image/')) return
       const image = await downscaleImageToDataUrl(file, HEADER_LOGO_MAX_EDGE)
@@ -285,7 +275,6 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
    return (
       <div className="doc-settings-panel flex-1 min-h-0 overflow-y-auto" style={{ padding: '0.85rem 0.95rem' }}>
          <div className="presentation-editor">
-            {/* Format kind: Infinite / A4 Portrait / A4 Landscape. */}
             <section className="presentation-section">
                <span className="presentation-section-label">{t.formatKindLabel}</span>
                <p className="presentation-hint">{t.formatKindHint}</p>
@@ -301,7 +290,6 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
                />
             </section>
 
-            {/* Infinite width (infinite only). */}
             {isInfinite && (
                <section className="presentation-section">
                   <span className="presentation-section-label">{t.formatWidthLabel}</span>
@@ -334,8 +322,7 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
                </section>
             )}
 
-            {/* Page margins (A4 only). Three editing modes over the same four stored values: all equal
-                (one input), vertical/horizontal (two paired inputs), or each side independently. */}
+            {/* Page margins (A4 only): three editing modes over the same four stored values. */}
             {!isInfinite && (
                <section className="presentation-section">
                   <span className="presentation-section-label">{t.formatMarginsLabel}</span>
@@ -429,7 +416,7 @@ export function FormatPanelBody({ format, onChange }: FormatPanelBodyProps) {
                </section>
             )}
 
-            {/* Running header + footer bands (A4 only): each shows on every page in the margin, with
+            {/* Running header + footer bands (A4 only): each shows on every page in the margin, its
                 left / center / right positions holding a page number, custom text, or the credit. */}
             {!isInfinite && (
                <section className="presentation-section">

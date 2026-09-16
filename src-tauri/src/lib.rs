@@ -3,10 +3,7 @@ use tauri_plugin_fs::FsExt;
 // ####################
 // # BINDER FOLDER GRANT
 // ####################
-// A Binder folder is an arbitrary path the user picks at runtime, so plugin-fs cannot know it at
-// build time. These grant the chosen path to the fs runtime scope (recursive). persisted-scope saves
-// the grant and restores it on the next launch, so a previously opened Binder is authorized again
-// without a re-prompt.
+// Grant a user-picked Binder folder to the fs scope at runtime; persisted-scope restores it next launch.
 
 // Grant an EXISTING folder (open + launch-restore). Grant only, never creates, so a deleted Binder is
 // not resurrected: the frontend's exists check then falls back to the Welcome screen.

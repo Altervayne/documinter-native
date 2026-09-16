@@ -78,12 +78,10 @@ const FILLABLE_KINDS = new Set<string>(['rect', 'ellipse', 'callout'])
 // # STYLE GLYPHS #
 // ################
 //
-// Small inline-SVG glyphs for the line style, arrowhead shape, and arrowhead position controls,
-// each drawn to read as the option rather than as a generic icon: the shapes mirror the actual
-// renderer's look (dash/dot pattern, filled triangle vs open chevron, head at the tip vs
-// mid-line) so the segmented toggle doubles as a tiny live legend. All glyphs share one
-// viewBox/stroke width so the three rows line up visually; `currentColor` follows the button's
-// own text color (muted when idle, accent when selected, set by the CSS, not the glyph).
+// Small inline-SVG glyphs for the line-style, arrowhead-shape, and arrowhead-position controls, each
+// drawn to mirror the renderer's look (dash/dot pattern, filled triangle vs open chevron, head at the
+// tip vs mid-line), so the segmented toggle doubles as a live legend. `currentColor` follows the
+// button's own text color.
 
 const STYLE_GLYPH_VIEW_BOX = '0 0 28 16'
 
@@ -137,8 +135,6 @@ function ArrowheadPositionGlyph({ arrowheadPosition }: { arrowheadPosition: Mark
    )
 }
 
-/** Builds the three segmented-toggle option lists from the current UI strings. Kept as plain
- *  functions (not components) since the icons never need their own component identity. */
 function buildStrokeStyleOptions(t: T): SegmentedIconToggleOption<MarkupStrokeStyle>[] {
    return [
       { value: 'solid',  label: t.imageMarkupStrokeStyleSolid,  icon: <StrokeStyleGlyph strokeStyle="solid" /> },
@@ -177,47 +173,29 @@ interface ImageMarkupEditorProps {
    readOnly?: boolean
 }
 
-/**
- * Image-markup (annotation) editor for an `image` block in markup mode. Rendered by `ImageBlock`
- * only when `block.imageMarkup` is present; the plain-image path stays byte-identical.
+/*
+ * The annotation editor for an `image` block in markup mode, rendered by ImageBlock only when
+ * `block.imageMarkup` is present (the plain-image path stays byte-identical). The base image lives on
+ * `src`/`alt`/`caption`; the overlay dims + element stack on `block.imageMarkup`. The editor
+ * reconstructs an ImageMarkupSpec (imageBlockToMarkupSpec) for the pure renderer + edit helpers, then
+ * commits back as patch({ src, imageMarkup }); alt/caption are owned by their own inline fields.
  *
- * The base image lives on the block's own `src`/`alt`/`caption`; the overlay dims + element stack
- * live on `block.imageMarkup`. The editor reconstructs an `ImageMarkupSpec` from the block
- * (`imageBlockToMarkupSpec`) for the pure renderer + edit helpers, then commits back as
- * `patch({ src, imageMarkup: { width, height, elements } })`. alt/caption are edited by their own
- * inline fields, not touched on commit.
- *
- * Read-only / export path: the reconstructed spec is turned into a self-contained inline SVG by
- * the pure `renderImageMarkupToSvg` and injected via `dangerouslySetInnerHTML`, no runtime,
- * byte-identical to the HTML export.
- *
- * Interactive editor: the annotation canvas edits inline at the block's full width, while the
- * tool palette + property controls live in a floating, non-modal `BlockEditorWindow`. The
- * draft/commit model mirrors the graph block: a local `working` spec (also mirrored in
- * `workingRef` so pointer handlers read the latest value mid-drag) keeps a drag smooth, committed
- * to the document on pointer-up / discrete change.
- *
- * Interactive-canvas architecture: while editing, the canvas is three stacked layers inside one
- * relative container: (1) a plain `<img>` of the base image (stable, so a live drag never
- * re-decodes the heavy base64) or a neutral placeholder box; (2) an element overlay
- * (`renderMarkupOverlayToSvg`, base64-free) re-parsed cheaply per draft; (3) a transparent
- * interaction layer capturing pointer events + drawing only the selection chrome. Every
- * interaction's geometry is pure and unit-tested in `lib/imageMarkup/edit.ts`; this component is
- * thin pointer glue over those helpers.
+ * Draft/commit mirrors the graph block: a `working` spec (also in `workingRef` for mid-drag reads).
+ * While editing, the canvas is three stacked layers: a plain <img> of the base (stable, so a drag never
+ * re-decodes the base64) or a placeholder; a base64-free element overlay re-parsed per draft; and a
+ * transparent interaction layer. Every interaction's geometry is pure in lib/imageMarkup/edit.ts.
  */
 export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorProps) {
    const { t }        = useLang()
    const editorWindow = usePopAWindow()
    const isEditing    = !readOnly && editorWindow.isOpen(block.id)
 
-   // ============
-   //  Draft state (mirrors GraphBlock): local working spec + refs for stale-closure-free handlers.
-   // ============
+   // Draft state: local working spec + refs for stale-closure-free handlers.
    const [working, setWorking] = useState<ImageMarkupSpec>(() => imageBlockToMarkupSpec(block))
    const workingRef = useRef(working)
    const editing = useRef(false)
-   // `patch` is mirrored in a ref so the keydown effect (which depends only on `isEditing`) never
-   // calls a stale patch from an earlier render.
+   // `patch` mirrored in a ref so the keydown effect (which depends only on `isEditing`) never calls a
+   // stale patch.
    const patchRef = useRef(patch)
    useEffect(() => { patchRef.current = patch })
 
@@ -246,8 +224,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       setEditingTextId(id)
    }
 
-   // External changes (undo, tab switch, load, alt/caption edits) sync in only when not actively
-   // drawing. The spec is rebuilt from the block's fields (src + overlay dims/elements + alt/caption).
+   // External changes (undo, tab switch, load, alt/caption edits) sync in only when not actively drawing.
    useEffect(() => {
       if (!editing.current) {
          const next = imageBlockToMarkupSpec(block)
@@ -257,9 +234,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [block.imageMarkup, block.src, block.alt, block.caption])
 
-   // When the window is opened for THIS block from outside (e.g. the plain-image "Add markup"
-   // affordance flips the block into markup mode and opens the window in the same gesture), capture
-   // an anchor rect from the freshly-mounted root so the floating window lands beside the block.
+   // When the window is opened for THIS block from outside (the plain-image "Add markup" affordance),
+   // capture an anchor rect from the freshly-mounted root so the window lands beside the block.
    const didInitAnchor = useRef(false)
    useEffect(() => {
       if (isEditing && !didInitAnchor.current && rootRef.current) {
@@ -269,10 +245,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       if (!isEditing) didInitAnchor.current = false
    }, [isEditing])
 
-   // ============
-   //  Draft / commit levers. Commit writes back the base image (src) + the overlay; alt/caption are
-   //  owned by their own inline fields and deliberately left untouched here.
-   // ============
+   // Draft / commit levers. Commit writes back the base image (src) + the overlay; alt/caption are
+   // owned by their own inline fields, left untouched here.
    function setBoth(next: ImageMarkupSpec): void {
       workingRef.current = next
       setWorking(next)
@@ -303,35 +277,32 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit({ ...workingRef.current, src, width, height })
    }
    function handleRemoveImage(): void {
-      // Non-destructive of the annotations: only the base pixels drop; the overlay stack (and its
-      // viewBox dims, so the aspect ratio survives) stays, rendered over the neutral placeholder.
+      // Only the base pixels drop; the overlay stack (and its viewBox dims, so the aspect survives)
+      // stays, rendered over the placeholder.
       commit({ ...workingRef.current, src: '' })
    }
    function handleRemoveMarkup(): void {
-      // Fold markup off entirely: clear the overlay so the block reverts to a plain image, keeping
-      // the base pixels/alt/caption intact.
+      // Clear the overlay so the block reverts to a plain image, keeping base pixels/alt/caption.
       editing.current = false
       editorWindow.close()
       patchRef.current({ imageMarkup: undefined })
    }
 
-   // ============
-   //  Pointer -> normalized, via the interaction layer's on-screen rect
-   // ============
+   // Pointer -> normalized, via the interaction layer's on-screen rect.
    function canvasPoint(event: React.PointerEvent): NormalizedPoint {
       const rect = overlayRef.current?.getBoundingClientRect()
       if (!rect) return { x: 0, y: 0 }
       return pointerToNormalized(event.clientX, event.clientY, rect)
    }
 
-   // The current render viewBox, needed by hitTest to give a text label its estimated glyph box
-   // (so a click near the text selects it) rather than its zero-size anchor point.
+   // The render viewBox, so hitTest can give a text label its estimated glyph box (a click near the
+   // text selects it) rather than its zero-size anchor.
    function currentViewBox(): { vbWidth: number; vbHeight: number } {
       return computeViewBox(workingRef.current.width, workingRef.current.height)
    }
 
    function onPointerDown(event: React.PointerEvent): void {
-      // Ignore secondary buttons; let the browser context menu / middle-click through.
+      // Let the browser context menu / middle-click through.
       if (event.button !== 0) return
       const point = canvasPoint(event)
 
@@ -357,7 +328,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
          return
       }
 
-      // Text: CLICK-placed (no drag). Drop it, commit, then open the edit-in-place overlay to type.
+      // Text: CLICK-placed (no drag). Drop, commit, then open the edit-in-place overlay to type.
       if (activeTool === 'text') {
          const textId = crypto.randomUUID()
          const element = createTextElement(point, t.imageMarkupDefaultText, currentStyle, textId)
@@ -450,10 +421,9 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
             discardInteraction()
             return
          }
-         // After drawing, drop into select so the fresh element can be adjusted / styled.
+         // Drop into select so the fresh element can be adjusted / styled.
          setActiveTool('select')
          commit(workingRef.current)
-         // A fresh callout opens the edit-in-place overlay so its label can be typed at once.
          if (interaction.mode === 'createCallout') setEditingText(interaction.id)
          return
       }
@@ -476,7 +446,6 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit(workingRef.current)
    }
 
-   // Double-click a text / callout element (in select mode) to edit its label in place.
    function onDoubleClick(event: React.MouseEvent): void {
       if (activeTool !== 'select') return
       const rect = overlayRef.current?.getBoundingClientRect()
@@ -489,8 +458,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       }
    }
 
-   // Commit the edit-in-place overlay's text back to the element on blur / Enter. An emptied TEXT
-   // element is removed (a callout keeps its box even with no label).
+   // Commit the overlay's text back on blur / Enter. An emptied TEXT element is removed (a callout
+   // keeps its box even with no label).
    function commitTextEdit(value: string): void {
       const id = editingTextIdRef.current
       setEditingText(null)
@@ -505,8 +474,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit({ ...workingRef.current, elements: replaceElement(workingRef.current.elements, updateElementText(target, value)) })
    }
 
-   // Delete / Backspace removes the selected element while the editor is open (unless a form field
-   // has focus, so typing a color hex / etc. is never hijacked).
+   // Delete / Backspace removes the selected element while the editor is open (a focused form field
+   // bails first, so typing a color hex is never hijacked).
    useEffect(() => {
       if (!isEditing) return
       function onKeyDown(event: KeyboardEvent): void {
@@ -530,8 +499,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    // ============
    const selectedElement = working.elements.find(element => element.id === selectedId) ?? null
 
-   // Apply a style patch to the selected element (if any) AND remember it as the default for the
-   // next drawn shape, so the palette acts as both "edit selection" and "set future defaults".
+   // Apply a style patch to the selected element AND remember it as the default for the next drawn
+   // shape, so the palette both edits the selection and sets future defaults.
    function applyStyle(stylePatch: MarkupDrawStyle): void {
       setCurrentStyle(previous => ({ ...previous, ...stylePatch }))
       const id = selectedIdRef.current
@@ -548,9 +517,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit({ ...workingRef.current, elements: removeElement(workingRef.current.elements, id) })
    }
 
-   // Set the selected text / callout element's label from the property-panel text field, a reliable
-   // edit path independent of the in-canvas edit-in-place overlay. No-op unless a text / callout
-   // element is selected.
+   // Set the selected text / callout element's label from the property-panel field (an edit path
+   // independent of the in-canvas overlay). No-op unless a text / callout element is selected.
    function applyTextContent(value: string): void {
       const id = selectedIdRef.current
       if (!id) return
@@ -560,7 +528,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       commit({ ...workingRef.current, elements: replaceElement(workingRef.current.elements, updateElementText(target, value)) })
    }
 
-   // Z-order: reorder the selected element in the stack (array order = z-order) via a pure helper.
+   // Reorder the selected element in the stack (array order = z-order) via a pure helper.
    function reorderSelected(reorder: (elements: MarkupElement[], id: string) => MarkupElement[]): void {
       const id = selectedIdRef.current
       if (!id) return
@@ -572,9 +540,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       editorWindow.open(block.id)
    }
 
-   // ============
-   //  Read-only view (the canonical export-consistent renderer, reconstructed from the block)
-   // ============
+   // Read-only view (the canonical export-consistent renderer, reconstructed from the block).
    if (readOnly) {
       const spec = imageBlockToMarkupSpec(block)
       if (!spec.src && spec.elements.length === 0) return null
@@ -594,19 +560,16 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       />
    )
 
-   // ============
-   //  The inline canvas (base image + live element overlay + interaction chrome)
-   // ============
+   // The inline canvas (base image + live element overlay + interaction chrome).
    const { vbWidth, vbHeight } = computeViewBox(working.width, working.height)
    const overlayHtml = renderMarkupOverlayToSvg(working.elements, working.width, working.height)
 
-   // The element whose label the edit-in-place overlay is currently editing (text / callout only).
    const editingElement = editingTextId
       ? working.elements.find(element => element.id === editingTextId) ?? null
       : null
 
-   // The overlay's position, expressed as PERCENTAGES of the canvas (so it tracks any display size):
-   // a text element sits at its anchor lifted one line height; a callout fills its box.
+   // The overlay's position as PERCENTAGES of the canvas (tracks any display size): a text element
+   // sits at its anchor lifted one line height; a callout fills its box.
    function textOverlayStyle(element: MarkupElement): React.CSSProperties {
       const box = getBoundingBox(element)
       if (element.kind === 'text') {
@@ -670,8 +633,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
             </div>
          )}
 
-         {/* Edit-in-place text overlay: an HTML textarea positioned over the text / callout element,
-             NOT SVG-native text editing (fragile cross-browser). Commits on blur / Enter. */}
+         {/* Edit-in-place: an HTML textarea over the element, not fragile SVG-native text editing. */}
          {isEditing && editingElement && (editingElement.kind === 'text' || editingElement.kind === 'callout') && (
             <textarea
                key={editingElement.id}
@@ -694,9 +656,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       </div>
    )
 
-   // ============
-   //  Property-control derived values
-   // ============
+   // Property-control derived values.
    const styleKind = selectedElement ? selectedElement.kind : (activeTool === 'select' ? null : activeTool)
    const fillApplies   = styleKind !== null && FILLABLE_KINDS.has(styleKind)
    const strokeApplies = styleKind !== null && styleKind !== 'text' // text carries color via textColor, no stroke
@@ -708,8 +668,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    const fillActive = fillValue !== undefined
    const fillColorValue = fillValue ?? '#ffffff'
 
-   // Arrow-only options (arrowhead shape + placement), shown when an arrow is selected or the arrow
-   // tool is active. Narrow to an arrow before reading its arrow-specific fields.
+   // Arrow-only options (arrowhead shape + placement). Narrow to an arrow before reading its fields.
    const arrowApplies = styleKind === 'arrow'
    const selectedArrow = selectedElement?.kind === 'arrow' ? selectedElement : null
    const arrowheadValue = selectedArrow?.arrowhead ?? currentStyle.arrowhead ?? MARKUP_DEFAULT_ARROWHEAD
@@ -722,12 +681,9 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
    const fontSizeValue  = selectedTextStyled?.fontSize ?? currentStyle.fontSize ?? MARKUP_DEFAULT_FONT_SIZE
    const textColorValue = selectedTextStyled?.textColor ?? currentStyle.textColor ?? MARKUP_DEFAULT_TEXT_COLOR
 
-   // ============
-   //  Windowed editor body (APP CHROME, app --color-* tokens, portaled under html[data-theme])
-   // ============
+   // Windowed editor body (APP CHROME, app --color-* tokens, portaled under html[data-theme]).
    const editorBody = (
       <div className="image-markup-editor">
-         {/* ===== Base image ===== */}
          <section className="image-markup-section">
             <span className="image-markup-section-label">{t.imageMarkupImageSection}</span>
             <div className="image-markup-btn-row">
@@ -745,7 +701,6 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
             </button>
          </section>
 
-         {/* ===== Tools ===== */}
          <section className="image-markup-section">
             <span className="image-markup-section-label">{t.imageMarkupToolsSection}</span>
             <div className="image-markup-tool-palette" role="toolbar" aria-label={t.imageMarkupToolsSection}>
@@ -766,7 +721,6 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
             <p className="image-markup-hint">{t.imageMarkupCanvasHint}</p>
          </section>
 
-         {/* ===== Style ===== */}
          <section className="image-markup-section">
             <span className="image-markup-section-label">{t.imageMarkupStyleSection}</span>
             {!selectedElement && <p className="image-markup-hint">{t.imageMarkupNoSelection}</p>}
@@ -956,10 +910,8 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
       </div>
    )
 
-   // ============
-   //  Inline: canvas + hover Edit pill; the controls live in the window. alt/caption edit inline
-   //  below (same fields as a plain image), so a marked-up image keeps its accessible text editable.
-   // ============
+   // Inline: canvas + hover Edit pill; the controls live in the window. alt/caption edit inline below
+   // (same fields as a plain image), so a marked-up image keeps its accessible text editable.
    return (
       <div className="image-markup-block" ref={rootRef}>
          {filePicker}
@@ -1027,15 +979,10 @@ interface SelectionChromeProps {
    vbHeight: number
 }
 
-/**
- * The selection overlay for the currently-selected element: a dashed bounding outline plus a small
- * square per resize handle. Drawn in viewBox units (the container's aspect ratio matches the
- * viewBox, so `preserveAspectRatio="none"` maps 1:1 with no distortion). Pure presentation, all hit
- * testing happens in JS against the pure `edit.ts` helpers, not against these nodes.
- */
+/** The selection overlay for the selected element: a dashed outline plus a square per resize handle,
+ *  drawn in viewBox units. Pure presentation; hit testing happens in JS against the edit.ts helpers. */
 function SelectionChrome({ element, vbWidth, vbHeight }: SelectionChromeProps) {
-   // Pass the viewBox so a text element's estimated glyph box (not its zero-size anchor) is outlined,
-   // giving the user a visible selection rectangle around the label.
+   // Pass the viewBox so a text element's estimated glyph box (not its zero-size anchor) is outlined.
    const box = getBoundingBox(element, { vbWidth, vbHeight })
    const handles = getElementHandles(element)
    return (

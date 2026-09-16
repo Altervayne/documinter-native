@@ -9,9 +9,9 @@ export interface RawEditorOptions {
    sections:  Section[]
    meta:      DocMeta
    onCommit:  (sections: Section[], meta: DocMeta) => void
-   /** Converts document state to raw text. Must be a stable reference (module-level function). */
+   /** Must be a stable module-level reference (excluded from the sync effect's deps). */
    serialize: (sections: Section[], meta: DocMeta) => string
-   /** Converts raw text back to document state. Must be a stable reference (module-level function). */
+   /** Must be a stable module-level reference (excluded from the sync effect's deps). */
    parse:     (source: string) => { sections: Section[], meta: DocMeta }
 }
 
@@ -28,18 +28,10 @@ export interface RawEditorResult {
 // ########
 
 /**
- * Shared debounce + sync contract for raw text editors (Markdown).
- *
- * Sync invariant: while `isActiveWriterRef` is true (user is typing or focused),
- * external `sections`/`meta` prop changes are silently ignored. This prevents
- * the other panel from overwriting the textarea mid-keystroke.
- *
- * `serialize` and `parse` are expected to be stable module-level function
- * references. They are intentionally excluded from useEffect dependency arrays.
- * Do not pass inline functions or the external-sync effect would need updating.
- *
- * `onCommit` is only called from event handlers, never from a useEffect
- * dependency array, so reference churn on the caller side has no correctness impact.
+ * Shared debounce + sync contract for raw text editors (Markdown). While isActiveWriterRef is true
+ * (focused or typing) external sections/meta changes are ignored, so the other panel can't overwrite
+ * the textarea mid-keystroke. serialize/parse must be stable module-level refs (excluded from the sync
+ * effect's deps); onCommit only fires from event handlers, so its identity churn is harmless.
  */
 export function useRawEditor({
    sections,
@@ -53,22 +45,16 @@ export function useRawEditor({
       () => serialize(sections, meta)
    )
 
-   // Always-current mirror of localText, read inside debounce callbacks to
-   // avoid capturing a stale closure.
+   // Always-current mirror of localText, read inside the debounce callback to dodge a stale closure.
    const localTextRef = useRef(localText)
 
-   // When true, external sections/meta prop changes do NOT overwrite the textarea.
    const isActiveWriterRef = useRef(false)
 
-   // Handle for the pending debounce timer.
    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
    // ==============
    //  External sync
    // ==============
-   // Re-derive text from parent state whenever sections/meta change,
-   // provided the user is not currently focused in the textarea.
-   // serialize/parse are stable module-level refs, intentionally omitted from deps.
    useEffect(() => {
       if (isActiveWriterRef.current) return
       const fresh = serialize(sections, meta)
@@ -79,7 +65,6 @@ export function useRawEditor({
    // ===================
    //  Cleanup on unmount
    // ===================
-   // Cancels any pending debounce so it does not fire after the component unmounts.
    useEffect(() => {
       return () => {
          if (debounceTimerRef.current !== null) {

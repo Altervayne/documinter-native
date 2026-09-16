@@ -1,36 +1,27 @@
-/**
- * binderSearch.ts, In-memory filtering + sorting for the binder document list.
- *
- * Owns the search/filter/sort types and the pure matching + comparison functions that
- * listDocuments (binderDocuments) applies after reading records.
+/*
+ * In-memory filtering + sorting for the binder document list: the search / filter / sort types and
+ * the pure matching + comparison functions listDocuments applies after reading records.
  */
 
 import type { BinderDocumentRecord } from '../types'
 
 export type DocumentSortBy = 'updatedAt' | 'createdAt' | 'lastOpenedAt' | 'title' | 'manual'
 
-/** The three timestamps a search can constrain. */
 export type DocumentDateField = 'updatedAt' | 'createdAt' | 'lastOpenedAt'
 
 /** The three date fields in display order, also drives matching iteration. */
 export const DOCUMENT_DATE_FIELDS: DocumentDateField[] = ['updatedAt', 'createdAt', 'lastOpenedAt']
 
-/**
- * A single date-field constraint. An inclusive lower bound (from) expresses "after", an
- * inclusive upper bound (to) expresses "before", and both together express a "between" range.
- * Bounds are 'YYYY-MM-DD' calendar days compared against the day portion of the ISO timestamp.
- */
+/** A single date-field constraint. Inclusive `from` is "after", inclusive `to` is "before", both a
+ *  "between" range. Bounds are 'YYYY-MM-DD' days compared against the day portion of the timestamp. */
 export interface DateFilter {
    from?: string
    to?:   string
 }
 
-/**
- * Multi-criteria search. Every present criterion is ANDed together. Each of the three date
- * fields may carry its own independent constraint simultaneously. hasNeverOpened keeps only
- * documents that have no lastOpenedAt. Folder scoping is handled by DocumentListFilter.folderId,
- * not here.
- */
+/** Every present criterion is ANDed. Each date field may carry its own independent constraint.
+ *  hasNeverOpened keeps only documents with no lastOpenedAt. Folder scoping lives on
+ *  DocumentListFilter.folderId, not here. */
 export interface SearchCriteria {
    text?:           string                                   // free-text: title + every field label/value + section titles + contents
    dates?:          Partial<Record<DocumentDateField, DateFilter>>
@@ -45,7 +36,7 @@ export interface DocumentListFilter {
    criteria?: SearchCriteria          // multi-criteria search (all ANDed; within folderId scope)
 }
 
-/** Global free-text match: title + every freeform field's label/value + section titles + contents. */
+/** Matches over title + every field label / value + section titles + contents. */
 function matchesText(record: BinderDocumentRecord, needle: string): boolean {
    const fieldText = record.meta.fields.map(field => `${field.label} ${field.value}`).join(' ')
    const haystack = [

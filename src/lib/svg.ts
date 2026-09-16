@@ -1,25 +1,16 @@
-/**
- * svg.ts, tiny deterministic SVG string builders shared by the home-grown graphic blocks.
- *
- * PURE FUNCTIONS. SVG strings cannot be measured or DOM-parsed at build time, so this module
- * is deliberately small: escape everything that could carry a user label/title, format every
- * number the same way so output is byte-deterministic (no locale, no Date, no random), and
- * assemble elements from attribute records. NEVER emit unescaped user text.
- *
- * Shared by the graph block (`lib/graph/svg.ts`) and the image-markup block (`lib/imageMarkup/`)
- * as the single escaping/formatting source of truth. `lib/graph/svg.ts` re-exports this module
- * verbatim so graph code can keep importing from its own path.
+/*
+ * Deterministic SVG string builders shared by the home-grown graphic blocks: escape anything carrying
+ * user text, format every number the same way so output is byte-deterministic (no locale, no Date, no
+ * random). The single escaping/formatting source of truth; `lib/graph/svg.ts` re-exports it verbatim so
+ * graph code can keep importing from its own path. NEVER emit unescaped user text.
  */
 
 // ############
 // # ESCAPING #
 // ############
 
-/**
- * Escape a string for safe inclusion in SVG/XML text OR an attribute value. Handles the five
- * XML significant characters. `&` MUST be replaced first so the entity ampersands it inserts
- * are not double-escaped.
- */
+/** Escape a string for SVG/XML text or an attribute value (the five XML significant chars). `&` MUST
+ *  be replaced first so the entity ampersands it inserts are not double-escaped. */
 export function escapeXml(text: string): string {
    return String(text)
       .replace(/&/g, '&amp;')
@@ -33,22 +24,17 @@ export function escapeXml(text: string): string {
 // # NUMBER FORMATTING #
 // #####################
 
-/**
- * Round a coordinate / length to a fixed number of decimal places (default 2) for compact,
- * deterministic geometry output. A non-finite input collapses to 0 so a bad datum can never
- * emit `NaN`/`Infinity` into an attribute (which would break the whole SVG).
- */
+/** Round a coordinate to fixed decimals (default 2) for compact, deterministic output. A non-finite
+ *  input collapses to 0 so a bad datum never emits `NaN`/`Infinity` into an attribute (which would
+ *  break the whole SVG). */
 export function roundCoordinate(value: number, places = 2): number {
    if (!Number.isFinite(value)) return 0
    const factor = 10 ** places
    return Math.round(value * factor) / factor
 }
 
-/**
- * Format a data value for a visible label (axis tick, value label): round to at most 6
- * decimals, group the integer part with thousands commas, keep any fractional part trimmed.
- * Locale-free and deterministic. A non-finite input renders as `0`.
- */
+/** Format a data value for a visible label (axis tick, value label): round to 6 decimals, group the
+ *  integer part with thousands commas. Locale-free and deterministic; a non-finite input renders `0`. */
 export function formatNumber(value: number): string {
    if (!Number.isFinite(value)) return '0'
    const rounded = Math.round(value * 1e6) / 1e6
@@ -86,11 +72,8 @@ export function attributesToString(attributes: SvgAttributes): string {
    return parts.join(' ')
 }
 
-/**
- * Build a container element with pre-built child markup. `children` is treated as RAW markup
- * (already-escaped element strings), so callers must never pass unescaped user text here,
- * use {@link textElement} / {@link titleElement} for user-facing text.
- */
+/** Build a container element with pre-built child markup. `children` is RAW markup (already-escaped),
+ *  so never pass unescaped user text here; use textElement / titleElement for user-facing text. */
 export function element(tag: string, attributes: SvgAttributes, children = ''): string {
    const attributeString = attributesToString(attributes)
    const opening = attributeString ? `<${tag} ${attributeString}>` : `<${tag}>`

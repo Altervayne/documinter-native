@@ -56,15 +56,11 @@ interface PresentationPanelBodyProps {
 // #############
 
 /**
- * The document-level Presentation editor body, chrome-free so the same form serves both the floating
+ * The document-level Presentation editor body, chrome-free so the same form serves the floating
  * PresentationWindow (Document -> Presentation...) and a docked side panel. Its controls mutate the
- * document's `presentation` object; the live PREVIEW is the watermark rendered behind the document
- * sheet, which updates as these controls change, so there is deliberately no in-editor preview (same
- * rationale as the graph editor window).
- *
- * Navigation lives in its own NavPanelBody (Document -> Navigation...), so this body covers
- * Watermark + Header only. The outer `.doc-settings-panel` owns the scroll + padding so the body fills
- * its host (a docked panel or the floating window body, whose padding is neutralized in doc.css).
+ * document's `presentation` object; the live preview is the watermark rendered behind the sheet, so
+ * there is deliberately no in-editor preview. Navigation lives in its own NavPanelBody, so this body
+ * covers Watermark + Header only. `.doc-settings-panel` owns the scroll + padding (neutralized in doc.css).
  */
 export function PresentationPanelBody({ presentation, onChange }: PresentationPanelBodyProps) {
    const watermark = presentation?.watermark
@@ -111,17 +107,16 @@ const POSITION_OPTIONS: WatermarkPosition[] = [
 function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
    const { t } = useLang()
    const inputRef = useRef<HTMLInputElement>(null)
-   // Local UI-only state: whether the spacing sliders are linked (one "density" knob driving
-   // spacingX === spacingY) or unlinked (two independent per-axis sliders). Not persisted on the
-   // model - spacingX/spacingY are always stored independently; this just controls the widget.
+   // Whether the spacing sliders are linked (one "density" knob driving spacingX === spacingY) or
+   // unlinked. UI-only; the model always stores spacingX / spacingY independently.
    const [spacingLinked, setSpacingLinked] = useState(true)
 
    async function handleFile(file: File | undefined): Promise<void> {
       if (!file || !file.type.startsWith('image/')) return
       const { src, width, height } = await downscaleImageToDataUrl(file)
       const aspectRatio = height > 0 ? width / height : WATERMARK_DEFAULT_ASPECT_RATIO
-      // Keep the existing opacity / fit / tile / position / rotation / tile-size / spacing when
-      // replacing; a fresh pick gets defaults (but always the freshly-picked image's own aspect ratio).
+      // Keep the existing settings when replacing; a fresh pick gets defaults. Either way the new
+      // image's own aspect ratio wins.
       onChange(watermark ? { ...watermark, src, aspectRatio } : makeWatermark(src, aspectRatio))
    }
 
@@ -158,8 +153,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
             </div>
          ) : (
             <>
-               {/* A small thumbnail of the chosen asset (app-chrome - shows the raw image, not the
-                   themed live watermark, which previews behind the document sheet). */}
+               {/* A thumbnail of the chosen asset (the raw image, not the themed live watermark that
+                   previews behind the sheet). */}
                <div className="presentation-thumb-row">
                   <span className="presentation-thumb" style={{ backgroundImage: `url("${watermark.src}")` }} aria-hidden="true" />
                   <div className="presentation-thumb-actions">
@@ -195,9 +190,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                   onChange={next => onChange({ ...watermark, rotation: next })}
                />
 
-               {/* Position offset: a fine X/Y nudge on top of the position anchor / pattern phase,
-                   composed with rotation rather than replacing it. Applies to both the single and
-                   tiled watermark, same as rotation. */}
+               {/* Position offset: a fine X/Y nudge on top of the anchor / pattern phase, composed with
+                   rotation. Applies to both the single and tiled watermark. */}
                <SliderWithNumberInput
                   label={t.presentationWatermarkOffsetX}
                   min={WATERMARK_MIN_OFFSET}
@@ -217,7 +211,6 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                   onChange={next => onChange({ ...watermark, offsetY: next })}
                />
 
-               {/* Tile toggle. */}
                <label className="presentation-toggle">
                   <input
                      type="checkbox"
@@ -229,8 +222,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
 
                {watermark.tile ? (
                   <>
-                     {/* Tile size - the rendered width of one motif; height derives from the
-                         stored aspect ratio so the image is never squashed. */}
+                     {/* Tile size: the rendered width of one motif; height derives from the stored
+                         aspect ratio so the image is never squashed. */}
                      <SliderWithNumberInput
                         label={t.presentationWatermarkTileSize}
                         min={WATERMARK_MIN_TILE_SIZE}
@@ -241,8 +234,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                         onChange={next => onChange({ ...watermark, tileSize: next })}
                      />
 
-                     {/* Spacing: linked by default (one "density" slider drives spacingX === spacingY);
-                         "adjust axes separately" unlinks it into independent horizontal / vertical sliders. */}
+                     {/* Spacing: linked by default (one slider drives spacingX === spacingY); "adjust axes
+                         separately" unlinks it into independent horizontal / vertical sliders. */}
                      {spacingLinked ? (
                         <SliderWithNumberInput
                            label={t.presentationWatermarkSpacing}
@@ -283,8 +276,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                            onChange={event => {
                               const unlinked = event.target.checked
                               setSpacingLinked(!unlinked)
-                              // Re-linking collapses back to a single value (spacingX wins) so the
-                              // linked slider has one unambiguous position to resume from.
+                              // Re-linking collapses to a single value (spacingX wins) so the linked
+                              // slider has one position to resume from.
                               if (!unlinked) onChange(applyLinkedWatermarkSpacing(watermark, watermark.spacingX))
                            }}
                         />
@@ -293,9 +286,8 @@ function WatermarkSection({ watermark, onChange }: WatermarkSectionProps) {
                   </>
                ) : (
                   <>
-                     {/* Size + position only apply to a single (non-tiled) image. Size is a percentage
-                         of the page width; height is left to `auto` so the image's own aspect ratio is
-                         preserved, mirroring the tiled case's tileSize slider. */}
+                     {/* Size + position apply to a single (non-tiled) image only. Size is a percent of
+                         page width; height stays `auto` so the aspect ratio is preserved. */}
                      <SliderWithNumberInput
                         label={t.presentationWatermarkSize}
                         min={WATERMARK_MIN_SIZE}
@@ -344,7 +336,7 @@ function HeaderSection({ header, onChange }: HeaderSectionProps) {
 
    async function handleFile(file: File | undefined): Promise<void> {
       if (!file || !file.type.startsWith('image/')) return
-      // A logo doesn't need the watermark's full-size cap - HEADER_LOGO_MAX_EDGE keeps it small.
+      // A logo doesn't need the watermark's full-size cap; HEADER_LOGO_MAX_EDGE keeps it small.
       const { src } = await downscaleImageToDataUrl(file, HEADER_LOGO_MAX_EDGE)
       // Keep the existing placement / align / maxHeight when replacing; a fresh pick gets defaults.
       onChange(header ? { ...header, src } : makeHeader(src))
@@ -383,8 +375,8 @@ function HeaderSection({ header, onChange }: HeaderSectionProps) {
             </div>
          ) : (
             <>
-               {/* A small thumbnail of the chosen asset (app-chrome - the live logo renders in the
-                   document header, following the document theme). */}
+               {/* A thumbnail of the chosen asset (the live logo renders in the document header,
+                   following the document theme). */}
                <div className="presentation-thumb-row">
                   <span className="presentation-thumb" style={{ backgroundImage: `url("${header.src}")` }} aria-hidden="true" />
                   <div className="presentation-thumb-actions">
@@ -411,9 +403,8 @@ function HeaderSection({ header, onChange }: HeaderSectionProps) {
                   </select>
                </label>
 
-               {/* Alignment: horizontal placement of the logo (or, for "beside" + logoSide 'left',
-                   the logo+title group; ignored for "beside" + logoSide 'right', which pins the
-                   logo and title to opposite ends of the row instead). */}
+               {/* Alignment: horizontal placement of the logo (or, for "beside" + logoSide 'left', the
+                   logo+title group; ignored for "beside" + logoSide 'right', which pins them to opposite ends). */}
                <label className="presentation-field">
                   <span className="presentation-field-label">{t.presentationHeaderAlign}</span>
                   <select
@@ -428,9 +419,8 @@ function HeaderSection({ header, onChange }: HeaderSectionProps) {
                   </select>
                </label>
 
-               {/* Logo side: "beside" only - which end of the row the logo pins to, with the title
-                   at the other end. Left (default) keeps the logo+title grouped together per
-                   `align`; right pins the logo opposite the title. */}
+               {/* Logo side ("beside" only): which end of the row the logo pins to. Left (default) keeps
+                   logo+title grouped per `align`; right pins the logo opposite the title. */}
                {header.placement === 'beside' && (
                   <label className="presentation-field">
                      <span className="presentation-field-label">{t.presentationHeaderLogoSide}</span>

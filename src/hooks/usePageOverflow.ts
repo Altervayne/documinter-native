@@ -50,8 +50,8 @@ function escapeForSelector(value: string): string {
       : value.replace(/["\\]/g, '\\$&')
 }
 
-/** Shallow-equal two measurement maps so an unchanged measurement never churns React state (and so
- *  the measure effect can never loop by re-committing the same result). */
+/** Shallow-equal two measurement maps so an unchanged measurement never churns React state (which
+ *  would let the measure effect loop by re-committing the same result). */
 function sameMeasurements(
    left:  Map<string, PageOverflowMeasurement>,
    right: Map<string, PageOverflowMeasurement>,
@@ -71,21 +71,13 @@ function sameMeasurements(
 // #########
 
 /**
- * Measures each rendered A4 page's content height from the real DOM and asks the pure
- * `computeOverflowCut` where (if anywhere) it should be split. MEASURED, never predicted: for every
- * `[data-page-id]` sheet it reads the bottom edge of each top-level `[data-block-id]` (relative to the
- * page's content-box top, so any header/section-title above the first block is folded in), turns those
- * into ordered block heights, and feeds them + the available content height to the helper.
- *
- * Two triggers keep the verdict fresh without a feedback loop:
- *   - a layout effect after every commit whose `pages` / `availableHeightPx` changed (model edits,
- *     format changes),
- *   - a `ResizeObserver` on the container + a window-resize listener for ASYNC layout the React tree
- *     doesn't re-render on (fonts, images, MathML/SVG settling).
- * The overflow ribbon the result drives is absolutely positioned, so it never alters page flow and so
- * never feeds a measurement back into itself; a shallow-equality guard drops no-op re-measurements.
- *
- * Editor-only, ephemeral: the result never enters the serialized model.
+ * Measures each rendered A4 page's content height from the real DOM and asks pure `computeOverflowCut`
+ * where (if anywhere) to split it. Block heights come from the bottom edge of each top-level
+ * `[data-block-id]` relative to the page content-box top, so leading chrome (header, section title) is
+ * folded in. Two triggers keep the verdict fresh without a feedback loop: an effect after every commit
+ * that changed `pages`/`availableHeightPx`, and a ResizeObserver + resize listener for async layout the
+ * tree doesn't re-render on (fonts, images, MathML/SVG). The ribbon it drives is absolutely positioned,
+ * so it never alters flow; a shallow-equality guard drops no-op re-measurements. Editor-only, ephemeral.
  */
 export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflowResult {
    const { enabled, pages, availableHeightPx } = options
@@ -96,9 +88,8 @@ export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflo
    const measurementsRef = useRef(measurements)
    measurementsRef.current = measurements
 
-   // `measure` closes over the current props; a ref keeps the ResizeObserver / resize callbacks calling
-   // the LATEST version rather than a stale mount-time closure (the RO effect deliberately has no
-   // per-render deps so the observer isn't torn down and rebuilt on every edit).
+   // A ref keeps the RO / resize callbacks calling the LATEST measure, not a stale mount-time closure
+   // (the RO effect has no per-render deps, so the observer isn't torn down and rebuilt on every edit).
    function measure(): void {
       const container = containerElementRef.current
       if (!enabled || !container || !pages || !(availableHeightPx > 0)) {
@@ -113,18 +104,16 @@ export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflo
          const renderElement = pageElement.querySelector<HTMLElement>('.doc-render')
          if (!renderElement) continue
 
-         // The content-box top: the render element's top plus its top padding (the page margin). Block
-         // bottoms are measured from here, so the header / titles above the first block count as the
-         // space they consume (folded into the first block's height).
+         // Content-box top = render top + its top padding (the page margin). Block bottoms measure from
+         // here, so leading chrome (header, titles) counts as the space it consumes.
          const paddingTop = Number.parseFloat(getComputedStyle(renderElement).paddingTop) || 0
          const contentTop = renderElement.getBoundingClientRect().top + paddingTop
 
          const blockIds = page.slices.flatMap(slice => slice.blocks.map(block => block.id))
          if (blockIds.length === 0) continue
 
-         // Ordered heights as deltas of successive block BOTTOM edges. Using bottoms (not each block's
-         // own box height) folds the inter-block margins and any leading chrome into the running total,
-         // matching what actually consumes the page.
+         // Heights as deltas of successive block BOTTOM edges, so inter-block margins and leading chrome
+         // fold into the running total rather than being dropped.
          let previousBottom = 0
          const blockHeights: number[] = []
          for (const blockId of blockIds) {
@@ -152,15 +141,15 @@ export function usePageOverflow(options: UsePageOverflowOptions): UsePageOverflo
    const measureRef = useRef(measure)
    measureRef.current = measure
 
-   // Trigger 1: re-measure after every commit whose model / geometry changed. useEffect (not layout)
-   // runs after the browser has laid the sheets out, so the getBoundingClientRect reads are final.
+   // Trigger 1: re-measure after every commit that changed model / geometry. useEffect (not layout)
+   // runs after the sheets are laid out, so the getBoundingClientRect reads are final.
    useEffect(() => {
       measureRef.current()
    }, [enabled, pages, availableHeightPx])
 
-   // Trigger 2: async layout the React tree doesn't re-render on (web-font swap, image decode,
-   // MathML/SVG settling, window resize). Coalesced into a single rAF so a burst of RO callbacks
-   // measures once. Rebuilt only when `enabled` flips (infinite vs paged), never per edit.
+   // Trigger 2: async layout the tree doesn't re-render on (font swap, image decode, MathML/SVG,
+   // resize). Coalesced into one rAF so a burst of RO callbacks measures once. Rebuilt only when
+   // `enabled` flips (infinite vs paged), never per edit.
    useEffect(() => {
       const container = containerElementRef.current
       if (!enabled || !container || typeof ResizeObserver === 'undefined') return

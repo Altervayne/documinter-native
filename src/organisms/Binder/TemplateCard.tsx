@@ -21,15 +21,14 @@ interface TemplateCardProps {
    enableApplyDrag?: boolean
 }
 
-/** One running-header-band slot worth surfacing as chrome: an image and/or text. */
 interface ChromeBandItem {
    key:      'left' | 'center' | 'right'
    imageSrc?: string
    text?:     string
 }
 
-/** The band's `content` slots worth surfacing as distinguishing chrome (an image and/or text); a
- *  `pageNumber` or `credit` slot is skipped, neither tells two templates apart. */
+/** The band's `content` slots (image and/or text); a `pageNumber` or `credit` slot is skipped, since
+ *  neither tells two templates apart. */
 function collectChromeBandItems(band: PageBand | undefined): ChromeBandItem[] {
    if (!band) return []
    const items: ChromeBandItem[] = []
@@ -43,11 +42,9 @@ function collectChromeBandItems(band: PageBand | undefined): ChromeBandItem[] {
 }
 
 /**
- * A template card: name + built-in badge, a scaffold preview (the accent swatch, the meta field
- * labels it will seed, and the page-format badge), a prominent "Use template" action, and an
- * overflow menu (Duplicate always; Rename / Delete only for user templates, since built-ins are
- * code-defined). Templates carry no content, so there is no live document preview like
- * DocumentCard has.
+ * A template card: name + built-in badge, a scaffold preview, a "Use template" action, and an
+ * overflow menu. Rename / Delete show only for user templates, since built-ins are code-defined.
+ * Templates carry no content, so there is no live document preview like DocumentCard has.
  */
 export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, onRename, onDelete, enableApplyDrag }: TemplateCardProps) {
    const { t } = useLang()
@@ -71,8 +68,8 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
    const above = template.meta.fields.filter(field => field.position === 'above')
    const below = template.meta.fields.filter(field => field.position === 'below')
 
-   // Chrome the template carries beyond accent + format: watermark, title logo, running-header band
-   // content. Surfaced so two templates that only differ in look aren't indistinguishable cards.
+   // Chrome beyond accent + format (watermark, title logo, header-band content), surfaced so two
+   // templates that differ only in look aren't indistinguishable cards.
    const watermarkSrc = template.presentation?.watermark?.src
    const watermarkTile = template.presentation?.watermark?.tile === true
    const titleLogoSrc = template.presentation?.header?.src
@@ -80,8 +77,8 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
    const headerLogoSrc = headerBandItems.find(item => item.imageSrc)?.imageSrc
    const hasChromeRow = Boolean(titleLogoSrc) || headerBandItems.some(item => item.text)
 
-   // `format.pages` is stripped at capture time (see documentTemplate.ts captureFormat), so this is
-   // normally absent; only render the badge on the rare stored template that still carries pages.
+   // `format.pages` is stripped at capture time (documentTemplate.ts captureFormat), so this is
+   // normally absent; the badge only renders on a stored template that still carries pages.
    const pageCount = template.format?.pages && template.format.pages.length > 0
       ? template.format.pages.length + 1
       : undefined
@@ -114,7 +111,6 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
             onDragEnd={enableApplyDrag ? clearDraggedTemplate : undefined}
             className="group relative overflow-hidden rounded-lg border border-border bg-raised p-4 transition-colors hover:border-accent/40 select-none"
          >
-            {/* Watermark, faint and full-bleed behind the card content, clipped to the rounded corners */}
             {watermarkSrc && (
                <div
                   aria-hidden="true"
@@ -129,7 +125,6 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
             )}
 
             <div className="relative z-10 flex flex-col gap-3">
-               {/* Header: accent swatch + name, then built-in badge + header-band logo opposite the name */}
                <div className="flex items-center gap-2">
                   <span
                      className="shrink-0 h-4 w-4 rounded-sm ring-1 ring-black/10"
@@ -154,7 +149,7 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
                   )}
                </div>
 
-               {/* Scaffold preview: the meta field labels this template will seed, above / below the title */}
+               {/* Scaffold preview: the meta field labels this template seeds, above / below the title. */}
                {(above.length > 0 || below.length > 0) ? (
                   <div className="flex flex-wrap gap-1.5">
                      {[...above, ...below].map(field => (
@@ -171,9 +166,7 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
                   <div className="text-[0.65rem] text-muted/60 italic">{t.templateNoFields}</div>
                )}
 
-               {/* Chrome preview: title logo / running-header band text, only when present. The watermark
-                   renders as the card background above, and the header-band logo moved into the identity
-                   row, so this row is left with just the title logo thumbnail and/or header text chip. */}
+               {/* Title logo thumbnail and/or header-band text chip, when present. */}
                {hasChromeRow && (
                   <div className="flex flex-wrap items-center gap-1.5">
                      {titleLogoSrc && (
@@ -200,7 +193,6 @@ export function TemplateCard({ template, onUse, onApply, onDuplicate, onExport, 
                   </div>
                )}
 
-               {/* Format badge + Use action */}
                <div className="flex items-center justify-between gap-2 pt-1">
                   <div className="flex items-center gap-1.5">
                      <span className="rounded-md bg-border/40 px-2 py-0.5 text-[0.6rem] font-mono font-medium text-muted">{formatLabel}</span>

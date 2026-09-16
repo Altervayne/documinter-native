@@ -4,7 +4,7 @@ import type { PaneId, PaneLeaf, PaneNode } from '../types'
 // # READ-ONLY QUERIES #
 // #####################
 
-/** Returns the set of all PaneIds present as leaves in the tree. */
+/** Every PaneId present as a leaf in the tree. */
 export function visiblePanels(tree: PaneNode): Set<PaneId> {
    if (tree.kind === 'leaf') return new Set([tree.paneId])
    const result = new Set<PaneId>()
@@ -13,22 +13,17 @@ export function visiblePanels(tree: PaneNode): Set<PaneId> {
    return result
 }
 
-/** True when the tree contains a leaf with the given paneId. */
 export function isPanelVisible(tree: PaneNode, paneId: PaneId): boolean {
    if (tree.kind === 'leaf') return tree.paneId === paneId
    return isPanelVisible(tree.children[0], paneId) || isPanelVisible(tree.children[1], paneId)
 }
 
-/** Count of leaf nodes in the tree. */
 export function countVisiblePanels(tree: PaneNode): number {
    if (tree.kind === 'leaf') return 1
    return countVisiblePanels(tree.children[0]) + countVisiblePanels(tree.children[1])
 }
 
-/**
- * True when the set of PaneIds present in the tree exactly equals `expected`.
- * Used by the toggle-on compatibility check in useWorkspaceState.
- */
+/** True when the tree's PaneIds exactly equal `expected`. */
 export function hasExactPanels(tree: PaneNode, expected: Set<PaneId>): boolean {
    const actual = visiblePanels(tree)
    if (actual.size !== expected.size) return false
@@ -42,12 +37,8 @@ export function hasExactPanels(tree: PaneNode, expected: Set<PaneId>): boolean {
 // # IMMUTABLE TREE MUTATIONS #
 // ############################
 
-/**
- * Remove the leaf with paneId from the tree.
- * When a split loses one child, it is replaced by the remaining child.
- * Returns null only when the input is itself the matching leaf (single-leaf tree).
- * Callers must guard: check `countVisiblePanels > 1` before calling.
- */
+/** Remove the leaf with paneId; a split that loses a child collapses to its remaining child. Returns
+ *  null only when the tree IS that leaf (single-leaf), so callers guard with countVisiblePanels > 1. */
 export function removePanel(tree: PaneNode, paneId: PaneId): PaneNode | null {
    if (tree.kind === 'leaf') {
       return tree.paneId === paneId ? null : tree
@@ -62,20 +53,15 @@ export function removePanel(tree: PaneNode, paneId: PaneId): PaneNode | null {
    return { ...tree, children: [newLeft, newRight] }
 }
 
-/**
- * Insert a new leaf as the right child of a new horizontal split at the tree root.
- * Fallback used by useWorkspaceState when no stored position is available.
- */
+/** Insert a new leaf as the right child of a fresh horizontal split at the root. The fallback when no
+ *  stored position is available. */
 export function insertPanelRight(tree: PaneNode, paneId: PaneId): PaneNode {
    const newLeaf: PaneLeaf = { kind: 'leaf', paneId }
    return { kind: 'split', orientation: 'h', ratio: 0.5, children: [tree, newLeaf] }
 }
 
-/**
- * Move the leaf identified by draggedId to a new position relative to targetId.
- * Steps: (1) remove draggedId, (2) insert at targetId's location in the resulting tree.
- * Zone controls which side of targetId the dragged panel lands on.
- */
+/** Move the leaf `draggedId` next to `targetId`: remove it, then reinsert on the `zone` side of the
+ *  target in the resulting tree. */
 export function relocatePanel(
    tree:      PaneNode,
    draggedId: PaneId,
@@ -89,10 +75,8 @@ export function relocatePanel(
    return insertAtTarget(withoutDragged, draggedLeaf, targetId, zone)
 }
 
-/** Update the ratio of the split reached by following `path` from the root.
- *  `path` is an array of 0|1 child indices. Empty path targets the root split.
- *  Malformed paths (e.g. a path that lands on a leaf) are a no-op.
- */
+/** Update the ratio of the split reached by following `path` (0|1 child indices) from the root; an empty
+ *  path targets the root split. A malformed path (one landing on a leaf) is a no-op. */
 export function setSplitRatio(tree: PaneNode, path: number[], ratio: number): PaneNode {
    if (tree.kind === 'leaf') return tree   // path lands on a leaf, no-op
 
@@ -116,8 +100,7 @@ export function setSplitRatio(tree: PaneNode, path: number[], ratio: number): Pa
 // # INTERNAL HELPERS #
 // ####################
 
-/** Recursively finds the leaf with targetId and wraps it in a new split
- *  containing `newLeaf` on the side indicated by `zone`. */
+/** Find the leaf `targetId` and wrap it in a new split holding `newLeaf` on the `zone` side. */
 function insertAtTarget(
    tree:     PaneNode,
    newLeaf:  PaneLeaf,

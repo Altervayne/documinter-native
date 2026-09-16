@@ -1,12 +1,7 @@
-/**
- * DocThemeContext, Provides the active document theme ('light' | 'dark') to blocks that must
- * bake theme-specific colors into their own markup (the graph block, whose SVG carries literal
- * hex rather than CSS variables, the same reason the HTML export bakes a single theme).
- *
- * Exports: DocThemeProvider, useDocTheme
- *
- * Provided once at the WysiwygArea root (which already knows `docTheme`), so any block deep in
- * the tree reads it without prop-threading through every section / block / container layer.
+/*
+ * The active document theme, for blocks that bake theme-specific colors into their own markup: the
+ * graph block's SVG carries literal hex, not CSS variables, so it needs to know light vs dark.
+ * Provided once at the WysiwygArea root, so a deep block reads it without prop-threading.
  */
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */

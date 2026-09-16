@@ -1,10 +1,7 @@
-/**
- * BinderSwitcher, the native Header Binder-switcher.
- *
- * Shows the open Binder's name next to the logo; clicking opens a menu to switch to a recent Binder,
- * open a folder, or create a new one. It reads the lifecycle controls from NativeBinderContext, so it
- * renders nothing on the web (no provider) and only appears once a Binder is open. The dropdown mirrors
- * FileMenu's in-flow absolute pattern (outside-click close + a light right-edge flip) for visual parity.
+/*
+ * The header Binder-switcher: the open Binder's name next to the logo, with a menu to switch, open,
+ * or create. Reads its controls from NativeBinderContext, so it renders nothing on the web (no
+ * provider). Dropdown mirrors FileMenu's in-flow absolute pattern for visual parity.
  */
 
 // -- React Imports --
@@ -56,8 +53,7 @@ export function BinderSwitcher() {
       if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
-   // The switcher only exists inside the native host, past an open Binder. Off native (web) the provider
-   // is absent, so there is nothing to render. Placed after the hooks so hook order stays stable.
+   // No provider off native (web): nothing to render. After the hooks, so hook order stays stable.
    if (controls === null) return null
 
    const others = controls.known.filter(entry => entry.path !== controls.activePath)
@@ -89,8 +85,6 @@ export function BinderSwitcher() {
 
    return (
       <div ref={containerRef} className="relative shrink-0">
-         {/* Trigger: the open Binder's name. Its own pointer events (a button), so it stops the window
-             drag directly on itself, like every other header control. */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             title={t.binderMenuSwitch}
@@ -142,7 +136,6 @@ export function BinderSwitcher() {
                ) : (
                   // ==== List view ====
                   <>
-                     {/* Current Binder header */}
                      <div className="px-3 py-2">
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{t.binderMenuCurrent}</div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-sm font-medium text-text">

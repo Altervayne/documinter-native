@@ -7,27 +7,19 @@ import { ColorPicker } from 'react-piqua-color'
 // #########
 
 interface InlineColorPopoverProps {
-   /** Currently active color hex, or undefined when the field is unset. */
+   /** Active color hex, or undefined when unset. */
    activeColor: string | undefined
-   /**
-    * Ref to the trigger button's "relative"-positioned wrapper. Its viewport-space
-    * rect is read inside the layout effect below (never during render) to compute a
-    * centered-below position that is then clamped to stay on-screen.
-    */
+   /** The trigger's positioned wrapper; its rect anchors the clamped placement below. */
    anchorRef:   RefObject<HTMLDivElement | null>
    /** Curated quick-pick palette (existing font/highlight values, no new colors). */
    palette:     readonly string[]
-   /** Recently-used custom colors (most-recent-first), shown as a quick-pick row. */
+   /** Recently-used custom colors, most-recent-first. */
    recent:      readonly string[]
-   /** Localised label for the curated-palette row. */
    paletteLabel: string
-   /** Localised label for the recent-colors row. */
    recentLabel: string
-   /** Localised label for the "remove color" action. */
    removeLabel: string
-   /** Apply a color to the selection (undefined clears the field). Does not close. */
+   /** Apply a color to the selection (undefined clears it). Does not close. */
    onApply:     (color: string | undefined) => void
-   /** Close the popover, used by the discrete actions (quick-pick swatch / remove). */
    onClose:     () => void
 }
 
@@ -48,26 +40,19 @@ const TRIGGER_GAP = 6
 // #############
 
 /**
- * Floating color popover shared by the font-color and highlight-color buttons.
- * The package ColorPicker renders the curated-palette row, the recents row, and the
- * custom-color body itself (swatchesPosition="top"), and auto-highlights the swatch
- * matching `value`. onChange applies continuously while dragging, so an active
- * adjustment (input / slider / eyedropper) stays open; a discrete swatch or recent
- * pick closes the popover via onColorCommitted, as does the remove action below.
+ * Floating color popover shared by the font-color and highlight-color buttons. The package
+ * ColorPicker renders the palette row, recents row, and custom body. A live adjustment (drag /
+ * slider / eyedropper) stays open; a discrete swatch or recent pick closes it, as does remove.
  */
 export function InlineColorPopover({ activeColor, anchorRef, palette, recent, paletteLabel, recentLabel, removeLabel, onApply, onClose }: InlineColorPopoverProps) {
    const popoverRef = useRef<HTMLDivElement>(null)
 
-   // Position relative to the trigger's own box (this popover's containing block,
-   // it's `position: absolute` inside the trigger's `position: relative` wrapper).
+   // Position relative to the trigger's box (this popover is absolute inside its relative wrapper).
    const [position, setPosition] = useState<Pos>({ top: 0, left: 0 })
 
-   // Measures the popover's real rendered size on mount (this component mounts fresh
-   // each time it opens, so "once on mount" naturally recomputes for new content), then
-   // clamps the desired centered-below-trigger position two-sided so it can never
-   // render partly off-screen, compounds correctly even when the trigger itself
-   // (FormatToolbar) is already clamped near an edge. Both refs are read here, inside
-   // the effect, never during render.
+   // Measure the popover on mount (it remounts each open, so this recomputes for new content), then
+   // clamp the centered-below-trigger position so it never renders off-screen even when the trigger
+   // is already clamped near an edge.
    useLayoutEffect(() => {
       const popoverElement = popoverRef.current
       const anchor = anchorRef.current?.getBoundingClientRect()
@@ -80,8 +65,7 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, pa
       const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - popoverBoundingRect.width  - CLAMP_MARGIN))
       const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - popoverBoundingRect.height - CLAMP_MARGIN))
 
-      // Rounded to whole pixels: a fractional absolute offset renders the popover off the pixel grid,
-      // which the browser anti-aliases into a blur that reads like an unwanted scale.
+      // Whole pixels, else a fractional offset lands off the pixel grid and blurs into an unwanted scale.
       setPosition({
          top:  Math.round(clampedTop  - anchor.top),
          left: Math.round(clampedLeft - anchor.left),
@@ -100,10 +84,6 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, pa
          }}
          onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
       >
-         {/* Palette row, recents row, and custom picker, all rendered by the package.
-             The palette/recents sit on top (swatchesPosition="top"); the swatch matching
-             `value` is auto-highlighted. A swatch/recent pick is discrete and closes; an
-             input/slider/eyedropper adjustment applies live and stays open. */}
          <div className="p-2">
             <ColorPicker
                value={activeColor ?? palette[0]}
@@ -117,7 +97,6 @@ export function InlineColorPopover({ activeColor, anchorRef, palette, recent, pa
             />
          </div>
 
-         {/* Remove color */}
          <div className="border-t border-border px-2 py-1.5">
             <button
                onClick={() => { onApply(undefined); onClose() }}

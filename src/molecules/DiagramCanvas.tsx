@@ -13,19 +13,19 @@ import type { Point } from '../lib/diagram/geometry'
 // # CONSTANTS #
 // #############
 
-/** Selection-handle square edge, in diagram units (scales with the canvas; ~an eyeball-sized grip). */
+/** Selection-handle square edge, in diagram units (scales with the canvas). */
 const HANDLE_SIZE = 9
 
 /** Connection-port dot radius, in diagram units. */
 const PORT_RADIUS = 5
 
-/** Selection accent (app-blue), matching the image-markup editor's selection chrome. */
+/** Selection accent, matching the image-markup editor's selection chrome. */
 const SELECTION_COLOR = '#2563eb'
 
-/** Connection accent (a teal), for ports + the live connect preview, distinct from the blue selection. */
+/** Connection accent (teal), for ports + the live connect preview, distinct from the selection. */
 const CONNECT_COLOR = '#0d9488'
 
-/** Alignment-guide accent (a warm magenta, à la vector editors), distinct from the blue selection. */
+/** Alignment-guide accent (magenta), distinct from the selection. */
 const GUIDE_COLOR = '#e0218a'
 
 /** The directional CSS cursor to show while hovering each resize handle. */
@@ -41,35 +41,31 @@ const RESIZE_CURSORS: Record<NodeResizeHandle, string> = {
 // #########
 
 /**
- * Everything a pointer interaction needs, already derived from the raw event so the editor stays
- * DOM-free: the pointer mapped to ABSOLUTE diagram units (through the current viewport), the same
- * pointer in transform-INDEPENDENT frame space (for pan deltas + zoom anchors, mapped against the
- * FIXED reference frame so it never depends on the live zoom/pan), and the on-screen pixels-per-
- * diagram-unit (for converting a constant screen-pixel snap threshold into diagram units).
+ * Everything a pointer interaction needs, derived from the raw event so the editor stays DOM-free:
+ * the pointer in ABSOLUTE diagram units (through the viewport), the same pointer in transform-
+ * INDEPENDENT frame space (for pan deltas + zoom anchors), and the on-screen pixels-per-diagram-unit
+ * (to convert a constant screen-pixel snap threshold into diagram units).
  */
 export interface CanvasPointerInfo {
    diagramPoint:         Point
    framePoint:           Point
    pixelsPerDiagramUnit: number
-   /** Whether Alt was held on this pointer event (a group drag reads it to bypass snapping). */
+   /** Alt held on this event; a group drag reads it to bypass snapping. */
    altKey:               boolean
 }
 
 interface DiagramCanvasProps {
-   /** The rendered diagram SVG (from `renderDiagramToSvg` on the working spec, its viewBox overridden
-    *  to the current viewport by the editor), or '' when the diagram has no nodes (a blank surface). */
+   /** The rendered diagram SVG (viewBox overridden to the viewport by the editor), or '' when blank. */
    svgMarkup: string
-   /** The current render VIEWPORT (diagram units) derived from the zoom/pan, the shared viewBox of the
-    *  visual layer + the chrome overlay, and the space every pointer maps into. */
+   /** The render VIEWPORT (diagram units) from the zoom/pan: the shared viewBox, and the space every
+    *  pointer maps into. */
    viewport: DiagramViewBox
-   /** The FIXED reference frame (0 0 W H): the container aspect ratio + the transform-independent space
-    *  pan deltas and zoom anchors are measured in. Never clips content (the viewport does the windowing). */
+   /** The FIXED reference frame (0 0 W H): the space pan deltas and zoom anchors are measured in.
+    *  Never clips content (the viewport does the windowing). */
    frame: DiagramViewBox
-   /** The currently selected nodes (each draws an outline; resize handles only when there is exactly
-    *  one). Empty when nothing is selected. */
+   /** The selected nodes (each draws an outline; resize handles only when exactly one). */
    selectedNodes: DiagramNode[]
-   /** The combined bounding box of the selection when 2+ nodes are selected (a lighter group rect), or
-    *  null (0 / 1 selected). */
+   /** The combined bounding box when 2+ nodes are selected (a lighter group rect), else null. */
    groupBox: NodeBox | null
    /** The live marquee rectangle while an empty-canvas drag is selecting, or null. */
    marqueeRect: Rect | null
@@ -104,8 +100,8 @@ interface DiagramCanvasProps {
    onWheelZoom: (viewCursor: Point, deltaY: number) => void
    /** The user-resizable canvas HEIGHT (screen px). The container width is 100%; height is this value. */
    heightPx: number
-   /** Reports the measured on-screen container size so the editor can keep the frame aspect == the
-    *  container aspect (the pointer-mapping / clip correctness keystone). Fires on any size change. */
+   /** Reports the measured container size so the editor keeps the frame aspect matched to it (the
+    *  pointer-mapping / clip correctness keystone). */
    onContainerResize: (size: { width: number; height: number }) => void
    /** CSS cursor for the interaction surface (e.g. 'default' vs 'grabbing'). */
    cursor: string
@@ -116,20 +112,15 @@ interface DiagramCanvasProps {
 // #############
 
 /**
- * The interactive 2D diagram canvas, hosted in the Block Editor Window. Its container is full-width
- * with a user-resizable HEIGHT (dragged via the handle the editor renders below it); a ResizeObserver
- * reports the measured size so the editor keeps the frame aspect matched to the container. Three
- * stacked layers inside (all sharing the current viewport viewBox, so they stay aligned + undistorted):
- *   (1) the VISUAL layer, the same `renderDiagramToSvg` output the read-only block + export use, with
- *       its viewBox OVERRIDDEN to the current viewport. Nodes are drawn at their absolute diagram
- *       coordinates; the viewBox windows them, so zoom/pan is pure viewBox math and NOTHING is clipped
- *       to a fixed frame, any node is reachable by panning the viewport to it.
- *   (2) the INTERACTION overlay, a transparent surface capturing pointer events, drawing the selection
- *       chrome + alignment guides at absolute coords through the SAME viewport viewBox (non-scaling
- *       strokes keep them crisp at any zoom). Its rect maps 1:1 with the container, so the pure mapping
- *       against the viewport is exact.
- *   (3) the LABEL overlay, an HTML textarea positioned over a node (through the viewport) while its
- *       label is typed, committed on blur / Enter.
+ * The interactive 2D diagram canvas, hosted in the Block Editor Window. Full-width with a user-
+ * resizable HEIGHT; a ResizeObserver reports its size so the editor keeps the frame aspect matched.
+ * Three stacked layers, all sharing the viewport viewBox so they stay aligned:
+ *   (1) the VISUAL layer, the same `renderDiagramToSvg` output the block + export use, viewBox
+ *       overridden to the viewport. Nodes draw at absolute coords, so zoom/pan is pure viewBox math
+ *       and nothing is clipped; any node is reachable by panning.
+ *   (2) the INTERACTION overlay, a transparent surface capturing pointer events and drawing the
+ *       selection chrome + guides at absolute coords (non-scaling strokes stay crisp at any zoom).
+ *   (3) the LABEL overlay, a textarea positioned over a node while its label is typed.
  *
  * All hit-testing + geometry is pure (`lib/diagram/edit.ts`); this component is thin pointer glue.
  */
@@ -142,8 +133,8 @@ export function DiagramCanvas({
 }: DiagramCanvasProps) {
    const overlayRef = useRef<HTMLDivElement>(null)
 
-   // Latest-value refs so the once-attached native wheel / resize-observer listeners never read a stale
-   // closure (React Compiler forbids hand-rolled useCallback, so we keep the moving parts in refs).
+   // Latest-value refs so the once-attached wheel / resize-observer listeners never read a stale
+   // closure (React Compiler forbids hand-rolled useCallback).
    const frameRef = useRef(frame)
    frameRef.current = frame
    const onWheelZoomRef = useRef(onWheelZoom)
@@ -152,8 +143,8 @@ export function DiagramCanvas({
    onContainerResizeRef.current = onContainerResize
    const lastReportedSizeRef = useRef({ width: 0, height: 0 })
 
-   // A native, NON-PASSIVE wheel listener so we can preventDefault the page scroll (React's synthetic
-   // onWheel is passive and cannot). Attached once; reads current values through the refs above.
+   // A native, NON-PASSIVE wheel listener so it can preventDefault the page scroll (React's synthetic
+   // onWheel is passive and cannot).
    useEffect(() => {
       const element = overlayRef.current
       if (!element) return
@@ -167,9 +158,8 @@ export function DiagramCanvas({
       return () => element.removeEventListener('wheel', onWheel)
    }, [])
 
-   // Measure the container and report its size up, so the editor keeps the frame aspect matched to the
-   // real container aspect (the pointer-mapping / clip correctness keystone) as the user resizes the
-   // canvas height or the window width changes. Guarded so an unchanged size never churns state.
+   // Measure the container and report its size up, so the editor keeps the frame aspect matched to it.
+   // Guarded so an unchanged size never churns state.
    useEffect(() => {
       const element = overlayRef.current
       if (!element || typeof ResizeObserver === 'undefined') return
@@ -196,11 +186,9 @@ export function DiagramCanvas({
          }
       }
       return {
-         // Absolute diagram point: the viewport IS the viewBox, so a plain proportional map is exact.
+         // The viewport IS the viewBox, so a plain proportional map is exact.
          diagramPoint: pointerToDiagramPoint(event.clientX, event.clientY, rect, viewport),
-         // Transform-independent frame-space point (for pan deltas + zoom anchors).
          framePoint:   screenToFramePoint(event.clientX, event.clientY, rect, frame),
-         // 1 diagram unit spans (rect.width / viewport.width) screen pixels along x.
          pixelsPerDiagramUnit: rect.width > 0 && viewport.width > 0 ? rect.width / viewport.width : 1,
          altKey:       event.altKey,
       }
@@ -219,19 +207,19 @@ export function DiagramCanvas({
          className="diagram-canvas"
          style={{ height: `${heightPx}px` }}
       >
-         {/* (1) Visual layer: the rendered diagram (viewBox already set to the viewport by the editor). */}
+         {/* (1) Visual layer. */}
          {svgMarkup
             ? <div className="diagram-canvas-visual" dangerouslySetInnerHTML={{ __html: svgMarkup }} />
             : <div className="diagram-canvas-visual diagram-canvas-blank" aria-hidden="true" />}
 
-         {/* (2) Interaction + selection chrome + alignment guides (same viewport viewBox, absolute coords). */}
+         {/* (2) Interaction + selection chrome + alignment guides. */}
          <div
             ref={overlayRef}
             className="diagram-canvas-interaction"
             style={{ cursor }}
             onPointerDown={event => {
-               // The primary button drives selection / move / marquee; the middle button is the pan
-               // trigger (handled downstream). The right button is left for the context menu.
+               // Primary button: selection / move / marquee. Middle button: pan. Right button is left
+               // for the context menu.
                if (event.button === 0 || event.button === 1) onPointerDownPoint(pointerInfo(event), event)
             }}
             onPointerMove={event => onPointerMovePoint(pointerInfo(event))}
@@ -259,7 +247,7 @@ export function DiagramCanvas({
             </svg>
          </div>
 
-         {/* (3) Edit-in-place label overlay (positioned through the viewport). */}
+         {/* (3) Edit-in-place label overlay. */}
          {editingLabelNode && (
             <textarea
                key={editingLabelNode.id}
@@ -302,8 +290,7 @@ function GuideLine({ guide }: { guide: AlignmentGuide }) {
    )
 }
 
-/** The selected node's dashed bounding outline + a square per resize handle, at absolute coords. The
- *  handles are drawn only when `showHandles` is set (a lone selection), never on a multi-selection. */
+/** The selected node's dashed outline + a square per resize handle. Handles only when `showHandles`. */
 function SelectionChrome({ node, showHandles }: { node: DiagramNode; showHandles: boolean }) {
    const handles = showHandles ? nodeHandlePoints(node) : []
    return (
@@ -322,9 +309,8 @@ function SelectionChrome({ node, showHandles }: { node: DiagramNode; showHandles
                height={HANDLE_SIZE}
                fill="#ffffff" stroke={SELECTION_COLOR} strokeWidth={1.5}
                vectorEffect="non-scaling-stroke"
-               // Re-enable pointer events on the handle alone (the chrome SVG is pointer-events:none) so
-               // the directional resize cursor shows on hover; the press still bubbles to the overlay's
-               // onPointerDown, which decides resize-vs-move from the mapped point.
+               // Re-enable pointer events on the handle alone (the chrome SVG is pointer-events:none)
+               // so the resize cursor shows on hover; the press still bubbles to the overlay.
                style={{ cursor: RESIZE_CURSORS[handle], pointerEvents: 'auto' }}
             />
          ))}
@@ -332,8 +318,7 @@ function SelectionChrome({ node, showHandles }: { node: DiagramNode; showHandles
    )
 }
 
-/** The combined bounding box around a multi-node selection: a lighter, tighter dashed rect than the
- *  per-node outlines, so the group reads as one unit without competing with them. */
+/** The bounding box around a multi-node selection: a lighter dashed rect than the per-node outlines. */
 function GroupBoundsRect({ box }: { box: NodeBox }) {
    return (
       <rect
@@ -344,8 +329,7 @@ function GroupBoundsRect({ box }: { box: NodeBox }) {
    )
 }
 
-/** The live marquee selection rectangle: a translucent blue fill + dashed border, normalized so a drag
- *  in any direction reads correctly. */
+/** The live marquee rectangle, normalized so a drag in any direction reads correctly. */
 function MarqueeRect({ rect }: { rect: Rect }) {
    const left   = Math.min(rect.x, rect.x + rect.width)
    const top    = Math.min(rect.y, rect.y + rect.height)
@@ -361,8 +345,8 @@ function MarqueeRect({ rect }: { rect: Rect }) {
    )
 }
 
-/** A spacing badge's two equal-gap markers: a thin line per matched gap with a short end cap at each
- *  end (magenta, à la the alignment guides). Horizontal gaps run along x, vertical gaps along y. */
+/** A spacing badge's equal-gap markers: a capped line per matched gap. Horizontal gaps run along x,
+ *  vertical along y. */
 function SpacingBadgeMarks({ badge }: { badge: SpacingBadge }) {
    const CAP = 5
    return (
@@ -471,11 +455,8 @@ function percent(value: number, span: number): number {
    return span > 0 ? value / span * 100 : 0
 }
 
-/**
- * Position the label textarea over a node's box, as percentages of the canvas relative to the current
- * viewport, so it tracks the node under zoom/pan (the container aspect equals the viewport aspect, so
- * per-axis percentages are undistorted). Font size is left constant, so the text stays legible at any zoom.
- */
+/** Position the label textarea over a node's box as viewport percentages, so it tracks the node under
+ *  zoom/pan (the container aspect equals the viewport aspect, so per-axis percentages are undistorted). */
 function labelOverlayStyle(node: DiagramNode, viewport: DiagramViewBox): React.CSSProperties {
    const left   = percent(node.x - viewport.minX, viewport.width)
    const top    = percent(node.y - viewport.minY, viewport.height)

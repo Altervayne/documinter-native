@@ -1,26 +1,13 @@
-/**
- * math.ts, LaTeX -> MathML conversion for the `math` block.
- *
- * Uses Temml (https://temml.org), a small LaTeX -> native MathML converter by the
- * KaTeX author. Temml runs IN-APP ONLY: it turns the block's LaTeX source into a
- * self-contained `<math>` markup string used for both the editor preview and the
- * HTML export. The export therefore ships pure MathML, no runtime and no fonts.
- *
- * Exports:
- *   renderLatexToMathML  - convert one LaTeX string to a MathML string (or an error)
- *   TEMML_STYLES         - Temml's rendering-correction CSS, inlined in the export
- *                          and injected in-app via ensureTemmlStyles
- *   ensureTemmlStyles    - idempotently inject TEMML_STYLES into the document head
+/*
+ * LaTeX -> MathML for the `math` block, via Temml (a small MathML converter by the KaTeX author).
+ * Temml runs in-app only, turning the block's LaTeX into a self-contained <math> string used for both
+ * the editor preview and the HTML export, so the export ships pure MathML with no runtime and no fonts.
  */
 
-// /!\ DO NOT change this to `import temml from 'temml'`. The `?url` suffix asks Vite to
-// hand back Temml's pre-built ESM file as a plain asset URL, copied verbatim into the
-// build with NO bundler code transform. This is deliberate and load-bearing: Vite 8 /
-// Rolldown mis-regenerate Temml's tokenizer regex when they transform it, truncating
-// every LaTeX control word to its first letter (\pi -> \p), so a normal bundled import
-// breaks ALL math rendering, in dev and prod. Loading the raw file at runtime sidesteps
-// the transform. The package's `exports` map ("./*": "./*") permits this deep path.
-// Keep this until the upstream Rolldown bug is fixed.
+// Do NOT change to `import temml from 'temml'`. The `?url` suffix hands back Temml's pre-built ESM as
+// a plain asset URL with no bundler transform. Load-bearing: Vite 8 / Rolldown mis-regenerate Temml's
+// tokenizer regex when they transform it, truncating every LaTeX control word to its first letter
+// (\pi -> \p) and breaking all math. Loading the raw file at runtime sidesteps the transform.
 import temmlUrl from 'temml/dist/temml.mjs?url'
 
 // #################
@@ -35,20 +22,14 @@ interface TemmlModule {
    ): string
 }
 
-/**
- * The loaded Temml module, or null until the raw asset finishes importing. The
- * render path stays synchronous by reading this singleton; callers gate on
- * readiness (see isTemmlReady / onTemmlReady) so they only render once it is set.
- */
+/** The loaded Temml module, or null until the raw asset imports. The render path reads this singleton
+ *  synchronously; callers gate on isTemmlReady / onTemmlReady. */
 let loadedTemml: TemmlModule | null = null
 
 /** Callbacks waiting for the one-time load, flushed and cleared when Temml is ready. */
 const readyCallbacks = new Set<() => void>()
 
-/**
- * Kick off the raw-asset import once, eagerly at module evaluation. `@vite-ignore`
- * stops Vite from trying to analyse/transform the dynamic import of the asset URL.
- */
+// @vite-ignore stops Vite analysing or transforming the dynamic import of the asset URL.
 const temmlReadyPromise: Promise<void> = import(/* @vite-ignore */ temmlUrl)
    .then(module => {
       loadedTemml = (module.default ?? module) as TemmlModule
@@ -64,16 +45,12 @@ export function ensureTemmlReady(): Promise<void> {
    return temmlReadyPromise
 }
 
-/** Whether Temml has finished loading and renderLatexToMathML can produce markup. */
 export function isTemmlReady(): boolean {
    return loadedTemml !== null
 }
 
-/**
- * Subscribe to the one-time Temml-ready event. If Temml is already loaded the
- * callback fires immediately and the returned unsubscribe is a no-op; otherwise the
- * callback runs once on load. Returns a function that removes a still-pending callback.
- */
+/** Subscribe to the one-time ready event. Fires immediately when already loaded (unsubscribe is then a
+ *  no-op), else once on load. Returns an unsubscribe. */
 export function onTemmlReady(callback: () => void): () => void {
    if (loadedTemml !== null) {
       callback()
@@ -92,16 +69,9 @@ export type MathRenderResult =
    | { ok: true;  mathml: string }
    | { ok: false; error: string }
 
-/**
- * Convert a LaTeX string to a self-contained MathML markup string.
- * Never throws: a parse error is caught and returned as `{ ok: false, error }`
- * so an invalid formula surfaces its message in the preview without breaking the
- * document. `displayMode` mirrors LaTeX display math (centered, full-size operators).
- *
- * Synchronous by design. If Temml has not loaded yet it returns a transient
- * "still loading" error; callers gate on isTemmlReady / onTemmlReady so this guard
- * only trips defensively.
- */
+/** Convert a LaTeX string to a self-contained MathML string. Never throws: a parse error comes back as
+ *  `{ ok: false, error }`. `displayMode` mirrors LaTeX display math. Synchronous, so before Temml loads
+ *  it returns a transient "still loading" error; callers gate on isTemmlReady / onTemmlReady. */
 export function renderLatexToMathML(latex: string, displayMode = true): MathRenderResult {
    if (!loadedTemml) {
       return { ok: false, error: 'Math renderer is still loading…' }
@@ -118,16 +88,9 @@ export function renderLatexToMathML(latex: string, displayMode = true): MathRend
 // # TEMML CORRECTION STYLES #
 // ##########################
 
-/**
- * Temml's rendering-correction CSS (derived from the shipped Temml-Local.css).
- *
- * This is NOT font CSS: the `@font-face` and the two `font-family: "Temml"`
- * script-font rules that depend on the external `Temml.woff2` have been dropped
- * so the export stays fully self-contained (no external asset). What remains are
- * the layout/correction rules Temml relies on for correct display across
- * Chromium, Firefox and WebKit: display-mode block behaviour, array cell
- * justification, \cancel / \enclose masks, accent nudges, and spacing.
- */
+/** Temml's rendering-correction CSS, from its shipped Temml-Local.css. The @font-face and "Temml"
+ *  script-font rules needing the external Temml.woff2 are dropped so the export stays self-contained;
+ *  what remains are the cross-browser layout corrections. */
 export const TEMML_STYLES = `
 math {
   font-family: "Cambria Math", 'STIXTwoMath-Regular', 'NotoSansMath-Regular', math;
@@ -235,11 +198,8 @@ body { counter-reset: tmlEqnNo; }
 
 const TEMML_STYLE_ELEMENT_ID = 'temml-correction-styles'
 
-/**
- * Idempotently inject TEMML_STYLES into the document head. Called by MathBlock on
- * mount so the in-app editor preview and read view render with the same correction
- * rules the export inlines. Safe to call many times: only the first call adds a node.
- */
+/** Inject TEMML_STYLES into the document head so the in-app preview and read view use the same rules
+ *  the export inlines. Idempotent. */
 export function ensureTemmlStyles(): void {
    if (typeof document === 'undefined') return
    if (document.getElementById(TEMML_STYLE_ELEMENT_ID)) return

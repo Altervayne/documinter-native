@@ -11,9 +11,8 @@
  * the pure reconcile planner (indexReconcile.ts) plus the pure envelope/path helpers. Everything that can
  * be pure was pushed into those modules; this file is the thin I/O shell that drives them.
  *
- * TEMPLATES and Tin (bulk) methods are STUBBED here and filled in arc A1.3c. backfillSearchText no-ops (the
- * FS index is built fresh, always current), subscribe is inert until the arc-B watcher, dispose closes the
- * index.
+ * backfillSearchText no-ops: the FS index is rebuilt fresh from the files, so it is always current.
+ * subscribe feeds the live external-change watcher; dispose stops the watch and closes the index.
  */
 
 import {
@@ -72,8 +71,7 @@ export class NameTakenError extends Error {
 export async function createFilesystemBackend(binderRoot: string): Promise<BinderBackend> {
    // Absolute-path helper. All internal paths are POSIX (forward slashes, see binderPaths); we normalize
    // the root's separators to match and join with '/'. Rust's std::fs accepts forward slashes on Windows,
-   // so the OS side is fine (the user confirms this at `tauri dev`). If plugin-fs ever needs OS separators
-   // instead, it is a one-line change localized to this function.
+   // so the OS side is fine. If plugin-fs ever needs OS separators instead, this is the one place to change.
    const rootPosix = binderRoot.replace(/\\/g, '/').replace(/\/+$/, '')
    const absolutePath = (relativePosix: string): string => {
       const clean = relativePosix.replace(/^\/+/, '')
@@ -707,8 +705,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       const parentDir = relativeDirForFolderId(parentId)
       // Native-canonical: dedupe the sibling folder name Explorer-style ("Drafts" -> "Drafts 2") so two
       // same-name siblings never collapse onto one directory. A folder's id IS its path, so a clash cannot
-      // be two identities; this is a DELIBERATE divergence from the IndexedDB backend (which allowed
-      // same-name siblings). IDB is deleted in arc D, so this becomes the only behaviour.
+      // be two identities; this is a DELIBERATE divergence from the IndexedDB backend, which allowed
+      // same-name siblings (distinct UUIDs).
       const uniqueName = dedupeFolderName(name, await siblingFolderNames(parentDir))
       const relativePath = joinRelative(parentDir, uniqueName)
       const folderId = folderIdForRelativePath(relativePath)
@@ -1126,8 +1124,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
     * RESIDUAL RISK: the swap (move-aside then move-in) is a sequence of renames, NOT one all-or-nothing
     * operation, because the Binder root interleaves user content with the preserved `.documinter/` cache
     * and cannot be swapped as a single directory. A crash mid-swap can therefore leave the VISIBLE root
-    * with a partial mix (or momentarily empty). Recovery from the backup / staging areas is manual in
-    * this arc; a later import clears leftover scaffolding. The index is rebuilt from the swapped-in files,
+    * with a partial mix (or momentarily empty). Recovery from the backup / staging areas is manual; the
+    * next import clears leftover scaffolding. The index is rebuilt from the swapped-in files,
     * and even if a crash skips that rebuild the open-time reconcile heals it (the index is disposable).
     */
    const replaceFromTin = async (rawTin: TinFile): Promise<TinImportSummary> => {
@@ -1234,7 +1232,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    }
 
    // ####################
-   // # THE FILESYSTEM WATCHER (arc B)
+   // # THE FILESYSTEM WATCHER
    // ####################
    // External edits (Explorer add / rename / move / delete of a `.mint`, folder, or template) are
    // reconciled live: a recursive plugin-fs watch on the Binder root coalesces raw events, we drop the ones
@@ -1290,17 +1288,15 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    const handleWatchEvent = (event: WatchEvent): void => {
       const paths = Array.isArray(event.paths) ? event.paths : []
       const muted = Date.now() < muteUntil
-      // Diagnostic (arc B bring-up): shows every raw event + why it was or was not acted on. Trim once stable.
+      // Log every watch event and why it was acted on or skipped.
       console.info('[binder][watch] event', JSON.stringify(event.type), paths, '| muted:', muted, '| listeners:', listeners.size)
       // Our own recent write: the in-app op already updated the index, so its file events are noise. This is
       // what keeps an ordinary save from triggering a rescan (and why the binder view need not be open, the
       // index stays fresh for external edits regardless). A rare external edit inside the window is caught by
       // the next event or the next Binder open.
       if (muted) { console.info('[binder][watch] ignored (self-write / muted)'); return }
-      // Loop guard: skip events that are ONLY our own cache writes. Reconcile constantly writes
-      // `.documinter/index.sqlite`, so if those reached scheduleReconcile they would reconcile forever. We
-      // match the `.documinter/` path SEGMENT (not a root prefix), so it holds regardless of how the OS
-      // normalizes the event path vs the Binder root (drive-letter case, short paths, and so on).
+      // Ignore our own cache writes, or reconcile would loop on its own index writes. Match the
+      // `.documinter/` segment (not a root prefix) so it survives OS path-normalization differences.
       const isCachePath = (path: string): boolean => {
          const normalized = path.replace(/\\/g, '/').toLowerCase()
          return normalized.includes(`/${DOCUMINTER_DIR.toLowerCase()}/`) || normalized.endsWith(`/${DOCUMINTER_DIR.toLowerCase()}`)
@@ -1345,8 +1341,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       // The FS index is built fresh from the files (always current), so there is nothing to backfill.
       backfillSearchText: () => Promise.resolve(0),
 
-      // Live external-change subscription (arc B). Returns an unsubscribe; the watch itself runs for the
-      // whole Binder session and stops in dispose.
+      // Live external-change subscription. Returns an unsubscribe; the watch itself runs for the whole
+      // Binder session and stops in dispose.
       subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
 
       dispose: async () => {

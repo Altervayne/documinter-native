@@ -14,7 +14,6 @@ const KEYWORDS = [
    'raise', 'return', 'try', 'while', 'with', 'yield',
 ]
 
-// Built-in functions and types commonly seen in code snippets
 const BUILTINS = [
    'abs', 'all', 'any', 'ascii', 'bin', 'bool', 'breakpoint',
    'bytearray', 'bytes', 'callable', 'chr', 'classmethod',
@@ -35,32 +34,24 @@ const builtinPattern = new RegExp(`\\b(${BUILTINS.join('|')})\\b(?=\\s*\\()`)
 export const python: Language = {
    name: 'python',
    rules: [
-      // Comments (# to end of line)
       { type: 'cmt',  pattern: /#[^\n]*/  },
 
-      // Triple-quoted strings, must precede single-quoted rules
-      // Handles f""" b""" r""" rf""" etc. (up to 2-char prefix)
+      // Triple-quoted strings before single-quoted, with the f/b/r/u prefixes (up to 2).
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}"""[\s\S]*?"""/ },
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}'''[\s\S]*?'''/ },
 
-      // Single-line strings, newline terminates (unclosed = error in Python)
+      // Single-line strings; a newline terminates (an unclosed string is a Python error).
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}"(?:[^"\\\n]|\\.)*"/ },
       { type: 'str',  pattern: /[fFbBrRuU]{0,2}'(?:[^'\\\n]|\\.)*'/ },
 
-      // Numbers: hex  octal  binary  float/int with optional exponent or complex suffix
       { type: 'num',  pattern: /\b0x[\da-fA-F]+\b|\b0o[0-7]+\b|\b0b[01]+\b|\b\d+\.?\d*(?:[eE][+-]?\d+)?[jJ]?\b/ },
 
-      // Decorators, @name or @module.name, use tok-type (teal) for visual distinction
+      // Decorators reuse the type token (teal) for visual distinction.
       { type: 'type', pattern: /@[\w.]+/ },
 
       { type: 'kw',   pattern: kwPattern },
-
-      // Built-in function calls (word followed by open-paren)
       { type: 'fn',   pattern: builtinPattern },
-
-      // Any other function / method call
       { type: 'fn',   pattern: /\b([a-zA-Z_]\w*)\s*(?=\()/ },
-
       { type: 'op',   pattern: /[+\-*/%=<>!&|^~@:,]+/ },
    ],
 }

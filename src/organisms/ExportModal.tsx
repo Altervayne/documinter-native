@@ -41,42 +41,33 @@ interface ExportModalProps {
 // # COMPONENT #
 // #############
 
-/**
- * Format-aware Export dialog. A format selector (HTML / Markdown / JSON) drives which
- * options and actions are shown. Each format reuses the document's own serializers:
- *   - HTML    , the presentation options (theme + accent) + generate -> downloadHTML / copy. Math
- *                is rendered by Temml, which loads asynchronously, so this path (and only this path)
- *                awaits ensureTemmlReady() before generating. Markdown serializes the LaTeX
- *                source verbatim and needs no await.
- *   - Markdown, documentToMarkdown -> download (via exportMarkdownFile). Lean, no options.
- *   - JSON    , downloadJSON, a lossless snapshot of the document's own state. Lean, no options.
- */
+/** Format-aware Export dialog; the format selector (HTML / PDF / Markdown / JSON) drives which options
+ *  and actions show. Each reuses the document's own serializers. HTML and PDF await ensureTemmlReady()
+ *  first because Temml renders math to MathML and loads asynchronously; the others need no await. JSON
+ *  is a lossless snapshot of the document's state, the counterpart to Open. */
 export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
    const [accent, setAccent] = useState(defaultAccent)
-   // Whether the accent grid's "Custom accent..." tile is the selected choice, a genuine selection
-   // on par with a preset swatch (see molecules/AccentSwatchGrid), not a disclosure toggle. Mirrors
-   // the same local-flag pattern the document-background context menu uses (WysiwygArea's own
-   // customAccentSelected) since this modal owns its own draft accent, independent of the document's.
+   // Whether the accent grid's "Custom accent..." tile is the selected choice (a genuine selection on
+   // par with a preset swatch, not a disclosure toggle). A local flag because this modal owns its own
+   // draft accent, independent of the document's.
    const [customAccentSelected, setCustomAccentSelected] = useState(false)
    const { t } = useLang()
    const { showToast } = useToast()
 
-   // Presentation extras + document format ride into the HTML export via ExportOptions; the .md
-   // path never sees them (it serializes content only). Aliased to docFormat above to avoid
-   // colliding with this modal's own `format` state (the export FILE format selector, html/markdown/
-   // json, a separate concept from the document's page format). The paged layout is not threaded in:
-   // downloadHTML / printDocument / computeDocumentPages self-measure it from the model.
+   // Presentation extras + document format ride into the HTML export via ExportOptions; the .md path
+   // never sees them (content only). Aliased to docFormat to avoid colliding with this modal's own
+   // `format` state (the export FILE format). The paged layout is not threaded in: downloadHTML /
+   // printDocument / computeDocumentPages self-measure it from the model.
    const opts: ExportOptions = { theme, accent, lang, presentation, format: docFormat }
 
    // =========
    //  Actions
    // =========
 
-   // HTML: Temml renders math to MathML synchronously, but it loads as a raw asset (see
-   // lib/math.ts). Await readiness before generating so a fresh-load export still renders
-   // equations rather than emitting "still loading" errors.
+   // Await Temml readiness before generating (it loads as a raw asset, see lib/math.ts) so a fresh-load
+   // export renders equations rather than "still loading" errors.
    async function handleHtmlDownload() {
       await ensureTemmlReady()
       await downloadHTML(meta, sections, opts)
@@ -96,7 +87,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    }
 
    // PDF: the browser print dialog over the same rendered export HTML (paged documents only). Awaits
-   // Temml like HTML so equations lay out before the print engine sees the page.
+   // Temml so equations lay out before the print engine sees the page.
    async function handlePdf() {
       await ensureTemmlReady()
       await printDocument(meta, sections, opts)
@@ -110,10 +101,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       onClose()
    }
 
-   // Documinter JSON: the LOSSLESS, reopenable archive, the document's exact state (content +
-   // theme/accent + presentation + page format), the counterpart to `parseDocumentBackup`/Open. It
-   // uses the DOCUMENT's real theme/accent (`defaultTheme`/`defaultAccent`) + presentation + format,
-   // NOT the HTML-export overrides above, since it snapshots the document itself, not a styled export.
+   // JSON: the lossless, reopenable archive. Snapshots the DOCUMENT's real theme / accent / presentation
+   // / format (defaultTheme / defaultAccent), NOT the HTML-export overrides above.
    function handleJsonDownload() {
       downloadJSON(meta, sections, {
          docTheme:  defaultTheme,
@@ -129,12 +118,11 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    //  Render
    // =======
 
-   // PDF prints the paged export, so it is only available for a paged document; on an infinite canvas
-   // the option is greyed out with an explanatory tooltip.
+   // PDF prints the paged export, so it is greyed out on an infinite canvas.
    const isPagedDocument = !!docFormat && docFormat.kind !== 'infinite'
 
-   // Extension-only labels (see i18n exportFormat*); the explanation lives in the hover tooltip. Two
-   // rows: the content serializers (JSON / Markdown) above the rendered exports (HTML / PDF).
+   // Two rows: the content serializers (JSON / Markdown) above the rendered exports (HTML / PDF). The
+   // labels are extension-only; the explanation lives in the hover tooltip.
    type FormatOption = { value: ExportFormat; label: string; tooltip: string; disabled?: boolean }
    const FORMAT_ROWS: FormatOption[][] = [
       [
@@ -147,9 +135,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       ],
    ]
 
-   // Accent grid data, built locally the same way buildDocumentMenuEntries does for the document
-   // menu/context menu, but against this modal's own draft `accent` state rather than the live
-   // document accent (a modal-scoped override the actual document never sees until re-applied).
+   // Accent grid data, built against this modal's own draft `accent` state rather than the live document
+   // accent (a modal-scoped override the document never sees until re-applied).
    const isPresetAccentHex = (hex: string) => hex.toLowerCase() === accent.toLowerCase()
 
    const accentPresetOptions: AccentSwatchOption[] = ACCENT_PRESETS.map(hex => ({
@@ -200,8 +187,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                            <button
                               key={formatOption.value}
                               title={formatOption.tooltip}
-                              // aria-disabled (not the `disabled` attribute) so the hover tooltip still
-                              // shows on a greyed-out PDF option (disabled elements swallow title hovers).
+                              // aria-disabled, not `disabled`, so the tooltip still shows on a greyed-out
+                              // PDF option (disabled elements swallow title hovers).
                               aria-disabled={formatOption.disabled || undefined}
                               onClick={() => { if (!formatOption.disabled) setFormat(formatOption.value) }}
                               className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors
@@ -241,11 +228,9 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      </div>
                   </div>
 
-                  {/* Accent color, the app's shared square swatch grid (molecules/AccentSwatchGrid),
-                      the same one the Document-menu accent picker uses, rather than this dialog's
-                      own bespoke circular swatches + always-shown ColorPicker. The grid ships its
-                      own px-3/py-2 padding (sized for a dropdown-menu row); the negative-margin
-                      wrapper cancels that back out so it sits flush with this modal's other rows. */}
+                  {/* Accent color via the app's shared AccentSwatchGrid (same as the Document menu). The
+                      grid ships its own px-3/py-2 dropdown-row padding; the negative-margin wrapper
+                      cancels it so the grid sits flush with this modal's other rows. */}
                   <div className="flex flex-col gap-2">
                      <span className="font-mono text-xs text-muted uppercase tracking-wider">{t.accent}</span>
                      <div className="-mx-3 -my-2">
@@ -253,9 +238,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      </div>
                   </div>
 
-                  {/* Opens the non-modal Presentation window (watermark, header, nav editing). The
-                      Export dialog stays the discovery hub; the live editing happens in the window,
-                      over the visible document. */}
+                  {/* Opens the non-modal Presentation window (watermark, header, nav editing), where the
+                      live editing happens over the visible document. */}
                   {onOpenPresentation && (
                      <button
                         type="button"

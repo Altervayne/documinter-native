@@ -9,14 +9,11 @@ interface ConfirmDialogProps {
    cancelLabel:  string
    onConfirm:    () => void
    onCancel:     () => void
-   /** Render the confirm action in the danger style (for destructive confirmations). */
+   /** Render the confirm action in the danger style. */
    danger?:      boolean
 }
 
-/**
- * Generic confirmation modal. Portal-rendered, centered over a dimmed backdrop.
- * Backdrop click and Escape both cancel.
- */
+/** Generic confirmation modal, portaled and centered over a dimmed backdrop. Backdrop click and Escape cancel. */
 export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel, danger }: ConfirmDialogProps) {
    useEffect(() => {
       function onKeyDown(event: KeyboardEvent) {

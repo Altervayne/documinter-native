@@ -1,16 +1,15 @@
 // ###############################################################################################
 // # DOCK POLICY                                                                                 #
 // #                                                                                             #
-// # Pure policy on top of the structural dock model (lib/dockLayout.ts): which panels should be #
-// # docked right now, and where a panel returns to when it comes back. Split out from the       #
-// # structural transforms so it stays unit-testable with no React and no registry coupling      #
-// # (the registry-derived inputs, applicable ids + default sides, are injected by useDockState).#
+// # Pure policy over the structural dock model (lib/dockLayout.ts): which panels are docked now,#
+// # and where a panel returns when it comes back. Split from the structural transforms so it is #
+// # testable with no React and no registry coupling (inputs injected by useDockState).          #
 // #                                                                                             #
-// # Two rules it encodes:                                                                       #
-// #  - Applicability: a panel that is not applicable to the current document (e.g. Pages in an   #
-// #    infinite doc) is force-undocked and remembered, then auto-restored when it applies again. #
-// #  - Deliberate close: a panel the user closed by hand stays closed, even while applicable,    #
-// #    until the user reopens it. That intent outranks auto-restore.                             #
+// # Two rules:                                                                                  #
+// #  - Applicability: a panel not applicable to the current document (e.g. Pages in an infinite #
+// #    doc) is force-undocked and remembered, then auto-restored when it applies again.         #
+// #  - Deliberate close: a panel the user closed by hand stays closed until reopened, over      #
+// #    auto-restore.                                                                            #
 // ###############################################################################################
 
 // -- Type Imports --
@@ -32,22 +31,18 @@ import { addPanel, removePanel, isPanelDocked, locatePanel, dockedPanels, toggle
 export interface PanelMemory {
    side: DockSide
    auto: boolean
-   /** Present only when the panel was floating when it was hidden: showing it restores it as a floating
-    *  window at this geometry rather than docking it. Set by a deliberate hide of a floating panel. */
+   /** Present only when the panel was floating when hidden: showing it restores it floating at this
+    *  geometry rather than docking it. */
    placement?: WindowPlacement
-   /** The panel's group was collapsed when it was undocked; restore that on re-dock so a collapsed
-    *  panel that cycles out and back (e.g. Pages across an infinite <-> A4 switch, or the brief
-    *  infinite-default window before a document hydrates on load) returns collapsed, not expanded. */
+   /** The group was collapsed when the panel was undocked; restore that on re-dock so a panel that
+    *  cycles out and back returns collapsed, not expanded. */
    collapsed?: boolean
-   /** The group the panel was tabbed into when it was undocked or hidden, so it rejoins that exact
-    *  group instead of forming a new standalone one. Absent for panels that were never docked, or
-    *  that were floating (not tabbed into a group) when hidden. The group may no longer exist by the
-    *  time we try to restore (it is dropped if the panel was alone in it), in which case the restore
-    *  falls back to a fresh group, same as today. */
+   /** The group the panel was tabbed into, so it rejoins that exact group instead of a new standalone
+    *  one. The group may be gone by restore time (dropped if the panel was alone in it), which falls
+    *  back to a fresh group. */
    groupId?: string
-   /** The tab position the panel held within `groupId` when it was undocked or hidden. Only meaningful
-    *  alongside `groupId`; clamped on restore since the group's tab count may have shifted while the
-    *  panel was gone. */
+   /** The tab position within `groupId`. Only meaningful alongside `groupId`; clamped on restore since
+    *  the group's tab count may have shifted while the panel was gone. */
    tabIndex?: number
 }
 
@@ -62,15 +57,11 @@ export type GroupIdFactory = () => string
 // ####################
 
 /**
- * Docks a panel back at `side`, preferring to rejoin the group it was tabbed into before it was
- * undocked or hidden, over always starting a fresh standalone group. Capturing `groupId` on the way
- * out is always safe to do unconditionally: if the panel was alone in that group, `removePanel` drops
- * the group with it, so `groupExists` comes back false here and this falls back to the new-group path
- * exactly like before. Only when a sibling tab kept the group alive does the panel rejoin it.
- *
- * The remembered `collapsed` state is restored only on the new-group path: a group we are merging into
- * already owns its own collapsed state (it never went away), so toggling it here would fight whatever
- * the user has it set to now.
+ * Docks a panel back at `side`, rejoining the group it was tabbed into when it still exists, else a
+ * fresh standalone group. Capturing `groupId` on the way out is always safe: a panel alone in its
+ * group takes the group with it, so `groupExists` is false here and this falls back to the new-group
+ * path. The remembered `collapsed` state is restored only on that new-group path; a group we merge
+ * into already owns its collapsed state, so toggling it here would fight the user's current setting.
  */
 function dockRemembered(
    layout:      DockLayout,
@@ -106,11 +97,10 @@ export function isPanelVisible(layout: DockLayout, floating: FloatingPanels, pan
 }
 
 /**
- * Toggles a panel between visible and hidden, remembering enough to restore it exactly. Hiding a docked
- * panel remembers its side; hiding a floating panel remembers its window geometry. Showing restores it
- * the way it was hidden (floating at its geometry, or docked at its side), or docks it at its default
- * side the first time. All hides are deliberate (auto: false), so the applicability reconcile leaves
- * them alone until the user shows them again.
+ * Toggles a panel between visible and hidden, remembering enough to restore it exactly. Showing
+ * restores it the way it was hidden (floating at its geometry, or docked at its side), or docks it at
+ * its default side the first time. All hides are deliberate (auto: false), so the applicability
+ * reconcile leaves them alone until the user shows them again.
  */
 export function togglePanelVisibility(
    state:       VisibilityState,
@@ -121,7 +111,6 @@ export function togglePanelVisibility(
    const { layout, floating, hidden } = state
 
    if (panelId in floating) {
-      // Hide a floating panel, remembering its geometry so it comes back floating.
       const placement = floating[panelId]!
       const nextFloating = { ...floating }
       delete nextFloating[panelId]
@@ -129,13 +118,11 @@ export function togglePanelVisibility(
    }
 
    if (isPanelDocked(layout, panelId)) {
-      // Hide a docked panel, remembering its side and group so it comes back docked in the same group.
       const location = locatePanel(layout, panelId)!
       const memory: PanelMemory = { side: location.side, auto: false, groupId: location.groupId, tabIndex: location.tabIndex }
       return { layout: removePanel(layout, panelId), floating, hidden: { ...hidden, [panelId]: memory } }
    }
 
-   // Show a hidden panel, restoring how it was hidden.
    const memory = hidden[panelId]
    const nextHidden = { ...hidden }
    delete nextHidden[panelId]
@@ -152,12 +139,10 @@ export function togglePanelVisibility(
 
 /**
  * Brings the layout in line with what is applicable to the current document:
- *  1. Any docked panel that is no longer applicable is undocked and remembered (auto), so it can come
- *     back to the same side later.
- *  2. Any applicable panel that is not docked is either auto-restored (if it was auto-undocked),
- *     left closed (if the user closed it deliberately), first-time auto-docked to its default side
- *     (default-open panels only), or left closed because it is a default-closed panel that has never
- *     been placed (a settings editor stays hidden until the user reveals it).
+ *  1. A docked panel that is no longer applicable is undocked and remembered (auto).
+ *  2. An applicable panel that is not docked is auto-restored (if auto-undocked), left closed (if the
+ *     user closed it), or first-time docked to its default side (default-open panels only); a
+ *     default-closed panel never placed stays hidden until revealed.
  * Deliberate closes are never overridden. Returns the reconciled layout + updated memory map.
  */
 export function reconcileDock(
@@ -176,8 +161,7 @@ export function reconcileDock(
       if (applicable.includes(panelId)) continue
       const location = locatePanel(nextLayout, panelId)
       if (!location) continue
-      // Remember the group's collapsed state so re-docking restores it (see PanelMemory.collapsed),
-      // and which group/tab it held so it rejoins that group rather than forming a new one.
+      // Remember the collapsed state and group / tab so re-docking rejoins that group, not a new one.
       const wasCollapsed = !!nextLayout[location.side]?.groups[location.groupIndex]?.collapsed
       nextClosed[panelId] = {
          side: location.side,
@@ -198,9 +182,8 @@ export function reconcileDock(
       const memory = nextClosed[panelId]
       if (memory && !memory.auto) continue   // user closed it deliberately, respect that
 
-      // A default-closed panel with no memory has never been placed: never auto-open it, it waits for a
-      // deliberate reveal. A panel with an AUTO memory (was docked, went inapplicable) still restores
-      // below regardless of defaultOpen.
+      // A default-closed panel with no memory has never been placed: it waits for a deliberate reveal.
+      // A panel with an AUTO memory still restores below, regardless of defaultOpen.
       if (!memory && !defaultOpen.has(panelId)) continue
 
       const side = memory?.side ?? defaultSides[panelId]
@@ -216,11 +199,9 @@ export function reconcileDock(
 // #####################
 
 /**
- * Closes any floating panel that is no longer applicable to the current document (for example a
- * floated Pages window when the document turns infinite), remembering it as auto-closed so the normal
- * dock reconcile can bring it back later. Floating position is not preserved across an applicability
- * cycle; the panel returns docked instead. Returns the trimmed floating map plus the updated
- * close-memory. Applicable floating panels are left exactly as they are.
+ * Closes any floating panel no longer applicable to the current document, remembering it as
+ * auto-closed so the dock reconcile can bring it back later. Floating position is not preserved across
+ * an applicability cycle; the panel returns docked instead. Applicable floating panels are untouched.
  */
 export function reconcileFloating(
    floating:     FloatingPanels,

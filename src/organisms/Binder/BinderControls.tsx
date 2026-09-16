@@ -7,15 +7,12 @@ import { dateDraftToFilter } from './searchFilters'
 import type { DateFilterMode, DateFilterDraft, SearchScope } from './searchFilters'
 
 interface BinderControlsProps {
-   // Simple text search
    search:          string
    onSearchChange:  (value: string) => void
-   // Sort
    sortBy:          DocumentSortBy
    onSortByChange:  (value: DocumentSortBy) => void
    sortDir:         'asc' | 'desc'
    onSortDirToggle: () => void
-   // Advanced filters
    dateFilters:            Record<DocumentDateField, DateFilterDraft>
    onDateFilterChange:     (field: DocumentDateField, next: DateFilterDraft) => void
    hasNeverOpened:         boolean
@@ -25,7 +22,6 @@ interface BinderControlsProps {
    onClearFilters:         () => void
 }
 
-/** A dismissable active-filter pill rendered below the search bar. */
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
    return (
       <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full border border-accent/30 bg-accent/10 text-accent text-xs">
@@ -42,7 +38,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
    )
 }
 
-/** One date field's constraint row: a mode picker plus the one or two date inputs it needs. */
+/** One date field's constraint row: a mode picker plus the one or two date inputs that mode needs. */
 function DateFilterRow({
    label, draft, modeLabels, fromLabel, toLabel, onChange,
 }: {
@@ -94,7 +90,7 @@ function DateFilterRow({
    )
 }
 
-/** Build the chip text for a date bound: "Updated >= x", "Updated <= y", or "Updated x - y". */
+/** Chip text for a date bound: "Updated >= x", "Updated <= y", or "Updated x - y". */
 function dateChipLabel(fieldLabel: string, bounds: DateFilter): string {
    if (bounds.from && bounds.to) return `${fieldLabel} ${bounds.from} - ${bounds.to}`
    if (bounds.from)              return `${fieldLabel} ≥ ${bounds.from}`
@@ -102,9 +98,8 @@ function dateChipLabel(fieldLabel: string, bounds: DateFilter): string {
 }
 
 /**
- * Search + sort bar above the document grid. The "Filters" toggle reveals an advanced panel
- * (a scope switch, an independent constraint per date field, and never-opened) whose active
- * criteria show as dismissable chips. All state lives in the binder session (not persisted).
+ * Search + sort bar above the document grid. The "Filters" toggle reveals an advanced panel whose
+ * active criteria show as dismissable chips. All state lives in the binder session, not persisted.
  */
 export function BinderControls({
    search, onSearchChange, sortBy, onSortByChange, sortDir, onSortDirToggle,
@@ -152,7 +147,6 @@ export function BinderControls({
 
    return (
       <div className="flex flex-col gap-2.5">
-         {/* Row 1, search, filters toggle, sort */}
          <div className="flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-48 max-w-md">
                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
@@ -175,7 +169,7 @@ export function BinderControls({
                )}
             </div>
 
-            {/* Filters toggle, shows the active advanced-criteria count even when collapsed */}
+            {/* Shows the active advanced-criteria count even while collapsed. */}
             <button
                type="button"
                onClick={() => setIsPanelOpen(open => !open)}
@@ -214,7 +208,6 @@ export function BinderControls({
             </button>
          </div>
 
-         {/* Row 2, advanced filter panel */}
          {isPanelOpen && (
             <div className="flex flex-col gap-3 rounded-md border border-border bg-el/40 p-3">
                <div className="flex items-center gap-2 flex-wrap">
@@ -225,7 +218,6 @@ export function BinderControls({
                   </div>
                </div>
 
-               {/* Date constraints, one independent row per date field */}
                <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
                   <span className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted/70">{t.binderDatesHeading}</span>
                {DOCUMENT_DATE_FIELDS.map(field => (
@@ -256,7 +248,6 @@ export function BinderControls({
             </div>
          )}
 
-         {/* Row 3, active-filter chips */}
          {activeCount > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
                {scopeActive && (

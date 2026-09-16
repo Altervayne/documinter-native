@@ -1,16 +1,8 @@
-/**
- * binderDatabase.ts, IndexedDB connection singleton + schema for the binder library.
- *
- * Owns the single cached connection (`databasePromise`), schema creation/repair, and the
- * request/transaction promise wrappers. The document, folder, and search modules import
- * openDatabase + the wrappers + the shared store/index constants from here, so the connection
- * is opened exactly once across the whole binder layer.
- *
- * Two stores keyed by the same id:
- *   documents       , lightweight BinderDocumentRecord (meta, timestamps, preview)
- *   documentContent , heavy BinderDocumentContent (full sections, base64 images)
- * Splitting them lets listDocuments() read only the light store, never deserializing base64,
- * so the binder card grid stays cheap.
+/*
+ * IndexedDB connection singleton + schema for the binder library. One cached connection, opened
+ * once across the binder layer, plus the request/transaction promise wrappers. Two stores keyed by
+ * the same id: `documents` (light record) and `documentContent` (heavy sections + base64), so
+ * listDocuments reads only the light store and never deserializes base64, keeping the card grid cheap.
  */
 
 import type { BinderDocumentRecord } from '../types'
@@ -29,10 +21,8 @@ const TEMPLATES_UPDATED_AT_INDEX       = 'by_templateUpdatedAt'
 
 let databasePromise: Promise<IDBDatabase> | null = null
 
-/**
- * Create any missing store/index (idempotent). Called from onupgradeneeded, safe to run
- * from any prior version; repairs partial schemas and handles fresh installs identically.
- */
+/** Create any missing store / index (idempotent). Repairs a partial schema and a fresh install
+ *  identically. Runs from onupgradeneeded. */
 function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void {
    if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) {
       database.createObjectStore(DOCUMENTS_STORE, { keyPath: 'id' })
@@ -43,7 +33,6 @@ function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void 
    if (!database.objectStoreNames.contains(FOLDERS_STORE)) {
       database.createObjectStore(FOLDERS_STORE, { keyPath: 'id' })
    }
-   // Templates store (savable document chrome, keyed by id) - self-heals in like the others.
    if (!database.objectStoreNames.contains(TEMPLATES_STORE)) {
       database.createObjectStore(TEMPLATES_STORE, { keyPath: 'id' })
    }
@@ -74,7 +63,6 @@ function ensureSchema(database: IDBDatabase, transaction: IDBTransaction): void 
    }
 }
 
-/** True when every required store + index exists in the live database. */
 function hasCompleteSchema(database: IDBDatabase): boolean {
    if (!database.objectStoreNames.contains(DOCUMENTS_STORE)) return false
    if (!database.objectStoreNames.contains(DOCUMENT_CONTENT_STORE)) return false
@@ -95,7 +83,7 @@ function hasCompleteSchema(database: IDBDatabase): boolean {
    }
 }
 
-/** Open the database at a specific version, or (version omitted) at its current version. */
+/** Version omitted opens at the current version. */
 function openAtVersion(version?: number): Promise<IDBDatabase> {
    return new Promise<IDBDatabase>((resolve, reject) => {
       let request: IDBOpenDBRequest
@@ -121,11 +109,9 @@ function openAtVersion(version?: number): Promise<IDBDatabase> {
 }
 
 /**
- * Open the binder database, self-healing a partial/old schema. Opens at the current version
- * first; if any required store/index is missing (e.g. a database left at a version without
- * the folders store), reopens one version higher to force onupgradeneeded to repair it,
- * independent of the version number, so it works even when the DB is already "current".
- * Cached singleton; consumers never call this directly.
+ * Open the binder database, self-healing a partial or old schema. If any required store / index is
+ * missing, reopen one version higher to force onupgradeneeded to repair it, independent of the
+ * version number, so it works even when the DB is already "current". Cached singleton.
  */
 export function openDatabase(): Promise<IDBDatabase> {
    if (databasePromise) return databasePromise
@@ -146,8 +132,6 @@ export function openDatabase(): Promise<IDBDatabase> {
    return databasePromise
 }
 
-
-/** Resolve when an IDBRequest succeeds, reject on error. */
 export function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
    return new Promise<T>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result)
@@ -155,7 +139,6 @@ export function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
    })
 }
 
-/** Resolve when a transaction commits, reject on error/abort. */
 export function transactionDone(transaction: IDBTransaction): Promise<void> {
    return new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve()

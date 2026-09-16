@@ -21,14 +21,9 @@ interface AnchorsPanelBodyProps {
 // # COMPONENT #
 // #############
 
-/**
- * The Anchors panel's body: a flat list of every deep-link handle declared in the document (a block
- * whose `#handle` is set, including container inner blocks), each showing its handle and the section it
- * sits in. Clicking a row scrolls the block into view on the canvas and flashes it, the same
- * navigate-and-highlight the Structure panel uses. Chrome-free, so it renders identically whether the
- * dock hosts it or it floats in a window. Read-only: the canvas still carries [data-block-id] in
- * preview, so navigation works there too.
- */
+/** The Anchors panel body: a flat list of every deep-link handle in the document (container inner
+ *  blocks included). Clicking a row scrolls the block into view and flashes it. Chrome-free, so it
+ *  renders the same docked or floating; navigation works in preview too ([data-block-id] survives). */
 export function AnchorsPanelBody({ sections }: AnchorsPanelBodyProps) {
    const { t } = useLang()
    const anchors = getAnchoredBlocks(sections)

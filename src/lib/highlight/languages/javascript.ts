@@ -1,6 +1,6 @@
 import type { Language } from '../types'
 
-// JS/TS subset, good enough for short snippets
+// A JS/TS keyword subset, enough for short snippets.
 const KEYWORDS = [
    'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
    'default', 'delete', 'do', 'else', 'export', 'extends', 'finally',

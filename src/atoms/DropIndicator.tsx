@@ -1,25 +1,10 @@
 import { useState, useEffect } from 'react'
 
-// ############################################################
-// DropIndicator: accent-colored insertion bar shown at a DnD
-// drop target during a drag operation.
-//
-// Two-frame mount pattern:
-//   1. Mounts with isVisible = false -> opacity-0
-//   2. requestAnimationFrame fires -> isVisible = true -> opacity-[0.85]
-//   3. CSS transition on opacity runs smoothly (150ms ease-out)
-//
-// This guarantees the browser renders one invisible frame before
-// the transition starts. Without it, the element mounts already at
-// the final state and the CSS transition never fires (the browser
-// paints the mounted and final state in the same frame).
-//
-// The Tailwind motion-reduce:transition-none class makes the
-// indicator appear instantly when prefers-reduced-motion is on;
-// the element still mounts and becomes visible, just without a
-// fade.
-// ############################################################
-
+/*
+ * The accent insertion bar at a DnD drop target. It mounts invisible and flips to visible on the
+ * next frame so the browser paints one opacity-0 frame first; without that the fade-in never fires.
+ * motion-reduce shows it instantly.
+ */
 export function DropIndicator() {
    const [isVisible, setIsVisible] = useState(false)
 

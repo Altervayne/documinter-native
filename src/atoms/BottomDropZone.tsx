@@ -1,14 +1,10 @@
 import { useDroppable } from '@dnd-kit/core'
 
-// ############################################################
-// BottomDropZone, invisible droppable sentinel at the end of a
-// noopStrategy sortable list.
-//
-// Without this, the last position is unreachable: hovering over
-// the last item produces adjustedIdx = lastIdx - 1 (one short).
-// Dropping here triggers a "move to end" branch in handleDragEnd.
-// Only rendered while a drag is active so it takes no space at rest.
-// ############################################################
+/*
+ * Invisible droppable sentinel at the end of a noopStrategy sortable list. Without it the last
+ * position is unreachable (hovering the last item yields lastIdx - 1); a drop here triggers the
+ * "move to end" branch in handleDragEnd. Mounted only mid-drag.
+ */
 
 interface BottomDropZoneProps {
    id: string
@@ -18,8 +14,7 @@ interface BottomDropZoneProps {
 
 export function BottomDropZone({ id, data }: BottomDropZoneProps) {
    const { setNodeRef, isOver } = useDroppable({ id, data })
-   // A generous hit area (only mounted mid-drag, so the extra height costs nothing at rest), with a
-   // resting dashed guide so the end-of-list target reads clearly for a block coming from elsewhere.
+   // A generous hit area with a dashed guide, so the end-of-list target reads clearly.
    return (
       <div
          ref={setNodeRef}

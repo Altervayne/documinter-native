@@ -1,11 +1,6 @@
-/**
- * LangContext, Provides the active language, its setter, and the resolved
- * translation object to the entire component tree.
- *
- * Exports: useLang, LangProvider
- *
- * Wraps i18n.ts translations so components consume a single typed `t` object
- * rather than importing the translations map and indexing it themselves.
+/*
+ * Active language, its setter, and the resolved translations, so components read one typed `t`
+ * instead of indexing the translations map themselves.
  */
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */

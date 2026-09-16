@@ -1,15 +1,7 @@
-/**
- * geometry.ts, the DOM-free geometry helpers for the diagram renderer.
- *
- * PURE FUNCTIONS. An SVG string has no DOM, so text cannot be measured and every coordinate must
- * be computed by hand. This module holds the non-trivial home-grown pieces:
- *   - node anchor / center geometry,
- *   - edge endpoint clipping to a shape's border (a ray-shape intersection per shape),
- *   - the DOM-free label wrap/clip estimate.
- *
- * Everything here is deterministic (no locale, no Date, no random) and total (a degenerate input,
- * e.g. a zero-size node or coincident points, degrades to the node center rather than emitting
- * NaN geometry), matching the "invalid never breaks the document" contract.
+/*
+ * DOM-free geometry helpers for the diagram renderer: node center/anchor geometry, edge endpoint
+ * clipping to a shape's border (ray-shape intersection per shape), and the DOM-free label wrap/clip.
+ * Total: a degenerate input (zero-size node, coincident points) degrades to the node center, no NaN.
  */
 
 import type { DiagramNode, DiagramEdge, NodeShape, EdgeRouting } from './types'
@@ -19,11 +11,8 @@ import { DEFAULT_EDGE_ROUTING } from './types'
 // # CONSTANTS #
 // #############
 
-/**
- * Average glyph advance as a fraction of the font-size, for the system-ui sans the labels inherit.
- * Deliberately generous (~0.6em), the same estimate the graph layout uses, so estimated widths
- * over-reserve rather than clip. This is the honest constraint of string-generated SVG.
- */
+/** Average glyph advance as a fraction of the font size. Deliberately generous so estimated widths
+ *  over-reserve rather than clip, the honest constraint of string-generated SVG. */
 export const AVERAGE_CHAR_WIDTH_RATIO = 0.6
 
 /** Line-height as a multiple of the font size, for multi-line labels. */
@@ -33,13 +22,11 @@ export const LINE_HEIGHT_RATIO = 1.25
 // # TYPES #
 // #########
 
-/** A 2D point in diagram units. */
 export interface Point {
    x: number
    y: number
 }
 
-/** An axis-aligned bounding box in diagram units. */
 export interface Bounds {
    minX: number
    minY: number
@@ -57,16 +44,10 @@ export function nodeCenter(node: DiagramNode): Point {
 }
 
 /**
- * The point on a node's BORDER along the ray from the node center toward `toward`. So an edge
- * touches the shape's edge, not its center. Shape-specific:
- *   - rectangle / rounded / pill / banner / chevron: a ray-box intersection (rounded corners, the
- *     banner's accent bar, and the chevron's point/notch are all approximated as the bounding
- *     rectangle, an accepted simplification, headings rarely carry edges, and the error is a
- *     few px at most).
- *   - ellipse: the parametric ellipse intersection.
- *   - diamond: the rhombus (|dx|/rx + |dy|/ry = 1) intersection.
- * A `toward` point coincident with the center (zero-length ray) or a zero-size node returns the
- * center unchanged, never NaN.
+ * The point on a node's BORDER along the ray from center toward `toward`, so an edge touches the
+ * shape edge not its center. Ellipse + diamond use their exact intersection; every rect-family shape
+ * (including banner/chevron) approximates as the bounding rectangle. A zero-length ray or zero-size
+ * node returns the center, never NaN.
  */
 export function intersectNodeBoundary(node: DiagramNode, toward: Point): Point {
    const center = nodeCenter(node)
@@ -84,11 +65,8 @@ export function intersectNodeBoundary(node: DiagramNode, toward: Point): Point {
    return { x: center.x + directionX * scale, y: center.y + directionY * scale }
 }
 
-/**
- * The scalar `t` such that `center + t * direction` lands on the shape's border. Factored out so
- * the per-shape math is testable in isolation. Returns a positive finite number, or Infinity for a
- * degenerate direction (the caller falls back to the center).
- */
+/** The scalar `t` such that `center + t * direction` lands on the shape's border. Positive finite,
+ *  or Infinity for a degenerate direction (the caller falls back to the center). */
 function boundaryScale(
    shape: NodeShape, directionX: number, directionY: number, radiusX: number, radiusY: number,
 ): number {
@@ -116,15 +94,10 @@ function boundaryScale(
 // ###################
 
 /**
- * The polyline an edge is drawn along, clipped to each endpoint node's border. This is the SINGLE
- * source of truth shared by the renderer (index.ts draws exactly this) and the interactive editor
- * (`lib/diagram/edit.ts` hit-tests against exactly this), so a click lands on the same line the
- * author sees. Three cases:
- *   - waypoints present: straight segments through them, clipped at both ends toward the nearer
- *     waypoint (the author's bends define the shape).
- *   - orthogonal, no waypoints: a perpendicular-exit single-mid elbow.
- *   - straight, no waypoints: a direct center-to-center segment clipped to both borders.
- * Never obstacle-avoiding (deferred).
+ * The polyline an edge is drawn along, clipped to each endpoint's border. The SINGLE source of truth
+ * shared by the renderer and the editor's hit-test, so a click lands on the line the author sees.
+ * Waypoints define the bends; else an orthogonal single-mid elbow or a straight center-to-center
+ * segment. Never obstacle-avoiding.
  */
 export function edgePolyline(edge: DiagramEdge, fromNode: DiagramNode, toNode: DiagramNode): Point[] {
    const waypoints = (edge.waypoints ?? []).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
@@ -151,10 +124,9 @@ function isValidRouting(routing: string): routing is EdgeRouting {
 }
 
 /**
- * A perpendicular-exit orthogonal (elbow) path between two node borders. The dominant separation
- * axis (horizontal vs vertical, by center delta) decides which sides the edge exits/enters, so the
- * first and last segments leave each node at a right angle to its border; a single mid-line bend
- * joins them. Not obstacle-avoiding (deferred) but clean and bounded.
+ * A perpendicular-exit elbow between two node borders. The dominant separation axis (by center
+ * delta) picks which sides the edge exits/enters; a single mid-line bend joins the two right-angle
+ * exits. Not obstacle-avoiding.
  */
 function orthogonalElbow(fromNode: DiagramNode, toNode: DiagramNode): Point[] {
    const fromCenter = nodeCenter(fromNode)
@@ -189,12 +161,8 @@ function orthogonalElbow(fromNode: DiagramNode, toNode: DiagramNode): Point[] {
 // # BOUNDING BOXES  #
 // ###################
 
-/**
- * The bounding box enclosing every node (its full width/height) and every edge waypoint, padded
- * by `padding` on all sides. Used to compute an autofit viewBox when the spec carries no explicit
- * `options.canvas`. An empty geometry returns a small default box so the viewBox is never
- * degenerate.
- */
+/** The bounding box enclosing every point, padded on all sides. Empty geometry returns a small
+ *  default box so the viewBox is never degenerate. */
 export function contentBounds(points: Point[], padding: number): Bounds {
    if (points.length === 0) {
       return { minX: 0, minY: 0, maxX: padding * 2, maxY: padding * 2 }
@@ -210,7 +178,6 @@ export function contentBounds(points: Point[], padding: number): Bounds {
       if (point.x > maxX) maxX = point.x
       if (point.y > maxY) maxY = point.y
    }
-   // Every point was non-finite: fall back to the default box.
    if (!Number.isFinite(minX)) {
       return { minX: 0, minY: 0, maxX: padding * 2, maxY: padding * 2 }
    }
@@ -222,7 +189,7 @@ export function contentBounds(points: Point[], padding: number): Bounds {
    }
 }
 
-/** The four corner points of a node's bounding box (feeds contentBounds). */
+/** The four corner points of a node's bounding box. */
 export function nodeCornerPoints(node: DiagramNode): Point[] {
    return [
       { x: node.x, y: node.y },
@@ -236,24 +203,16 @@ export function nodeCornerPoints(node: DiagramNode): Point[] {
 // # TEXT ESTIMATION #
 // ###################
 
-/**
- * Estimate the rendered width of `text` at `fontSize`, with no DOM to measure against:
- * `characters x fontSize x AVERAGE_CHAR_WIDTH_RATIO`. Tuned to over-reserve. Empty text is zero.
- */
+/** Estimate the rendered width of `text` with no DOM: `chars x fontSize x AVERAGE_CHAR_WIDTH_RATIO`. */
 export function estimateTextWidth(text: string, fontSize: number): number {
    if (text.length === 0) return 0
    return text.length * fontSize * AVERAGE_CHAR_WIDTH_RATIO
 }
 
 /**
- * Wrap `label` into lines that fit within `maxWidth` at `fontSize`, honoring explicit '\n' breaks
- * first, then greedily word-wrapping each authored line. If the wrapped result exceeds `maxLines`,
- * it is truncated and the last kept line is ellipsized ("..."), so a label can never overflow its
- * box unboundedly, the DOM-free analog of CSS line-clamp. A single word wider than `maxWidth`
- * is kept whole on its own line (never chopped mid-word); it may visually overflow, which the
- * author fixes by widening the node (author-sized boxes are the source of truth).
- *
- * Returns [] for an empty label (the renderer then draws no <text>).
+ * Wrap `label` to fit `maxWidth`, honoring explicit '\n' breaks then greedily word-wrapping. Past
+ * `maxLines` the last kept line is ellipsized, the DOM-free analog of CSS line-clamp. A single word
+ * wider than `maxWidth` is kept whole (never chopped) and may overflow. Empty label returns [].
  */
 export function wrapLabel(label: string, maxWidth: number, fontSize: number, maxLines: number): string[] {
    if (label === '') return []
@@ -263,7 +222,7 @@ export function wrapLabel(label: string, maxWidth: number, fontSize: number, max
    for (const authored of authoredLines) {
       const words = authored.split(/\s+/).filter(word => word !== '')
       if (words.length === 0) {
-         // A blank authored line (e.g. a deliberate empty row) is kept as an empty line.
+         // A blank authored line is kept as an empty line.
          wrapped.push('')
          continue
       }
@@ -299,10 +258,7 @@ function ellipsize(text: string, maxWidth: number, fontSize: number): string {
    return trimmed + ellipsis
 }
 
-/**
- * The maximum number of label lines that fit in a box of `height` at `fontSize` (accounting for
- * the line-height multiple). Always at least 1 so a short box still shows one line.
- */
+/** The maximum label lines that fit in a box of `height`. Always at least 1. */
 export function maxLabelLines(height: number, fontSize: number): number {
    const lineHeight = fontSize * LINE_HEIGHT_RATIO
    if (lineHeight <= 0) return 1

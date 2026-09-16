@@ -31,24 +31,17 @@ interface SegmentedIconToggleProps<Value extends string> {
 // #############
 
 /**
- * A horizontal row of icon + label buttons acting as a single-select toggle, a visual alternative
- * to a native `<select>` for a small, fixed set of options where the choice reads more clearly as a
- * glyph than as text (line style, arrowhead shape, and similar). Generic over the option value type
- * so it type-checks against any string-literal union without a cast at the call site.
- *
- * Built as a proper ARIA `radiogroup`/`radio` pair rather than a plain button row: the checked
- * option is the only one in the tab order (roving tabindex) and Left/Right/Up/Down arrow keys move
- * the checked option and focus together, wrapping at the ends, the standard radiogroup keyboard
- * contract. Styling is app-chrome only (`--color-*` tokens via the `.segmented-icon-toggle*` rules
- * in doc.css), so it reads correctly in both the light and dark app theme.
+ * A row of icon + label buttons acting as a single-select toggle, the app's alternative to a native
+ * `<select>` for small option sets. Generic over the value type so it type-checks against any
+ * string-literal union without a cast. Built as an ARIA radiogroup: the checked option is the only
+ * tab stop (roving tabindex) and arrow keys move selection and focus together, wrapping at the ends.
  */
 export function SegmentedIconToggle<Value extends string>({
    options, value, onChange, ariaLabel,
 }: SegmentedIconToggleProps<Value>) {
    const buttonRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-   // Moves the selection AND keyboard focus together in `direction` (+1 / -1), wrapping at both ends and
-   // skipping any disabled option, so arrow keys never land on an unselectable segment.
+   // Moves selection and focus together, wrapping at both ends and skipping disabled options.
    function moveSelection(fromIndex: number, direction: 1 | -1): void {
       for (let step = 1; step <= options.length; step++) {
          const index = ((fromIndex + direction * step) % options.length + options.length) % options.length
@@ -70,8 +63,8 @@ export function SegmentedIconToggle<Value extends string>({
       }
    }
 
-   // The checked option is the roving-tabindex stop; if nothing matches `value` (shouldn't normally
-   // happen), the first option stays reachable so the group is never entirely un-tabbable.
+   // The checked option is the roving-tabindex stop; fall back to the first so the group is never
+   // entirely un-tabbable when nothing matches `value`.
    const selectedIndex = options.findIndex(option => option.value === value)
    const tabbableIndex = selectedIndex === -1 ? 0 : selectedIndex
 

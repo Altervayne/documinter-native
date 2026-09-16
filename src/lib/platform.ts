@@ -1,10 +1,10 @@
 /*
  * Runtime host detection. The same bundle ships as the browser PWA and inside the Tauri desktop
- * shell, so anything that touches a native-only API (the window controls, for one) gates on this.
+ * shell, so anything touching a native-only API gates on this.
  */
 
 /** True only inside the Tauri desktop shell. Tauri v2 stamps `window.isTauri = true` at startup;
- *  in a plain browser the property is absent, so this never throws and returns false. */
+ *  in a plain browser the property is absent. */
 export function isTauri(): boolean {
    return (
       typeof window !== 'undefined' &&

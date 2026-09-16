@@ -43,27 +43,24 @@ interface WysiwygBlockProps {
    block:  Block
    containerMutations?: ContainerMutations
    /** This block's location (section body or container column), attached to the sortable as drag
-    *  data so the shared block DnD handler knows the source array on drop. Absent for readOnly. */
+    *  data so the shared DnD handler knows the source array on drop. Absent for readOnly. */
    blockLoc?: BlockLoc
-   /** Inner block inside a container, routes mutations through passed props */
+   /** Inner block inside a container: routes mutations through the passed props. */
    inner?:    boolean
-   /** When inner=true, also enables DnD drag-to-reorder for this block */
+   /** When inner=true, also enables drag-to-reorder. */
    draggable?: boolean
-   /** Which side the drag grip renders on, defaults to 'left' */
    gripSide?: 'left' | 'right'
-   /** Static read-only view, no editing, no interactions */
    readOnly?: boolean
-   /** ID of the block currently being dragged (for insertion indicator) */
+   /** Id of the block currently being dragged, for the insertion indicator. */
    activeBlockId?: string | null
-   /** For a list/checklist rendered as a page-split fragment: where this fragment's root items start
-    *  in the model block's full item list (see pageLayout.ts sliceListBlock). 0 for a whole (unsplit)
-    *  list. Converts dnd-kit's fragment-relative root reorder indices to absolute model indices. */
+   /** For a page-split list/checklist fragment: where its root items start in the model block's full
+    *  list (see pageLayout.ts sliceListBlock). 0 for an unsplit list. Converts fragment-relative
+    *  dnd-kit root reorder indices to absolute model indices. */
    itemOffset?: number
-   /** For a list/checklist rendered as a page-split fragment: whether this fragment holds the model
-    *  block's last root item. True for a whole (unsplit) list. Gates the add-item button so a split
-    *  list shows it once, on the page it ends on. */
+   /** For a page-split list/checklist fragment: whether it holds the model's last root item (true for
+    *  an unsplit list). Gates the add-item button so a split list shows it once, where it ends. */
    isListTail?: boolean
-   // Handlers passed from parent (used by both inner and outer blocks)
+   // Handlers passed from the parent (used by both inner and outer blocks).
    onInsertBefore?: (type: BlockType) => void
    onInsertAfter?:  (type: BlockType) => void
    onMoveUp?:       () => void
@@ -72,9 +69,8 @@ interface WysiwygBlockProps {
    onUpdate?:        (secId: string, blkId: string, patch: Partial<Block>) => void
    onRemove?:        () => void
    onDuplicate?:     () => void
-   /** Inner-block-only lever for inserting an already-built sibling block right after this one
-    *  (the graph<->table one-shot extract actions: "Create chart from this table" / "Extract
-    *  data to a table"). Outer (non-inner) blocks route straight through ctx.insertBlockAfter. */
+   /** Inner-block-only: insert an already-built sibling right after this one (the graph<->table
+    *  extract actions). Outer blocks route straight through ctx.insertBlockAfter. */
    onInsertBlockAfter?: (newBlock: Block) => void
    onAddListItem?: () => void
    onAddTableRow?:      () => void
@@ -117,14 +113,11 @@ export function WysiwygBlock({
    const editorWindow = usePopAWindow()
    const pageBreaks   = usePageBreaks()
    const isAnchorDupe = !readOnly && !!block.handle && allHandles.filter(handle => handle === block.handle).length > 1
-   // The block's editor window is open: highlight it and drop its inline controls (block-owned).
    const isWindowOpen = !readOnly && editorWindow.isOpen(block.id)
 
    // Unmount safety: a deleted / undone-away block clears its own open id so the coordinator never
-   // holds a dangling reference. Deliberately unmount-only (block.id is stable per instance), the
-   // functional clear (see closeIfOpen) keeps the captured coordinator reference stale-closure safe.
-   // Depending on `editorWindow` would re-run the cleanup on every open-id change and wrongly
-   // clear the just-opened block, so it is intentionally excluded.
+   // holds a dangling reference. Unmount-only on purpose; depending on `editorWindow` would re-run
+   // on every open-id change and wrongly clear the just-opened block, so it is excluded.
    // eslint-disable-next-line react-hooks/exhaustive-deps
    useEffect(() => () => editorWindow.closeIfOpen(block.id), [block.id])
 
@@ -198,10 +191,9 @@ export function WysiwygBlock({
    //  Anchor + context menu
    // =======================
    const anchor = useAnchorEditor({ block, blockDivRef, patch })
-   // Paged-format page-break action: only for an OUTER, editable block in paged mode. Framed break-before
-   // ("make THIS block start the page"): a break already pushing this block to a fresh page gives "remove";
-   // a block that CAN start a fresh page (has a predecessor to anchor after) gives the create verb;
-   // otherwise (the document's first block) no entry. Container inner blocks are never page-break targets.
+   // Page-break action, framed break-before ("make THIS block start the page"): only for an OUTER,
+   // editable block in paged mode. A break already pushing it to a fresh page gives "remove"; a block
+   // that can start one (has a predecessor to anchor after) gives "insert"; the first block gets none.
    const pageBreakOption: { mode: 'insert' | 'remove'; onSelect: () => void } | undefined =
       (!inner && !readOnly && pageBreaks.paged)
          ? (pageBreaks.startsFreshPage(block.id)
@@ -210,9 +202,8 @@ export function WysiwygBlock({
                ? { mode: 'insert', onSelect: () => pageBreaks.startOnNewPage(block.id) }
                : undefined))
          : undefined
-   // Paged-format keep-together toggle: only for an OUTER, editable block of a splittable type (the only
-   // types the paginator ever splits). Toggling routes through patch -> updateBlock -> commitActiveEdit,
-   // so it is one undo entry. `keepTogether` is only ever true or absent, so the toggle clears it to
+   // Keep-together toggle: only for an OUTER, editable block of a splittable type (the only types the
+   // paginator splits). `keepTogether` is only ever true or absent, so the toggle clears it to
    // undefined rather than writing false.
    const isSplittableType = block.type === 'p' || block.type === 'list' || block.type === 'checklist'
    const keepTogetherOption: { active: boolean; onSelect: () => void } | undefined =
@@ -222,11 +213,9 @@ export function WysiwygBlock({
             onSelect: () => patch({ keepTogether: block.keepTogether ? undefined : true }),
          }
          : undefined
-   // Paged-format keep-with-next toggle: for an OUTER, editable block of ANY type that has a following
-   // top-level block to keep with (an atomic block can be pinned to its follower too, so this is not gated
-   // to splittable types). A block with no successor has nothing to keep with, so `canBreakAfter` gates it
-   // out. Toggling routes through patch -> updateBlock -> commitActiveEdit, so it is one undo entry, and
-   // `keepWithNext` is only ever true or absent, so the toggle clears it to undefined rather than false.
+   // Keep-with-next toggle: for an OUTER, editable block of ANY type with a following top-level block
+   // (atomic blocks can pin to their follower too, so not gated to splittable types); `canBreakAfter`
+   // gates out a block with no successor. `keepWithNext` is only ever true or absent, cleared not false.
    const keepWithNextOption: { active: boolean; onSelect: () => void } | undefined =
       (!inner && !readOnly && pageBreaks.paged && pageBreaks.canBreakAfter(block.id))
          ? {
@@ -321,13 +310,11 @@ export function WysiwygBlock({
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
          onContextMenu={readOnly ? undefined : openContextMenu}
       >
-         {/* DnD insertion indicator */}
          {showInsertLine && (
             <div className="absolute -top-px left-0 right-0 h-0.5 rounded-sm opacity-70 pointer-events-none"
                style={{ background: 'var(--doc-accent, var(--color-accent))' }} />
          )}
 
-         {/* DnD grip, outer blocks always, inner blocks when draggable=true */}
          {isDraggable && !readOnly && (
             <div
                {...sortable.listeners}
@@ -345,7 +332,6 @@ export function WysiwygBlock({
             </div>
          )}
 
-         {/* Anchor editor */}
          {!readOnly && anchor.anchorEditing && anchor.anchorPos && (
             <AnchorEditor
                draft={anchor.anchorDraft}
@@ -359,10 +345,8 @@ export function WysiwygBlock({
             />
          )}
 
-         {/* Right-click context menu */}
          {contextMenuProps && <BlockContextMenu {...contextMenuProps} />}
 
-         {/* Block type picker for insert before / after */}
          {pendingInsert && (
             <BlockTypePicker
                anchorRect={getBlockRect()}
@@ -381,7 +365,6 @@ export function WysiwygBlock({
             {renderBlockContent()}
          </div>
 
-         {/* Duplicate anchor warning */}
          {isAnchorDupe && (
             <div className="flex items-center gap-1 mt-1 px-1 text-amber-500 text-xs font-medium">
                <TriangleAlert size={11} />

@@ -1,7 +1,6 @@
 import type { Language } from '../types'
 
-// No highlighting, used as a pass-through.
-// The tokenize() engine will escape HTML entities for any unmatched char.
+// Pass-through: no rules, so tokenize() just HTML-escapes every character.
 export const plain: Language = {
    name: 'plain',
    rules: [],

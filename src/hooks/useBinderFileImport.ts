@@ -23,11 +23,10 @@ interface UseBinderFileImportOptions {
 }
 
 /**
- * Owns the native HTML5 file-drop import for the whole binder body. This is a separate system from
- * dnd-kit's pointer-based card dragging, so the two never collide. A dropped file is routed by its
- * content: a template export (parseTemplateBackup) becomes a stored template, a document backup
- * (parseDocumentBackup) becomes a new document in the current folder, and anything else is skipped.
- * Both kinds are `.json`, so the routing is by marker, not by extension.
+ * Native HTML5 file-drop import for the whole binder body, separate from dnd-kit's pointer card dragging
+ * so the two never collide. A dropped file is routed by content: a template export becomes a stored
+ * template, a document backup a new document in the current folder, anything else is skipped. Both kinds
+ * are `.json`, so routing is by marker, not extension.
  */
 export function useBinderFileImport({ currentFolderId, onImported, onTinDropped }: UseBinderFileImportOptions) {
    const { showToast } = useToast()
@@ -44,8 +43,7 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
    }, [])
 
    const handleFileDragLeave = useCallback((event: React.DragEvent) => {
-      // Native dragleave also fires when crossing between child elements, only clear when the
-      // cursor has actually left the drop container.
+      // dragleave also fires crossing between children; only clear when the cursor left the container.
       if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
       setIsFileDragOver(false)
    }, [])
@@ -57,9 +55,8 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
 
       const dropped = Array.from(event.dataTransfer.files)
 
-      // A `.tin` is binary (gzip), so it takes its own path: read the bytes, gunzip, parse, then hand
-      // the bundle up to App's mode dialog. Distinct from the text/JSON route below, which reads
-      // file.text() and sniffs the content. One `.tin` per drop is handled (the dialog is modal).
+      // A `.tin` is binary (gzip): read bytes, gunzip, parse, then hand the bundle to App's mode dialog.
+      // One `.tin` per drop (the dialog is modal).
       const tinFile = dropped.find(file => file.name.toLowerCase().endsWith('.tin'))
       if (tinFile) {
          try {
@@ -80,8 +77,7 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
       for (const file of files) {
          try {
             const text = await file.text()
-            // A template export carries the `documinterTemplate` marker; parseTemplateBackup returns
-            // null for a document backup, so this check routes the file by its actual content.
+            // parseTemplateBackup returns null for a document backup, so this routes by actual content.
             const template = parseTemplateBackup(text)
             if (template) {
                await backend.saveTemplate(captureTemplate(template.name, template.chrome, crypto.randomUUID(), Date.now()))
@@ -103,7 +99,7 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
          return
       }
       onImported()
-      // Two toasts only in the rare mixed drop (documents AND templates in one selection), which is fine.
+      // Two toasts only on a mixed drop (documents AND templates in one selection).
       if (documentsImported > 0) showToast(t.binderImportSuccess, { type: 'success' })
       if (templatesImported > 0) showToast(t.templateImported, { type: 'success' })
    }, [currentFolderId, onImported, onTinDropped, showToast, t, backend])

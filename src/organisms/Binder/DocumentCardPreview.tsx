@@ -8,14 +8,10 @@ interface DocumentCardPreviewProps {
    docAccent:       string
 }
 
-// The fixed preview slot on a document card (left of the metadata panel).
 const BOX_WIDTH  = 180
 const BOX_HEIGHT = 240
 
-/**
- * The preview slot of a document card: a fixed-size box holding a read-only
- * DocumentMiniPreview (real `.doc-render` content, scaled down). Pure React, no iframe.
- */
+/** A fixed-size box holding a read-only DocumentMiniPreview (scaled `.doc-render`). No iframe. */
 export function DocumentCardPreview({ meta, previewSections, docTheme, docAccent }: DocumentCardPreviewProps) {
    return (
       <div

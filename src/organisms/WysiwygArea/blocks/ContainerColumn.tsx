@@ -5,9 +5,8 @@ import { SortableContext, type SortingStrategy } from '@dnd-kit/sortable'
 import { useLang } from '../../../contexts/LangContext'
 
 // -- Component Imports --
-// WysiwygBlock is imported here, creating a circular dependency (ContainerColumn -> WysiwygBlock ->
-// ContainerBlock -> ContainerColumn). This is safe: both references are used inside function bodies,
-// never at module-evaluation time.
+// WysiwygBlock forms a circular dependency (ContainerColumn -> WysiwygBlock -> ContainerBlock ->
+// ContainerColumn), safe because both references are used inside function bodies, not at eval time.
 import { WysiwygBlock } from '../WysiwygBlock'
 import { AddBlockRow } from '../../../molecules/AddBlockRow'
 import { BottomDropZone } from '../../../atoms/BottomDropZone'
@@ -15,10 +14,7 @@ import { BottomDropZone } from '../../../atoms/BottomDropZone'
 // -- Type Imports --
 import type { Block, BlockType, ContainerMutations, InlineContent, ListItem, Side } from '../../../types'
 
-// ######################################################################
-// # DND STRATEGY, ITEMS STAY IN PLACE; DRAGOVERLAY PROVIDES THE GHOST #
-// ######################################################################
-
+// Items stay in place; the DragOverlay provides the ghost.
 const noopStrategy: SortingStrategy = () => null
 
 // #########
@@ -31,8 +27,8 @@ interface ContainerColumnProps {
    side:      Side
    blocks:    Block[]
    cm:        ContainerMutations
-   /** Id of the block being dragged anywhere on the canvas (the shared block DnD context lives in
-    *  index.tsx). Drives this column's inner insertion lines + its bottom drop zone. */
+   /** Id of the block being dragged anywhere on the canvas (shared DnD context in index.tsx). Drives
+    *  this column's inner insertion lines + bottom drop zone. */
    activeBlockId?: string | null
    readOnly?: boolean
 }
@@ -47,10 +43,6 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, activeBlockId,
    // This column's block-array location, attached to inner blocks + the bottom zone as drag data so the
    // shared block DnD handler can move a block into / out of this container.
    const columnLoc = { kind: 'column' as const, sectionId: secId, blockId: blkId, side }
-
-   // ===========================
-   //  Build inner-block prop set
-   // ===========================
 
    function makeInnerProps(innerBlock: Block, idx: number) {
       return {
@@ -90,10 +82,6 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, activeBlockId,
       }
    }
 
-   // =======
-   //  Render
-   // =======
-
    return (
       <div className="container-col">
          <div className="container-col-label">{side === 'left' ? t.leftColumn : t.rightColumn}</div>
@@ -103,8 +91,8 @@ export function ContainerColumn({ secId, blkId, side, blocks, cm, activeBlockId,
                <WysiwygBlock key={block.id} {...makeInnerProps(block, idx)} readOnly />
             ))
          ) : (
-            // The column's block SortableContext lives under the ONE shared DnD context (index.tsx),
-            // so a block can be dragged into / out of this container (the drag ghost is shared too).
+            // This SortableContext lives under the ONE shared DnD context, so a block can be dragged
+            // into / out of this container.
             <div>
                <SortableContext items={blocks.map(block => block.id)} strategy={noopStrategy}>
                   {blocks.map((block, idx) => (

@@ -53,8 +53,7 @@ export function useLinkMode({ savedRangeRef, visible }: UseLinkModeOptions) {
    const pendingLinkOpen   = useRef(false)
    const pendingLinkAnchor = useRef<HTMLAnchorElement | null>(null)
 
-   // Stable: referenced from the toolbar's orchestrator effect and the visible-gated
-   // effect below, so their identity must not change between renders.
+   // Stable identity: referenced from the toolbar's orchestrator effect and the visible-gated effect below.
    const openLinkMode = useCallback(() => {
       const sel = window.getSelection()
       if (sel && sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange()
@@ -124,7 +123,6 @@ export function useLinkMode({ savedRangeRef, visible }: UseLinkModeOptions) {
       }
    }, [visible, openLinkMode])
 
-   // Focus the URL input whenever link mode opens
    useEffect(() => {
       if (linkMode) inputRef.current?.focus()
    }, [linkMode])

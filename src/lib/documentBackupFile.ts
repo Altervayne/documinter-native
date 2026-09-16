@@ -1,8 +1,7 @@
-/**
- * Manual .documinter.json backup download + load.
- *
- * Pure file I/O over the editable DocState plus per-document presentation; no IndexedDB.
- * parseDocumentBackup runs id migration so older backups still load.
+/*
+ * Manual .documinter.json backup download + load. Pure file I/O over the editable DocState plus
+ * per-document presentation, no IndexedDB. parseDocumentBackup runs id migration so older backups
+ * still load.
  */
 
 import { slugify } from './text'
@@ -12,11 +11,9 @@ import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
 import type { DocPresentation } from './binderDocuments'
 import type { DocMeta, DocState, Section } from '../types'
 
-/** A serialized document backup: the editable DocState plus the per-document presentation
- *  (theme + accent + export/editor extras) and format (infinite width, later paged A4), so a
- *  re-import restores exactly how the document looked. Presentation / format are optional, older
- *  backups predate them and fall back to defaults on import. The .documinter.json backup is the
- *  full-fidelity format, so it DOES carry them (unlike the content-only .mint / .md serializers). */
+/** DocState plus per-document presentation (theme + accent + extras) and format, so a re-import
+ *  restores how the document looked. Both optional; older backups fall back to defaults. This is the
+ *  full-fidelity format, so it DOES carry them, unlike the content-only .mint / .md serializers. */
 export interface DocumentBackup extends DocState {
    docTheme?:  'light' | 'dark'
    docAccent?: string
@@ -24,11 +21,8 @@ export interface DocumentBackup extends DocState {
    format?: DocFormat
 }
 
-/**
- * Parse a JSON backup string into editable state + presentation, or null if it isn't a valid
- * Documinter document. Applies id migration and fills missing presentation with the defaults
- * (light theme + mint accent) so backups written before presentation was tracked still load.
- */
+/** State + presentation, or null when the text isn't a valid Documinter document. Applies id
+ *  migration and fills missing presentation with the defaults so older backups still load. */
 export function parseDocumentBackup(text: string): { state: DocState; presentation: DocPresentation } | null {
    try {
       const raw = JSON.parse(text) as Partial<DocumentBackup>
@@ -48,9 +42,8 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
    }
 }
 
-/** Trigger a browser download of the document as a .documinter.json file (theme + accent included).
- *  `format` is written only when it diverges from the default (isDefaultFormat), so a document that
- *  never touched Page Setup keeps producing a byte-clean backup with no format field. */
+/** Download the document as a .documinter.json file. `format` is written only when it diverges from
+ *  the default, so a document that never touched Page Setup keeps a byte-clean backup. */
 export function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): void {
    const backup: DocumentBackup = {
       meta, sections,

@@ -11,9 +11,9 @@ export type FolderDropZone = 'before' | 'after' | 'nest'
 export interface FolderDropTarget { id: string; zone: FolderDropZone }
 
 interface BinderNavProps {
-   view:                 'documents' | 'templates'   // which top-level view is active
-   onSelectDocuments:    () => void                  // switch to the Documents view (folder tree)
-   onSelectTemplates:    () => void                  // switch to the Templates view
+   view:                 'documents' | 'templates'
+   onSelectDocuments:    () => void
+   onSelectTemplates:    () => void
    currentFolder:        BinderFolderRecord | null   // null = root ("All Documents")
    subfolders:           BinderFolderRecord[]
    folderDocumentCounts: Record<string, number>
@@ -28,7 +28,7 @@ interface BinderNavProps {
    isDragging?:          boolean   // any drag in progress, shows the Cancel-move dropzone
    cancelRef?:           React.RefObject<HTMLDivElement | null>      // Cancel-move zone hit target
    isCancelTarget?:      boolean   // the cursor is over the Cancel-move dropzone
-   onNavigateUp:         () => void                  // go up one level (to the parent folder)
+   onNavigateUp:         () => void
    onSelectFolder:       (id: string | null) => void
    onEnterFolder:        (folder: BinderFolderRecord) => void
    onNewFolder:          () => void
@@ -38,9 +38,8 @@ interface BinderNavProps {
 }
 
 /**
- * Left-hand drill-down folder panel (fixed 240px). Lists the current folder's immediate
- * subfolders (flat, no nesting); double-click a folder to enter it. "New folder" creates
- * a subfolder of the current folder and enters inline rename.
+ * Left-hand drill-down folder panel. Lists the current folder's immediate subfolders (flat, no
+ * nesting); double-click enters one. "New folder" creates a subfolder and enters inline rename.
  */
 export function BinderNav({
    view, onSelectDocuments, onSelectTemplates,
@@ -53,9 +52,8 @@ export function BinderNav({
 
    return (
       <div ref={rootRef} className="w-60 shrink-0 flex flex-col min-h-0 border-r border-border bg-raised/40">
-         {/* "All Documents" toggles to the Documents view, keeping whichever folder was open (so a trip
-             to Templates and back returns to it), and stays highlighted while in the Documents view; the
-             up-one-level Back affordance now lives inside the folder tree below. */}
+         {/* Toggles to the Documents view keeping whichever folder was open, so a trip to Templates
+             and back returns to it. Going up a level is the Back row's job, below. */}
          <button
             type="button"
             onClick={onSelectDocuments}
@@ -67,7 +65,6 @@ export function BinderNav({
             <span className="truncate">{t.binderAllDocuments}</span>
          </button>
 
-         {/* Templates-view toggle: a sibling top-level destination to the documents folder tree. */}
          <button
             type="button"
             onClick={onSelectTemplates}
@@ -79,11 +76,9 @@ export function BinderNav({
             <span className="truncate">{t.binderTemplates}</span>
          </button>
 
-         {/* Folder tree belongs to the Documents view; hidden while browsing templates. */}
          {!isTemplates && (
          <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-            {/* Back row: the up-one-level affordance, shown as the first folder-list row when drilled
-                into a folder. Doubles as the up-drop target (backRef + isUpTarget) for a dragged card. */}
+            {/* Up-one-level row, and the up-drop target (backRef + isUpTarget) for a dragged card. */}
             {currentFolder && (
                <button
                   ref={backRef}
@@ -122,8 +117,6 @@ export function BinderNav({
                })}
             </SortableContext>
             {subfolders.length === 0 ? (
-               /* No subfolders -> a prominent "create a folder" call to action (the New-folder
-                  button blown up, since there's nothing else to anchor it to). */
                <button
                   type="button"
                   onClick={onNewFolder}
@@ -136,8 +129,6 @@ export function BinderNav({
                   </span>
                </button>
             ) : (
-               /* New folder, sticks to the bottom of the scrolling list (like the workspace
-                  "Add section" button), always in view but scrolls with content as needed. */
                <div className="sticky bottom-0 mt-1 bg-raised/40">
                   <button
                      type="button"
@@ -152,11 +143,11 @@ export function BinderNav({
          </div>
          )}
 
-         {/* Templates view fills the remaining nav height so the panel keeps its shape. */}
+         {/* Fills the remaining nav height so the panel keeps its shape in the Templates view. */}
          {isTemplates && <div className="flex-1" />}
 
-         {/* Cancel-move dropzone, appears at the foot of the nav during any drag; dropping here
-             aborts the move (detected by cursor geometry in the binder, like the Back button). */}
+         {/* Cancel-move dropzone: dropping here aborts the move (hit-tested by cursor geometry in the
+             binder, like the Back button). */}
          {isDragging && (
             <div
                ref={cancelRef}

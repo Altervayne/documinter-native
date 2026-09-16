@@ -1,19 +1,12 @@
-/**
- * The pure page model for the paged (A4) document format.
+/*
+ * The pure page model for the paged (A4) format. Pages are DERIVED, never stored: the flat section/block
+ * flow is partitioned into pages at explicit break markers (`format.pages`); the Section / Block model
+ * is untouched.
  *
- * Pages are DERIVED, never stored on content: a document's flat section/block flow is partitioned
- * into discrete pages at explicit break markers (`format.pages`, a `PageBreak[]`). The `Section` /
- * `Block` / `DocState` model is UNTOUCHED, this is layout over the content, mirroring how
- * `presentation.reconcileNav` derives the sidebar nav from the same section flow without changing
- * content.
- *
- * BOUNDARY SEMANTICS (matching the `PageBreak.after` field): a break's `after.blockId` names the block
- * that ENDS the page before it (the last block of the previous page). The boundary is physical: moving
- * or deleting the block that STARTS the next page never touches it, because that block is not the
- * anchor. A break with `after: null` sits before all content, a leading blank page. Multiple breaks
- * sharing the same anchor STACK as consecutive blank pages, so blank pages can live anywhere.
- *
- * No React, no DOM: pure and unit-testable, like format.ts / listItemTree.ts.
+ * BOUNDARY SEMANTICS (the `PageBreak.after` field): a break's `after.blockId` names the block that ENDS
+ * the page before it. The boundary is physical, so moving or deleting the block that STARTS the next
+ * page never touches it. `after: null` sits before all content (a leading blank); multiple breaks on one
+ * anchor STACK as consecutive blank pages, so blank pages can live anywhere.
  */
 
 import type { Block, Section } from '../types'
@@ -24,9 +17,8 @@ import { cloneBlock } from './document'
 // # CONSTANTS #
 // #############
 
-// A4 sheet geometry in CSS px at 96dpi (A4 = 210 x 297mm). Portrait is the sheet upright; landscape
-// swaps width/height. The editor renders sheets at these pixel sizes; the eventual @page export
-// uses the mm-native margins so print maps 1:1 to physical A4.
+// A4 sheet geometry in CSS px at 96dpi (210 x 297mm). Portrait upright; landscape swaps width/height.
+// The editor renders at these px sizes; the @page export uses mm-native margins so print maps 1:1 to A4.
 export const A4_PORTRAIT_WIDTH_PX  = 794
 export const A4_PORTRAIT_HEIGHT_PX = 1123
 export const A4_LANDSCAPE_WIDTH_PX  = 1123
@@ -36,8 +28,7 @@ export const A4_LANDSCAPE_HEIGHT_PX = 794
 // keyed by the id of the PageBreak that begins them. crypto.randomUUID ids never collide with this.
 export const FIRST_PAGE_ID = 'page-first'
 
-// Millimetres to CSS px at 96dpi (25.4mm per inch), for turning the mm-native margins into editor
-// padding. Kept here so the editor and any later print path share ONE conversion.
+// Millimetres to CSS px at 96dpi (25.4mm/inch), so the editor and print path share ONE conversion.
 export function millimetresToPx(millimetres: number): number {
    return (millimetres * 96) / 25.4
 }
@@ -47,10 +38,9 @@ export function millimetresToPx(millimetres: number): number {
 // #########
 
 /**
- * One section's contribution to a single page. A section that spans a page break yields MULTIPLE
- * slices (one per page it touches); `isSectionStart` marks the slice that begins the section (renders
- * its title), `isSectionEnd` marks the slice that ends it (renders the add-block affordance). An
- * empty section yields exactly one slice that is both start and end.
+ * One section's contribution to a single page. A section spanning a break yields MULTIPLE slices (one
+ * per page); `isSectionStart` marks the slice that renders the title, `isSectionEnd` the one that
+ * renders the add-block affordance. An empty section yields one slice that is both.
  */
 export interface PageSlice {
    section:        Section
@@ -65,12 +55,10 @@ export interface PageSlice {
 export interface Page {
    id:     string
    slices: PageSlice[]
-   /** How this page came to exist, set at page-creation time so the Pages panel can label it honestly
-    *  without string-sniffing ids: `first` = page 1, `manual` = opened by an explicit `format.pages`
-    *  break, `continuation` = an auto page carrying a block that flowed off the previous sheet,
-    *  `auto-start` = an auto page a section push / empty section / keep-with-next opened to START fresh
-    *  content. Only the measured paginator emits `continuation` / `auto-start` (partitionIntoPages, which
-    *  cuts at explicit breaks only, emits just `first` / `manual`). */
+   /** How this page came to exist, so the Pages panel can label it without string-sniffing ids: `first`
+    *  = page 1, `manual` = an explicit `format.pages` break, `continuation` = an auto page carrying a
+    *  block flowed off the previous sheet, `auto-start` = an auto page opened to START fresh content (a
+    *  section push / empty section / keep-with-next). Only the measured paginator emits the auto kinds. */
    origin?: 'first' | 'manual' | 'continuation' | 'auto-start'
 }
 
@@ -92,10 +80,9 @@ function flattenBlocks(sections: Section[]): { sectionId: string; block: Block }
 // ##############
 
 /**
- * Partition the flat section/block flow into ordered pages at the given break markers. Pure: it never
- * mutates `sections` (it re-references the same Block objects into slices). Always returns at least
- * one page (an empty document is a single empty page). A break anchored `after` a block cuts right
- * after that block; breaks stacked on one anchor (or `after: null`) insert consecutive blank pages.
+ * Partition the flat section/block flow into ordered pages at the break markers. Pure (re-references the
+ * same Block objects), always at least one page. A break anchored `after` a block cuts right after it;
+ * breaks stacked on one anchor (or `after: null`) insert consecutive blank pages.
  */
 export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Page[] {
    // Anchor blockId -> the breaks cutting after it, in array order (their order = stacking order).
@@ -114,14 +101,13 @@ export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Pag
    const result: Page[] = []
    let currentPage: Page = { id: FIRST_PAGE_ID, slices: [], origin: 'first' }
 
-   // Every page this function opens comes from an explicit break marker (a leading blank or a mid-section
-   // cut), so it is always `manual`; only page 1 is `first`. The measured paginator adds the auto kinds.
+   // Every page opened here is `manual` (an explicit break); only page 1 is `first`.
    function startPage(pageId: string): void {
       result.push(currentPage)
       currentPage = { id: pageId, slices: [], origin: 'manual' }
    }
 
-   // Leading blank pages: each leading break closes the current (still empty) page and opens the next.
+   // Leading blank pages: each break closes the empty current page and opens the next.
    for (const pageBreak of leadingBreaks) startPage(pageBreak.id)
 
    for (const section of sections) {
@@ -164,12 +150,10 @@ export function partitionIntoPages(sections: Section[], pages: PageBreak[]): Pag
 // #############
 
 /**
- * Keep the break list honest after a content edit. A break `after: null` is always valid (leading
- * blank). A break whose anchor block still exists is kept (its `after.sectionId` refreshed if the
- * block moved sections). A break whose anchor block was DELETED re-anchors to the anchor's nearest
- * surviving predecessor in `previousSections` (so the boundary stays physical: the page keeps its
- * earlier content, or becomes a stacked blank when the deleted block was the page's only one). Without
- * `previousSections` a deleted anchor is dropped. Stacked breaks are preserved, they are blank pages.
+ * Keep the break list honest after a content edit. `after: null` is always valid. A break whose anchor
+ * still exists is kept (its `after.sectionId` refreshed if the block changed sections). A deleted anchor
+ * re-anchors to its nearest surviving predecessor in `previousSections`, so the boundary stays physical;
+ * without `previousSections` it is dropped. Stacked breaks are preserved.
  */
 export function reconcilePages(pages: PageBreak[], sections: Section[], previousSections?: Section[]): PageBreak[] {
    const sectionIdByBlockId = new Map<string, string>()
@@ -218,10 +202,9 @@ function reanchorToPredecessor(
 }
 
 /**
- * Re-anchor the breaks whose anchor is one of `movedBlockIds` to that block's predecessor in
- * `previousSections`, called when a block is dragged so a boundary that ended a page stays where the
- * page ended instead of following the moved block across the document. Breaks on other anchors are
- * untouched. Returns the SAME array when nothing changed.
+ * Re-anchor breaks whose anchor is one of `movedBlockIds` to that block's predecessor in
+ * `previousSections`, so a dragged block does not drag the page boundary that ended after it across the
+ * document. Breaks on other anchors are untouched; returns the SAME array when nothing changed.
  */
 export function reanchorMovedBlocks(
    pages: PageBreak[], previousSections: Section[], movedBlockIds: string[],
@@ -305,12 +288,9 @@ function findLastIndex<ItemType>(items: ItemType[], predicate: (item: ItemType) 
 // # START-ON-NEW-PAGE #
 // ####################
 
-// "Make block X start a fresh page" is expressed WITHOUT a new anchor direction: the model is after-only
-// (a `before` anchor was deliberately migrated away, see documentMigration.ts), so starting X on a new
-// page means a break AFTER X's flat predecessor. Each wrapper below is a predecessor lookup composed with
-// an existing after-primitive, so all the idempotency and robustness of those primitives carry through
-// for free. The flat flow is TOP-LEVEL blocks only (flattenBlocks does not descend into container
-// columns), so a container inner block is never a target here.
+// "Make block X start a fresh page" without a new anchor direction: the model is after-only, so it means
+// a break AFTER X's flat predecessor. Each wrapper below is a predecessor lookup composed with an
+// after-primitive, inheriting its idempotency. The flat flow is TOP-LEVEL blocks only.
 
 /** The top-level block immediately before `blockId` in the flat flow, or null when `blockId` is the
  *  document's first top-level block (no predecessor to anchor after) or is not a top-level block at all
@@ -358,22 +338,16 @@ export function mergeBlockWithPrevious(pages: PageBreak[], sections: Section[], 
 // ###################
 
 /**
- * The page-sorter's operations plus manual page creation: reorder, duplicate, delete, and insert a
- * blank page.
+ * The page-sorter's operations plus manual page creation: reorder, duplicate, delete, insert blank.
  *
- * These are the ONE place the paged format mutates the real Section/Block flow (everything else only
- * touches the break markers). The doctrine still holds: pages remain DERIVED from break markers, so
- * these operations work by (a) partitioning the flow into pages, (b) rearranging the pages' slice
- * groups (an arrayMove / clone / filter / splice over `PageSlice[][]`, where a blank page is an empty
- * group), then (c) reconstructing the flat Section[] from the new slice order AND recomputing the
- * break list so a re-partition yields exactly the intended page order, blank pages included.
+ * The ONE place the paged format mutates the real Section/Block flow (everything else touches only break
+ * markers). Pages stay DERIVED: each op (a) partitions the flow into pages, (b) rearranges the slice
+ * groups (a blank page is an empty group), then (c) reconstructs the flat Section[] and recomputes the
+ * break list so a re-partition yields exactly the intended order, blank pages included.
  *
- * SECTION SPLITTING: because a page can be a mid-section slice, moving/duplicating/deleting pages can
- * leave a section's blocks non-contiguous, a genuine split. The reconstruction coalesces consecutive
- * slices of the same section back into one section (a section that merely SPANS a page break, or a
- * blank page, stays one section) and mints a FRESH section id only for a later, genuinely disconnected
- * fragment of an already-emitted section id (so section ids stay unique). Title/collapsed are carried
- * onto every fragment.
+ * SECTION SPLITTING: a page can be a mid-section slice, so these ops can leave a section's blocks
+ * non-contiguous. The reconstruction coalesces consecutive slices of one section back together, and
+ * mints a FRESH id only for a later, genuinely disconnected fragment (so section ids stay unique).
  */
 
 /** Move an item within an array, matching dnd-kit's `arrayMove` (remove at `from`, insert at `to`).

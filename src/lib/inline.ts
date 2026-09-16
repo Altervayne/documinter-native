@@ -1,21 +1,8 @@
-/**
- * inline.ts, All inline-content logic.
- *
- * Exports:
- *   parseInlineContent      , HTML string -> InlineContent (migration bridge)
- *   renderInlineContent     , InlineContent -> HTML string
- *   domToInlineContent      , live HTMLElement -> InlineContent (called on commit)
- *   inlineContentToMintdown , InlineContent -> inline text string
- *   mintdownToInlineContent , inline text string -> InlineContent
- *   stripTrailingNewlines   , remove trailing newline-only runs (exposed for migration)
- *   isEmptyContent          , true if array is empty or all-whitespace
- *   inlineContentEquals     , deep equality check
- *   computeCursorPosition   , derive CursorPosition from the browser Selection API
- *   splitInlineContent      , split content into two halves at a character offset
- *
- * Almost all functions are pure. The DOM-aware exceptions, domToInlineContent and
- * computeCursorPosition, READ live DOM state without modifying it. The color application
- * and selection helpers (including the sole Selection writer) now live in inlineFormatting.ts.
+/*
+ * The inline-content model: parse/render InlineContent to and from HTML, Mintdown inline text, and
+ * live DOM, plus cursor + split helpers. Almost all pure; domToInlineContent and computeCursorPosition
+ * READ the live DOM without mutating it. Color application and the sole Selection writer live in
+ * inlineFormatting.ts.
  */
 
 import { esc } from './text'
@@ -39,24 +26,12 @@ interface ParseFlags {
 // # PRIVATE HELPERS, SHARED BY PARSING AND RENDERING #
 // #####################################################
 
-/**
- * Convert a browser-normalised CSS color value back to a lowercase hex string.
- *
- * When we set `element.style.color = '#b91c1c'` and later read `element.style.color`
- * the browser returns `'rgb(185, 28, 28)'`. This breaks round-trip equality checks
- * (`inlineContentEquals`) because the stored value and the read-back value differ.
- *
- * Handles:
- *   rgb(r, g, b)       -> #rrggbb
- *   rgba(r, g, b, a)   -> #rrggbb  (alpha dropped, we only store opaque colors)
- *   #rgb               -> #rrggbb  (3-digit shorthand)
- *   #rrggbb            -> #rrggbb  (already canonical, lowercased)
- *   anything else      -> returned as-is (lowercased)
- */
+/** Normalize a browser-read CSS color back to lowercase hex. Setting `style.color='#b91c1c'` reads
+ *  back as `rgb(185, 28, 28)`, which would break inlineContentEquals round-trips. Handles rgb()/rgba()
+ *  (alpha dropped) and #rgb shorthand; anything else is returned lowercased. */
 function normalizeColorValue(cssColor: string): string {
    const trimmed = cssColor.trim()
 
-   // rgb(...) or rgba(...)
    const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
    if (rgbMatch) {
       const red   = parseInt(rgbMatch[1], 10)
@@ -68,7 +43,6 @@ function normalizeColorValue(cssColor: string): string {
          + blue.toString(16).padStart(2, '0')
    }
 
-   // #rgb shorthand -> #rrggbb
    const shortHexMatch = trimmed.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/)
    if (shortHexMatch) {
       return '#'
@@ -80,7 +54,6 @@ function normalizeColorValue(cssColor: string): string {
    return trimmed.toLowerCase()
 }
 
-/** Returns true when a run's flags match the given ParseFlags exactly. */
 function flagsMatch(run: InlineRun, flags: ParseFlags): boolean {
    return !!run.bold          === !!flags.bold
        && !!run.italic        === !!flags.italic
@@ -110,13 +83,8 @@ function appendRun(runs: InlineRun[], text: string, flags: ParseFlags): void {
    runs.push(run)
 }
 
-/**
- * Strip trailing '\n' runs from the end of a run list.
- * Exported so that migrateBlock / migrateListItem in documentMigration.ts can sanitize
- * richText arrays loaded from older save files that predate this normalisation.
- * All current write paths (domToInlineContent, mintdownToInlineContent,
- * parseInlineContent) already call this before returning.
- */
+/** Strip trailing '\n'-only runs from a run list. Every write path calls it; also exported so the
+ *  migration pass can sanitize richText from older saves that predate this normalization. */
 export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
    const result = [...runs]
    while (result.length > 0) {
@@ -138,7 +106,6 @@ export function stripTrailingNewlines(runs: InlineRun[]): InlineRun[] {
 // # PRIVATE HELPERS, CHARACTER-LEVEL SPLIT (splitInlineContent) #
 // ###########################################################
 
-/** One character of InlineContent paired with the run it came from. */
 interface CharacterEntry {
    character: string
    run:       InlineRun
@@ -155,7 +122,6 @@ function explodeIntoCharacters(content: InlineContent): CharacterEntry[] {
    return characters
 }
 
-/** Returns true when two runs carry identical formatting marks (ignoring text). */
 function runMarksEqual(runA: InlineRun, runB: InlineRun): boolean {
    return !!runA.bold          === !!runB.bold
        && !!runA.italic        === !!runB.italic
@@ -166,10 +132,7 @@ function runMarksEqual(runA: InlineRun, runB: InlineRun): boolean {
        && (runA.highlight ?? '') === (runB.highlight ?? '')
 }
 
-/**
- * Collapse character entries back into runs, merging consecutive characters whose
- * marks match into a single run. Inverse of explodeIntoCharacters.
- */
+/** Collapse character entries back into runs, merging neighbours with identical marks. */
 function collapseCharactersIntoRuns(characters: CharacterEntry[]): InlineContent {
    if (characters.length === 0) return []
    const runs: InlineRun[] = []
@@ -191,11 +154,8 @@ function collapseCharactersIntoRuns(characters: CharacterEntry[]): InlineContent
 // # PRIVATE HELPER, DOM WALK (SHARED BY PARSEINLINECONTENT AND DOMTOINLINECONTENT) #
 // ###################################################################################
 
-/**
- * Recursively walk a list of DOM child nodes, accumulating InlineRun entries.
- * Recognised formatting elements push flags; text nodes emit runs; <br> emits '\n'.
- * Unknown elements (div, p, etc.) are traversed without changing flags.
- */
+/** Recursively walk DOM nodes into InlineRun entries: formatting tags push flags, text nodes emit
+ *  runs, <br> emits '\n', unknown elements are traversed without changing flags. */
 function walkNodes(nodes: Iterable<ChildNode>, flags: ParseFlags, runs: InlineRun[]): void {
    for (const node of nodes) {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -249,12 +209,11 @@ function walkNodes(nodes: Iterable<ChildNode>, flags: ParseFlags, runs: InlineRu
             break
          }
          case 'font': {
-            // Some browsers produce <font color="..."> via execCommand
+            // Some browsers produce <font color="..."> via execCommand.
             const colorAttr = (element as HTMLElement).getAttribute('color')
             if (colorAttr) newFlags.color = normalizeColorValue(colorAttr)
             break
          }
-         // default: descend without changing flags
       }
 
       walkNodes(element.childNodes, newFlags, runs)
@@ -275,11 +234,8 @@ function escapeMintdown(text: string): string {
       .replace(/\[/g, '\\[')
 }
 
-/**
- * Scan forward from `pos` in `source` looking for the next occurrence of `marker`,
- * skipping over any occurrence of `skipMarker` (a longer delimiter that contains `marker`
- * as a prefix). Returns the index of the match, or -1 if not found.
- */
+/** Index of the next `marker` at/after `pos`, skipping any `skipMarker` (a longer delimiter that
+ *  contains `marker` as a prefix). -1 when not found. */
 function findClosingMarker(source: string, pos: number, marker: string, skipMarker?: string): number {
    while (pos <= source.length - marker.length) {
       if (skipMarker && source.startsWith(skipMarker, pos)) {
@@ -292,10 +248,7 @@ function findClosingMarker(source: string, pos: number, marker: string, skipMark
    return -1
 }
 
-/**
- * Recursively scan a Mintdown inline string, accumulating runs with the given active flags.
- * Called by mintdownToInlineContent and recursively for nested markers.
- */
+/** Recursively scan a Mintdown inline string, accumulating runs with the active flags. */
 function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
    const runs: InlineRun[] = []
    let pos = 0
@@ -303,7 +256,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
    while (pos < source.length) {
       const char = source[pos]
 
-      // Escape sequence
+      // Escape sequence.
       if (char === '\\' && pos + 1 < source.length) {
          appendRun(runs, source[pos + 1], flags)
          pos += 2
@@ -319,7 +272,6 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
             pos = closeIndex + 3
             continue
          }
-         // Unclosed: emit the three stars as literal text and advance
          appendRun(runs, '***', flags)
          pos += 3
          continue
@@ -364,7 +316,7 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
             pos = closeIndex + 2
             continue
          }
-         // Unclosed: emit one underscore as literal and re-examine the second
+         // Unclosed: emit one underscore literally, re-examine the second.
          appendRun(runs, '_', flags)
          pos++
          continue
@@ -439,7 +391,6 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
          // Malformed: fall through to literal '{'
       }
 
-      // Plain character
       appendRun(runs, char, flags)
       pos++
    }
@@ -451,11 +402,8 @@ function scanMintdown(source: string, flags: ParseFlags): InlineRun[] {
 // # PUBLIC API #
 // ##############
 
-/**
- * Convert a raw innerHTML string (from the legacy rich-text model) to InlineContent.
- * Migration bridge, used by migrateBlock() in documentMigration.ts when loading old documents.
- * Uses DOMParser; never touches the live document.
- */
+/** Raw innerHTML (legacy rich-text) to InlineContent. Migration bridge; uses DOMParser, never touches
+ *  the live document. */
 export function parseInlineContent(html: string): InlineContent {
    if (!html) return []
    const parser = new DOMParser()
@@ -465,20 +413,12 @@ export function parseInlineContent(html: string): InlineContent {
    return stripTrailingNewlines(runs)
 }
 
-/**
- * Convert an InlineContent array to a clean HTML string.
- * Suitable for: setting innerHTML on a contentEditable element, or embedding in export HTML.
- *
- * Nesting order (outermost to innermost): link -> color -> highlight -> strong -> em -> u -> s
- * '\n' in a run's text is output as <br>.
- * Text is always HTML-escaped.
- */
+/** InlineContent to a clean HTML string (for innerHTML or export). Wraps inside-out: link > color >
+ *  highlight > strong > em > u > s; '\n' becomes <br>; text is HTML-escaped. */
 export function renderInlineContent(content: InlineContent): string {
    return content.map(run => {
-      // Escape text and convert \n to <br>
       let inner = run.text.split('\n').map(part => esc(part)).join('<br>')
 
-      // Apply formatting wrappers inside-out
       if (run.strikethrough) inner = `<s>${inner}</s>`
       if (run.underline)     inner = `<u>${inner}</u>`
       if (run.italic)        inner = `<em>${inner}</em>`
@@ -491,38 +431,20 @@ export function renderInlineContent(content: InlineContent): string {
    }).join('')
 }
 
-/**
- * Read the current live DOM state of a contentEditable element and produce a
- * normalised InlineContent array. Called by RichEditable on blur (commit).
- *
- * Reads the DOM; never modifies it.
- */
+/** Live contentEditable DOM to a normalised InlineContent. Reads, never mutates. */
 export function domToInlineContent(element: HTMLElement): InlineContent {
    const runs: InlineRun[] = []
    walkNodes(element.childNodes, {}, runs)
    return stripTrailingNewlines(runs)
 }
 
-/**
- * Serialise InlineContent to Mintdown inline syntax.
- *
- * Marker syntax:
- *   Bold        **text**
- *   Italic      *text*
- *   Bold+italic ***text***  (sequential wrapping: italic first, then bold)
- *   Underline   __text__
- *   Strikethrough ~~text~~
- *   Link        [text](href)   href ')' is encoded as %29
- *   Color       {color:VALUE}text{/color}
- *   Highlight   {highlight:VALUE}text{/highlight}
- *
- * '\n' in run text is emitted as a literal newline character.
- */
+/** InlineContent to Mintdown inline syntax. Wraps inside-out: s, u, em, strong, color, highlight,
+ *  link; **bold**, *italic*, __underline__, ~~strike~~, [text](href) with ')' as %29, {color:V}..{/color},
+ *  {highlight:V}..{/highlight}. '\n' stays a literal newline. */
 export function inlineContentToMintdown(content: InlineContent): string {
    return content.map(run => {
       let inner = escapeMintdown(run.text)
 
-      // Wrap inside-out: s -> u -> em -> strong -> color -> highlight -> link
       if (run.strikethrough) inner = `~~${inner}~~`
       if (run.underline)     inner = `__${inner}__`
       if (run.italic)        inner = `*${inner}*`
@@ -538,32 +460,20 @@ export function inlineContentToMintdown(content: InlineContent): string {
    }).join('')
 }
 
-/**
- * Parse a Mintdown inline string into an InlineContent array.
- * Inverse of inlineContentToMintdown.
- *
- * Lenient: unclosed markers are treated as literal text.
- * Unknown {...} tags have their inner text preserved as a plain run.
- */
+/** Mintdown inline string to InlineContent. Lenient: unclosed markers become literal text, unknown
+ *  {...} tags keep their inner text as a plain run. */
 export function mintdownToInlineContent(source: string): InlineContent {
    if (!source) return []
    const runs = scanMintdown(source, {})
    return stripTrailingNewlines(runs)
 }
 
-/**
- * Returns true when content is empty or consists only of whitespace.
- * Replaces scattered `text === ''` / `!text` checks across block components.
- */
+/** True when content is empty or all-whitespace. */
 export function isEmptyContent(content: InlineContent): boolean {
    return content.length === 0 || content.every(run => !run.text.trim())
 }
 
-/**
- * Deep equality check for two InlineContent arrays.
- * Used by RichEditable's snapshot-on-focus / compare-on-blur guard.
- * Compares each field explicitly, does not use JSON.stringify.
- */
+/** Deep field-by-field equality of two InlineContent arrays (not JSON.stringify). */
 export function inlineContentEquals(a: InlineContent, b: InlineContent): boolean {
    if (a.length !== b.length) return false
    for (let index = 0; index < a.length; index++) {
@@ -581,15 +491,8 @@ export function inlineContentEquals(a: InlineContent, b: InlineContent): boolean
    return true
 }
 
-/**
- * Derive a CursorPosition from the browser's current Selection, relative to the
- * live InlineContent of the given contentEditable element.
- *
- * Returns null when the selection is not inside the element or is not collapsed.
- *
- * Kept narrow and self-contained so its internals can be swapped for a different
- * cursor-tracking strategy without touching callers.
- */
+/** CursorPosition from the browser Selection, relative to the element's live InlineContent. Null when
+ *  the selection is outside the element or not collapsed. */
 export function computeCursorPosition(element: HTMLElement): CursorPosition | null {
    const selection = window.getSelection()
    if (!selection || selection.rangeCount === 0) return null
@@ -653,20 +556,10 @@ export function computeCursorPosition(element: HTMLElement): CursorPosition | nu
    return { runIndex: lastRunIndex, offset: currentContent[lastRunIndex]?.text.length ?? 0 }
 }
 
-/**
- * Split a paragraph's InlineContent into two independent halves at a character offset.
- * Foundation for splitting a paragraph across a page boundary during layout.
- *
- * charOffset is 0-based over the concatenation of every run's text ('\n' counts as one
- * character). The first half covers [0, charOffset), the second covers the rest. A split
- * that lands inside a run divides it into two runs carrying the same marks; a split on a
- * run boundary leaves runs whole. Out-of-range offsets clamp, so charOffset <= 0 yields an
- * empty first half and charOffset >= the total length yields an empty second half.
- *
- * Both halves are freshly built: no run object is shared with the input or between the
- * two halves, and each half is normalised (no empty runs, no adjacent runs with identical
- * marks left unmerged).
- */
+/** Split InlineContent into two halves at a 0-based character offset ('\n' counts as one). The first
+ *  half covers [0, charOffset), the second the rest; a split inside a run divides it, carrying the
+ *  same marks; out-of-range offsets clamp. Both halves are freshly built (no shared run objects) and
+ *  normalised. */
 export function splitInlineContent(content: InlineContent, charOffset: number): [InlineContent, InlineContent] {
    const characters    = explodeIntoCharacters(content)
    const clampedOffset = Math.max(0, Math.min(charOffset, characters.length))

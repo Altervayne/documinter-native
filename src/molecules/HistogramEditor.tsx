@@ -37,14 +37,12 @@ interface HistogramEditorProps {
    onCommitField: () => void
 }
 
-/** A safe fallback so the editor never operates on an undefined histogramData. In practice
- *  `graphEdit.setType` seeds a real histogramData the moment a spec switches to `histogram`, so
- *  this is a defensive-only backstop, never the normal path. */
+/** Defensive-only backstop so the editor never operates on an undefined histogramData; `setType`
+ *  seeds a real one whenever a spec switches to `histogram`. */
 const FALLBACK_HISTOGRAM_DATA: HistogramData = { samples: [] }
 
-/** Which free-form field is mid-edit, holding its raw text so an in-progress/unparseable
- *  intermediate (a trailing "1, 2, ", or a lone "-" in the bin-count field) stays on screen
- *  without corrupting the stored value, mirrors ScatterEditor's/EquationEditor's editing state. */
+/** Which field is mid-edit, holding its raw text so an unparseable intermediate (a trailing "1, 2, ",
+ *  a lone "-") stays on screen without corrupting the stored value. */
 type EditingField = 'samples' | 'bins' | null
 
 // #############
@@ -52,13 +50,10 @@ type EditingField = 'samples' | 'bins' | null
 // #############
 
 /**
- * The Data-tab editor for a `histogram` chart: a raw-samples textarea (paste-friendly, numbers
- * separated by commas, whitespace, or new lines), a bin-count control (blank = auto/Sturges, with
- * a live "effective bin count" readout), and a name + color swatch, replacing `GraphDataGrid` for
- * this type, since a histogram has no categories and no series axis (exactly one dataset).
- *
- * Draft/commit model exactly like `ScatterEditor`/`EquationEditor`: text typing drafts on every
- * keystroke (instant preview) and commits on blur; the color pick/reset commits immediately.
+ * The Data-tab editor for a `histogram` chart: a raw-samples textarea, a bin-count control
+ * (blank = auto/Sturges, with a live effective-count readout), and a name + color swatch, replacing
+ * `GraphDataGrid` since a histogram has no categories or series. Draft/commit like the other
+ * editors: text typing drafts and commits on blur; color pick/reset commits immediately.
  */
 export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: HistogramEditorProps) {
    const histogramData = spec.histogramData ?? FALLBACK_HISTOGRAM_DATA
@@ -71,8 +66,8 @@ export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit
    // The dataset swatch's color popover anchor rect, or null when the popover is closed.
    const [colorPopoverRect, setColorPopoverRect] = useState<DOMRect | null>(null)
 
-   // The effective bin count the chart will actually draw (auto or manual), for the live readout,
-   // reuses the SAME binning function the renderer calls, so this can never drift from reality.
+   // The bin count the chart will draw, via the SAME binning function the renderer calls, so the
+   // readout can never drift from reality.
    const effectiveBinCount = computeHistogramBins(samples, bins).counts.length
 
    // ================
@@ -125,8 +120,7 @@ export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit
          return
       }
       const parsed = Number(trimmed)
-      // Only push a parseable number into the model; an unparseable intermediate keeps the raw
-      // text visible (via editingField/binsText) but leaves the last valid bin count in place.
+      // Only push a parseable number; an unparseable intermediate keeps the raw text and the last count.
       if (Number.isFinite(parsed)) onDraft(setHistogramBins(spec, parsed))
    }
 
@@ -161,7 +155,6 @@ export function HistogramEditor({ spec, theme, t, onEditStart, onDraft, onCommit
 
    return (
       <div className="graph-histogram-editor graph-editor-group">
-         {/* Identity leads (swatch + name), like every other editor, then the samples, then bins. */}
          <label className="graph-field">
             <span className="graph-field-label">{t.graphHistogramName}</span>
             <div className="graph-lead-inner">

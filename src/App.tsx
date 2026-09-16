@@ -70,18 +70,16 @@ import type { DocFormat } from './lib/format'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
 
 const EMPTY_META: DocMeta = { title: '', fields: [] }
-// How long to wait after the last height-affecting edit before re-running the offscreen height measure.
-// Long enough that a burst of keystrokes measures once, on the pause, not per character; short enough that
-// the heights re-settle promptly. The canvas paginates SYNCHRONOUSLY from the cached heights every render,
-// so structural edits reflow instantly; only the measured heights settle a beat later (see the effect below).
+// Debounce before re-running the offscreen height measure, so a burst of keystrokes measures once on the
+// pause. The canvas paginates synchronously from cached heights every render; only the heights settle later.
 const PAGINATION_DEBOUNCE_MS = 180
 const CURRENT_DOCUMENT_ID_KEY = 'documinter-current-document-id'   // legacy single-pointer (migrated away)
 const OPEN_DOCUMENTS_KEY      = 'documinter-open-documents'        // the open-tab set + active, for reload restore
 const DEFAULT_DOC_ACCENT = '#2dcea8'
 
-// An empty layout, used before the first measure and for non-paged documents. paginateDocument with
-// EMPTY_HEIGHTS yields exactly the forced-break-only placeholder (zero heights never trigger an auto-break),
-// so an unmeasured paged canvas shows its explicit breaks and nothing overflows until the heights land.
+// Empty layout for before the first measure and non-paged documents. paginateDocument with EMPTY_HEIGHTS
+// yields the forced-break-only placeholder (zero heights never auto-break), so nothing overflows until the
+// heights land.
 const EMPTY_DOCUMENT_PAGES: DocumentPages = { pages: [], tooTallPageIds: new Set(), heights: EMPTY_HEIGHTS }
 
 // Which documents had open tabs last session, in tab order, plus which was active. Only tabs with a
@@ -111,9 +109,8 @@ function readPersistedOpenDocuments(): PersistedOpenDocuments {
    return { documentIds: [], activeDocumentId: null }
 }
 
-// A fresh blank tab: new identity, no binder record yet, clean. Shared by the initial mount state,
-// New (add-a-tab), the binder's New (which seeds the folder it lands in), and the last-tab-close
-// respawn (the always-have-a-document invariant).
+// A fresh blank tab: new identity, no binder record yet, clean. Shared by initial mount, New, the binder's
+// New (seeds its folder), and the last-tab-close respawn (the always-have-a-document invariant).
 function createBlankDocument(sectionTitle: string, pendingFolderId: string | null = null): OpenDocument {
    return {
       tabKey:    crypto.randomUUID(),
@@ -127,10 +124,8 @@ function createBlankDocument(sectionTitle: string, pendingFolderId: string | nul
    }
 }
 
-// A fresh tab pre-styled from a template: a blank body (one empty section) wearing the template's
-// chrome (meta scaffold with fresh field ids, theme, accent, presentation, page format). Like
-// createBlankDocument, it has no binder record yet and is clean; it saves on first edit into the
-// folder it was created in.
+// A fresh tab pre-styled from a template: a blank body wearing the template's chrome (meta scaffold with
+// fresh field ids, theme, accent, presentation, format). No binder record yet, clean, like createBlankDocument.
 function createDocumentFromTemplate(template: DocumentTemplate, sectionTitle: string, pendingFolderId: string | null = null): OpenDocument {
    // Wrap randomUUID so it keeps its `crypto` receiver (an unbound reference throws Illegal invocation).
    const chrome = instantiateTemplate(template, () => crypto.randomUUID())
@@ -166,13 +161,12 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
 }
 
 export default function App() {
-   // The active persistence backend. Every save / load / list goes through it, so the storage
-   // engine (IndexedDB now, filesystem later) can be swapped without touching the handlers below.
+   // The active persistence backend: every save / load / list goes through it, so the storage engine can
+   // be swapped without touching the handlers below.
    const backend = useBinderBackend()
 
-   // Document state starts blank; the real document set is hydrated asynchronously from
-   // IndexedDB on mount (see the hydration effect below). Documents live as a list of open tabs,
-   // with exactly one tab active at a time; its content and identity drive the rest of the app.
+   // Starts blank; the real set hydrates asynchronously on mount (see the hydration effect). Documents are
+   // a list of open tabs, exactly one active; its content and identity drive the app.
    const [openDocuments, setOpenDocuments] = useState<OpenDocument[]>(() => {
       const initialLang = (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
       return [createBlankDocument(translations[initialLang].defaultSectionTitle)]
@@ -206,8 +200,8 @@ export default function App() {
       setCanRedoActive(!!history && canRedo(history))
    }, [])
 
-   // The undoable slice of a tab: the fields the binder persists. Holds references to the immutable
-   // model, so it is cheap and shares untouched subtrees with the live state.
+   // The undoable slice of a tab: the fields the binder persists. References the immutable model, so it is
+   // cheap and shares untouched subtrees with the live state.
    const takeSnapshot = useCallback((document: OpenDocument): DocSnapshot => ({
       meta:         document.meta,
       sections:     document.sections,
@@ -217,11 +211,10 @@ export default function App() {
       format:       document.format,
    }), [])
 
-   // The single choke point every content lever routes through: snapshot the active tab's pre-edit
-   // slice into its history, then apply the edit. `kind` groups a burst of like edits into one entry
-   // (see recordEdit's coalescing). produceNext runs inside the functional update so it composes on the
-   // freshest state, which matters when two levers commit in the same tick (a page op writes sections
-   // then format). Bookkeeping writes (save status, tab promotion, tab open/close) never come here.
+   // The single choke point every content lever routes through: snapshot the active tab's pre-edit slice
+   // into history, then apply the edit. `kind` coalesces a burst of like edits into one entry. produceNext
+   // runs inside the functional update so it composes on the freshest state (two levers can commit in one
+   // tick: a page op writes sections then format). Bookkeeping writes (save status, tab open/close) never come here.
    const commitActiveEdit = useCallback((kind: string, produceNext: (document: OpenDocument) => OpenDocument) => {
       const tabKey = activeTabKeyRef.current
       const activeTab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
@@ -272,14 +265,13 @@ export default function App() {
    // Switching tabs shows a different history, so refresh the toolbar's enabled state for the new tab.
    useEffect(() => { refreshHistoryFlags() }, [activeTabKey, refreshHistoryFlags])
 
-   // The active document and the content + identity the render + effects below read, derived from the
-   // list. documentId / saveStatus are per-tab; the active tab's values drive the UI.
+   // The active document, derived from the list; its content + identity drive the render + effects below.
+   // documentId / saveStatus are per-tab.
    const activeDocument = openDocuments.find(document => document.tabKey === activeTabKey)!
    const { meta, sections, docTheme, docAccent, presentation, format, documentId, saveStatus } = activeDocument
 
-   // A scratch tab (no binder record yet) that holds real content: closing it would lose it, and no
-   // autosave is running. Drives the persistent red "Never saved" indicator. Gated on isEmptyDocument
-   // so a pristine blank scratch tab stays quiet (nothing to warn about), matching closeTab's guard.
+   // A scratch tab (no binder record) holding real content: no autosave runs, so closing it loses it.
+   // Drives the red "Never saved" indicator. Gated on isEmptyDocument so a pristine blank stays quiet.
    const activeNeverSaved = documentId === null && !isEmptyDocument(activeDocument)
 
    // Binder records that currently have an open tab (for the open-vs-active card highlight).
@@ -287,8 +279,8 @@ export default function App() {
       .map(document => document.documentId)
       .filter((id): id is string => id !== null)
 
-   // The setter lever: hands the mutation hooks a Section[] setter that updates only
-   // the active tab. The hooks stay oblivious to tabs, they still receive a plain Dispatch<SetStateAction<Section[]>>.
+   // Hands the mutation hooks a Section[] setter that updates only the active tab, so the hooks stay
+   // oblivious to tabs (they receive a plain Dispatch<SetStateAction<Section[]>>).
    const setActiveSections = useCallback((updater: SetStateAction<Section[]>) => {
       commitActiveEdit('sections', document =>
          ({ ...document, sections: typeof updater === 'function' ? updater(document.sections) : updater }))
@@ -303,14 +295,13 @@ export default function App() {
       if (openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)?.docAccent === nextAccent) return
       commitActiveEdit('docAccent', document => ({ ...document, docAccent: nextAccent }))
    }, [commitActiveEdit])
-   // Patch the active tab's presentation extras (watermark, ...). A real document change, so it flows
-   // through autosave + persist like any other edit. `undefined` clears the extras entirely.
+   // Patch the active tab's presentation extras (watermark, ...). A real document change: flows through
+   // autosave + persist like any edit. `undefined` clears them entirely.
    const setActivePresentation = useCallback((next: DocPresentationExtras | undefined) => {
       commitActiveEdit('presentation', document => ({ ...document, presentation: next }))
    }, [commitActiveEdit])
-   // Patch the active tab's page format (infinite width, later paged A4). A real document change, so it
-   // flows through autosave + persist like any other edit. `undefined` clears it entirely, reverting to
-   // the infinite/normal default.
+   // Patch the active tab's page format. A real document change: flows through autosave + persist like any
+   // edit. `undefined` reverts to the infinite default.
    const setActiveFormat = useCallback((next: DocFormat | undefined) => {
       commitActiveEdit('format', document => ({ ...document, format: next }))
    }, [commitActiveEdit])
@@ -319,24 +310,20 @@ export default function App() {
    const commitSectionsAndFormat = useCallback((nextSections: Section[], nextFormat: DocFormat | undefined) => {
       commitActiveEdit('page-op', document => ({ ...document, sections: nextSections, format: nextFormat }))
    }, [commitActiveEdit])
-   // A block-menu page break commits under its OWN undo kind so toggling a break never coalesces into an
-   // adjacent margin / width / band edit (those all route through setActiveFormat = 'format'). Same format
-   // write, distinct kind, so each explicit break is its own discrete undo step.
+   // A page break commits under its OWN undo kind so toggling one never coalesces into an adjacent margin /
+   // width / band edit (those route through setActiveFormat = 'format'). Each explicit break is its own undo step.
    const setActivePageBreak = useCallback((next: DocFormat | undefined) => {
       commitActiveEdit('page-break', document => ({ ...document, format: next }))
    }, [commitActiveEdit])
-   // Non-recording format write for the page reconcile pass: when a break's anchor block is deleted the
-   // editor re-anchors the boundary to the surviving predecessor. That persists + autosaves like any format
-   // change, but it is a follow-on to the delete (which already recorded its own entry), not a fresh user
-   // action, so it must NOT record a second history entry. Snapshots carry `format`, so undo/redo stay
-   // consistent without it. Mirrors applySnapshotToTab's non-recording setOpenDocuments path.
+   // Non-recording format write for the page reconcile pass (re-anchoring a break whose anchor block was
+   // deleted). A follow-on to the delete, which already recorded its entry, so it must NOT record a second.
+   // Snapshots carry `format`, so undo/redo stay consistent. Mirrors applySnapshotToTab's non-recording path.
    const setActiveFormatSilently = useCallback((next: DocFormat | undefined) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === activeTabKeyRef.current ? { ...document, format: next } : document))
    }, [])
-   // Per-tab save-status setter. Status lives on each OpenDocument, so the autosave cycle,
-   // persistNow, and the fade timer target a specific tab by key, the active tab for live edits, or
-   // the captured originating tab for an async save's resolution.
+   // Per-tab save-status setter. Status lives on each OpenDocument, so autosave, persistNow, and the fade
+   // timer target a specific tab by key (the active tab, or the captured originating tab for an async save).
    const setTabSaveStatus = useCallback((tabKey: string, status: SaveStatus) => {
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === tabKey && document.saveStatus !== status
@@ -344,7 +331,6 @@ export default function App() {
             : document))
    }, [])
 
-   // Theme
    const [theme, setTheme] = useState<'dark' | 'light'>(
       () => (localStorage.getItem('documinter-theme') as 'dark' | 'light') ?? 'dark'
    )
@@ -354,7 +340,6 @@ export default function App() {
    }, [theme])
    const toggleTheme = useCallback(() => setTheme(currentTheme => currentTheme === 'dark' ? 'light' : 'dark'), [])
 
-   // Language
    const [lang, setLang] = useState<Lang>(
       () => (localStorage.getItem('documinter-lang') as Lang) ?? 'en'
    )
@@ -367,10 +352,8 @@ export default function App() {
 
    const { showToast } = useToast()
 
-   // saveStatus, the document id, and the pending-new-doc folder live per tab, on OpenDocument.
-   // skipNextAutosaveRef + autosaveTimerRef stay single refs: only the active tab is editable and
-   // only it debounces a save, so one skip flag + one timer suffice; switching tabs flushes the
-   // outgoing tab's pending save first (see activateTab's flush-on-switch).
+   // skipNextAutosaveRef + autosaveTimerRef stay single refs: only the active tab is editable and debounces
+   // a save, so one skip flag + one timer suffice; switching tabs flushes the outgoing save first (activateTab).
    const skipNextAutosaveRef  = useRef(true)   // skip the initial mount cycle (no spurious save)
    const hasHydratedRef       = useRef(false)
    const autosaveTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -380,9 +363,9 @@ export default function App() {
 
    // Keep a stable, always-current notifier so the autosave effect doesn't depend on t/showToast.
    const notifySaveFailedRef  = useRef<() => void>(() => {})
-   // A rename was rejected by the native backend (the title's stem collides with a sibling). Toast + revert
-   // the tab's title to the last saved (on-disk) value: the rename never happened, so the file still holds
-   // the previous title. Read it back and restore it. A ref, same rationale as notifySaveFailedRef.
+   // A rename rejected by the native backend (title stem collides with a sibling): toast + revert the tab's
+   // title to the last saved value (the rename never happened, so the file still holds it). Read it back and
+   // restore. A ref, same rationale as notifySaveFailedRef.
    const notifyNameTakenRef   = useRef<(tabKey: string, documentId: string | null) => void>(() => {})
    useEffect(() => {
       notifySaveFailedRef.current = () => showToast(t.saveFailed, { type: 'error' })
@@ -397,10 +380,9 @@ export default function App() {
       }
    })
 
-   // Replace the open-tab set with a restored set (reload boot / legacy migration), activating the
-   // tab whose documentId matches activeDocumentId, else the first. A programmatic replacement, so
-   // it skips the autosave cycle it triggers (no spurious save, active tab reads clean). Callers
-   // pass a non-empty restoredTabs.
+   // Replace the open-tab set with a restored set (reload boot / legacy migration), activating the tab
+   // matching activeDocumentId, else the first. Programmatic, so it skips the autosave cycle it triggers.
+   // Callers pass a non-empty restoredTabs.
    const applyRestoredTabs = useCallback((restoredTabs: OpenDocument[], activeDocumentId: string | null) => {
       skipNextAutosaveRef.current = true
       const activeTab = restoredTabs.find(tab => tab.documentId === activeDocumentId) ?? restoredTabs[0]
@@ -408,9 +390,8 @@ export default function App() {
       setActiveTabKey(activeTab.tabKey)
    }, [])
 
-   // One-time async hydration: restore every open tab from last session (eager, each document is
-   // loaded in full), or migrate a legacy localStorage autosave. The blank default shows until this
-   // resolves; if nothing survives it stays (the always-have-a-document invariant).
+   // One-time async hydration: restore every open tab from last session (each loaded in full), or migrate a
+   // legacy localStorage autosave. The blank default shows until this resolves and stays if nothing survives.
    useEffect(() => {
       let cancelled = false
       async function hydrate() {
@@ -451,10 +432,9 @@ export default function App() {
       return () => { cancelled = true }
    }, [applyRestoredTabs, backend])
 
-   // Persist the open-tab set + active tab (only after hydration, so the initial blank can't
-   // overwrite the stored set before it has been read). Tabs without a binder id aren't listed;
-   // a scratch tab only earns an id (and a slot here) once an explicit Save binds it to a record,
-   // which re-runs this and includes it. Also retires the legacy pointer key.
+   // Persist the open-tab set + active tab, only after hydration so the initial blank can't overwrite the
+   // stored set before it is read. Tabs without a binder id aren't listed; a scratch tab earns a slot once
+   // an explicit Save binds it. Also retires the legacy pointer key.
    useEffect(() => {
       if (!hasHydratedRef.current) return
       const documentIds = openDocuments
@@ -464,26 +444,19 @@ export default function App() {
       localStorage.removeItem(CURRENT_DOCUMENT_ID_KEY)
    }, [openDocuments, documentId])
 
-   // Autosave on any document change, debounced 1.5s, persisted to IndexedDB. Runs ONLY for a tab
-   // already bound to a binder record (documentId set). A scratch tab (documentId null) persists
-   // nothing here, it stays in memory until an explicit Save (File -> Save / Save As) binds it via
-   // persistNow, which flips its documentId and hands autosave over from there.
+   // Autosave on any document change, debounced 1.5s. Runs ONLY for a tab already bound to a record
+   // (documentId set). A scratch tab persists nothing here until an explicit Save binds it via persistNow.
    useEffect(() => {
       if (skipNextAutosaveRef.current) {
          skipNextAutosaveRef.current = false
-         // A skipped cycle is a programmatic load/replace/hydration, the active tab is already in
-         // sync with storage, so force it clean. Without this, a transient 'dirty' set for the
-         // pre-hydration blank (e.g. by StrictMode's double-invoked mount cycle) is never cleared,
-         // sticking the pill at "Unsaved changes" after a reload with no save actually pending.
+         // A skipped cycle is a programmatic load/replace/hydration; the active tab is in sync with storage,
+         // so force it clean. Without this a transient 'dirty' (e.g. StrictMode's double mount) sticks the
+         // pill at "Unsaved changes" after a reload with no save pending.
          setTabSaveStatus(activeTabKeyRef.current, 'clean')
          return
       }
-      // A scratch tab has no record yet. Persist nothing, schedule nothing, mark nothing: it stays
-      // a purely in-memory document (surfaced by the red "Never saved" indicator) until the user
-      // explicitly saves it. The dependency list re-runs this on the next edit, still a no-op while
-      // scratch, so there is no timer to clean up either. Read the id off the ref (kept current for
-      // this render) so binding it later via persistNow doesn't re-trigger this effect with a
-      // spurious save.
+      // A scratch tab has no record: persist nothing, schedule nothing (no timer to clean up either). Read
+      // the id off the ref so binding it later via persistNow doesn't re-trigger this with a spurious save.
       const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
       if (!activeTab || activeTab.documentId === null) return
       // Capture the tab that originated this edit. The resolved save promotes/marks THIS tab by key,
@@ -530,14 +503,12 @@ export default function App() {
       document.title  = (saveStatus !== 'clean' || activeNeverSaved) ? `* ${baseTitle}` : baseTitle
    }, [saveStatus, activeNeverSaved, meta.title])
 
-   // Cancel any pending autosave and write the active document immediately. This is the SINGLE
-   // explicit binding point: for a scratch tab (documentId null) it creates the binder record and
-   // assigns the id, turning autosave on from there. Awaitable so callers (manual save, Save As) can
-   // flush before continuing. Returns the binder id the active tab was saved under (newly assigned if
-   // it had none), or null on failure, callers that need the id can use it directly rather than
-   // re-reading openDocumentsRef, whose promotion hasn't synced back to the ref yet at the await
-   // boundary. Implicit-flush callers (opening the binder, tab-switch drain) must gate on
-   // documentId !== null so they never mint a record for a scratch tab.
+   // Cancel any pending autosave and write the active document now. The SINGLE explicit binding point: for
+   // a scratch tab it creates the record and assigns the id, turning autosave on. Awaitable so callers can
+   // flush first. Returns the saved id (newly assigned if none), or null on failure: openDocumentsRef's
+   // promotion hasn't synced at the await boundary, so callers needing the id use it directly. Implicit-flush
+   // callers (opening the binder, tab-switch drain) must gate on documentId !== null so they never mint a
+   // record for a scratch tab.
    const persistNow = useCallback(async (): Promise<string | null> => {
       if (autosaveTimerRef.current !== null) { clearTimeout(autosaveTimerRef.current); autosaveTimerRef.current = null }
       const flushTabKey = activeTabKeyRef.current
@@ -552,10 +523,9 @@ export default function App() {
             flushTab.documentId ?? undefined,
             flushTab.pendingNewDocFolderId ?? undefined,
          )
-         // Native filename policy: a CREATE may bump the title to clear a stem collision in the target
-         // folder, so the tab's in-memory title can be stale. Re-read the saved title once and fold it into
-         // the same promotion update. Only on create (an update never bumps); a no-op for the web backend,
-         // which never bumps, so the re-read just returns the same title.
+         // Native filename policy: a CREATE may bump the title to clear a stem collision, so the in-memory
+         // title can be stale. Re-read the saved title and fold it into the promotion update. Create only (an
+         // update never bumps); a no-op for the web backend.
          let savedTitle: string | null = null
          if (wasCreate) {
             const saved = await backend.loadDocument(savedId, { touch: false })
@@ -588,9 +558,8 @@ export default function App() {
    // The single switch primitive every activation routes through.
    const activateTab = useCallback(async (tabKey: string) => {
       if (tabKey === activeTabKeyRef.current) return   // already active, nothing to do
-      // Flush-on-switch: drain the outgoing tab's pending save before leaving it, so a debounced
-      // write can't be dropped or land against the wrong tab. persistNow flushes the active tab,
-      // which is still the outgoing one at this point.
+      // Flush-on-switch: drain the outgoing tab's pending save before leaving, so a debounced write can't be
+      // dropped or land against the wrong tab. persistNow flushes the active tab, still the outgoing one here.
       const outgoing = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
       if (outgoing && (outgoing.saveStatus === 'dirty' || outgoing.saveStatus === 'saving')) {
          await persistNow()
@@ -601,9 +570,8 @@ export default function App() {
       setActiveTabKey(tabKey)
    }, [persistNow])
 
-   // Reset the whole tab list down to one fresh blank, syncing the refs synchronously (not only via
-   // the post-render effects) so any follow-up read sees the new state at once. Used both when the
-   // last tab closes and after a Tin replace wipes the binder out from under the open tabs.
+   // Reset the tab list to one fresh blank, syncing the refs synchronously so a follow-up read sees the new
+   // state at once. Used when the last tab closes and after a Tin replace wipes the binder out.
    const spawnSingleBlankTab = useCallback(() => {
       const blankDocument = createBlankDocument(t.defaultSectionTitle)
       skipNextAutosaveRef.current = true
@@ -613,9 +581,8 @@ export default function App() {
       setActiveTabKey(blankDocument.tabKey)
    }, [t])
 
-   // Remove a tab from the list (after any unsaved-changes guard). If it was active, activate a
-   // neighbor (right, else left). If it was the last tab, respawn a blank, openDocuments is never
-   // empty (the always-have-a-document invariant lives on the tab list).
+   // Remove a tab (after any unsaved-changes guard). If active, activate a neighbor (right, else left). If
+   // it was the last, respawn a blank: openDocuments is never empty (the always-have-a-document invariant).
    const performCloseTab = useCallback((tabKey: string) => {
       const documentsBefore = openDocumentsRef.current
       const index = documentsBefore.findIndex(document => document.tabKey === tabKey)
@@ -626,9 +593,8 @@ export default function App() {
       // Drop the closed tab's history: it is session-only and must not outlive the tab.
       historyRef.current.delete(tabKey)
 
-      // Update the refs synchronously, not just via the post-render effects, so a batch of closes
-      // (a recursive folder delete removing several open docs) chains off fresh state instead of
-      // each call clobbering the previous one with a stale snapshot.
+      // Update the refs synchronously so a batch of closes (a recursive folder delete removing several open
+      // docs) chains off fresh state instead of each call clobbering the last with a stale snapshot.
       if (remaining.length === 0) {
          spawnSingleBlankTab()
          return
@@ -658,9 +624,8 @@ export default function App() {
    // The folder the binder should open into, the current document's folder, resolved before the
    // binder mounts so it lands there directly (no root-then-folder flash). null = root.
    const [binderInitialFolder, setBinderInitialFolder] = useState<BinderFolderRecord | null>(null)
-   // Bumped after File -> Import... adds a record straight to IndexedDB, behind the mounted
-   // Binder's back (the write happens in HeaderMenuBar, which owns no list state of its own).
-   // Binder watches this and re-reads its list, the same shared-refresh shape as its own dataVersion.
+   // Bumped after File -> Import... adds a record behind the mounted Binder's back (the write happens in
+   // HeaderMenuBar). Binder watches this and re-reads its list.
    const [binderRefreshToken, setBinderRefreshToken] = useState(0)
    const handleDocumentImported = useCallback(() => {
       setBinderRefreshToken(token => token + 1)
@@ -670,10 +635,9 @@ export default function App() {
    // # TINS (.tin I/O) #
    // ##################
 
-   // The folder the binder is currently showing, reported up from the Binder so a File-menu Tin
-   // import (its picker lives in the header, outside the Binder) grafts into that folder. Held in a
-   // ref, not state: nothing renders from it, and the picker's async onchange must read the latest
-   // value. Root is the sentinel '0'.
+   // The folder the binder is currently showing, reported up so a File-menu Tin import (its picker lives in
+   // the header) grafts into it. A ref, not state: nothing renders from it and the async onchange reads the
+   // latest value. Root is the sentinel '0'.
    const binderCurrentFolderIdRef = useRef('0')
    const handleBinderFolderChange = useCallback((folderId: string) => {
       binderCurrentFolderIdRef.current = folderId
@@ -706,9 +670,8 @@ export default function App() {
       }
    }, [showToast, t, backend])
 
-   // File -> Open Tin...: pick a `.tin`, read its bytes, gunzip, parse. A corrupt gzip or a file that
-   // is not a Tin errors out with no writes; a valid one opens the merge / replace mode dialog,
-   // targeting the folder the binder is currently showing.
+   // File -> Open Tin...: pick a `.tin`, gunzip, parse. A corrupt gzip or non-Tin errors out with no writes;
+   // a valid one opens the merge / replace dialog, targeting the folder the binder is currently showing.
    const handleOpenTin = useCallback(() => {
       const input  = document.createElement('input')
       input.type   = 'file'
@@ -733,9 +696,9 @@ export default function App() {
       setTinModeRequest({ tin, targetFolderId })
    }, [])
 
-   // Write an imported Tin, then refresh the binder list and toast the per-kind counts. A Replace also
-   // wipes the open tabs (their ids may be gone) down to one blank and drops all session history, and
-   // remounts the Binder at root; a Merge just refreshes the list in place.
+   // Write an imported Tin, then refresh the binder list and toast the counts. A Replace also wipes the open
+   // tabs (their ids may be gone) to one blank, drops all session history, and remounts the Binder at root;
+   // a Merge just refreshes the list.
    const runTinImport = useCallback(async (tin: TinFile, mode: 'merge' | 'replace', targetFolderId: string) => {
       try {
          const summary = await backend.importTin(tin, mode, targetFolderId)
@@ -772,10 +735,9 @@ export default function App() {
       if (tin) void runTinImport(tin, 'replace', '0')
    }, [tinReplaceConfirm, runTinImport])
 
-   // Open the binder, flush any pending changes first so the current document appears up-to-date
-   // in the list, resolve which folder it lives in, then mount the binder in place of the editor.
-   // Only a BOUND tab flushes: a scratch tab (documentId null) has no record to refresh, and opening
-   // the binder must never mint one behind the user's back.
+   // Open the binder: flush any pending changes first so the document appears up-to-date in the list,
+   // resolve its folder, then mount. Only a BOUND tab flushes: opening the binder must never mint a record
+   // for a scratch tab behind the user's back.
    const handleOpenBinder = useCallback(async () => {
       if (documentId !== null && saveStatus !== 'clean') await persistNow()
       let folder: BinderFolderRecord | null = null
@@ -797,9 +759,8 @@ export default function App() {
 
    // Close a tab, guarding two ways data could be lost:
    //  - dirty/saving: unsaved edits on a bound tab (discard-and-close).
-   //  - a scratch tab never saved to the binder (documentId null + real content), whatever its origin
-   //    (a brand-new doc, a template instance, or a file opened from disk): it has no stored record,
-   //    so closing it loses it. The blank scaffold has nothing to lose.
+   //  - a scratch tab with real content (documentId null), whatever its origin: no stored record, so closing
+   //    loses it. The blank scaffold has nothing to lose.
    // Anything safely stored (a binder record, or the empty blank) closes immediately.
    const closeTab = useCallback((tabKey: string) => {
       const target = openDocumentsRef.current.find(document => document.tabKey === tabKey)
@@ -840,17 +801,15 @@ export default function App() {
       }
    }, [activateTab, showToast, t, backend])
 
-   // The one New-document entry point: a dialog (New Document dialog) offering Blank or a
-   // template with accent / theme / format overrides, then Create. Opened from the header New button,
-   // the File menu, and the binder's empty-state CTA (which seeds the folder it was opened from). The
-   // stored folder is applied as the new tab's pending-save folder. null = root.
+   // The one New-document entry point: a dialog offering Blank or a template with accent / theme / format
+   // overrides. Opened from the header, File menu, and the binder's empty-state CTA (which seeds its folder).
+   // The stored folder becomes the new tab's pending-save folder. null = root.
    const [newDocumentDialog, setNewDocumentDialog] = useState<{ folderId: string | null } | null>(null)
    const handleOpenNewDocument   = useCallback((folderId: string | null = null) => setNewDocumentDialog({ folderId }), [])
    const handleCancelNewDocument = useCallback(() => setNewDocumentDialog(null), [])
 
-   // Create the document the dialog composed: a blank body wearing either the blank defaults or the
-   // chosen template's chrome, with the dialog's (possibly overridden) accent / theme / format on
-   // top. Adds it as a tab, activates it, and closes the binder. No replace, no discard.
+   // Create the document the dialog composed: a blank body wearing the blank defaults or the template's
+   // chrome, with the dialog's overridden accent / theme / format on top. Adds a tab, activates, closes the binder.
    const handleCreateNewDocument = useCallback((template: DocumentTemplate | null, choice: NewDocumentChoice) => {
       const folderId = newDocumentDialog?.folderId ?? null
       setNewDocumentDialog(null)
@@ -864,9 +823,8 @@ export default function App() {
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [newDocumentDialog, t, activateTab, showToast])
 
-   // New from template, direct: the binder Templates view's per-card "Use" button. Skips the dialog
-   // since the template choice is already made, creates straight from the template, filed into the
-   // current folder.
+   // New from template, direct: the Templates view's per-card "Use" button. Skips the dialog (the choice is
+   // made) and creates straight from the template, filed into the current folder.
    const handleNewFromTemplate = useCallback((template: DocumentTemplate, folderId?: string) => {
       const newDocument = createDocumentFromTemplate(template, t.defaultSectionTitle, folderId ?? null)
       setOpenDocuments(documents => [...documents, newDocument])
@@ -875,23 +833,20 @@ export default function App() {
       showToast(t.binderDocumentCreated, { type: 'success' })
    }, [t, activateTab, showToast])
 
-   // Apply a template's chrome to the ACTIVE document, keeping its content: the binder Templates
-   // view's per-card "Apply to current document" entry. One undo step (applyTemplateChrome runs
-   // inside commitActiveEdit), then the binder closes so the restyled document shows right away.
+   // Apply a template's chrome to the ACTIVE document, keeping its content. One undo step
+   // (applyTemplateChrome runs inside commitActiveEdit), then the binder closes.
    const handleApplyTemplate = useCallback((template: DocumentTemplate) => {
       commitActiveEdit('apply-template', document => ({ ...document, ...applyTemplateChrome(document, template) }))
       setBinderOpen(false)
       showToast(t.templateApplied, { type: 'success' })
    }, [commitActiveEdit, t, showToast])
 
-   // Duplicate a tab's document and open the copy as a new tab. A BOUND tab is copied from its binder
-   // record: the active bound tab flushes its unsaved edits first (persistNow's returned id, since its
-   // promotion hasn't synced to openDocumentsRef at this await boundary). A non-active tab with no
-   // record has nothing stored to copy, so it no-ops.
+   // Duplicate a tab's document into a new tab. A BOUND tab is copied from its record: the active bound tab
+   // flushes its edits first (persistNow's returned id, since its promotion hasn't synced to the ref here). A
+   // non-active tab with no record no-ops.
    //
-   // The active SCRATCH tab has no record and must not mint one just to be duplicated. It is cloned in
-   // memory into a fresh scratch tab instead, deep-copied so the two documents never share references,
-   // and the copy stays unsaved (documentId null) exactly like its source until an explicit save.
+   // The active SCRATCH tab must not mint a record just to be duplicated: it is deep-cloned in memory into a
+   // fresh scratch tab, the copy staying unsaved like its source until an explicit save.
    const handleDuplicateTab = useCallback(async (sourceTabKey: string) => {
       const sourceTab = openDocumentsRef.current.find(document => document.tabKey === sourceTabKey)
       if (!sourceTab) return
@@ -920,9 +875,8 @@ export default function App() {
       await handleOpenDocument(duplicateId)
    }, [persistNow, handleOpenDocument, activateTab, backend])
 
-   // Save As opens a dialog to name the copy + pick a destination folder. The fork happens on
-   // confirm (handleConfirmSaveAs); cancel does nothing. The picker opens at the document's current
-   // folder (root for an unsaved doc), and the name pre-fills with the current title (verbatim).
+   // Save As opens a dialog to pick a destination folder; the fork happens on confirm (handleConfirmSaveAs).
+   // The picker opens at the document's current folder (root for an unsaved doc).
    const [saveAsDialog, setSaveAsDialog] = useState<{ sourceTabKey: string; initialFolder: BinderFolderRecord | null } | null>(null)
 
    const handleSaveAs = useCallback(async () => {
@@ -939,19 +893,17 @@ export default function App() {
       setSaveAsDialog({ sourceTabKey, initialFolder })
    }, [backend])
 
-   // Fork & switch: persist the active document so the ORIGINAL is a frozen binder record, duplicate
-   // it (the copy keeps the document's own title verbatim), file the copy into the chosen folder,
-   // then re-point the active tab to the copy. Further edits save to the copy; the original is left
-   // untouched. The title is never changed here, it's part of the document, renamed in the tab.
+   // Fork & switch: persist the active document so the ORIGINAL is a frozen record, duplicate it, file the
+   // copy into the chosen folder, then re-point the active tab to the copy. Further edits save to the copy;
+   // the original is untouched. The title is unchanged here (it is part of the document).
    const handleConfirmSaveAs = useCallback(async (destinationFolderId: string) => {
       const dialog = saveAsDialog
       setSaveAsDialog(null)
       if (!dialog) return
       const activeTab = openDocumentsRef.current.find(document => document.tabKey === dialog.sourceTabKey)
       if (!activeTab) return
-      // Use persistNow's returned id for the freshly-persisted/promoted case: its setOpenDocuments
-      // hasn't synced to openDocumentsRef yet at this await boundary, so re-reading the ref would
-      // see a stale null and skip the fork.
+      // Use persistNow's returned id: its setOpenDocuments hasn't synced to openDocumentsRef at this await
+      // boundary, so re-reading the ref would see a stale null and skip the fork.
       const sourceDocumentId = (activeTab.saveStatus !== 'clean' || activeTab.documentId === null)
          ? await persistNow()
          : activeTab.documentId
@@ -967,10 +919,9 @@ export default function App() {
 
    const handleCancelSaveAs = useCallback(() => setSaveAsDialog(null), [])
 
-   // Save the active document's chrome as a reusable template (File -> Save as template). A name
-   // dialog opens here; on confirm the capture reads the active tab's live chrome (meta scaffold,
-   // theme, accent, presentation, page format) directly, no content is captured. This path doesn't
-   // open the binder, so there is no list to refresh, the toast is the only feedback.
+   // Save the active document's chrome as a reusable template (File -> Save as template). On confirm the
+   // capture reads the active tab's live chrome (meta scaffold, theme, accent, presentation, format); no
+   // content is captured. No binder list to refresh, so the toast is the only feedback.
    const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false)
    const handleOpenSaveAsTemplate = useCallback(() => setSaveAsTemplateOpen(true), [])
    const handleCancelSaveAsTemplate = useCallback(() => setSaveAsTemplateOpen(false), [])
@@ -1009,7 +960,6 @@ export default function App() {
       if (openTab) closeTab(openTab.tabKey)
    }, [closeTab])
 
-   // Mode system
    const [mode, setMode] = useState<Mode>('wysiwyg')
 
    function handleSetMode(newMode: Mode) {
@@ -1019,40 +969,32 @@ export default function App() {
 
    const pagedDocument = !!format && format.kind !== 'infinite'
 
-   // Which paragraph the editor is currently editing through its out-of-flow overlay (see WysiwygArea).
-   // A render-only signal: a fragment press sets it, its blur clears it. It never feeds pagination (that
-   // would move the layout on focus); it selects which split paragraph gets the edit overlay AND holds the
-   // page recompute steady while typing (see the documentPages effect below), so the visible pages stay put
-   // mid-edit and re-settle deterministically on blur. Reset on tab switch, since the id belongs to the
-   // outgoing document's flow.
+   // Which paragraph the editor is editing through its out-of-flow overlay (see WysiwygArea). A render-only
+   // signal set on a fragment press, cleared on blur. It never feeds pagination (that would move the layout
+   // on focus); it selects which split paragraph gets the overlay AND holds the page recompute steady while
+   // typing, so the visible pages stay put mid-edit. Reset on tab switch (the id belongs to the outgoing flow).
    const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
    useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
 
-   // The offscreen measurement pass's HEIGHTS, refreshed on a typing pause by the debounced effect below.
-   // Heights are the only thing that inherently needs the DOM; pagination itself is pure arithmetic, so the
-   // canvas paginates from these cached heights SYNCHRONOUSLY every render (see documentPages just below).
-   // Heights are per-block, id-keyed, and width-stable, so after a structural edit the surviving blocks keep
-   // their correct heights and re-paginate instantly; a brand-new block measures 0 until the next pass lands.
+   // The offscreen measure pass's HEIGHTS, refreshed on a typing pause below. Heights are the only thing that
+   // needs the DOM; pagination is pure arithmetic, so the canvas paginates from these cached heights
+   // SYNCHRONOUSLY every render. Per-block, id-keyed, width-stable: after a structural edit surviving blocks
+   // keep their heights and re-paginate instantly; a new block measures 0 until the next pass.
    const [measuredHeights, setMeasuredHeights] = useState<MeasuredHeights>(EMPTY_HEIGHTS)
 
-   // Reset the heights the instant the active tab OR the page kind changes, DURING render (React's "adjust
-   // state when a prop changes" pattern), so the new tab paginates from scratch (forced breaks only) until
-   // it is measured, and the canvas never flashes the outgoing document's heights for a frame. The kind is
-   // in the key because turning an infinite document paged (Page setup) leaves the tab key alone yet suddenly
-   // needs pages. Also clear the frozen-layout cache so the freeze branch below can never hold a stale
-   // cross-tab snapshot. A render-phase reset (not an effect) means no blank frame.
+   // Reset the heights when the active tab OR the page kind changes, DURING render (adjust-state-on-prop-
+   // change), so the new tab paginates from scratch until measured and never flashes the outgoing heights.
+   // The kind is in the key because turning a document paged leaves the tab key alone yet suddenly needs
+   // pages. Also clears the frozen-layout cache so the freeze branch can't hold a stale cross-tab snapshot.
    const paginationResetKey = `${activeTabKey}::${format?.kind ?? 'infinite'}`
    const lastPaginationResetKeyRef = useRef(paginationResetKey)
 
-   // The document's ONE page layout, fed identically to the editor canvas, the Pages panel, and Preview.
+   // The document's ONE page layout, fed identically to the editor canvas, Pages panel, and Preview.
    // Computed SYNCHRONOUSLY during render from (sections, format, measuredHeights) through the pure
-   // paginateDocument (lib/pageLayout): the single budgeted, empty-atomic-set pagination the Save-as-PDF /
-   // HTML export also runs, so all five surfaces render identical pages by construction. This is a plain
-   // render-phase computation with a ref cache (NOT useMemo): paginateDocument is pure arithmetic
-   // (microseconds even for large docs), so recomputing per render is free and matches the pre-unification
-   // editor. It is FROZEN while a paragraph is focused: an in-progress edit lives only in the contentEditable
-   // until blur, so re-paginating now would move the break under the caret. The freeze holds the last
-   // non-focused layout through the ref below.
+   // paginateDocument, the same pagination Save-as-PDF / HTML export runs, so all five surfaces match by
+   // construction. A render-phase computation with a ref cache (NOT useMemo): paginateDocument is pure
+   // arithmetic, so recomputing per render is free. FROZEN while a paragraph is focused: the in-progress edit
+   // lives only in the contentEditable until blur, so re-paginating now would move the break under the caret.
    const lastDocumentPagesRef = useRef<DocumentPages>(EMPTY_DOCUMENT_PAGES)
    if (lastPaginationResetKeyRef.current !== paginationResetKey) {
       lastPaginationResetKeyRef.current = paginationResetKey
@@ -1064,8 +1006,7 @@ export default function App() {
    if (!pagedDocument) {
       documentPages = EMPTY_DOCUMENT_PAGES
    } else if (focusedParagraphId) {
-      // Hold the layout steady while a paragraph is being typed: its in-progress length lives only in the
-      // contentEditable until blur, so re-paginating now would move the break under the caret.
+      // Hold the layout steady while a paragraph is typed (its length is not in the model until blur).
       documentPages = lastDocumentPagesRef.current
    } else {
       documentPages = paginateDocument(sections, format, measuredHeights)
@@ -1073,13 +1014,10 @@ export default function App() {
    }
 
    // Refresh the measured HEIGHTS on a typing pause. The offscreen pass is debounced and off the critical
-   // path: the canvas keeps paginating synchronously from the last heights while the author types, and the
-   // fresh heights land ~180ms after the last height-affecting change (the layout re-settles on the next
-   // render). HELD while a paragraph is focused: an in-progress edit lives only in the contentEditable until
-   // blur, and its length is not yet in the model, so measuring now would read a half-typed paragraph.
-   // Clearing focusedParagraphId on blur re-runs this and settles the heights exactly where the export also
-   // reads them. A superseded run (deps changed, or a newer pass scheduled) is cancelled so a stale promise
-   // never overwrites fresher heights.
+   // path: the canvas keeps paginating from the last heights while typing, and fresh heights land on the
+   // pause. HELD while a paragraph is focused: its length is not in the model until blur, so measuring now
+   // would read a half-typed paragraph; the blur re-runs this. A superseded run is cancelled so a stale
+   // promise never overwrites fresher heights.
    useEffect(() => {
       if (!pagedDocument) return          // infinite: nothing to measure, keep the empty heights
       if (focusedParagraphId) return      // hold the heights steady while a paragraph is being edited
@@ -1091,26 +1029,23 @@ export default function App() {
       return () => { cancelled = true; clearTimeout(timer) }
    }, [pagedDocument, focusedParagraphId, meta, sections, docTheme, docAccent, lang, presentation, format])
 
-   // Export dialog: lifted here (rather than local state inside HeaderMenuBar) so both the header's
-   // File -> Export... / Ctrl+E path AND the document background context menu's "Export..." item
-   // open the exact same modal instance.
+   // Export dialog: lifted here (not local to HeaderMenuBar) so the header's File -> Export... / Ctrl+E path
+   // and the document background context menu's "Export..." item open the same modal instance.
    const [exportOpen, setExportOpen] = useState(false)
    const handleOpenExport  = useCallback(() => setExportOpen(true), [])
    const handleCloseExport = useCallback(() => setExportOpen(false), [])
 
-   // Save as PDF: the browser print dialog over the paged export HTML, using the document's own theme /
-   // accent / presentation / format. printDocument self-measures the paged layout offscreen, so the PDF
-   // is the same whether the app is in Preview or Edit and regardless of what the editor has measured.
-   // Commit any active edit first (blur) so the print sees the committed model.
+   // Save as PDF: the browser print dialog over the paged export HTML. printDocument self-measures the layout
+   // offscreen, so the PDF is the same in Preview or Edit regardless of what the editor measured. Commit any
+   // active edit first (blur) so the print sees the committed model.
    const handleSaveAsPdf = useCallback(() => {
       const active = document.activeElement as HTMLElement | null
       if (active && active.isContentEditable) active.blur()
       void printDocument(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
    }, [meta, sections, docTheme, docAccent, lang, presentation, format])
 
-   // The document editors (Presentation, Navigation, Page setup) are dockable panels now, not bespoke
-   // windows. Their menu launchers reveal the panel (docking it if hidden) through the dock, so they
-   // live just below the dock state (handleOpenPresentation / handleOpenNav / handleOpenFormat).
+   // The document editors (Presentation, Navigation, Page setup) are dockable panels. Their menu launchers
+   // reveal the panel through the dock, so they live just below the dock state.
 
    // ######################
    // # PANE LAYOUT SYSTEM #
@@ -1155,13 +1090,10 @@ export default function App() {
       return () => document.removeEventListener('keydown', handleKeyDown)
    }, [binderOpen, undo, redo])
 
-   // Ctrl+S / Cmd+S saves the active document (and binds a scratch tab to a binder record on its
-   // first save). Unlike undo, it fires even while a field is focused, since that is exactly when
-   // people reach for it. A block or the title commits only on blur (RichEditable / the title input),
-   // so the in-progress edit lives in the DOM, not the model yet. Blur the focused field first to
-   // flush its commit, then persist on the next tick once that write has landed in openDocumentsRef,
-   // otherwise persistNow would save the last-committed content and drop the latest keystrokes. Only
-   // active in document mode (the binder has no editable document of its own).
+   // Ctrl+S / Cmd+S saves the active document (binding a scratch tab on first save). Fires even while a
+   // field is focused, unlike undo. A block or the title commits only on blur, so blur the focused field
+   // first, then persist on the next tick once that write lands in openDocumentsRef; otherwise persistNow
+   // saves the last-committed content and drops the latest keystrokes. Document mode only.
    useEffect(() => {
       if (binderOpen) return
       function handleKeyDown(event: KeyboardEvent): void {
@@ -1190,13 +1122,10 @@ export default function App() {
       commitActiveEdit('markdown', document => ({ ...document, sections: newSections, meta: newMeta }))
    }, [commitActiveEdit])
 
-   // Open freshly-loaded content (File -> Open: JSON backup / Markdown) in a NEW tab,
-   // activating it. Discards nothing (it never replaces another tab). The new tab is NOT a binder
-   // record (documentId null) and stays that way: editing it no longer forks a record, only an
-   // explicit Save (File -> Save / Save As) binds it. A JSON backup's presentation restores its saved
-   // theme / accent / extras, a plain Markdown import lands with the document defaults.
-   // Opening from a file never auto-creates a binder entry (Open is not Import); it reads as
-   // "Never saved" and closeTab warns before the unsaved tab is lost.
+   // Open freshly-loaded content (File -> Open: JSON backup / Markdown) in a NEW tab, activating it. The tab
+   // is NOT a binder record and stays scratch: only an explicit Save binds it (Open is not Import), so it
+   // reads as "Never saved" and closeTab warns before it is lost. A JSON backup restores its saved theme /
+   // accent / extras; a plain Markdown import lands with the document defaults.
    const openLoadedInNewTab = useCallback((nextMeta: DocMeta, nextSections: Section[], presentation?: DocPresentation) => {
       const newTab: OpenDocument = {
          tabKey:    crypto.randomUUID(),
@@ -1242,8 +1171,8 @@ export default function App() {
    // Create the dialog's handler closes the binder if it was open.
    const handleHeaderNew = useCallback(() => handleOpenNewDocument(null), [handleOpenNewDocument])
 
-   // Close the binder back to the editor. The always-have-a-document invariant lives on the tab
-   // list (openDocuments is never empty), so there is always a tab to return to, just close.
+   // Close the binder back to the editor. openDocuments is never empty (the always-have-a-document
+   // invariant), so there is always a tab to return to.
    const handleCloseBinder = useCallback(() => {
       setBinderOpen(false)
    }, [])
@@ -1263,16 +1192,15 @@ export default function App() {
    // # SIDE-PANEL DOCK    #
    // ######################
 
-   // The dock owns the side panels' layout; applicability is driven by the active document's format
-   // (Pages needs a paged doc) and mode (Pages needs edit mode). The Pages data + handlers are derived
-   // here so the App-level dock can host the body directly, without WysiwygArea owning it.
+   // The dock owns the side panels' layout; applicability is driven by the active document's format (Pages
+   // needs a paged doc) and mode (Pages needs edit mode). Pages data + handlers are derived here so the
+   // App-level dock hosts the body directly.
    const panelContext: PanelContext = { formatKind: format?.kind ?? 'infinite', readOnly: mode === 'preview' }
    const dock      = useDockState(panelContext)
    const pagesData = usePagesPanelData(sections, format, commitSectionsAndFormat, t, documentPages.pages)
 
-   // Menu launchers for the document-editor panels: reveal the panel (docking it if hidden) rather
-   // than opening a window. Presentation also closes the Export dialog first, since one of its launch
-   // points is the dialog's HTML branch.
+   // Menu launchers for the document-editor panels: reveal the panel (docking it if hidden). Presentation
+   // also closes the Export dialog first, since one of its launch points is the dialog's HTML branch.
    const handleOpenPresentation = () => { setExportOpen(false); dock.revealPanel('presentation') }
    const handleOpenNav          = () => dock.revealPanel('documentnav')
    const handleOpenFormat       = () => dock.revealPanel('pagesetup')
@@ -1344,7 +1272,6 @@ export default function App() {
 
    return (
       <LangProvider lang={lang} setLang={setLang}>
-         {/* Shared app menu bar, mounted in both modes; context-aware via mode. */}
          <HeaderMenuBar
             mode={binderOpen ? 'binder' : 'document'}
             meta={meta}

@@ -1,11 +1,6 @@
-/**
- * histogram.ts, the pure binning math behind the `histogram` chart type.
- *
- * PURE FUNCTION, deterministic (no Date, no random), no SVG/theme/React, mirrors the house style
- * of scale.ts/stats.ts: a small, thoroughly unit-tested numeric module carrying the whole numeric
- * correctness of the feature. The renderer (graph/cartesian.ts's `renderHistogram`) and the editor
- * (molecules/HistogramEditor.tsx, for its live "effective bin count" readout) both call this
- * directly rather than duplicating any binning logic.
+/*
+ * The pure binning math behind the `histogram` chart type. Deterministic, no SVG/theme/React.
+ * The renderer and the editor's "effective bin count" readout both call this directly.
  */
 
 import { HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS } from './types'
@@ -14,39 +9,27 @@ import { HISTOGRAM_MIN_BINS, HISTOGRAM_MAX_BINS } from './types'
 // # CONSTANTS #
 // #############
 
-/** The degenerate-domain (all-equal samples) bin half-width: an arbitrary but sane +/-0.5 span
- *  around the single repeated value, just wide enough to read as one real bar on the axis, since
- *  a genuine bin WIDTH is meaningless when every sample is identical. */
+/** The all-equal-samples bin half-width: a +/-0.5 span around the single repeated value, since a
+ *  real bin width is meaningless when every sample is identical. */
 const DEGENERATE_BIN_HALF_WIDTH = 0.5
 
 // #############
 // # BINNING   #
 // #############
 
-/** One computed histogram: the bin edges (length === counts.length + 1, ascending) and each bin's
- *  frequency count (same order, left to right). */
+/** One computed histogram: bin edges (length === counts.length + 1, ascending) and each bin's count. */
 export interface HistogramBins {
    edges: number[]
    counts: number[]
 }
 
 /**
- * Bin `samples` into equal-width bins spanning their `[min, max]`. Non-finite entries (NaN,
- * +/-Infinity) are filtered out FIRST, a bad datum contributes to no bin and never breaks the
- * result, the same "invalid never breaks the chart" contract every other graph parser/renderer in
- * this codebase honors. Total, never throws.
- *
- * Bin-count resolution:
- *   - Fewer than 1 finite sample survives -> an EMPTY result (`{ edges: [], counts: [] }`); the
- *     renderer draws a graceful empty plot (axes with no bars) for this, never an exception.
- *   - All finite samples identical (`min === max`) -> ONE degenerate bin spanning
- *     `[value - DEGENERATE_BIN_HALF_WIDTH, value + DEGENERATE_BIN_HALF_WIDTH]` holding every
- *     sample, a real bin count would be meaningless when there is no spread to divide.
- *   - Otherwise: `requestedBins`, when given (a manual override), is rounded and clamped to
- *     [{@link HISTOGRAM_MIN_BINS}, {@link HISTOGRAM_MAX_BINS}]. Left unset, the bin count is
- *     Sturges' rule (`ceil(log2(n)) + 1`), ALSO clamped to the same sane range, so neither a
- *     single sample (Sturges alone would suggest 1) nor a huge sample count can ever produce a
- *     pathological bin count.
+ * Bin `samples` into equal-width bins spanning their `[min, max]`. Non-finite entries are filtered
+ * first. Total, never throws.
+ *   - No finite sample -> `{ edges: [], counts: [] }` (the renderer draws an empty plot).
+ *   - All samples identical -> one degenerate bin of half-width {@link DEGENERATE_BIN_HALF_WIDTH}.
+ *   - Otherwise a manual `requestedBins` (rounded + clamped), else Sturges' rule (also clamped),
+ *     so neither a single sample nor a huge count produces a pathological bin count.
  */
 export function computeHistogramBins(samples: number[], requestedBins?: number): HistogramBins {
    const finiteSamples = samples.filter(sample => Number.isFinite(sample))
@@ -77,8 +60,7 @@ export function computeHistogramBins(samples: number[], requestedBins?: number):
    const counts = new Array<number>(binCount).fill(0)
    for (const sample of finiteSamples) {
       let binIndex = Math.floor((sample - minValue) / step)
-      // A sample exactly AT maxValue floors to binCount (one past the last bin); clamp it into the
-      // last bin so every finite sample is counted in exactly one bin (the top edge is inclusive).
+      // A sample at maxValue floors one past the last bin; clamp it in so the top edge is inclusive.
       if (binIndex >= binCount) binIndex = binCount - 1
       if (binIndex < 0) binIndex = 0
       counts[binIndex]++

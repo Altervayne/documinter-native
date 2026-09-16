@@ -1,9 +1,6 @@
-/**
- * sliderClamp.ts, Pure clamp/snap helper behind SliderWithNumberInput.
- *
- * Factored out of the component so it is unit-testable without React/jsdom: typing a value into the
- * numeric field paired with a range slider must land INSIDE the slider's [min, max] window AND on a
- * valid step boundary, exactly like dragging the slider itself would produce.
+/*
+ * Clamp/snap helper behind SliderWithNumberInput: a value typed into the numeric field must land
+ * inside [min, max] AND on a valid step boundary, exactly like dragging the slider produces.
  */
 
 /** Clamp a raw value into [min, max], then snap it to the nearest step relative to min. */

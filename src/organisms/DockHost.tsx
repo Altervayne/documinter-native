@@ -21,11 +21,10 @@ import type { T } from '../lib/i18n'
 // # TYPES #
 // #########
 
-/** Where a dragged tab would land, resolved by group id so an index shift after detaching the panel
- *  can never misplace it. `emptySide` is the edge-rail drop onto a currently empty dock, `dockSide` is
- *  a drop over a populated dock's empty area (append as a new group at the bottom), `float` is the
- *  center drop that pops the panel out as a window, and `cancel` is the neutral no-op zone over the
- *  panel's own group (its center / its icon). */
+/** Where a dragged tab lands, resolved by group id so an index shift after detaching can never misplace
+ *  it. `emptySide` = edge-rail drop onto an empty dock; `dockSide` = drop over a populated dock's empty
+ *  area (append a new group at the bottom); `float` = center drop pops out a window; `cancel` = neutral
+ *  no-op over the panel's own group. */
 export type DockDropTarget =
    | { kind: 'merge';     groupId: string }
    | { kind: 'adjacent';  groupId: string; position: 'before' | 'after' }
@@ -34,9 +33,8 @@ export type DockDropTarget =
    | { kind: 'float' }
    | { kind: 'cancel';    groupId: string }
 
-// A group's drop bands by fraction of its height: above (new group before), merge (add as a tab), and
-// below (new group after). Shared with the hit-testing in DockedWorkspace so the drawn zone and the
-// resolved target always agree.
+// A group's drop bands by fraction of its height: above (new group before) / merge (add as a tab) /
+// below (new group after). Shared with DockedWorkspace's hit-test so drawn zone and target agree.
 export const DROP_BEFORE_MAX = 0.36
 export const DROP_AFTER_MIN  = 0.64
 
@@ -82,13 +80,9 @@ function allGroups(layout: DockLayout): DockGroup[] {
 // # COMPONENT #
 // #############
 
-/**
- * Renders one side's dock: a resizable column of groups, each a tabbed container of panel bodies, with
- * per-group and whole-dock collapse and a config menu for menu-driven reconfiguration (move to the
- * other dock, split into its own group, merge into another group, collapse, close). The panel bodies
- * are supplied by App; this component owns only the dock chrome. Drag-and-drop and the config menu are
- * the two ways to reconfigure the layout.
- */
+/** One side's dock: a resizable column of groups, each a tabbed container of panel bodies, with
+ *  per-group and whole-dock collapse and a config menu. App supplies the bodies; this owns only the
+ *  dock chrome. Drag-and-drop and the config menu are the two ways to reconfigure the layout. */
 export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostProps) {
    const column = layout[side]
    if (!column) return null
@@ -103,10 +97,8 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
    const content = (
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
          {column.groups.map((group, groupIndex) => {
-            // The resize handle only exists between two EXPANDED neighbours: the only case where
-            // dragging changes anything (a collapsed group is a fixed-height header, a lone expanded
-            // group already fills). When it is hidden, a static top border marks the boundary between
-            // groups instead (a 4px bg-border line).
+            // A resize handle only exists between two EXPANDED neighbours (the only case where dragging
+            // changes anything); otherwise a static top border marks the boundary.
             const showDivider = groupIndex > 0 && !group.collapsed && !column.groups[groupIndex - 1].collapsed
             return (
             <div
@@ -156,9 +148,8 @@ export function DockHost({ side, layout, panelBodies, actions, drag }: DockHostP
 // # DOCK DROP OVERLAY      #
 // ##########################
 
-/** A full-dock wash shown while dragging over a populated dock's empty area (below / around its group
- *  headers), where releasing docks the panel as a new group at the bottom. This is what gives a dock
- *  of all-collapsed groups a large, reachable drop target instead of slivers on each tiny header. */
+/** A full-dock wash while dragging over a populated dock's empty area, where releasing docks the panel
+ *  as a new group at the bottom. Gives a dock of all-collapsed groups a large drop target. */
 function DockDropOverlay({ side, drag }: { side: DockSide; drag: DockDragApi }) {
    const target = drag.dropTarget
    if (drag.draggingPanelId === null || target === null) return null
@@ -170,20 +161,17 @@ function DockDropOverlay({ side, drag }: { side: DockSide; drag: DockDragApi }) 
 // # DOCK RAIL (SPINE)      #
 // ##########################
 
-/** The dock's persistent icon rail on its inner edge: the whole-dock collapse button at the top, then
- *  every panel's icon (grouped, active one highlighted). Always present, so the tab icons stay visible
- *  and switchable even when a group's body is collapsed. Each icon is a tab selector (click) and a drag
- *  handle (drag past the threshold to reconfigure). */
+/** The dock's persistent icon rail on its inner edge: whole-dock collapse at the top, then every panel's
+ *  icon (active highlighted). Always present, so tab icons stay switchable even when a body is collapsed.
+ *  Each icon is a tab selector (click) and a drag handle (drag past the threshold to reconfigure). */
 function DockRail({ side, column, actions, drag }: { side: DockSide; column: DockColumn; actions: DockStateResult; drag: DockDragApi }) {
    const { t } = useLang()
    const CollapseDockIcon = side === 'left' ? PanelLeftClose : PanelRightClose
-   // The rail's border faces the content column: left dock -> content is to the rail's left (border-l),
-   // right dock -> content is to the rail's right (border-r).
+   // The rail's border faces the content column: left dock -> border-l, right dock -> border-r.
    const borderClass = side === 'left' ? 'border-l' : 'border-r'
 
    return (
       <div className={`shrink-0 flex flex-col items-center gap-1 p-1 ${borderClass} border-border`}>
-         {/* Whole-dock collapse, at the top of the rail. */}
          <button
             onClick={() => actions.toggleColumnCollapsed(side)}
             title={t.dockCollapseDock}
@@ -229,13 +217,10 @@ function DockRail({ side, column, actions, drag }: { side: DockSide; column: Doc
 function groupFlexStyle(group: DockGroup): CSSProperties {
    // A collapsed group shrinks to just its header.
    if (group.collapsed) return { flex: '0 0 auto' }
-   // Expanded groups share the column by flex weight. Two subtleties:
-   //  - Guard a missing `flex` (an older or partial layout): default to 1, else `flex: undefined 1 0` is invalid.
-   //  - Scale the grow factor by 100 so it is always >= 1. A divider stores fractional weights (for
-   //    example 0.47 / 0.53) that sum to 1 only while both groups are expanded; once a sibling collapses
-   //    (grow goes to 0), a lone 0.47 grow is under 1, and CSS flexbox distributes only 47% of the free
-   //    space, leaving a large blank below. Scaling keeps the ratio between expanded groups but the
-   //    sum >= 1 (fills).
+   // Expanded groups share the column by flex weight. Guard a missing `flex` (default 1, else
+   // `flex: undefined 1 0` is invalid). Scale grow by 100 so it stays >= 1: a divider stores fractional
+   // weights that sum to 1 only while both groups are expanded, and once a sibling collapses a lone
+   // sub-1 grow makes flexbox distribute only that fraction, leaving blank below. Scaling keeps the ratio.
    const weight = group.flex && group.flex > 0 ? group.flex : 1
    return { flex: `${weight * 100} 1 0`, minHeight: 0 }
 }
@@ -254,10 +239,9 @@ interface DockGroupContentProps {
    drag:       DockDragApi
 }
 
-/** One group's content column: a header (active tab identity as a drag handle, an always-present group
- *  collapse/expand button, and the config menu) plus the active panel's body when expanded. The tab
- *  icons live in the dock-level DockRail, not here; the whole-dock collapse lives at the rail's top.
- *  This element is what the drag hit-test registers, so its rect defines the group's drop bands. */
+/** One group's content column: a header (active tab identity as drag handle, collapse button, config
+ *  menu) plus the active panel's body when expanded. Tab icons live in the dock-level DockRail, not
+ *  here. This element registers with the drag hit-test, so its rect defines the group's drop bands. */
 function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag }: DockGroupContentProps) {
    const { t } = useLang()
    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
@@ -274,8 +258,8 @@ function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag
          ref={(element) => drag.registerGroup(group.id, element)}
          className="relative flex flex-col overflow-hidden flex-1 min-h-0"
       >
-         {/* Header adopts the active tab's icon + label (the group's identity), which doubles as a drag
-             handle for the active panel. Same height for every group, so headers never mismatch. */}
+         {/* Header adopts the active tab's icon + label (the group's identity) and doubles as its drag
+             handle. Same height for every group, so headers never mismatch. */}
          <div className="flex items-center h-9 pl-2 pr-1 border-b border-border shrink-0 gap-1">
             <button
                onPointerDown={(event) => drag.onTabPointerDown(group.activePanel, group.id, event)}
@@ -306,9 +290,8 @@ function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag
             </button>
          </div>
 
-         {/* The body sits on the distinct --color-bg surface (the header + column stay raised), so a docked
-             group reads with the same header / body contrast as a popped-out panel window instead of one
-             flat raised tone. */}
+         {/* The body sits on the distinct --color-bg surface (header + column stay raised), so a docked
+             group reads with the same header / body contrast as a popped-out panel window. */}
          {!group.collapsed && (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-bg">
                {body}
@@ -332,9 +315,8 @@ function DockGroupContent({ group, side, layout, groupIndex, body, actions, drag
 // # DROP OVERLAY           #
 // ##########################
 
-/** The highlight shown on a group that is the current drag drop target: a full-group wash for a merge
- *  (drop onto the tab strip), or a thin insertion bar at the top / bottom edge for an adjacent drop
- *  (a new group above / below). */
+/** The highlight on the current drop-target group: a full-group wash for a merge, or a band at the
+ *  top / bottom edge for an adjacent drop (a new group above / below). */
 function GroupDropOverlay({ groupId, drag }: { groupId: string; drag: DockDragApi }) {
    const target = drag.dropTarget
    if (drag.draggingPanelId === null || target === null) return null
@@ -465,7 +447,7 @@ function CollapsedDockRail({ side, column, actions, drag }: CollapsedDockRailPro
             <ExpandIcon size={18} />
          </button>
 
-         {/* One icon per docked panel; clicking expands the dock and shows that panel. */}
+         {/* One icon per docked panel; clicking expands the dock onto that panel. */}
          {panels.map((panelId) => {
             const descriptor = PANEL_REGISTRY[panelId]
             const groupId    = column.groups.find((group) => group.panels.includes(panelId))?.id
@@ -519,8 +501,8 @@ function WidthDivider({ side, onResize }: { side: DockSide; onResize: (width: nu
    )
 }
 
-/** The height resize handle between two stacked groups. `onResize` already targets the correct pair
- *  of groups (it is bound at the call site), so this only reports the pointer's fraction of the column. */
+/** The height resize handle between two stacked groups. `onResize` is bound to the right pair at the
+ *  call site, so this only reports the pointer's fraction of the column. */
 function GroupDivider({ onResize }: { onResize: (upperFraction: number) => void }) {
    function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
       event.preventDefault()

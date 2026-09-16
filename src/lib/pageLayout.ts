@@ -1,31 +1,19 @@
-/**
- * The measured paginator for the paged (A4) format: automatic reflow.
+/*
+ * The measured paginator for the paged (A4) format: automatic reflow. partitionIntoPages cuts at
+ * EXPLICIT breaks only, so a paragraph or list running past a sheet is forced whole onto the next,
+ * leaving a gap. This module fills it: given the rendered HEIGHTS of the content (measured from the DOM,
+ * never predicted) plus the available height, it greedily fills each sheet and splits a `list`/
+ * `checklist` at the last root item that fits, a `p` at a rendered-line boundary (when its lines are
+ * known and it is not held atomic). Other block types stay atomic.
  *
- * `pageModel.partitionIntoPages` cuts the flat block flow at EXPLICIT breaks only, so a paragraph or
- * list that runs past the bottom of a sheet is forced whole onto the next one, leaving a blank gap
- * (and a single block taller than the page dead-ends). This module fills that gap: given the rendered
- * HEIGHTS of the content (measured from the DOM, never predicted) plus the available content height,
- * it greedily fills each sheet and, when a `list`/`checklist` block would overrun, splits it at the
- * last root item that fits and continues the remainder on the next sheet. A `p` block splits the same
- * way at a rendered-line boundary (when its per-line metrics are known and it is not held atomic).
- * Other block types stay atomic (moved whole to the next sheet, or left to overflow when taller than a
- * whole page).
+ * Reflow is a LAYOUT DERIVATION, never a model mutation: a spanning list is expressed as shallow-copied
+ * list blocks holding only that page's item slice, a spanning paragraph as shallow `p` blocks holding
+ * only that page's char slice, so the existing slice renderers need no fragment-awareness.
  *
- * Reflow is a LAYOUT DERIVATION, never a model mutation: the Section/Block flow is untouched. A
- * spanning list is expressed as SHALLOW-COPIED list blocks whose `items` hold only that page's slice,
- * and a spanning paragraph as shallow `p` blocks whose `richText` holds only that page's char slice, so
- * the existing slice renderers (editor `renderPageSlice`, export `exportBlock`) need no
- * fragment-awareness; a continuation simply renders as another `<ul>` or `<p>`.
- *
- * Heights are width-stable: an item / block height depends only on the content width (constant across
- * sheets of one format), never on where the break lands, so the caller measures once per content
- * version and this function re-paginates purely, with no feedback loop.
- *
- * Explicit breaks (`format.pages`) still win: a forced break is a hard page start, and auto-flow only
- * fills the space between forced breaks. Auto-created pages carry a synthetic id (see `AUTO_PAGE_PREFIX`)
- * so the editor / Pages panel can tell a continuation sheet from an author-made one.
- *
- * No React, no DOM: pure and unit-testable, a sibling to pageModel.ts / pageOverflow.ts.
+ * Heights are width-stable (they depend only on content width, not where the break lands), so the caller
+ * measures once per content version and this re-paginates purely, no feedback loop. Explicit breaks
+ * still win; auto-flow only fills the space between them. Auto pages carry a synthetic id
+ * (`AUTO_PAGE_PREFIX`) so the editor can tell a continuation sheet from an author-made one.
  */
 
 import type { Block, Section } from '../types'
@@ -38,10 +26,9 @@ import { FIRST_PAGE_ID, A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, A4_PORTRAIT
 // # CONSTANTS #
 // #############
 
-// Auto-created (continuation) pages carry an id with this prefix, distinct from FIRST_PAGE_ID and the
-// crypto.randomUUID ids of explicit PageBreaks. Lets the editor / panel treat a continuation sheet as
-// non-operable (its content belongs to the block flowing onto it), and keeps React keys stable across
-// re-measures because the id is derived from the content that starts the page.
+// Auto (continuation) page ids carry this prefix, distinct from FIRST_PAGE_ID and PageBreak UUIDs. Lets
+// the editor treat a continuation sheet as non-operable, and keeps React keys stable across re-measures
+// (the id is derived from the content that starts the page).
 export const AUTO_PAGE_PREFIX = 'auto:'
 
 /** Whether a page id names an auto-created continuation page (vs. the first page or an explicit break). */
@@ -62,10 +49,9 @@ export interface ParagraphLine {
 }
 
 /**
- * The height oracle the paginator reads, in CSS px. Supplied by the measuring hook from the real DOM
- * (or by tests as synthetic numbers). Every height INCLUDES the element's own top + bottom margin, so
- * summing consumed heights approximates the rendered stack; a small over/under-estimate at a page seam
- * is acceptable (the sheet is min-height on screen and overflow-hidden in print).
+ * The height oracle the paginator reads, in CSS px, supplied by the measuring hook from the real DOM.
+ * Every height INCLUDES the element's own top + bottom margin, so summing consumed heights approximates
+ * the rendered stack; a small over/under-estimate at a page seam is acceptable.
  */
 export interface LayoutMetrics {
    /** The page-1 document header's consumed height (0 when it is absent or not measured yet). */
@@ -84,10 +70,8 @@ export interface LayoutMetrics {
 
 /**
  * The rendered heights read from the DOM (CSS px), keyed by stable model id so they survive
- * re-pagination (a split changes which sheet a unit sits on, never its width, hence never its height).
- * The offscreen measurement pass (`measureHeightsFromContainer`, driven by `computeDocumentPages` in
- * lib/exportLayout) produces this; `buildMetrics` turns it into a `LayoutMetrics`. Kept here (pure) so
- * the one paginator that every surface draws from builds the SAME metrics and paginates identically.
+ * re-pagination (a split never changes a unit's width, hence never its height). The offscreen
+ * measurement pass produces this; `buildMetrics` turns it into a `LayoutMetrics`.
  */
 export interface MeasuredHeights {
    header:             number
@@ -104,16 +88,15 @@ export const EMPTY_HEIGHTS: MeasuredHeights = {
 
 /**
  * Build the paginator's height oracle from measured heights and the model (which names the splittable
- * list blocks and their root item ids). An unmeasured item (a freshly added one, before the next
- * measure) is ESTIMATED from the average of the list's measured items, so adding an item keeps the
- * existing split stable instead of flashing the whole list back onto one page. A list with ZERO
- * measured items stays atomic (the one-time bootstrap before the first measure).
+ * list blocks and their root item ids). An unmeasured item (freshly added, before the next measure) is
+ * ESTIMATED from the average of the list's measured items, so adding an item keeps the split stable
+ * instead of flashing the list back onto one page. A list with ZERO measured items stays atomic.
  */
 export function buildMetrics(heights: MeasuredHeights, sections: Section[]): LayoutMetrics {
    const listRootItemIds = new Map<string, string[]>()
    const paragraphBlockIds = new Set<string>()
-   // Model char count per top-level `p` block, so measured lines whose total no longer matches (an edit
-   // landed since the last measure) can be rejected as stale rather than slicing at the wrong offsets.
+   // Model char count per `p` block, so measured lines whose total no longer matches (an edit landed) are
+   // rejected as stale rather than sliced at wrong offsets.
    const paragraphCharCount = new Map<string, number>()
    for (const section of sections)
       for (const block of section.blocks) {
@@ -139,15 +122,12 @@ export function buildMetrics(heights: MeasuredHeights, sections: Section[]): Lay
          return measured.map(height => height ?? average)
       },
       paragraphLines:     (blockId) => {
-         // Only a `p` block splits; and only once its lines are measured. A freshly typed paragraph
-         // with no measured lines stays atomic (null) so it is never split at a stale offset.
+         // Only a `p` block splits, and only once its lines are measured (else it stays atomic).
          if (!paragraphBlockIds.has(blockId)) return null
          const lines = heights.paragraphLinesById.get(blockId)
          if (!lines || lines.length === 0) return null
-         // The last measured line ends at the paragraph's char count AT MEASURE TIME. If the model no
-         // longer holds that many chars the measurement predates the current text, so keep the block
-         // whole (return null) until the next measure re-reads it, rather than slicing at stale offsets
-         // that would drop or misplace characters.
+         // The last line ends at the char count AT MEASURE TIME; if the model no longer holds that many
+         // chars the measurement is stale, so keep the block whole until the next measure re-reads it.
          const measuredTotal = lines[lines.length - 1].charEnd
          const modelTotal    = paragraphCharCount.get(blockId) ?? measuredTotal
          if (measuredTotal !== modelTotal) return null
@@ -173,16 +153,12 @@ export function allParagraphIds(sections: Section[]): Set<string> {
 }
 
 /**
- * Reconcile a re-measure pass's paragraph line data with the previous pass. For every paragraph still
- * in the model, keep a freshly measured set when one is available (the paragraph rendered whole with a
- * live rich-text element and produced at least one line), otherwise CARRY FORWARD the previous pass's
- * lines. Two cases depend on this: a paragraph split at rest renders as read-only fragments with no
- * measurable element, so it never has a fresh measurement and must retain its last whole-render lines;
- * and a whole render can momentarily report zero line boxes (an element not yet laid out), which must
- * not wipe good data either. Carrying stale lines is safe because the buildMetrics length guard keeps
- * the paragraph whole until a fresh measurement lands whenever an edit has changed its char count.
- * Only ids in `paragraphIds` (the current model paragraphs) are carried, so a removed paragraph's lines
- * are dropped. Pure so the measure hook and its tests share the exact retention rule.
+ * Reconcile a re-measure pass's paragraph line data with the previous pass: keep a fresh set when one is
+ * available, otherwise CARRY FORWARD the previous lines. Two cases need this: a paragraph split at rest
+ * renders as read-only fragments with no measurable element (so it never re-measures and must keep its
+ * last whole-render lines), and a whole render can momentarily report zero line boxes. Carrying stale
+ * lines is safe because the buildMetrics length guard keeps the paragraph whole until a fresh
+ * measurement lands after an edit. Only ids in `paragraphIds` are carried, so a removed paragraph drops.
  */
 export function reconcileParagraphLines(
    paragraphIds:  Iterable<string>,
@@ -207,33 +183,24 @@ export function contentBoxHeightPx(format: DocFormat | undefined): number {
    return sheetHeight - millimetresToPx(margins.top) - millimetresToPx(margins.bottom)
 }
 
-/** A slack band left UNFILLED at the bottom of every auto-flowed sheet. A manually placed break (the old
- *  out-of-bounds "cut here") always left room below its last block, so its page never filled to the brim
- *  and never clipped in print. The measured paginator instead fills each sheet to the exact content box,
- *  and in print that razor's-edge packing clips: a printed sheet holds a hair LESS than the CSS math
- *  says (per-line sub-pixel rounding accumulated over a full page, font-metric drift between the
- *  off-screen measurement and the print render, Chrome's per-sheet `100vh` rounding), and a page filled
- *  to the brim spills past the fixed `height:100vh; overflow:hidden` sheet so the tail is silently cut.
- *  Reserving this band gives every auto page the same breathing room a manual break always had. Sized to
- *  cover a splittable block's own bottom margin (which the line/item sums omit) plus a line of drift. */
+/** A slack band left UNFILLED at the bottom of every auto-flowed sheet. Packing a sheet to the exact
+ *  content box clips in print: a printed sheet holds a hair LESS than the CSS math says (sub-pixel line
+ *  rounding over a page, font-metric drift between measurement and print, Chrome's `100vh` rounding), and
+ *  a brim-full page spills past the fixed `height:100vh; overflow:hidden` sheet so the tail is cut.
+ *  Reserving this gives every auto page breathing room; sized to cover a splittable block's own bottom
+ *  margin (the line/item sums omit it) plus a line of drift. */
 export const PAGE_FILL_RESERVE_PX = 40
 
-/** The height the paginator may fill on one sheet: the content box minus the slack band, so auto pages
- *  keep the breathing room manual breaks always had and never pack to the razor's edge the print sheet
- *  cannot hold. There is now exactly ONE paginator (computeDocumentPages), so this single budget shapes
- *  every surface at once: editor, Pages panel, Preview, and the PDF/HTML export can never disagree. */
+/** The height the paginator may fill on one sheet: the content box minus the slack band. One budget
+ *  shapes every surface (editor, Pages panel, Preview, export), so they can never disagree. */
 export function paginationBudgetPx(format: DocFormat | undefined): number {
    return Math.max(0, contentBoxHeightPx(format) - PAGE_FILL_RESERVE_PX)
 }
 
 /**
- * The A4 content-box WIDTH (sheet width minus left/right margins) for a paged format, in CSS px. This is
- * the width text wraps at on a paged sheet, and the SAME width the offscreen export measurement renders
- * its content at, so both the editor sheet and the export measure heights over one width. An infinite (or
- * absent) format has no fixed sheet width, so it returns 0: the paged measurement never calls it there
- * (an infinite export is not paginated), and 0 is an explicit "no paged width" sentinel. Kept beside
- * contentBoxHeightPx so the paged width and height come from one place and the width-parity guard test can
- * pin the measurement width to the rendered sheet width.
+ * The A4 content-box WIDTH (sheet width minus left/right margins) in CSS px: the width text wraps at, and
+ * the same width the offscreen export measurement renders at, so both measure heights over one width. An
+ * infinite / absent format returns 0, an explicit "no paged width" sentinel (it is never paginated).
  */
 export function contentBoxWidthPx(format: DocFormat | undefined): number {
    if (!format || format.kind === 'infinite') return 0
@@ -266,12 +233,10 @@ function sliceParagraphBlock(block: Block, charStart: number, charEnd: number, i
 // ##############
 
 /**
- * Lay the section/block flow out into height-fitted pages. Honours explicit breaks exactly like
- * `partitionIntoPages` (leading `after:null` breaks are blank pages, breaks stacked on one anchor are
- * consecutive blanks), then auto-flows the content between them so nothing overruns a sheet. Always
- * returns at least one page. Pure: it re-references the same Block objects (list / paragraph fragments
- * are shallow copies) and never mutates `sections`. A `p` block whose id is in `atomicBlockIds` (or
- * whose lines are unmeasured) stays whole; otherwise it splits across sheets at a line boundary.
+ * Lay the section/block flow out into height-fitted pages. Honours explicit breaks like
+ * `partitionIntoPages`, then auto-flows the content between them so nothing overruns a sheet. Always at
+ * least one page; pure (shallow-copies fragments, never mutates `sections`). A `p` in `atomicBlockIds`
+ * (or with unmeasured lines) stays whole; otherwise it splits at a line boundary.
  */
 export function paginate(
    sections:        Section[],
@@ -300,24 +265,20 @@ export function paginate(
       return block.type === 'h3' || block.type === 'h4'
    }
 
-   // A block that must be placed WHOLE, never split. Two sources feed it: `atomicBlockIds` (the editor
-   // holds the focused paragraph whole while it is being typed) and the persisted `keepTogether` flag
-   // (an author choosing to keep a paragraph / list on one page). Reading both here means editor and
-   // export honour the model flag identically, since the flag rides on the block, not on a caller.
+   // A block placed WHOLE, never split. Two sources: `atomicBlockIds` (the editor holds the focused
+   // paragraph whole while typing) and the persisted `keepTogether` flag. Reading both here means editor
+   // and export honour the flag identically.
    function isHeldAtomic(block: Block): boolean {
       return atomicBlockIds.has(block.id) || block.keepTogether === true
    }
 
-   // The smallest indivisible leading piece of a block that has to travel with a keeper above it. For a
-   // splittable list it is the first item, for a splittable paragraph the first line (and I reserve the
-   // second line too when it exists, so a heading is never followed by one dangling line then a break),
-   // and for anything atomic the whole height (an atomic block cannot be placed in pieces). Reserving one
-   // atom is enough because the split loops are guaranteed to place at least that atom once its room is
-   // held, which keeps the reservation self-consistent with placement.
+   // The smallest indivisible leading piece that must travel with a keeper above: the first item of a
+   // splittable list, the first line (plus the second when present, so a heading is never followed by one
+   // dangling line) of a splittable paragraph, the whole height of anything atomic. One atom is enough
+   // because the split loops always place at least that atom once its room is held.
    function firstAtomHeight(block: Block): number {
-      // A held block (keep-together, or atomic in the editor) is never placed in pieces, so as a keeper's
-      // companion it reserves its WHOLE height, not a first item / line. Checked first so a held list is
-      // held whole too, not reserved by its first item.
+      // A held block is never placed in pieces, so as a keeper's companion it reserves its WHOLE height.
+      // Checked first so a held list is held whole, not reserved by its first item.
       if (isHeldAtomic(block)) return metrics.blockHeight(block.id)
       const items = metrics.listItemHeights(block.id)
       if (items && items.length > 0) return items[0]
@@ -327,10 +288,9 @@ export function paginate(
       return metrics.blockHeight(block.id)
    }
 
-   // Extra height that must stay on the same sheet as a keeper placed just before `blocks[index]`. I chain
-   // through a run of consecutive headings so the first heading keeps the whole cluster, and I stop the
-   // chain at a heading the author pinned with a forced break (it keeps only itself, so keep-with-next
-   // never silently undoes an explicit break). Bounded by the finite block run; 0 past the end.
+   // Extra height that must stay on the sheet with a keeper placed just before `blocks[index]`. Chains
+   // through consecutive headings so the first keeps the whole cluster, but stops at a heading pinned by a
+   // forced break, so keep-with-next never undoes an explicit break. 0 past the end.
    function trailingKeepHeight(blocks: Block[], index: number): number {
       if (index >= blocks.length) return 0
       const next = blocks[index]
@@ -354,8 +314,8 @@ export function paginate(
    }
 
    // Close the current sheet and open the next. `continuation` keeps the current section open as a
-   // no-title continuation slice (auto-flow mid-section); otherwise the next block re-opens a slice.
-   // `origin` records how the new page came to exist (see Page.origin), stamped at creation time.
+   // no-title continuation slice; otherwise the next block re-opens a slice. `origin` records how the
+   // new page came to exist.
    function startPage(nextId: string, continuation: boolean, origin: Page['origin']): void {
       pages.push({ id: pageId, slices, origin: pageOrigin })
       pageId = nextId
@@ -371,18 +331,15 @@ export function paginate(
       }
    }
 
-   // An auto (height-driven) break: synthetic id derived from the content that will start the next page,
-   // so it stays stable across re-measures. `continuation` keeps the current section open as a no-title
-   // continuation slice (mid-block / mid-list flow); pass false when the caller opens its own next slice
-   // (a following section pushed down because its title would not fit). The `continuation` flag doubles as
-   // the origin signal: a continuation page carries a block flowing off the previous sheet, while a
-   // non-continuation auto page STARTS fresh content (a section push / empty section / keep-with-next).
+   // An auto (height-driven) break: synthetic id derived from the content starting the next page, so it
+   // stays stable across re-measures. `continuation` keeps the section open as a no-title slice (mid-flow)
+   // and doubles as the origin signal: continuation = a block flowing off the previous sheet, otherwise
+   // the page STARTS fresh content.
    function autoBreak(nextStartKey: string, continuation: boolean): void {
       startPage(`${AUTO_PAGE_PREFIX}${nextStartKey}`, continuation, continuation ? 'continuation' : 'auto-start')
    }
 
-   // Leading blank pages: each closes the current (empty) page and opens the next. These come from
-   // explicit break markers, so they are `manual`.
+   // Leading blank pages from explicit markers, so `manual`.
    for (const pageBreak of leadingBreaks) startPage(pageBreak.id, false, 'manual')
 
    for (const section of sections) {
@@ -407,11 +364,9 @@ export function paginate(
          if (openSlice === null) {
             const isStart = !placedAnyBlockOfSection
             if (isStart) {
-               // A section title is a keeper: never leave it stranded at a page bottom while its first
-               // block flows onto the next sheet. I keep the original title-alone break (a fresh page is
-               // strictly better when even the title cannot fit) and add keep-with-next only when the
-               // title plus its first atom could actually fit a fresh page, else a break just re-orphans
-               // the pair one sheet later.
+               // A section title is a keeper: never stranded at a page bottom while its first block flows
+               // onto the next sheet. Break for a title that cannot fit, and add keep-with-next only when
+               // title plus first atom could fit a fresh page (else a break just re-orphans the pair).
                const titleHeight     = metrics.sectionTitleHeight(section.id)
                const need            = titleHeight + trailingKeepHeight(section.blocks, 0)
                const breakForTitle   = titleHeight > remaining()
@@ -433,8 +388,7 @@ export function paginate(
          placedAnyBlockOfSection = true
          if (blockIndex === section.blocks.length - 1 && openSlice) openSlice.isSectionEnd = true
 
-         // Explicit break(s) after this block: the first starts the next content page, extras are blanks.
-         // Both are author-made, so `manual`.
+         // Explicit break(s) after this block: first starts the next page, extras are blanks (all `manual`).
          const cuts = breaksAfterBlockId.get(block.id)
          if (cuts) {
             for (const pageBreak of cuts) startPage(pageBreak.id, false, 'manual')
@@ -446,26 +400,20 @@ export function paginate(
    pages.push({ id: pageId, slices, origin: pageOrigin })
    return pages
 
-   // Place one block on the current page, auto-breaking (and, for a splittable list or paragraph,
-   // splitting) so it fits. `openSlice` is guaranteed non-null on entry. `keepWith` is the height that
-   // must stay on this sheet with `block` (its keep-with-next companion): non-zero for a heading or a
-   // block the author flagged keepWithNext, 0 for every other block, so unflagged non-heading placement is
-   // byte-identical to before.
+   // Place one block on the current page, auto-breaking (and splitting a splittable list / paragraph) so
+   // it fits. `openSlice` is non-null on entry. `keepWith` is the height that must stay on this sheet with
+   // `block` (its keep-with-next companion): non-zero for a heading or a keepWithNext block, else 0.
    function placeBlock(block: Block, keepWith: number): void {
       const itemHeights    = metrics.listItemHeights(block.id)
       const paragraphLines = metrics.paragraphLines(block.id)
-      // A paragraph splits only when its lines are known AND it is not held whole (the editor / Pages
-      // panel pass every paragraph id as atomic so they render whole; export passes none; a keepTogether
-      // paragraph is held whole in both).
+      // A paragraph splits only when its lines are known AND it is not held whole (editor passes every
+      // paragraph as atomic, export passes none, keepTogether holds it whole in both).
       const splitParagraph = !!paragraphLines && paragraphLines.length > 0 && !isHeldAtomic(block)
 
-      // Manual keep-with-next for a SPLITTABLE keeper (a paragraph or list the user pinned to travel with
-      // the block after it; the atomic branch already handles atomic keepers). The common case is a short
-      // block that fits whole but whose companion would not fit after it: break so the pair starts a fresh
-      // page together. Uses the block's whole height, so a block long enough to actually split still spans
-      // pages (its tail is best-effort, I never manufacture a widow to force it). keepWith is 0 for any
-      // block without the flag, and used > 0 gates the loop, so this is inert otherwise. After autoBreak
-      // resets used to 0 the used > 0 guard is false, so it can never double-break.
+      // Manual keep-with-next for a SPLITTABLE keeper. The common case: a short block that fits whole but
+      // whose companion would not fit after it, so break to start the pair on a fresh page. Uses the whole
+      // height, so a block long enough to split still spans pages. Inert without the flag (keepWith 0), and
+      // the used > 0 guard means autoBreak resetting used to 0 can never double-break.
       const isSplittableList = !!itemHeights && itemHeights.length > 0
       if (keepWith > 0 && used > 0 && !isHeldAtomic(block) && (splitParagraph || isSplittableList)) {
          const wholeHeight = metrics.blockHeight(block.id)
@@ -473,15 +421,13 @@ export function paginate(
       }
 
       if (splitParagraph) {
-         // Splittable paragraph: fill rendered lines across pages, cutting the richText at the char
-         // offset ending the last line that fits. Continuation page keys use a continuation ORDINAL
-         // (not the line index) so nudging the boundary while typing keeps the key stable, exactly like
-         // the list branch below.
+         // Splittable paragraph: fill rendered lines across pages, cutting richText at the char offset
+         // ending the last line that fits. Continuation keys use a continuation ORDINAL (not the line
+         // index) so nudging the boundary while typing keeps the key stable.
          const lines = paragraphLines!
-         // The block's own top+bottom margin, backed out of its whole-block height minus its line sum
-         // (blockHeight already includes it, same as the atomic branch below; the line sum does not, since
-         // each ParagraphLine is a bare rendered-line height). It is bottom-only in the stylesheet, so it
-         // belongs on the LAST page the paragraph occupies, never a mid-split page.
+         // The block's own margin, backed out of its whole height minus the line sum (blockHeight includes
+         // it, the line sum does not). Bottom-only in the stylesheet, so it belongs on the LAST page the
+         // paragraph occupies, not a mid-split page.
          const totalLineHeight = lines.reduce((accumulator, line) => accumulator + line.height, 0)
          const paragraphMargin = Math.max(0, metrics.blockHeight(block.id) - totalLineHeight)
          let startLine    = 0
@@ -507,17 +453,14 @@ export function paginate(
 
             const charEnd = lines[endLine - 1].charEnd
             const isTail  = endLine === lines.length
-            // A single piece covering the whole richText means the paragraph fit without an auto-break:
-            // it is NOT split, so push the ORIGINAL untagged block (which renders as a normal editable
-            // paragraph). Only a genuine cross-page piece carries a `paragraphFragment` tag (which forces
-            // the read-only fragment rendering). A paragraph pushed whole onto a fresh continuation page
-            // still counts as whole here.
+            // A single piece covering the whole richText means the paragraph fit without a break: push the
+            // ORIGINAL untagged block (a normal editable paragraph). Only a genuine cross-page piece
+            // carries a `paragraphFragment` tag (forcing read-only fragment rendering).
             const whole = charStart === 0 && endLine === lines.length
             openSlice!.blocks.push(whole ? block : sliceParagraphBlock(block, charStart, charEnd, isTail))
             used += sum
-            // The tail piece (the one ending the paragraph) also spends the block's own margin, matching
-            // the atomic branch's full blockHeight; a mid-block piece adds none (its break is not a real
-            // margin, the paragraph keeps flowing).
+            // The tail piece (ending the paragraph) also spends the block's margin; a mid-block piece adds
+            // none (the paragraph keeps flowing).
             if (isTail) used += paragraphMargin
             charStart = charEnd
             startLine = endLine
@@ -530,14 +473,10 @@ export function paginate(
       }
 
       if (!itemHeights || itemHeights.length === 0 || isHeldAtomic(block)) {
-         // Atomic block: keep it whole. A splittable list held whole (keepTogether) also lands here, so it
-         // is placed via its whole-list `blockHeight` instead of the item-split loop below. Move to a fresh
-         // page when it (plus any keep-with-next companion)
-         // does not fit under existing content; if it does not fit even on an empty page it is simply
-         // taller than the page, place it anyway (the sheet clips it in print, exactly the pre-reflow
-         // "too tall" case). I only break for a companion when the pair could fit a fresh page at all,
-         // else a break re-orphans the keeper one sheet later. keepWith === 0 for every non-heading
-         // block, so this reduces to the original height-only test and stays byte-identical there.
+         // Atomic block: keep it whole (a keepTogether list lands here too, placed via whole-list
+         // blockHeight). Break to a fresh page when it plus any companion does not fit under existing
+         // content; if it does not fit even on an empty page it is simply taller than the page, placed
+         // anyway (clipped in print). Only break for a companion when the pair could fit a fresh page.
          const height        = metrics.blockHeight(block.id)
          const need          = height + keepWith
          const worthBreaking = keepWith === 0 || need <= availableHeight
@@ -548,11 +487,9 @@ export function paginate(
       }
 
       // Splittable list: fill root items across pages, splitting at the last item that fits. The
-      // continuation page key is the block id plus a continuation ORDINAL (0, 1, 2...), not the split
-      // item index, so nudging the boundary by an item while typing keeps the same page key and never
-      // remounts the continuation subtree (which would jump the caret and jitter the canvas).
-      // The block's own top+bottom margin, backed out of its whole-block height minus its item sum, the
-      // same reasoning as paragraphMargin above: blockHeight already counts it, the per-item sum does not.
+      // continuation key uses a continuation ORDINAL, not the item index, so nudging the boundary while
+      // typing keeps the key stable and never remounts the subtree. listMargin is the block's own margin,
+      // backed out of whole height minus the item sum, same reasoning as paragraphMargin.
       const totalItemHeight = itemHeights.reduce((accumulator, height) => accumulator + height, 0)
       const listMargin      = Math.max(0, metrics.blockHeight(block.id) - totalItemHeight)
       let start = 0
@@ -578,8 +515,7 @@ export function paginate(
 
          openSlice!.blocks.push(sliceListBlock(block, start, end))
          used += sum
-         // The tail item piece (the one ending the list) also spends the block's own margin, matching the
-         // atomic branch's full blockHeight; a mid-list piece adds none (the list keeps flowing).
+         // The tail item piece (ending the list) also spends the block's margin; a mid-list piece adds none.
          if (end === itemHeights.length) used += listMargin
          start = end
          if (start < itemHeights.length) {
@@ -595,24 +531,17 @@ export function paginate(
 // ####################
 
 /** One deterministic layout result: the paginated pages, the ids of pages whose single atomic block is
- *  taller than the physical sheet, and the measured heights the layout came from. Pages and too-tall ids
- *  are computed from the SAME heights, so a caller reading the too-tall note can never disagree with the
- *  pages it is annotating. `heights` is carried so App can cache the offscreen measurement pass's heights
- *  and re-paginate synchronously from them on every render. */
+ *  taller than the physical sheet, and the measured heights it came from (all from the SAME heights, so a
+ *  too-tall note can never disagree with the pages). `heights` is carried so App can cache and
+ *  re-paginate synchronously each render. */
 export interface DocumentPages { pages: Page[]; tooTallPageIds: Set<string>; heights: MeasuredHeights }
 
 /**
  * The ids of pages whose ENTIRE content is a single block that cannot fit the physical sheet and cannot
  * reflow off it: only then can auto-reflow do nothing, so the editor notes it. A paragraph or list is
- * splittable, so it spans as many sheets as it needs and is NEVER too tall, UNLESS the author pinned it
- * whole with keepTogether (then it is atomic and can genuinely overflow one sheet). Every other block
- * type is inherently atomic. This is why the note no longer fires on each sheet a long paragraph flows
- * across: a spanning paragraph renders as same-id fragments, and a splittable fragment is skipped here.
- *
- * Measured against the TRUE `contentBoxHeightPx`, not the smaller pagination budget: too-tall is about
- * whether a block fits the real sheet, so the reserved slack band must not count against it. Flagged
- * against the SAME heights that produced `pages`, so the editor's too-tall note can never disagree with
- * the layout it annotates.
+ * splittable and NEVER too tall, unless pinned whole with keepTogether; every other block type is
+ * atomic. Measured against the TRUE `contentBoxHeightPx`, not the pagination budget, since too-tall is
+ * about the real sheet, and against the SAME heights that produced `pages`.
  */
 export function findTooTallPageIds(pages: Page[], heights: MeasuredHeights, contentBoxHeight: number): Set<string> {
    const tooTall = new Set<string>()
@@ -621,8 +550,7 @@ export function findTooTallPageIds(pages: Page[], heights: MeasuredHeights, cont
       const blocks = page.slices.flatMap(slice => slice.blocks)
       if (blocks.length !== 1) continue
       const only = blocks[0]
-      // A splittable block (paragraph / list) reflows across sheets on its own, so it is never too tall
-      // unless the author held it whole with keepTogether. Skip the reflowing case entirely.
+      // A splittable block reflows on its own, so it is never too tall unless held whole (keepTogether).
       const splittable = only.type === 'p' || only.type === 'list' || only.type === 'checklist'
       if (splittable && only.keepTogether !== true) continue
       const height = heights.blockById.get(only.id)
@@ -632,13 +560,11 @@ export function findTooTallPageIds(pages: Page[], heights: MeasuredHeights, cont
 }
 
 /**
- * Paginate a whole document from cached measured heights: the ONE budgeted, empty-atomic-set pagination
- * every on-screen surface and the export share. Pure arithmetic (no DOM, microseconds even for large
- * docs), so App calls it synchronously during render and the export calls it right after measuring fresh
- * heights; both go through this single call site, so the editor canvas, Pages panel, Preview, and the
- * PDF/HTML export can never diverge. Heights are per-block and width-stable, so after a structural edit
- * the surviving blocks keep their correct heights and re-paginate instantly; a brand-new block measures
- * 0 until the next measure lands (buildMetrics estimates/guards these), which is the optimism we want.
+ * Paginate a whole document from cached measured heights: the ONE budgeted pagination every on-screen
+ * surface and the export share. Pure arithmetic, so App calls it synchronously during render and the
+ * export right after measuring; both through this single call site, so no surface can diverge. Heights
+ * are per-block and width-stable, so surviving blocks re-paginate instantly after an edit; a brand-new
+ * block measures 0 until the next measure lands (buildMetrics estimates/guards these).
  */
 export function paginateDocument(sections: Section[], format: DocFormat | undefined, heights: MeasuredHeights): DocumentPages {
    const metrics        = buildMetrics(heights, sections)

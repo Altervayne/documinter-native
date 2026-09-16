@@ -1,19 +1,9 @@
-/**
- * Document-level page format (infinite canvas or paged A4), plus the infinite-canvas width.
- *
- * Pure types, defaults, and normalization for the document `format` field. Rides the same seams as
- * `docTheme` / `docAccent` / `presentation` (see lib/presentation.ts): OpenDocument, the binder's
- * DocPresentation / LoadedDocument / BinderDocumentContent, and the JSON backup. Never inside
- * DocState, and never serialized to `.mint` / `.md` (format is structural chrome, like presentation).
- *
- * `kind` is carried in full so every stored format shape survives normalization, but
- * resolveDocumentSheetWidthPx below only varies the sheet width for the infinite kind: an
- * a4-portrait / a4-landscape document resolves to the same normal width there, because the paged
- * renderer computes its own A4 dimensions independently (see pageModel.ts). `margins` and `pages` are
- * carried on the type so stored data round-trips; this file only normalizes them, it does not
- * consume them.
- *
- * No React, no DOM: pure and unit-testable, mirroring presentation.ts.
+/*
+ * Document-level page format (infinite canvas or paged A4), plus the infinite-canvas width. Pure
+ * types, defaults, and normalization for the document `format` field. Rides the same seams as
+ * docTheme / docAccent / presentation, and like them is never in DocState and never serialized to
+ * `.mint` / `.md` (format is structural chrome). `kind` is carried in full so every stored shape
+ * survives, but resolveDocumentSheetWidthPx only varies the sheet width for the infinite kind. No DOM.
  */
 
 // #########
@@ -158,10 +148,9 @@ function normalizeMargins(raw: unknown): PageMargins | undefined {
    }
 }
 
-/** A single stored PageBreak, permissively normalized (this does not validate the anchor against
- *  live content); malformed entries (missing id/after) are dropped defensively. A null `after` is a
- *  valid leading blank page. Legacy `before`-anchored breaks are converted to `after` upstream at load
- *  (see migrateFormatPageBreaks), which needs the flow, so this reader only understands `after`. */
+/** A single stored PageBreak, permissively normalized (the anchor is not validated against live
+ *  content); malformed entries are dropped. A null `after` is a valid leading blank page. Legacy
+ *  `before`-anchored breaks are converted to `after` upstream, so this reader only understands `after`. */
 function normalizePageBreak(raw: unknown): PageBreak | undefined {
    if (!raw || typeof raw !== 'object') return undefined
    const source = raw as Record<string, unknown>
@@ -240,11 +229,8 @@ function normalizeBand(raw: unknown): PageBand | undefined {
 // # NORMALIZATION #
 // ################
 
-/**
- * Absent-tolerant normalizer (mirrors normalizePresentation): any partial/legacy/malformed value
- * becomes a valid DocFormat, defaulting kind to 'infinite'. Unlike normalizePresentation, this never
- * returns undefined; an absent format IS a well-formed DocFormat (`DEFAULT_FORMAT`), not "no format".
- */
+/** Absent-tolerant: any partial / legacy / malformed value becomes a valid DocFormat, kind defaulting
+ *  to 'infinite'. Never returns undefined; an absent format IS DEFAULT_FORMAT, not "no format". */
 export function normalizeFormat(raw: unknown): DocFormat {
    if (!raw || typeof raw !== 'object') return { ...DEFAULT_FORMAT }
    const source = raw as Record<string, unknown>
@@ -268,12 +254,8 @@ export function normalizeFormat(raw: unknown): DocFormat {
    return result
 }
 
-/**
- * Whether a DocFormat is equivalent to "no format set" (infinite, normal width, no margins, no
- * pages), the state an absent `format` field normalizes to. Used to keep an untouched document's
- * persisted bundle (binder heavy content, JSON backup) byte-clean, mirroring how `presentation` is
- * only ever spread onto storage when it holds something.
- */
+/** Whether a DocFormat equals "no format set" (the state an absent field normalizes to). Used to keep
+ *  an untouched document's persisted bundle byte-clean. */
 export function isDefaultFormat(format: DocFormat): boolean {
    return format.kind === 'infinite'
       && (format.width === undefined || format.width === 'normal')
@@ -289,12 +271,9 @@ export function resolveHeader(format: DocFormat | undefined): PageBand {
    return format?.header ?? {}
 }
 
-/**
- * The footer band to render, DERIVED. The Documinter credit ALWAYS shows and is never stored; the only
- * user control in the footer is an optional page number (the first `pageNumber` item found in
- * `format.footer`). The credit auto-places to avoid it: bottom-right normally, bottom-left when the page
- * number sits right. Any stray non-page-number footer item is ignored.
- */
+/** The footer band, DERIVED. The credit ALWAYS shows and is never stored; the only user control is an
+ *  optional page number (the first `pageNumber` item in `format.footer`). The credit auto-places to
+ *  avoid it: bottom-right normally, bottom-left when the page number sits right. */
 export function resolveFooterBand(format: DocFormat | undefined): PageBand {
    const stored = format?.footer ?? {}
    let pageNumberPosition: BandPosition | undefined
@@ -323,23 +302,16 @@ export function resolveInfiniteWidthPx(width: InfiniteWidth | undefined): number
    return clampCustomWidthPx(width.custom)
 }
 
-/**
- * Resolve the document sheet's max-width in px from a (possibly absent) DocFormat, the single call
- * both the editor sheet (WysiwygArea) and the export `.doc-card` (export.ts) use. Only the infinite
- * kind's width setting matters here: a paged kind (a4-portrait/a4-landscape) resolves to the same
- * normal width, since the paged renderer sizes its own A4 sheet independently (see pageModel.ts).
- * Absent format, or `{ kind: 'infinite' }` with no width, or `{ kind: 'infinite', width: 'normal' }`
- * all resolve to the same 860px.
- */
+/** The document sheet's max-width in px, the single call both the editor sheet and the export
+ *  `.doc-card` use. Only the infinite kind's width matters; a paged kind resolves to the normal width,
+ *  since the paged renderer sizes its own A4 sheet. Absent or infinite+normal both give 860px. */
 export function resolveDocumentSheetWidthPx(format: DocFormat | undefined): number {
    if (!format || format.kind === 'infinite') return resolveInfiniteWidthPx(format?.width)
    return INFINITE_WIDTH_NORMAL_PX
 }
 
-/** Picks the margin-editing mode that best fits a set of four margin values, so the Page setup
- *  window opens on the simplest view that still reproduces them exactly: all four equal collapses to
- *  a single input, a matching top/bottom and left/right pair (that aren't all four equal) collapses
- *  to the vertical/horizontal pair, anything else needs the four independent inputs. */
+/** The simplest margin-editing mode that still reproduces four values exactly: all equal collapses to
+ *  one input, a matching top/bottom and left/right pair to the vertical/horizontal pair, else four. */
 export function deriveMarginMode(margins: PageMargins): MarginMode {
    const allEqual = margins.top === margins.right && margins.top === margins.bottom && margins.top === margins.left
    if (allEqual) return 'allEqual'

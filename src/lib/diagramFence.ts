@@ -1,21 +1,9 @@
-/**
- * diagramFence.ts, the ` ```diagram ` fence serializer / parser for the diagram (nodes + links) block.
- *
- * A diagram block round-trips losslessly through a fenced payload: diagram-level options ride the
- * fence INFO STRING as `key=value` tokens (reusing the shared `fenceInfoString.ts` grammar), and
- * the data rides the fence BODY as TWO Markdown pipe tables, a nodes table + an edges table,
- * separated by a blank line, both parsed with the same `parsePipeTableRow` the table block uses.
- * This is fidelity-first, NOT mermaid: a manually positioned diagram's load-bearing state
- * (x/y/size/shape/style) is exactly what plain mermaid cannot express, so the native format stores
- * the model directly.
- *
- * The two tables are classified by their HEADER (a nodes table's first header cell is `id`; an
- * edges table's is `from`), so their order is robust to hand editing and either can be absent.
- *
- * Both directions are total: `diagramSpecToFence` never throws on a partial spec, and
- * `fenceToDiagramSpec` never throws on a malformed fence (a bad coordinate defaults, an unknown
- * shape falls back to `rectangle`, an edge to a missing node is KEPT in the model, the renderer
- * skips it at draw time, so a hand-edited file can never break the document).
+/*
+ * The ` ```diagram ` fence serializer / parser. Diagram-level options ride the fence INFO STRING as
+ * `key=value` tokens; the data rides the BODY as two Markdown pipe tables (nodes + edges) split by a
+ * blank line. Fidelity-first, not mermaid: it stores a manually positioned diagram's load-bearing
+ * state (x/y/size/shape/style) directly. Both directions are total: a malformed fence degrades
+ * per-field, so a hand-edited file can never break the document.
  */
 
 import type {
@@ -39,8 +27,7 @@ function serializeInfoTokens(options: DiagramOptions): string[] {
    if (options.title !== undefined && options.title !== '') {
       tokens.push(`title=${serializeInfoValue(options.title)}`)
    }
-   // The explicit canvas extent rides as `canvas=<w>x<h>` (no spaces, so it needs no quoting); an
-   // absent canvas means "autofit" and emits no token, keeping an untouched diagram's fence lean.
+   // Canvas rides as `canvas=<w>x<h>` (no spaces, so no quoting); an absent canvas emits no token.
    if (options.canvas
       && Number.isFinite(options.canvas.width) && Number.isFinite(options.canvas.height)
       && options.canvas.width > 0 && options.canvas.height > 0) {
@@ -49,10 +36,10 @@ function serializeInfoTokens(options: DiagramOptions): string[] {
    return tokens
 }
 
-/** Parse the info string (the whole `diagram ...` line after the backticks) into options. */
+/** Parse the info string (the whole `diagram ...` line) into options. */
 function parseInfoString(fenceInfo: string): DiagramOptions {
    const tokens = tokenizeInfoString(fenceInfo)
-   // tokens[0] is the `diagram` tag itself; options start at index 1.
+   // tokens[0] is the `diagram` tag; options start at index 1.
    const options: DiagramOptions = {}
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
@@ -83,24 +70,20 @@ function parseCanvasToken(value: string): { width: number; height: number } | nu
 // ##########################
 // # LABEL CELL CODEC       #
 // ##########################
-// A pipe-table cell is one physical line, so a multi-line label ('\n') and a literal pipe both
-// need encoding. Pipes are handled by escapePipeCell/parsePipeTableRow (the `\|` convention the
-// table block already uses); newlines and backslashes are handled here so the codec composes
-// cleanly with the pipe escaping and stays lossless.
+// A pipe-table cell is one physical line, so a multi-line label and a literal pipe both need
+// encoding. Pipes ride the `\|` convention parsePipeTableRow uses; newlines and backslashes are
+// handled here so the codec composes cleanly with the pipe escaping and stays lossless.
 
 /** Encode a label for a pipe-table cell: escape backslashes, newlines, then pipes (in that order). */
 function encodeLabelCell(label: string): string {
    return label
-      .replace(/\\/g, '\\\\')   // backslash first, so the escapes we add next aren't double-hit
-      .replace(/\n/g, '\\n')    // newline -> literal backslash-n
-      .replace(/\|/g, '\\|')    // pipe -> escaped pipe (matches parsePipeTableRow)
+      .replace(/\\/g, '\\\\')   // backslash first, so the escapes added next aren't double-hit
+      .replace(/\n/g, '\\n')
+      .replace(/\|/g, '\\|')    // matches parsePipeTableRow
 }
 
-/**
- * Decode a cell value that `parsePipeTableRow` already returned (pipes de-escaped) back to the
- * label text, resolving `\n` -> newline and `\\` -> backslash. A trailing lone backslash, or an
- * `\<other>`, keeps the following character literally (lenient, never throws).
- */
+/** Decode a cell `parsePipeTableRow` already de-escaped, resolving `\n` and `\\`. A lone trailing
+ *  backslash keeps the following character literally (lenient, never throws). */
 function decodeLabelCell(cell: string): string {
    let result = ''
    let index = 0
@@ -135,16 +118,15 @@ function parseNumberCell(raw: string | undefined, fallback: number): number {
    return Number.isFinite(parsed) ? parsed : fallback
 }
 
-/** A group of consecutive pipe-table rows (the raw lines) plus its parsed header cells. */
+/** A group of consecutive pipe-table rows plus its parsed header cells. */
 interface TableGroup {
    headerCells: string[]
-   /** Body rows (header + optional separator already removed). */
+   /** Header + optional separator already removed. */
    bodyRows: string[][]
 }
 
-/** A column-name -> column-index lookup, built from a table group's (lower-cased) header cells.
- *  Lets the parsers read cells by NAME so a hand-edited fence with reordered / partial columns
- *  still resolves each field correctly (self-describing by header). */
+/** A column-name -> index lookup from the header cells, so the parsers read cells by NAME and a
+ *  hand-edited fence with reordered/partial columns still resolves each field. */
 function columnIndex(headerCells: string[]): Map<string, number> {
    const index = new Map<string, number>()
    headerCells.forEach((cell, position) => {
@@ -163,11 +145,8 @@ function cellByName(cells: string[], columns: Map<string, number>, ...names: str
    return undefined
 }
 
-/**
- * Split the fence body into its constituent pipe tables (runs of consecutive `|`-lines separated
- * by blank lines), parsing each into a header + body-rows group. A leading separator row directly
- * after the header is skipped. Non-pipe lines are ignored, so stray prose can't break parsing.
- */
+/** Split the fence body into its pipe tables (runs of `|`-lines separated by blank lines), each a
+ *  header + body-rows group. A leading separator row is skipped; non-pipe lines are ignored. */
 function splitTables(body: string): TableGroup[] {
    const groups: TableGroup[] = []
    let currentLines: string[] = []
@@ -202,7 +181,7 @@ function splitTables(body: string): TableGroup[] {
 const NODE_HEADER = '| id | shape | label | x | y | w | h | fill | stroke | text |'
 const NODE_SEPARATOR = '| --- | ----- | ----- | - | - | - | - | ---- | ------ | ---- |'
 
-/** Serialize the nodes to the nodes pipe table (header + separator + one row per node). */
+/** Serialize the nodes to the nodes pipe table. */
 function serializeNodesTable(nodes: DiagramNode[]): string {
    const rows = nodes.map(node => {
       const cells = [
@@ -278,8 +257,7 @@ function parseWaypoints(raw: string | undefined): { x: number; y: number }[] {
    return points
 }
 
-/** Serialize the edges to the edges pipe table. Hand-routed waypoints ride their own compact
- *  `x,y;x,y` cell so an elbowed edge round-trips losslessly. */
+/** Serialize the edges to the edges pipe table. */
 function serializeEdgesTable(edges: DiagramEdge[]): string {
    const rows = edges.map(edge => {
       const cells = [
@@ -307,7 +285,7 @@ function parseEdgesTable(group: TableGroup): DiagramEdge[] {
       const from = decodeLabelCell(cellByName(cells, columns, 'from') ?? '').trim()
       const to = decodeLabelCell(cellByName(cells, columns, 'to') ?? '').trim()
       if (from === '' || to === '') continue
-      // An id is optional in a hand-edited fence; synthesize a stable one so the editor keys hold.
+      // A hand-edited fence may omit the id; synthesize a stable one so the editor keys hold.
       const idCell = decodeLabelCell(cellByName(cells, columns, 'id') ?? '').trim()
       const id = idCell !== '' ? idCell : `edge-${autoId}`
       autoId++
@@ -339,27 +317,20 @@ function parseEdgesTable(group: TableGroup): DiagramEdge[] {
 // # PUBLIC API #
 // ################
 
-/**
- * Serialize a DiagramSpec to its fence pieces: the full info string (including the leading
- * `diagram` tag) and the two-table body. The caller wraps them in the ``` ... ``` fence. Same output
- * in both `.mint` and `.md`, a diagram fence is Documint-specific in either format.
- */
+/** Serialize a DiagramSpec to its fence pieces (info string + two-table body). The caller wraps them
+ *  in the ``` fence. Same output in both `.mint` and `.md`. */
 export function diagramSpecToFence(spec: DiagramSpec): { info: string; body: string } {
    const infoTokens = serializeInfoTokens(spec.options ?? {})
    const info = ['diagram', ...infoTokens].join(' ').trimEnd()
    const nodesTable = serializeNodesTable(spec.nodes ?? [])
    const edgesTable = serializeEdgesTable(spec.edges ?? [])
-   // The blank line between the two tables is the group separator splitTables reads back.
+   // The blank line between the tables is the group separator splitTables reads back.
    const body = `${nodesTable}\n\n${edgesTable}`
    return { info, body }
 }
 
-/**
- * Parse a `diagram` fence (its whole info string + its two-table body) back into a DiagramSpec.
- * Total: a malformed or partial fence degrades per-field and yields whatever nodes/edges could be
- * read (possibly empty), never an exception. The two tables are matched by header (`id` = nodes,
- * `from` = edges), so their order does not matter and either can be absent.
- */
+/** Parse a `diagram` fence back into a DiagramSpec. Total: a malformed fence degrades per-field. The
+ *  tables are matched by header (`id` = nodes, `from` = edges), so order does not matter. */
 export function fenceToDiagramSpec(fenceInfo: string, body: string): DiagramSpec {
    const options = parseInfoString(fenceInfo)
    const groups = splitTables(body)
@@ -368,9 +339,7 @@ export function fenceToDiagramSpec(fenceInfo: string, body: string): DiagramSpec
    let edges: DiagramEdge[] = []
    for (const group of groups) {
       const columns = columnIndex(group.headerCells)
-      // An edges table is the one carrying both `from` and `to` columns; anything else with an
-      // `id` column is a nodes table. Header-based (not position-based), so the two `id`-first
-      // tables never confuse each other and a hand-edited column order still classifies right.
+      // An edges table carries both `from` and `to`; anything else with `id` is a nodes table.
       if (columns.has('from') && columns.has('to')) {
          edges = edges.concat(parseEdgesTable(group))
       } else if (columns.has('id')) {

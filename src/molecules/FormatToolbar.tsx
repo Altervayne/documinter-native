@@ -71,9 +71,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    const savedRangeRef    = useRef<Range | null>(null)
    const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-   // Clamped position of the link-creator panel, relative to the toolbar's own box
-   // (the panel is `position: absolute` against the toolbar, its nearest positioned
-   // ancestor), recomputed whenever the panel mounts, see the layout effect below.
+   // Clamped position of the link-creator panel, relative to the toolbar's own box (its positioned
+   // ancestor); recomputed whenever the panel mounts, see the layout effect below.
    const [linkPanelPos, setLinkPanelPos] = useState<Pos>({ top: 0, left: 0 })
 
    const {
@@ -122,9 +121,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             const rect = currentRange.getBoundingClientRect()
             if (!rect.width) { setVisible(false); return }
 
-            // Derive active colors from the start of the selection. Boundary-correct
-            // resolution ensures a freshly-applied color reads back instead of the
-            // preceding (uncolored) run.
+            // Derive active colors from the selection start; boundary-correct so a freshly-applied
+            // color reads back instead of the preceding (uncolored) run.
             const richElement = currentRange.startContainer instanceof HTMLElement
                ? currentRange.startContainer.closest<HTMLElement>('[data-rich]')
                : currentRange.startContainer.parentElement?.closest<HTMLElement>('[data-rich]')
@@ -132,11 +130,9 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                ? deriveActiveColorsAt(richElement, currentRange.startContainer, currentRange.startOffset)
                : { fontColor: undefined, highlightColor: undefined }
 
-            // Desired position centers the toolbar horizontally on the selection
-            // midpoint and places it 44px above the selection, then clamps both axes
-            // two-sided so the toolbar can never render partly off-screen. The toolbar's
-            // own rendered size is measured directly (it's always mounted, just
-            // opacity/pointer-events toggled), so the clamp works against the real box.
+            // Center on the selection midpoint, 44px above it, then clamp both axes so the toolbar
+            // never renders partly off-screen. It is always mounted (opacity toggled), so its
+            // measured box is real.
             const toolbarBoundingRect = toolbarInnerRef.current?.getBoundingClientRect()
             const toolbarWidth  = toolbarBoundingRect?.width  ?? 0
             const toolbarHeight = toolbarBoundingRect?.height ?? 0
@@ -147,9 +143,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
             const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - toolbarWidth  - CLAMP_MARGIN))
             const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - toolbarHeight - CLAMP_MARGIN))
 
-            // Snap the translate to whole pixels: a fractional translate renders the toolbar (and the
-            // link panel nested inside its transformed box) off the pixel grid, which the browser
-            // anti-aliases into a blur that reads like an unwanted scale.
+            // Whole pixels: a fractional translate lands the toolbar off the pixel grid, which the
+            // browser blurs into what reads like an unwanted scale.
             setPos({ top: Math.round(clampedTop), left: Math.round(clampedLeft) })
             setFormatState({
                bold:           document.queryCommandState('bold'),
@@ -185,10 +180,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    // # LINK PANEL POSITION, VIEWPORT CLAMP (measured, two-sided) #
    // ##############################################################
 
-   // Recomputed each time the link panel mounts (it unmounts/remounts with linkMode,
-   // so its content, and therefore its size, is fresh every time this runs). Measures
-   // the panel's real rendered box, then clamps the desired centered-below-toolbar
-   // position two-sided so the panel can never render partly off-screen.
+   // Recomputed each time the link panel mounts (it remounts with linkMode, so its size is fresh):
+   // measure its box, then clamp the centered-below-toolbar position so it never renders off-screen.
    useLayoutEffect(() => {
       if (!linkMode) return
       const panelElement   = linkPanelRef.current
@@ -204,10 +197,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
       const clampedLeft = Math.max(CLAMP_MARGIN, Math.min(desiredLeft, window.innerWidth  - panelBoundingRect.width  - CLAMP_MARGIN))
       const clampedTop  = Math.max(CLAMP_MARGIN, Math.min(desiredTop,  window.innerHeight - panelBoundingRect.height - CLAMP_MARGIN))
 
-      // The panel is `position: absolute` against the toolbar (its nearest positioned
-      // ancestor), so the clamped viewport coordinates are converted back into an
-      // offset relative to the toolbar's own box before being stored. Rounded to whole
-      // pixels so the panel never lands on a fractional offset (which blurs its text).
+      // The panel is absolute against the toolbar, so convert the clamped viewport coords back into
+      // an offset from the toolbar's box. Whole pixels, else a fractional offset blurs its text.
       setLinkPanelPos({
          top:  Math.round(clampedTop  - toolbarBoundingRect.top),
          left: Math.round(clampedLeft - toolbarBoundingRect.left),
@@ -243,10 +234,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
    // ##########
 
    return (
-      // Outer div: handles fixed positioning only.
-      // Inner div: handles visual appearance + enter/exit animation.
-      // Keeping them separate avoids a transform conflict between the
-      // positioning translate and the animation scale.
+      // Outer div positions (translate), inner div animates (scale): kept separate so the two
+      // transforms never conflict.
       <div
          ref={toolbarRef}
          className={`fixed z-9999 ${visible ? 'pointer-events-auto' : 'pointer-events-none'}`}
@@ -259,12 +248,8 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                visible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.97]'
             }`}
          >
-            {/* ==================== */}
-            {/*  Toolbar buttons row */}
-            {/* ==================== */}
             <div className="flex items-center gap-0.5 px-1.5 py-1">
 
-               {/* Formatting group */}
                <button className={formatButtonClass(formatState.bold)}   title={t.formatBold}         onClick={() => { execFormatCommand('bold');   refreshFormatState() }}>
                   <Bold size={13} />
                </button>
@@ -289,16 +274,13 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   <Strikethrough size={13} />
                </button>
 
-               {/* Link group */}
                <div className="w-px h-4 bg-border mx-1" />
                <button className={formatButtonClass(linkMode)} title={t.formatLink} onClick={openLinkMode}>
                   <Link size={13} />
                </button>
 
-               {/* Color buttons */}
                <div className="w-px h-4 bg-border mx-1" />
 
-               {/* Font color button */}
                <div ref={fontColorButtonRef} className="relative">
                   <button
                      className={formatButtonClass(fontColorOpen)}
@@ -307,7 +289,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   >
                      <div className="flex flex-col items-center gap-px">
                         <Baseline size={11} />
-                        {/* Active color underline indicator */}
                         <div
                            className="w-3.5 rounded-sm"
                            style={{
@@ -333,7 +314,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   )}
                </div>
 
-               {/* Highlight color button */}
                <div ref={highlightColorButtonRef} className="relative">
                   <button
                      className={formatButtonClass(highlightColorOpen)}
@@ -342,7 +322,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   >
                      <div className="flex flex-col items-center gap-px">
                         <Highlighter size={11} />
-                        {/* Active color underline indicator */}
                         <div
                            className="w-3.5 rounded-sm"
                            style={{
@@ -369,9 +348,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                </div>
             </div>
 
-            {/* =================== */}
-            {/*  Link creator panel */}
-            {/* =================== */}
             {linkMode && (
                <div
                   ref={linkPanelRef}
@@ -383,7 +359,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                   }}
                   onKeyDown={event => { if (event.key === 'Escape') closeLinkMode() }}
                >
-                  {/* URL input */}
                   <div className="px-3 pt-3 pb-2.5">
                      <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider mb-1.5">
                         {t.linkPanelUrl}
@@ -402,7 +377,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                      />
                   </div>
 
-                  {/* Block anchor list */}
                   {getAnchoredBlocks(sections).length > 0 && (
                      <div className="border-t border-border">
                         <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
@@ -437,7 +411,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                      </div>
                   )}
 
-                  {/* Section anchor list */}
                   {sections.length > 0 && (
                      <div className="border-t border-border">
                         <div className="text-muted/70 text-[0.6rem] font-mono uppercase tracking-wider px-3 pt-2 pb-1">
@@ -472,7 +445,6 @@ export function FormatToolbar({ sections }: FormatToolbarProps) {
                      </div>
                   )}
 
-                  {/* Action row */}
                   <div className="border-t border-border px-3 py-2.5 flex items-center justify-between">
                      <button
                         className="text-sm text-muted hover:text-text transition-colors cursor-pointer"

@@ -1,10 +1,7 @@
-/**
- * image.ts, Image compression utility.
- *
- * Exports: compressImage
- *
- * Kept separate from document.ts because it deals with browser canvas APIs
- * rather than the document data model.
+/*
+ * Compress an inline image via canvas: downscale and re-encode. Canvas APIs, kept out of the
+ * document data model. SVGs and animated rasters pass through untouched (canvas would
+ * rasterize/flatten them).
  */
 
 import { isSvgFile, isAnimatedImageBytes, readFileAsDataUrl } from './imageFormat'
@@ -13,7 +10,6 @@ const MAX_WIDTH  = 1200
 const MAX_HEIGHT = 900
 const JPEG_QUALITY = 0.82
 
-/** Returns true if the canvas has any non-fully-opaque pixels (alpha < 255). */
 function hasTransparency(ctx: CanvasRenderingContext2D, width: number, height: number): boolean {
    const data = ctx.getImageData(0, 0, width, height).data
    for (let i = 3; i < data.length; i += 4) {
@@ -22,15 +18,9 @@ function hasTransparency(ctx: CanvasRenderingContext2D, width: number, height: n
    return false
 }
 
-/**
- * Compress an image File to a base64 data URL.
- * Scales down to max 1200x900, preserving aspect ratio.
- * Uses JPEG unless the image has transparent pixels (then PNG).
- *
- * SVGs and animated images (GIF/WebP/APNG) skip the canvas entirely and are embedded as-is:
- * canvas re-encoding rasterizes vector art and flattens animation to a single frame, so those
- * pass through unchanged instead.
- */
+/** Compress an image File to a base64 data URL: downscale to fit MAX_WIDTH x MAX_HEIGHT, re-encode as
+ *  JPEG, or PNG when the source has transparent pixels. SVGs and animated images pass through
+ *  unchanged. */
 export async function compressImage(file: File): Promise<string> {
    if (isSvgFile(file)) return readFileAsDataUrl(file)
 

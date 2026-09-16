@@ -1,17 +1,9 @@
-/**
- * index.ts, the public entry point for the home-grown graph renderer.
- *
- * `renderGraphToSvg(spec, theme)` is the ONLY export a caller needs: it dispatches to the
- * cartesian or radial core, wraps the result in a self-contained, responsive `<svg>` (viewBox
- * + width:100%), and adds the accessible root `<title>`/`<desc>`. It mirrors the math block's
- * `renderLatexToMathML`: a pure, synchronous function producing a self-contained markup string
- * with zero runtime and zero external fonts, safe to inline verbatim into the HTML export.
- *
- * It NEVER throws on bad or empty data, an empty/degenerate spec renders a graceful empty-state
- * placeholder SVG (the same "invalid never breaks the document" contract the math block honors).
- *
- * This barrel also re-exports the layer's types, themes, and the palette so consumers import
- * from `lib/graph` rather than reaching into individual files.
+/*
+ * The public entry point for the graph renderer. `renderGraphToSvg(spec, theme)` dispatches to the
+ * cartesian or radial core, wraps the result in a self-contained responsive <svg> with an accessible
+ * title/desc, and never throws (an empty/degenerate spec renders a placeholder). Pure, synchronous,
+ * zero runtime and zero external fonts, safe to inline into the HTML export. This barrel also
+ * re-exports the layer's types, themes, and palette.
  */
 
 import type { GraphSpec, GraphTheme, GraphType } from './types'
@@ -20,20 +12,15 @@ import { renderCartesian, renderFunctionPlot, renderScatterPlot, renderHistogram
 import { renderRadial } from './radial'
 import { titleElement, descElement, textElement, element } from './svg'
 
-// The system sans stack the chart text renders in, so the export ships no font asset. Font
-// names use SINGLE quotes because this string sits inside a double-quoted `style="..."` attribute
-// on the root <svg>; double quotes here would prematurely close the attribute.
+// The system sans stack the chart text renders in, so the export ships no font asset. SINGLE quotes
+// because this sits inside the double-quoted `style="..."` attribute on the root <svg>.
 const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
 // The radial chart types (everything else is cartesian).
 const RADIAL_TYPES = new Set<GraphType>(['pie', 'donut'])
 
-/**
- * Render a graph spec to a complete, self-contained SVG string for the given resolved theme.
- * Pure, synchronous, deterministic, and total (never throws): unrenderable data yields a
- * placeholder rather than an exception. Colors are baked as literal theme hex, so the output
- * needs no runtime, no external font, and no CSS variables, inline it straight into an export.
- */
+/** Render a graph spec to a complete self-contained SVG string. Total: unrenderable data yields a
+ *  placeholder. Colors are baked as literal hex, so the output needs no runtime or external font. */
 export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
    if (!hasRenderableData(spec)) {
       return renderEmptyState(spec, theme)
@@ -60,19 +47,10 @@ export function renderGraphToSvg(spec: GraphSpec, theme: GraphTheme): string {
 // #####################
 
 /**
- * Whether a spec has anything to draw. A `function` chart uses a completely different payload
- * (`functionPlot`, not `data`), it is renderable as soon as it names at least one equation with a
- * non-blank expression string (whether that expression actually COMPILES is a renderer-level
- * concern, handled gracefully per-equation, not a reason to fall back to the empty-state chart).
- * A `scatter` chart likewise uses its own payload (`scatterPlot`), it is renderable as soon as
- * at least one series carries at least one point (whether that point's coordinates are finite is
- * a renderer-level concern, handled per-point, not a reason to fall back to the empty-state chart).
- * A `histogram` chart uses its own payload (`histogramData`), it is renderable as soon as the
- * sample list is non-empty (whether any of those samples are FINITE is a renderer-level concern:
- * `computeHistogramBins` filters them and the renderer draws a graceful empty plot, axes with no
- * bars, rather than falling back to this top-level empty-state chart).
- * Every other type: at least one label, at least one series, and at least one finite numeric cell
- * across those series. Anything less renders the empty-state.
+ * Whether a spec has anything to draw. `function`/`scatter`/`histogram` each read their own payload:
+ * renderable as soon as it names one non-blank equation, one series with a point, or a non-empty
+ * sample list (finiteness is a per-mark renderer concern, not a reason for the empty-state). Every
+ * other type needs at least one label, one series, and one finite numeric cell.
  */
 function hasRenderableData(spec: GraphSpec): boolean {
    if (spec.type === 'function') {
@@ -116,11 +94,8 @@ function renderEmptyState(spec: GraphSpec, theme: GraphTheme): string {
 // # SVG ENVELOPE      #
 // #####################
 
-/**
- * Wrap inner markup in the responsive `<svg>` root with the accessible title/desc. `role="img"`
- * + `<title>` + `<desc>` give the chart an accessible name and summary; the viewBox + inline
- * `width:100%;height:auto` make it scale to its column with no runtime resize.
- */
+/** Wrap inner markup in the responsive <svg> root with the accessible title/desc. `role="img"` +
+ *  title + desc give an accessible name/summary; viewBox + width:100% scale it with no runtime resize. */
 function wrapSvg(accessibleTitle: string, accessibleDesc: string, body: string): string {
    const open =
       `<svg xmlns="http://www.w3.org/2000/svg" role="img"` +
@@ -149,10 +124,8 @@ function humanType(type: GraphType): string {
    }
 }
 
-/**
- * A one-line accessible summary of what the chart plots. Returned RAW (unescaped); the
- * `<desc>` builder escapes it, so escaping here would double-encode.
- */
+/** A one-line accessible summary of what the chart plots. Returned RAW; the `<desc>` builder
+ *  escapes it, so escaping here would double-encode. */
 function describeChart(spec: GraphSpec): string {
    const name = humanType(spec.type).toLowerCase()
    if (spec.type === 'function') {
@@ -261,10 +234,8 @@ export type {
    CompiledExpression,
 } from './expr'
 
-// `computeFunctionYDomain` is the shared, single source of truth for a `function` chart's raw
-// sampled y-domain, used by both `renderFunctionPlot` (internally) and `graphEdit.ts`'s
-// `logScaleWouldFallBackToLinear` (the in-editor log-scale fallback notice), so the two can never
-// silently drift out of sync.
+// The shared source of truth for a `function` chart's raw sampled y-domain, so the renderer and
+// graphEdit.ts's log-scale fallback notice never drift apart.
 export { computeFunctionYDomain } from './cartesian'
 
 export {

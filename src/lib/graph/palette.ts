@@ -1,14 +1,8 @@
-/**
- * palette.ts, the graph block's categorical series palette + color resolution.
- *
- * PURE DATA / PURE FUNCTIONS. The palette is a validated 8-hue categorical set (its light +
- * dark columns), NOT the document accent and NOT ACCENT_PRESETS. Hues are assigned in FIXED
- * slot order, never cycled for cosmetics: series index -> slot index. The validated ordering
- * is itself the colorblind-safety mechanism, so the order is load-bearing.
- *
- * The palette caps at 8 distinct series colors. resolveSeriesColor wraps (modulo) past the
- * cap so it can never fail, but the renderer separately caps the number of drawn series at
- * MAX_SERIES.
+/*
+ * The graph block's categorical series palette + color resolution. A validated 8-hue set (light +
+ * dark columns), NOT the document accent. Hues are assigned in FIXED slot order (series index ->
+ * slot index); that validated ordering IS the colorblind-safety mechanism, so the order is
+ * load-bearing. The palette caps at 8; resolveSeriesColor wraps past the cap defensively.
  */
 
 import type { GraphTheme } from './types'
@@ -17,11 +11,8 @@ import type { GraphTheme } from './types'
 // # PALETTE #
 // ###########
 
-/**
- * The 8-hue categorical palette for the LIGHT chart surface (#fcfcfb), in fixed slot order.
- * Worst adjacent colorblind separation OKLab dE 9.1 (>=8 target), worst adjacent
- * normal-vision dE 19.6 (>=15 floor).
- */
+/** The 8-hue palette for the LIGHT chart surface (#fcfcfb), in fixed slot order. Worst adjacent
+ *  colorblind dE 9.1, worst adjacent normal-vision dE 19.6. */
 export const GRAPH_SERIES_LIGHT = [
    '#2a78d6', // 1 blue
    '#eb6834', // 2 orange
@@ -33,11 +24,8 @@ export const GRAPH_SERIES_LIGHT = [
    '#e34948', // 8 red
 ] as const
 
-/**
- * The same 8 hues re-stepped for the DARK chart surface (#1a1a19), a selected dark column,
- * not an automatic lightening of the light set. Validated as its own set (worst adjacent
- * colorblind dE 8.4, worst adjacent normal-vision dE 19.3).
- */
+/** The same 8 hues re-stepped for the DARK chart surface (#1a1a19), a selected column, not an
+ *  automatic lightening. Validated as its own set (worst adjacent colorblind dE 8.4, normal dE 19.3). */
 export const GRAPH_SERIES_DARK = [
    '#3987e5', // 1 blue
    '#d95926', // 2 orange
@@ -49,20 +37,14 @@ export const GRAPH_SERIES_DARK = [
    '#e66767', // 8 red
 ] as const
 
-/**
- * The series cap: 8 distinct palette slots; a 9th+ series is NOT a generated hue.
- * The renderer draws at most this many series; resolveSeriesColor wraps past it defensively.
- */
+/** The series cap: 8 distinct palette slots. The renderer draws at most this many series. */
 export const MAX_SERIES = 8
 
 // ##########
 // # THEMES #
 // ##########
 
-/**
- * The light target theme: dataviz ink/chrome tokens + the light palette column. Pass this to
- * renderGraphToSvg for the in-app light preview and for a light-themed HTML export.
- */
+/** The light target theme: ink/chrome tokens + the light palette column. */
 export const LIGHT_GRAPH_THEME: GraphTheme = {
    ink: {
       text:          '#0b0b0b',
@@ -75,10 +57,7 @@ export const LIGHT_GRAPH_THEME: GraphTheme = {
    palette: [...GRAPH_SERIES_LIGHT],
 }
 
-/**
- * The dark target theme: dataviz dark ink/chrome tokens + the dark palette column. Pass this
- * for the in-app dark preview and for a dark-themed HTML export.
- */
+/** The dark target theme: ink/chrome tokens + the dark palette column. */
 export const DARK_GRAPH_THEME: GraphTheme = {
    ink: {
       text:          '#ffffff',
@@ -95,15 +74,8 @@ export const DARK_GRAPH_THEME: GraphTheme = {
 // # COLOR RESOLUTION #
 // ####################
 
-/**
- * Resolve the color a series is drawn in.
- *
- * Precedence: a non-empty per-series `override` wins (this is the author's "match my
- * document colors" hook); otherwise the palette slot at `seriesIndex`. The slot index wraps
- * modulo the palette length (the 8-color cap) so an out-of-range index never throws, but
- * note the renderer caps drawn series at {@link MAX_SERIES}, so wrapping is a defensive
- * fallback, not an expected code path.
- */
+/** Resolve the color a series is drawn in: a non-empty per-series `override` wins, otherwise the
+ *  palette slot at `seriesIndex` (wrapped modulo the palette length so it never throws). */
 export function resolveSeriesColor(
    seriesIndex: number,
    override: string | undefined,
@@ -114,7 +86,7 @@ export function resolveSeriesColor(
    }
    const paletteLength = theme.palette.length
    if (paletteLength === 0) return theme.ink.text
-   // Wrap into [0, paletteLength) even for a negative index (defensive; not expected).
+   // Wrap into [0, paletteLength) even for a negative index.
    const slot = ((seriesIndex % paletteLength) + paletteLength) % paletteLength
    return theme.palette[slot]
 }
@@ -123,11 +95,8 @@ export function resolveSeriesColor(
 // # LUMINANCE UTIL #
 // ##################
 
-/**
- * The sRGB relative luminance (0..1) of a `#rrggbb` / `#rgb` hex color. Used to pick a
- * readable label color for text set INSIDE a colored fill (pie/donut slice labels, the one
- * place text sits on a series color). Returns 0 for an unparseable input (treated as dark).
- */
+/** The sRGB relative luminance (0..1) of a hex color, for picking a readable label color on a
+ *  colored fill (pie/donut slice labels). Returns 0 (treated as dark) for an unparseable input. */
 export function relativeLuminance(hexColor: string): number {
    const parsed = parseHex(hexColor)
    if (parsed === null) return 0
@@ -140,12 +109,8 @@ export function relativeLuminance(hexColor: string): number {
    return 0.2126 * channel(parsed.red) + 0.7152 * channel(parsed.green) + 0.0722 * channel(parsed.blue)
 }
 
-/**
- * Pick white or near-black for a label placed ON a filled slice, choosing whichever gives the
- * higher WCAG contrast against the fill (in-slice text always picks white-or-ink). Contrast,
- * not a raw luminance threshold, so mid-luminance hues like yellow correctly take ink rather
- * than white.
- */
+/** Pick white or near-black for a label on a filled slice, whichever has the higher WCAG contrast.
+ *  Contrast, not a raw luminance threshold, so mid-luminance hues like yellow take ink. */
 export function readableTextOn(fillColor: string): string {
    const fillLuminance = relativeLuminance(fillColor)
    const contrastWithInk = (fillLuminance + 0.05) / (relativeLuminance('#0b0b0b') + 0.05)

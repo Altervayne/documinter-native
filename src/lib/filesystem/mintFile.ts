@@ -11,7 +11,7 @@
  * This is the SINGLE source of truth for turning a document into on-disk bytes and back. It is pure:
  * no plugin-fs, no async, no crypto. Migration goes through assembleLoadedDocument (documentRecord.ts),
  * never reimplemented here, so a `.mint` and a legacy `.documinter.json` run the identical read
- * pipeline. The filesystem backend (a later step) owns the actual file I/O and calls into here.
+ * pipeline. The filesystem backend owns the actual file I/O and calls into here.
  */
 
 import { assembleLoadedDocument, RECORD_SCHEMA_VERSION, type LoadedDocument } from '../documentRecord'

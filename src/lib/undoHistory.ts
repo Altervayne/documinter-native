@@ -1,14 +1,8 @@
 /*
- * Per-tab undo/redo history over a document's undoable slice.
- *
- * Pure and side-effect-free: a reducer plus its snapshot type. No React, no DOM, no clock of its own
- * (the caller passes the current time and the tuning constants), so the whole engine is unit-testable.
- *
- * The slice held here is exactly the set of fields the binder persists for a document
- * (meta, sections, docTheme, docAccent, presentation, format). A snapshot holds references to the
- * immutable model, never a deep clone: the app replaces model subtrees rather than mutating them, so
- * successive snapshots share every untouched section, block, and image. History is session-only and
- * lives outside the OpenDocument object, so it never reaches autosave or serialization.
+ * Per-tab undo/redo over a document's undoable slice: a pure reducer plus its snapshot type. No clock of
+ * its own (the caller passes the time and tuning constants). A snapshot holds references to the
+ * immutable model, never a deep clone, so successive snapshots share every untouched subtree. History is
+ * session-only and lives outside OpenDocument, so it never reaches autosave or serialization.
  */
 
 // -- Type Imports --
@@ -47,13 +41,11 @@ export interface UndoHistory {
 // #############
 
 /** Consecutive same-kind edits closer than this merge into one history entry, so a slider drag or a
- *  rapid repeat of the same action does not spawn dozens of steps. Sized to sit above a fast repeat
- *  cadence while staying below a deliberate pause between distinct actions. */
+ *  rapid repeat does not spawn dozens of steps. */
 export const COALESCE_MS = 500
 
-/** Upper bound on undo entries kept per tab. Oldest entries drop first once past it, bounding memory
- *  (base64 images are the only heavy payload, and dropping the oldest snapshot releases the ones it
- *  uniquely retained). */
+/** Upper bound on undo entries per tab; oldest drop first, bounding memory (base64 images are the heavy
+ *  payload, and dropping the oldest snapshot releases what it uniquely retained). */
 export const HISTORY_DEPTH_CAP = 50
 
 // #############

@@ -17,10 +17,8 @@ interface ShapePaletteProps {
 // #############
 
 /**
- * The diagram node editor's shape palette: one button per node shape. Clicking a shape ADDS a node
- * of that shape to the canvas (placed + selected by the editor), a one-click add, no armed-tool
- * mode, so the interaction stays reliable. App-chrome styling (`--color-*`), hosted in the Block
- * Editor Window; each button's glyph reads as the shape it creates.
+ * The diagram node editor's shape palette: one button per node shape. A click adds a node of that
+ * shape (placed + selected by the editor), a one-click add with no armed-tool mode.
  */
 export function ShapePalette({ onAddShape }: ShapePaletteProps) {
    const { t } = useLang()

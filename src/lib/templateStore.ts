@@ -1,11 +1,8 @@
-// ###############################################################################################
-// # TEMPLATE STORE                                                                              #
-// #                                                                                             #
-// # IndexedDB CRUD for user-saved document templates, keyed by id in the `templates` store       #
-// # (added to the self-healing binder schema in binderDatabase.ts). Built-in templates          #
-// # (documentTemplate.BUILT_IN_TEMPLATES) live in code and are NOT stored here; the picker merges #
-// # them ahead of what this returns. This is the same thin async shape as binderDocuments.ts.    #
-// ###############################################################################################
+/*
+ * IndexedDB CRUD for user-saved document templates, keyed by id in the `templates` store. Built-in
+ * templates (documentTemplate.BUILT_IN_TEMPLATES) live in code, not here; the picker merges them ahead
+ * of what this returns.
+ */
 
 // -- Lib Imports --
 import { openDatabase, requestToPromise, transactionDone, TEMPLATES_STORE } from './binderDatabase'

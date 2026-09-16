@@ -142,7 +142,7 @@ export function rowToDocumentRecord(row: DocumentRow): BinderDocumentRecord {
 // ################
 
 /** The flat `folders` row shape. `path` IS the folder id (a directory carries no UUID, so its relative
- *  path is its identity, see the arc-A identity section). */
+ *  path is its identity). */
 export interface FolderRow {
    path:      string
    parentId:  string

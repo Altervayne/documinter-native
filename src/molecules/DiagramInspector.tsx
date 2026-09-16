@@ -16,29 +16,24 @@ import type { NodeStylePatch, EdgeStylePatch } from '../lib/diagram/edit'
 // #########
 
 interface DiagramInspectorProps {
-   /** The currently selected node, or null when exactly one node is not selected. */
+   /** The selected node, or null unless exactly one is selected. */
    node:  DiagramNode | null
-   /** The currently selected edge, or null when an edge is not selected. */
+   /** The selected edge, or null. */
    edge:  DiagramEdge | null
-   /** How many nodes are selected: 2+ shows a brief count state instead of any per-node panel. */
+   /** 2+ shows a brief count state instead of any per-node panel. */
    multiSelectCount: number
-   /** The resolved doc theme, for the default color a swatch shows when an element carries no override. */
+   /** The doc theme, for the default color a swatch shows when an element carries no override. */
    theme: DiagramTheme
-   /** Draft a node label edit live on each keystroke (kept in the block's working spec, not yet saved). */
+   /** Draft the node label live on each keystroke. */
    onLabelDraft: (label: string) => void
-   /** Persist the pending node label edit (fires on blur of the label field). */
+   /** Persist the pending node label (on blur). */
    onLabelCommit: () => void
-   /** Apply a style patch (shape / a color set-or-clear) to the selected node. */
    onStyleChange: (patch: NodeStylePatch) => void
-   /** Delete the selected node (and its incident edges). */
+   /** Delete the selected node and its incident edges. */
    onDelete: () => void
-   /** Draft an edge label edit live on each keystroke. */
    onEdgeLabelDraft: (label: string) => void
-   /** Persist the pending edge label edit (fires on blur of the label field). */
    onEdgeLabelCommit: () => void
-   /** Apply a style patch (arrow / routing / dashed / color) to the selected edge. */
    onEdgeStyleChange: (patch: EdgeStylePatch) => void
-   /** Delete the selected edge. */
    onEdgeDelete: () => void
 }
 
@@ -47,11 +42,10 @@ interface DiagramInspectorProps {
 // #############
 
 /**
- * The diagram editor's inspector: the property panel for the SELECTED element. A selected node shows
- * its shape, label, and fill / border / text-color overrides; a selected edge shows its label,
- * arrowheads, routing, line style, and line color. Nothing selected shows a hint. App-chrome styling
- * (`--color-*`), hosted in the Block Editor Window; the color swatches fall back to the doc-theme
- * default when the element carries no override, and a reset button clears an override back to it.
+ * The diagram editor's property panel for the SELECTED element: a node shows shape / label /
+ * fill / border / text-color, an edge shows label / arrowheads / routing / line style / color,
+ * nothing selected shows a hint. Color swatches fall back to the doc-theme default when the element
+ * carries no override, and a reset clears one back to it.
  */
 export function DiagramInspector({
    node, edge, multiSelectCount, theme, onLabelDraft, onLabelCommit, onStyleChange, onDelete,
@@ -59,7 +53,7 @@ export function DiagramInspector({
 }: DiagramInspectorProps) {
    const { t } = useLang()
 
-   // A multi-node selection has no single set of per-node props to edit, so show a brief count instead.
+   // A multi-node selection has no single set of props to edit, so show a brief count instead.
    if (multiSelectCount >= 2) {
       return (
          <p className="diagram-inspector-hint">
@@ -112,7 +106,6 @@ function NodePanel({ node, theme, onLabelDraft, onLabelCommit, onStyleChange, on
    const { t } = useLang()
    return (
       <div className="diagram-inspector">
-         {/* ===== Shape ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramNodeShape}</span>
             <SegmentedIconToggle
@@ -123,7 +116,6 @@ function NodePanel({ node, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Label ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramNodeLabel}</span>
             <textarea
@@ -137,7 +129,6 @@ function NodePanel({ node, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Colors (wrapping horizontal row, the swatches are compact, the panel is wide) ===== */}
          <div className="diagram-color-group">
             <ColorRow
                label={t.diagramNodeFill}
@@ -194,7 +185,6 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
 
    return (
       <div className="diagram-inspector">
-         {/* ===== Label ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramEdgeLabel}</span>
             <textarea
@@ -208,7 +198,6 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Arrowheads ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramEdgeArrows}</span>
             <SegmentedIconToggle
@@ -219,7 +208,6 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Routing ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramEdgeRouting}</span>
             <SegmentedIconToggle
@@ -230,7 +218,6 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Line style ===== */}
          <label className="diagram-field">
             <span className="diagram-field-label">{t.diagramEdgeLineStyle}</span>
             <SegmentedIconToggle
@@ -241,7 +228,6 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
             />
          </label>
 
-         {/* ===== Color ===== */}
          <ColorRow
             label={t.diagramEdgeColor}
             value={edge.stroke}
@@ -264,20 +250,17 @@ function EdgePanel({ edge, theme, onLabelDraft, onLabelCommit, onStyleChange, on
 
 interface ColorRowProps {
    label:      string
-   /** The element's per-element override hex, or undefined when it uses the theme default. */
+   /** The per-element override hex, or undefined when it uses the theme default. */
    value:      string | undefined
-   /** The theme default shown in the swatch when no override is set. */
+   /** The theme default shown when no override is set. */
    fallback:   string
    resetLabel: string
    onSet:   (hex: string) => void
    onClear: () => void
 }
 
-/**
- * A labelled color swatch that opens the app ColorPicker in an anchored popover. The swatch shows
- * the element's override when set, otherwise the theme default (`fallback`); the popover's reset
- * row (only offered when an override is set) clears it back to that default.
- */
+/** A labelled color swatch: shows the override when set, else `fallback`; the reset row (only when
+ *  an override is set) clears it back to the default. */
 function ColorRow({ label, value, fallback, resetLabel, onSet, onClear }: ColorRowProps) {
    return (
       <label className="diagram-field">

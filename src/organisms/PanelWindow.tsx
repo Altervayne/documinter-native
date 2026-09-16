@@ -31,7 +31,6 @@ interface PanelWindowProps {
    /** The Pin is both a button (click to dock to the remembered side) and a drag handle (drag to
     *  choose where to dock, using the dock's drop zones). The workspace owns that click-vs-drag flow. */
    onPinPointerDown:  (event: ReactPointerEvent<HTMLButtonElement>) => void
-   /** True while this panel's Pin is being dragged, to dim the window as "in transit". */
    dragging:          boolean
    onClose:           () => void
    onCommitPlacement: (placement: WindowPlacement) => void
@@ -41,14 +40,10 @@ interface PanelWindowProps {
 // # COMPONENT #
 // #############
 
-/**
- * A floating window hosting a popped-out panel. It is the shared `PopAWindow` shell configured for
- * the dock: opened at the panel's stored placement (persisted back on every move / resize so it
- * survives a reload), the panel body host-agnostic (identical docked or floating, so it owns its own
- * scroll), and the title bar carrying the panel identity plus a Pin (return to / re-dock) and close. It
- * skips the block editor's focus-grab, Escape-close, sheet fallback, and pop-in animation, and dims
- * while the Pin is being dragged to a new dock target.
- */
+/** A floating window hosting a popped-out panel: the shared `PopAWindow` shell configured for the dock.
+ *  Opened at the panel's stored placement (persisted back on every move / resize), with a title bar
+ *  carrying the panel identity plus a Pin (re-dock) and close. Skips the block editor's focus-grab,
+ *  Escape-close, sheet fallback, and pop-in animation; dims while the Pin is dragged to a dock target. */
 export function PanelWindow({ panelId, placement, body, onPinPointerDown, dragging, onClose, onCommitPlacement }: PanelWindowProps) {
    const { t } = useLang()
    const descriptor = PANEL_REGISTRY[panelId]
@@ -62,17 +57,16 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
          minSize={MIN_SIZE}
          maxSize={MAX_SIZE}
          margin={WINDOW_MARGIN}
-         // The panel body brings its own scroll (it is the same body the dock hosts), so the window body
-         // stays bare apart from the distinct --color-bg surface that keeps the header from blending in
-         // (see .panel-window-body); the inner body owns the overflow.
+         // The panel body brings its own scroll (same body the dock hosts), so the window body stays bare
+         // apart from the distinct --color-bg surface that keeps the header from blending in.
          bodyClassName="panel-window-body"
          focusOnOpen={false}
          escapeCloses={false}
          sheetFallback={false}
          animateIn={false}
          dimmed={dragging}
-         // The package callback hands back (geometry, corners); the dock persists only the geometry,
-         // which is the same top/left/width/height shape as WindowPlacement.
+         // The package hands back (geometry, corners); the dock persists only geometry, the same
+         // top/left/width/height shape as WindowPlacement.
          onGeometryCommit={geometry => onCommitPlacement({
             top:    geometry.top,
             left:   geometry.left,
@@ -82,7 +76,7 @@ export function PanelWindow({ panelId, placement, body, onPinPointerDown, draggi
          closeLabel={t.dockClosePanel}
          resizeLabel={t.blockWindowResize}
          // A right-click inside a popped-out panel must not fall through to the document context menu
-         // (the window portals over the document surface; see the block editor window for the detail).
+         // (the window portals over the document surface).
          stopContextMenuPropagation={true}
          onClose={onClose}
          headerActions={

@@ -1,14 +1,8 @@
-/**
- * radial.ts, the radial rendering core: pie and donut.
- *
- * PURE FUNCTION. `renderRadial(spec, theme)` returns the INNER SVG markup (a `<g>` group) for
- * a pie or donut chart; index.ts wraps it in the responsive `<svg>` envelope. No axes, no
- * scales, just arc geometry. Slices are colored by SLICE (category) index from the palette,
- * since a radial chart plots a single series and each slice is one category. A donut is a pie
- * with an inner radius (`options.donutHole`, default 0.55).
- *
- * Slices are separated by a 2px surface-color stroke (the "surface gap"); a slice large enough
- * to hold it gets its percentage label inside, in white-or-ink chosen by the slice luminance.
+/*
+ * The radial rendering core: pie and donut. `renderRadial` returns inner SVG markup; index.ts wraps
+ * it in the responsive <svg>. No axes, no scales, just arc geometry. Slices are colored by category
+ * index (a radial chart plots one series, each slice a category), separated by a 2px surface stroke;
+ * a donut is a pie with an inner radius (`options.donutHole`, default 0.55).
  */
 
 import type { GraphSpec, GraphTheme } from './types'
@@ -38,11 +32,8 @@ const LEGEND_ROW_HEIGHT = LEGEND_FONT_SIZE + 8
 // # PUBLIC RENDERER  #
 // ####################
 
-/**
- * Render a radial graph spec (pie or donut) to its inner SVG markup. Reads the FIRST series
- * only; each label is one slice. Negative and null cells count as zero. When the plotted total
- * is zero (nothing to draw), returns a centered empty-state note instead of an empty circle.
- */
+/** Render a pie or donut to inner SVG markup. Reads the FIRST series only; each label is one slice,
+ *  negative/null cells count as zero. A zero total returns a centered empty-state note. */
 export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
    const { type, data, options } = spec
    const labels = data.labels
@@ -92,8 +83,6 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
       const startAngle = cursorAngle
       const endAngle = cursorAngle + fraction * 360
       cursorAngle = endAngle
-      // Each slice resolves its color from the per-category override (categoryColors[index]) when
-      // set, else the palette slot by slice index, mirroring how a series resolves its own color.
       const color = resolveSeriesColor(index, data.categoryColors?.[index], theme)
       const pathData = innerRadius > 0
          ? donutSegmentPath(centerX, centerY, radius, innerRadius, startAngle, endAngle)
@@ -130,10 +119,7 @@ export function renderRadial(spec: GraphSpec, theme: GraphTheme): string {
 // # ARC MATH  #
 // #############
 
-/**
- * Convert a polar coordinate (radius + angle) to cartesian, with 0deg at the TOP (12 o'clock)
- * and angle increasing clockwise, the natural reading direction for a pie.
- */
+/** Polar (radius + angle) to cartesian, with 0deg at the top and angle increasing clockwise. */
 export function polarToCartesian(
    centerX: number,
    centerY: number,
@@ -157,7 +143,7 @@ export function pieSlicePath(
 ): string {
    const sweep = endAngle - startAngle
    if (sweep >= 359.999) {
-      // A single slice covering the whole circle: two 180deg arcs (one A-command cannot draw 360deg).
+      // A full circle needs two 180deg arcs (one A-command cannot draw 360deg).
       const midAngle = startAngle + 180
       const start = polarToCartesian(centerX, centerY, radius, startAngle)
       const mid = polarToCartesian(centerX, centerY, radius, midAngle)

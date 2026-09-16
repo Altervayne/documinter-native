@@ -21,20 +21,15 @@ import { listItemPlainText } from '../../../lib/document'
 import type { Block, ListItem, ListMarker } from '../../../types'
 import type { T } from '../../../lib/i18n'
 
-// ###############################################################################################
-// # LIST MARKER CONTROL                                                                         #
-// #                                                                                             #
-// # A small trigger button shown beside a `list` block's "Add item" row (never on a checklist,  #
-// # never readOnly). Opens a per-block BlockEditorWindow (draggable, resizable, non-modal, the   #
-// # same shell every other block editor uses) with one row per SUB-LIST the list actually has,  #
-// # in reading order: the root sub-list ("List"), then one row per item that owns children      #
-// # ("Under: <preview>"). Each row is a pair of SegmentedIconToggle groups (Bullets, Numbers)   #
-// # picking that sub-list's marker. Commits through the block `patch` lever handed down by       #
-// # WysiwygBlock, so the write flows through commitActiveEdit like every other block edit         #
-// # (undo/redo invariant). The window opens with focusOnOpen={false} (a TOOL window over the      #
-// # list, same pattern as the math symbol palette), so the list keeps its caret/selection while   #
-// # markers are picked.                                                                           #
-// ###############################################################################################
+// ######################
+// # LIST MARKER CONTROL #
+// ######################
+//
+// A trigger button beside a `list` block's "Add item" row (never on a checklist, never readOnly),
+// opening a per-block BlockEditorWindow with one row per SUB-LIST in reading order: the root, then
+// each item that owns children. Each row picks that sub-list's marker. Commits through the block
+// `patch` lever, so the write flows through commitActiveEdit (undo/redo invariant). focusOnOpen={false}
+// so the list keeps its caret/selection while markers are picked.
 
 const BULLET_MARKERS = ALL_LIST_MARKERS.filter(marker => !isOrderedMarker(marker))
 const NUMBER_MARKERS = ALL_LIST_MARKERS.filter(isOrderedMarker)
@@ -64,8 +59,7 @@ function bulletGlyph(marker: ListMarker): ReactNode {
    }
 }
 
-/** The clean glyph label for one of the five ordered markers (no leading icon: the glyph IS the
- *  label). Mirrors how the page-number format toggle uses its example text as the segment. */
+/** The glyph label for one of the five ordered markers (the glyph IS the label, no leading icon). */
 function numberGlyphLabel(marker: ListMarker): string {
    switch (marker) {
       case 'lower-alpha': return 'a.'
@@ -142,11 +136,8 @@ interface ListMarkerControlProps {
    patch: (partialBlock: Partial<Block>) => void
 }
 
-/**
- * Trigger button + window for picking a `list` block's per-sub-list markers. The rows are derived
- * from the block's actual item tree, so a freshly-indented item that owns children immediately gets
- * its own "Under:" row the next time the window opens.
- */
+/** Trigger button + window for picking a `list` block's per-sub-list markers. Rows are derived from
+ *  the block's item tree, so a freshly-indented parent gets its own "Under:" row on the next open. */
 export function ListMarkerControl({ block, patch }: ListMarkerControlProps) {
    const { t } = useLang()
    const [isOpen, setIsOpen]         = useState(false)

@@ -37,13 +37,10 @@ import type { Block, Section } from '../../types'
 // #############
 
 /**
- * Locates a rendered block's position inside a split list/checklist (see pageLayout.ts
- * sliceListBlock): the block's fragment carries only a slice of the model's root items, same id
- * on every page it spans. `itemOffset` is where that slice starts in the model's full item list
- * (root-level dnd-kit reorder indices are fragment-relative and need this to land on the right
- * item); `isListTail` marks the fragment holding the model's last root item, so the add-item
- * button renders once instead of once per page. Non-list blocks and whole (unsplit) lists resolve
- * to the untouched defaults.
+ * A rendered block's position inside a split list/checklist (see pageLayout.ts sliceListBlock).
+ * `itemOffset` is where this fragment's slice starts in the model's full item list, so fragment-
+ * relative dnd-kit reorder indices land on the right item; `isListTail` marks the fragment holding
+ * the last root item, so the add-item button renders once. Non-list and unsplit blocks get defaults.
  */
 function resolveListFragment(fragmentBlock: Block, modelBlock: Block | undefined): { itemOffset: number; isListTail: boolean } {
    if (fragmentBlock.type !== 'list' && fragmentBlock.type !== 'checklist') return { itemOffset: 0, isListTail: true }
@@ -63,30 +60,29 @@ interface WysiwygSectionProps {
    /** Whether this is the last section in the document, disables the section menu's Move down. */
    isLastSection?:  boolean
    activeSectionId: string | null
-   /** Id of the block being dragged anywhere on the canvas (the shared block DnD context lives in
+   /** Id of the block being dragged anywhere on the canvas (the shared DnD context lives in
     *  index.tsx). Drives this section's block insertion lines + its bottom drop zone. */
    activeBlockId?:  string | null
    readOnly?:       boolean
    // ==========================================================
-   //  Paged-format slice rendering. When a section spans a page break it is rendered as several
-   //  slices (one per page it touches), each a WysiwygSection over a SUBSET of the section's
-   //  blocks. Absent = infinite mode = the whole-section render (byte-identical).
+   //  Paged-format slice rendering. A section spanning a page break renders as several slices (one
+   //  per page it touches), each a WysiwygSection over a SUBSET of blocks. Absent = infinite mode.
    // ==========================================================
-   /** Render only these blocks (a page slice). Block indices are still resolved ABSOLUTELY against
-    *  section.blocks, so insert/move/reorder stay correct. Absent = render the whole section. */
+   /** Render only these blocks (a page slice). Indices still resolve ABSOLUTELY against
+    *  section.blocks. Absent = render the whole section. */
    renderBlocks?:   Block[]
-   /** Render the section title chrome + empty-state (the slice that STARTS the section). Default true. */
+   /** Render the title chrome + empty-state (the slice that STARTS the section). Default true. */
    showTitle?:      boolean
    /** Render the trailing add-block row + bottom drop zone (the slice that ENDS the section). Default true. */
    showAddRow?:     boolean
-   /** The dnd-kit sortable id for this instance. Per-slice-unique in paged mode so a split section's
-    *  two slices never register the same id twice. Default = section.id (infinite mode). */
+   /** dnd-kit sortable id. Per-slice-unique in paged mode so a split section's two slices don't
+    *  register the same id. Default = section.id. */
    sortableId?:     string
-   /** Disable canvas section drag-reorder (paged mode routes section reorder through the sidebar /
-    *  the section context menu instead, since a split section can't drag across sheets). Default false. */
+   /** Disable canvas section drag-reorder (a split section can't drag across sheets; paged mode
+    *  reorders via the sidebar / section menu). Default false. */
    sectionDragDisabled?: boolean
-   /** Hide the end-of-section block drop zone (paged mode uses a per-page end zone instead, so a page
-    *  that ends mid-section still has an append target). The add-block row is kept. Default false. */
+   /** Hide the end-of-section drop zone (paged mode uses a per-page end zone so a page ending
+    *  mid-section still has an append target). The add-block row is kept. Default false. */
    suppressEndDropZone?: boolean
 }
 
@@ -109,11 +105,11 @@ export function WysiwygSection({
    const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: sortableId ?? section.id, disabled: sectionDragOff, data: { type: 'section' } })
    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
-   // The blocks this instance renders: a page slice's subset in paged mode, else the whole section.
-   // Absolute indices are always resolved against section.blocks so mutations address the right block.
+   // A page slice's subset in paged mode, else the whole section. Absolute indices always resolve
+   // against section.blocks so mutations address the right block.
    const blocksToRender = renderBlocks ?? section.blocks
    const bottomZoneId   = `${sortableId ?? section.id}-bottom`
-   // This section body's block-array location (drag data for the shared block DnD handler).
+   // This body's block-array location (drag data for the shared block DnD handler).
    const sectionLoc = { kind: 'section' as const, sectionId: section.id }
 
    function handleTitleBlur(raw: string) {
@@ -153,12 +149,10 @@ export function WysiwygSection({
          onMouseEnter={readOnly ? undefined : () => setHovered(true)}
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
-         {/* DnD section insertion indicator */}
          {!sectionDragOff && isOver && activeSectionId !== section.id && <DropIndicator />}
 
-         {/* Drag handle, always in DOM to hold the 2rem gutter, section chrome, opens the section menu.
-             In paged mode canvas section drag is off (a split section can't drag across sheets), so the
-             grip + listeners are suppressed; the section context menu (right-click) still works. */}
+         {/* Always in DOM to hold the gutter; opens the section menu. In paged mode the grip +
+             listeners are suppressed (a split section can't drag across sheets); right-click still works. */}
          <div
             {...(sectionDragOff ? {} : listeners)}
             className="sec-drag-handle"
@@ -168,18 +162,16 @@ export function WysiwygSection({
             {!sectionDragOff && hovered && <GripVertical size={22} />}
          </div>
 
-         {/* Section content */}
          <div className="doc-section">
 
-            {/* Delete, appears top-right only while hovered, on the section-start slice, never readOnly */}
+            {/* Only on the section-start slice while hovered. */}
             {!readOnly && showTitle && hovered && (
                <button className="sec-delete" onClick={() => removeSection(section.id)} title={t.deleteSection}>
                   <Trash2 size={16} />
                </button>
             )}
 
-            {/* Title chrome, also opens the section menu. Only the slice that STARTS the section shows
-                the title; a page-continuation slice renders its blocks with no title. */}
+            {/* Only the slice that STARTS the section shows the title; a continuation slice has none. */}
             {showTitle && (
                <div onContextMenu={readOnly ? undefined : handleSectionContextMenu}>
                   <PlainEditable
@@ -238,13 +230,13 @@ export function WysiwygSection({
                   ))}
                </div>
             ) : (
-               // The block SortableContext lives under the ONE shared DnD context (index.tsx); this
-               // section owns no DndContext, so a drag can cross into other sections / sheets.
+               // The block SortableContext lives under the ONE shared DnD context (index.tsx), so a
+               // drag can cross into other sections / sheets.
                <div>
                   <SortableContext items={blocksToRender.map(block => block.id)} strategy={noopStrategy}>
                      {blocksToRender.map((block: Block) => {
-                        // Absolute index in section.blocks (blocksToRender may be a page-slice subset),
-                        // so insert / move / reorder always address the right position in the section.
+                        // Absolute index in section.blocks (blocksToRender may be a slice subset), so
+                        // insert / move / reorder address the right position.
                         const blockIndex = section.blocks.findIndex(candidate => candidate.id === block.id)
                         const modelBlock = blockIndex >= 0 ? section.blocks[blockIndex] : undefined
                         const { itemOffset, isListTail } = resolveListFragment(block, modelBlock)

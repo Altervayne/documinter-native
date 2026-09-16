@@ -50,16 +50,15 @@ interface TabChipContentProps {
    onTitleKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void
 }
 
-/** The inner chip visual (title / edit input, dirty dot, close x). Shared by the sortable row and
- *  the drag-overlay clone so the dragged tab looks identical without duplicating markup. */
+/** The inner chip visual (title / edit input, dirty dot, close x). Shared by the sortable row and the
+ *  drag-overlay clone so the dragged tab looks identical without duplicating markup. */
 function TabChipContent({
    openDocument, isActive, isEditing, titleDraft, placeholder, editAriaLabel, closeAriaLabel,
    inputRef, onClose, onDraftChange, onTitleBlur, onTitleKeyDown,
 }: TabChipContentProps) {
    const isDirty = openDocument.saveStatus !== 'clean'
-   // A scratch tab with real content has never been saved (no record, no autosave): flag its dot red,
-   // the same danger colour as the header's "Never saved" pill. A pristine blank scratch tab shows no
-   // dot at all, same as a clean saved tab.
+   // A scratch tab with real content was never saved (no record, no autosave): flag its dot red, the
+   // header's "Never saved" danger colour. A pristine blank scratch tab shows no dot, like a clean tab.
    const neverSaved = openDocument.documentId === null && !isEmptyDocument(openDocument)
    const title      = openDocument.meta.title || placeholder
 
@@ -121,8 +120,8 @@ function TabChip({ onChipClick, onChipDoubleClick, onChipContextMenu, ...content
          ref={setNodeRef}
          style={{
             // While dragging, the overlay clone represents this tab: hide the original and drop its
-            // pointer-following transform (the sortable strategy still shifts the OTHER chips to open
-            // the gap). This keeps the dragged tab out of the strip's clip + the bar at a fixed size.
+            // pointer-following transform (the strategy still shifts the OTHER chips to open the gap),
+            // keeping the dragged tab out of the strip's clip and the bar at a fixed size.
             transform: isDragging ? undefined : CSS.Transform.toString(transform),
             transition,
             opacity: isDragging ? 0 : 1,
@@ -154,24 +153,20 @@ interface DocumentTitleBarProps {
    onMetaChange:   (patch: Partial<DocMeta>) => void
 }
 
-/**
- * The tab strip (second bar, document mode). One chip per open document: single-click an inactive
- * tab to activate it; double-click a tab to rename it inline (committing through onMetaChange ->
- * the active tab's meta.title); right-click for Duplicate / Rename / Close. Each chip shows a
- * per-tab dirty dot + a close (x), and the strip is drag-reorderable via a DragOverlay clone (which
- * never changes the active tab or its content, and never resizes the bar).
- */
+/** The tab strip (second bar, document mode). One chip per open document: single-click activates,
+ *  double-click renames inline (committed through onMetaChange onto the active tab's meta.title),
+ *  right-click for Duplicate / Rename / Close. Each chip carries a dirty dot + close (x); the strip is
+ *  drag-reorderable via a DragOverlay clone that never changes the active tab or resizes the bar. */
 export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, onCloseTab, onReorderTabs, onDuplicateTab, onMetaChange }: DocumentTitleBarProps) {
    const { t } = useLang()
-   // Which tab's title is being edited (null = none). Tracking the tabKey rather than a boolean means
-   // a tab switch (or closing the edited tab) implicitly ends editing, the input only renders while
-   // editingTabKey matches the active tab, so no reset-on-switch effect is needed.
+   // The tab being title-edited (null = none). Tracking the tabKey, not a boolean, means a tab switch
+   // or closing the edited tab implicitly ends editing (the input renders only while it matches the
+   // active tab), so no reset-on-switch effect is needed.
    const [editingTabKey, setEditingTabKey] = useState<string | null>(null)
    const [titleDraft,    setTitleDraft]    = useState('')
    // The tab being dragged + its captured width, so the overlay clone matches the original.
    const [draggedTabKey, setDraggedTabKey] = useState<string | null>(null)
    const [dragWidth,     setDragWidth]     = useState<number | null>(null)
-   // The tab whose right-click context menu is open, at the cursor.
    const [contextMenu, setContextMenu] = useState<{ tabKey: string; x: number; y: number } | null>(null)
    const titleInputRef       = useRef<HTMLInputElement>(null)
    const suppressNextBlurRef = useRef(false)
@@ -189,10 +184,9 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
    // Select all text once the input mounts.
    useEffect(() => { if (editingTabKey !== null) titleInputRef.current?.select() }, [editingTabKey])
 
-   // Track horizontal overflow so the scroll arrows show only when there's somewhere to scroll
-   // (1px tolerance absorbs sub-pixel rounding). Recompute on the container's own scroll + size
-   // changes, and re-run on openDocuments since opening/closing/reordering tabs changes scrollWidth
-   // (which a ResizeObserver on the fixed-width container wouldn't catch).
+   // Track horizontal overflow so the arrows show only when there's somewhere to scroll (1px tolerance
+   // absorbs sub-pixel rounding). Re-run on openDocuments because opening / closing / reordering tabs
+   // changes scrollWidth, which a ResizeObserver on the fixed-width container wouldn't catch.
    useEffect(() => {
       const container = scrollContainerRef.current
       if (!container) return
@@ -212,8 +206,8 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
       }
    }, [openDocuments])
 
-   // A plain vertical wheel scrolls the strip horizontally when it overflows. Attached non-passive
-   // (React's onWheel is passive, so preventDefault would be ignored) and only hijacked on overflow.
+   // A vertical wheel scrolls the strip horizontally when it overflows. Attached non-passive (React's
+   // onWheel is passive, so preventDefault would be ignored) and only hijacked on overflow.
    useEffect(() => {
       const container = scrollContainerRef.current
       if (!container) return
@@ -240,8 +234,8 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
       if (tabKey !== activeTabKey) onActivateTab(tabKey)
    }
 
-   // Enter inline title-edit (double-click or the context-menu Rename). Activates the tab first if
-   // needed; editing only renders once it's active (the isEditing condition below).
+   // Enter inline title-edit (double-click or context-menu Rename). Activates the tab first if needed;
+   // editing renders only once it's active.
    function startEditing(tabKey: string) {
       if (tabKey !== activeTabKey) onActivateTab(tabKey)
       const target = openDocuments.find(openDocument => openDocument.tabKey === tabKey)
@@ -304,8 +298,8 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
    return (
       <>
       <div className="shrink-0 flex items-end h-9 px-2 gap-1 bg-bg border-b border-border z-100">
-         {/* Both arrow slots render together once the strip overflows, so toggling a single arrow's
-             glyph (disabled -> opacity-0) never shifts the tabs; no slots at all when there's room. */}
+         {/* Both arrow slots render together once the strip overflows, so disabling one (opacity-0)
+             never shifts the tabs; no slots at all when there's room. */}
          {hasOverflow && (
             <button
                type="button"
@@ -353,8 +347,8 @@ export function DocumentTitleBar({ openDocuments, activeTabKey, onActivateTab, o
                ))}
             </SortableContext>
 
-            {/* The dragged tab rendered in dnd-kit's own fixed overlay layer, so it escapes the
-                strip's clipping and follows the cursor without resizing the bar. Static + inert. */}
+            {/* The dragged tab in dnd-kit's own fixed overlay layer, so it escapes the strip's clip and
+                follows the cursor without resizing the bar. Static + inert. */}
             <DragOverlay>
                {draggedTab && (
                   <div className={tabChipClassName(true)} style={{ width: dragWidth ?? undefined, pointerEvents: 'none' }}>

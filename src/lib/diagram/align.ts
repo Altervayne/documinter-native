@@ -1,24 +1,15 @@
-/**
- * align.ts, the PURE multi-select geometry for the diagram editor: equal-spacing snap detection,
- * marquee hit-test, align / distribute, and the group-translate primitive.
- *
- * PURE DATA / PURE FUNCTIONS, side-effect free, DOM-free, exactly like `lib/diagram/edit.ts` (which
- * this module sits alongside and reuses). Every coordinate is in ABSTRACT DIAGRAM UNITS, never screen
- * pixels, so a caller converts a constant screen-pixel snap threshold through the current zoom before
- * calling `computeSpacingSnaps`, the same way it feeds `computeAlignmentSnaps`. These helpers ONLY move
- * nodes (x / y), so a spec round-trips through the fence byte-identically, no new serialized fields.
- *
- * The editor component (`blocks/DiagramBlock.tsx` + the `molecules/Diagram*` panels) is thin glue over
- * these functions, so the interaction math lives here under unit test rather than in the UI, and the
- * marquee / align toolbar / distribute buttons / group drag all read from one tested source of truth.
+/*
+ * PURE multi-select geometry for the diagram editor: equal-spacing snap detection, marquee hit-test,
+ * align / distribute, and the group-translate primitive. Coordinates are ABSTRACT DIAGRAM UNITS, so a
+ * caller converts a screen-pixel snap threshold through the current zoom before calling
+ * `computeSpacingSnaps`. These helpers ONLY move nodes (x/y), so a spec round-trips byte-identically.
  */
 
 import type { DiagramNode } from './types'
 import type { NodeBox } from './edit'
 import { nodeBox, roundUnit, translateNode } from './edit'
 
-// The alignment + move primitives read best next to the box helper they lean on, so re-export it here
-// and let a caller pull `nodeBox` / `NodeBox` from either module.
+// Re-export the box helper these primitives lean on, so a caller can pull it from either module.
 export { nodeBox } from './edit'
 export type { NodeBox } from './edit'
 
@@ -27,11 +18,10 @@ export type { NodeBox } from './edit'
 // #########
 
 /**
- * A distance indicator for the spacing-snap chrome: the equal gap value plus the two segments to mark
- * with a tick. `orientation: 'horizontal'` means the gaps are measured along x (a row of peers);
- * `'vertical'` means along y (a column). All positions are in diagram units; `cross` is the
- * perpendicular coordinate the tick sits at. `segments` always holds exactly the two equal gaps: the
- * dragged box's gap to its nearest peer, and the existing peer-to-peer gap it matched.
+ * A distance indicator for the spacing-snap chrome: the equal gap value plus the two segments to tick.
+ * `orientation: 'horizontal'` measures gaps along x; `cross` is the perpendicular tick coordinate.
+ * `segments` holds exactly the two equal gaps: the dragged box's gap to its nearest peer, and the
+ * existing peer-to-peer gap it matched.
  */
 export interface SpacingBadge {
    orientation: 'horizontal' | 'vertical'
@@ -42,10 +32,9 @@ export interface SpacingBadge {
 /** Which line of the selection bounding box an align snaps every selected node to. */
 export type AlignAxis = 'left' | 'hcenter' | 'right' | 'top' | 'vmiddle' | 'bottom'
 
-/** The axis a distribute equalizes edge-to-edge gaps along. */
 export type DistributeAxis = 'horizontal' | 'vertical'
 
-/** An axis-aligned rectangle in diagram units (a marquee drag, possibly with a negative size). */
+/** A marquee drag, possibly with a negative size. */
 export interface Rect {
    x:      number
    y:      number
@@ -57,18 +46,15 @@ export interface Rect {
 // # CONSTANTS #
 // #############
 
-/** Slack (diagram units) for the "does not overlap the opposite flank" spacing validity checks. */
+/** Slack for the "does not overlap the opposite flank" spacing validity checks. */
 const SPACING_OVERLAP_EPSILON = 1e-6
 
 // ####################
 // # SPACING SNAP     #
 // ####################
 
-/**
- * A per-orientation view of a box's main axis (start / end / size) and its perpendicular (cross) axis,
- * so the horizontal-row and vertical-column spacing math share one code path. For a horizontal row the
- * main axis is x and the cross axis is y; for a vertical column they swap.
- */
+/** A per-orientation view of a box's main axis (start/end/size) and cross axis, so the horizontal-row
+ *  and vertical-column spacing math share one code path (for a horizontal row main is x, cross is y). */
 interface AxisView {
    start:       (box: NodeBox) => number
    end:         (box: NodeBox) => number
@@ -96,7 +82,7 @@ const VERTICAL_AXIS: AxisView = {
    crossCenter: box => box.x + box.width / 2,
 }
 
-/** An adjacent peer-to-peer gap along the main axis: its value + the span + tick coords to mark it. */
+/** An adjacent peer-to-peer gap along the main axis: value + span + tick coords. */
 interface ExistingGap {
    value:  number
    start:  number
@@ -114,11 +100,8 @@ function segmentCross(axis: AxisView, first: NodeBox, second: NodeBox): number {
    return (axis.crossCenter(first) + axis.crossCenter(second)) / 2
 }
 
-/**
- * Whether `other` is co-aligned with `dragged` on the perpendicular axis, i.e. their cross-axis spans
- * strictly overlap. Only co-aligned boxes count as peers for spacing, so a gap is always measured along
- * a real line of neighbors (a horizontal row = boxes whose vertical spans overlap the dragged box's).
- */
+/** Whether `other`'s cross-axis span overlaps `dragged`'s. Only co-aligned boxes count as peers, so a
+ *  gap is measured along a real line of neighbors. */
 function isCoAligned(axis: AxisView, dragged: NodeBox, other: NodeBox): boolean {
    const overlap = Math.min(axis.crossEnd(dragged), axis.crossEnd(other))
       - Math.max(axis.crossStart(dragged), axis.crossStart(other))
@@ -126,12 +109,11 @@ function isCoAligned(axis: AxisView, dragged: NodeBox, other: NodeBox): boolean 
 }
 
 /**
- * The single best equal-spacing snap for the dragged box along one orientation, or a null snap. Filters
- * `others` to the co-aligned peers, measures the existing adjacent edge-to-edge gaps between them, then
- * probes both flanking peers (the nearest peer below and above the dragged box on the main axis): if
- * nudging the dragged box by at most `threshold` makes ITS gap to a flank equal an existing peer gap,
- * without overlapping the opposite flank, that is a candidate. The smallest nudge within threshold wins
- * (first found breaks a tie, so the result is deterministic). Emits one badge marking the matched pair.
+ * The single best equal-spacing snap for the dragged box along one orientation, or a null snap. Keeps
+ * the co-aligned peers, measures the existing adjacent gaps between them, then probes both flanking
+ * peers: if nudging the dragged box by at most `threshold` makes its gap to a flank equal an existing
+ * gap without overlapping the opposite flank, that is a candidate. The smallest nudge wins (first found
+ * breaks a tie). Emits one badge marking the matched pair.
  */
 function spacingForAxis(
    axis: AxisView, dragged: NodeBox, others: NodeBox[], threshold: number,
@@ -227,15 +209,10 @@ function spacingForAxis(
 }
 
 /**
- * Illustrator-style equal-spacing detection for a dragged box against its neighbors. Independently on
- * each axis, considers the OTHER boxes co-aligned with the dragged box on the perpendicular axis (a
- * horizontal row = boxes whose vertical spans overlap, a vertical column = horizontal spans overlap),
- * measures the existing adjacent edge-to-edge gaps between those peers, and snaps the dragged box so its
- * gap to the nearest peer equals one of those gaps (within `threshold`, same diagram units as
- * {@link computeAlignmentSnaps}). Returns `snapX` for a matched horizontal row, `snapY` for a matched
- * vertical column (either, both, or neither), plus one {@link SpacingBadge} per matched axis marking the
- * equal-gap pair. Nothing matching returns no snap + empty badges. PURE + deterministic, never throws;
- * the caller applies the returned snap as a normal node move, so serialization stays byte-identical.
+ * Equal-spacing detection for a dragged box against its neighbors, independently on each axis. Snaps
+ * the dragged box so its gap to the nearest peer equals an existing peer-to-peer gap (within
+ * `threshold`). Returns `snapX` for a matched row, `snapY` for a matched column (either, both, or
+ * neither), plus one {@link SpacingBadge} per matched axis. The caller applies the snap as a normal move.
  */
 export function computeSpacingSnaps(
    draggedBox: NodeBox, others: NodeBox[], threshold: number,
@@ -258,7 +235,7 @@ export function computeSpacingSnaps(
 // # MARQUEE HIT-TEST #
 // ####################
 
-/** Normalize a marquee `rect` (dragged in any direction) to non-negative width/height edges. */
+/** Normalize a marquee `rect` (dragged any direction) to non-negative edges. */
 function normalizeRect(rect: Rect): { left: number; top: number; right: number; bottom: number } {
    const left   = Math.min(rect.x, rect.x + rect.width)
    const right  = Math.max(rect.x, rect.x + rect.width)
@@ -267,12 +244,8 @@ function normalizeRect(rect: Rect): { left: number; top: number; right: number; 
    return { left, top, right, bottom }
 }
 
-/**
- * The ids of every node whose bounding box INTERSECTS `rect`, in input order. A marquee grabs any
- * partially-touched node, not only fully-enclosed ones (matching most editors), so this is a box
- * overlap test, not a containment test. `rect` may have been dragged up-left (negative width/height),
- * so it is normalized first. Deterministic + pure.
- */
+/** The ids of every node whose box INTERSECTS `rect`, in input order. A marquee grabs any
+ *  partially-touched node (an overlap test, not containment), matching most editors. */
 export function nodesInRect(nodes: DiagramNode[], rect: Rect): string[] {
    const bounds = normalizeRect(rect)
    const hit: string[] = []
@@ -289,7 +262,7 @@ export function nodesInRect(nodes: DiagramNode[], rect: Rect): string[] {
 // # ALIGN            #
 // ####################
 
-/** The bounding box (as edges) enclosing every box in `boxes`; caller guarantees a non-empty list. */
+/** The bounding box enclosing every box in `boxes`; caller guarantees a non-empty list. */
 function groupBounds(boxes: NodeBox[]): { minX: number; minY: number; maxX: number; maxY: number } {
    let minX = Infinity
    let minY = Infinity
@@ -304,13 +277,8 @@ function groupBounds(boxes: NodeBox[]): { minX: number; minY: number; maxX: numb
    return { minX, minY, maxX, maxY }
 }
 
-/**
- * Move every selected node so its chosen edge / center lines up with the SELECTION BOUNDING BOX's
- * corresponding line: `left` -> box min x, `right` -> box max x, `hcenter` -> box mid x, and the
- * top / bottom / vmiddle analogs on y. Returns a NEW nodes array with the non-selected nodes untouched;
- * needs 2+ selected to do anything (0 or 1 selected returns the input unchanged). Moved coordinates
- * round with {@link roundUnit}. PURE.
- */
+/** Move every selected node so its chosen edge/center lines up with the selection bounding box's
+ *  corresponding line. Needs 2+ selected; fewer returns the input unchanged. */
 export function alignNodes(
    nodes: DiagramNode[], selectedIds: ReadonlySet<string>, alignment: AlignAxis,
 ): DiagramNode[] {
@@ -337,14 +305,8 @@ export function alignNodes(
 // # DISTRIBUTE       #
 // ####################
 
-/**
- * Equalize the edge-to-edge gaps of the selected nodes along `axis`, keeping the two extreme nodes fixed
- * and spreading the middle ones evenly between them. Returns a NEW nodes array with the non-selected
- * nodes untouched; needs 3+ selected to do anything (fewer returns the input unchanged). The nodes are
- * sorted along the axis, the total free space (the extremes' outer span minus the sum of every selected
- * node's size) is divided into equal gaps, and each middle node is placed one gap past the running edge.
- * Moved coordinates round with {@link roundUnit}. PURE.
- */
+/** Equalize the edge-to-edge gaps of the selected nodes along `axis`, keeping the two extremes fixed
+ *  and spreading the middle ones evenly between them. Needs 3+ selected; fewer returns the input. */
 export function distributeNodes(
    nodes: DiagramNode[], selectedIds: ReadonlySet<string>, axis: DistributeAxis,
 ): DiagramNode[] {
@@ -363,7 +325,6 @@ export function distributeNodes(
    const span = view.end(last.box) - view.start(first.box)
    const equalGap = (span - totalSize) / (selected.length - 1)
 
-   // Walk the middle nodes left-to-right, each parked one equal gap past the previous node's far edge.
    // Accumulate the running edge from the UNROUNDED start so a long row does not drift, but store the
    // rounded start for the model write.
    const nextStartById = new Map<string, number>()
@@ -386,11 +347,7 @@ export function distributeNodes(
 // # GROUP TRANSLATE  #
 // ####################
 
-/**
- * Move every selected node by (deltaX, deltaY) diagram units, returning a NEW nodes array with the
- * non-selected nodes untouched. Uses the same rounding discipline as {@link translateNode}, so it backs
- * both the group move-drag and the arrow-key nudge. PURE.
- */
+/** Move every selected node by (deltaX, deltaY). Backs both the group move-drag and the arrow-key nudge. */
 export function translateNodes(
    nodes: DiagramNode[], selectedIds: ReadonlySet<string>, deltaX: number, deltaY: number,
 ): DiagramNode[] {

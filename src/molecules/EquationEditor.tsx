@@ -47,20 +47,18 @@ import type { ContextMenuEntry } from './ContextMenu'
 // # CONSTANTS #
 // #############
 
-/** Positional sortable id prefix: each equation row carries an `equation-<index>` synthetic id
- *  (an equation has no stable model id), which onDragEnd parses back into the reorder helper. */
+/** Positional sortable id prefix: an equation has no stable model id, so each row carries an
+ *  `equation-<index>` id that onDragEnd parses back into the reorder helper. */
 const EQUATION_ID_PREFIX = 'equation-'
 
-/** A single-axis lock: every equation drag glides VERTICALLY only (x pinned), matching the grid's
- *  category-row behavior without depending on `@dnd-kit/modifiers` (not installed). */
+/** Locks every equation drag to VERTICAL only (x pinned), without needing `@dnd-kit/modifiers`. */
 const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 // #########
 // # TYPES #
 // #########
 
-/** The drag-handle wiring a sortable row hands back to the grip: the activator ref + the
- *  ARIA/listener props dnd-kit needs on the grab affordance (mirrors GraphDataGrid). */
+/** The drag-handle wiring a sortable row hands to the grip: the activator ref + dnd-kit's ARIA/listener props. */
 type DragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
 
 /** The open equation row right-click menu: which equation it targets, anchored at the click. */
@@ -87,18 +85,16 @@ interface EquationEditorProps {
    onCommitField: () => void
 }
 
-/** A safe fallback so the editor never operates on an undefined functionPlot. In practice
- *  `graphEdit.setType` seeds a real functionPlot the moment a spec switches to `function`, so this
- *  is a defensive-only backstop, never the normal path. */
+/** Defensive-only backstop so the editor never operates on an undefined functionPlot; `setType`
+ *  seeds a real one whenever a spec switches to `function`. */
 const FALLBACK_FUNCTION_PLOT: FunctionPlot = {
    domain: { xMin: FUNCTION_DEFAULT_X_MIN, xMax: FUNCTION_DEFAULT_X_MAX, samples: FUNCTION_DEFAULT_SAMPLES },
    equations: [{ name: 'f', expression: '' }],
 }
 
-/** Which domain / y-range field is being typed into, holding its raw text so an unparseable
- *  intermediate ("-", "1.") stays on screen without corrupting the stored value, mirrors
- *  GraphDataGrid's `EditingCell`. `yMin`/`yMax` additionally treat a blank field as valid
- *  (autoscale), unlike the required `xMin`/`xMax`/`samples`. */
+/** The field being typed into, holding its raw text so an unparseable intermediate ("-", "1.") stays
+ *  on screen without corrupting the stored value. `yMin`/`yMax` treat a blank as valid (autoscale),
+ *  unlike the required `xMin`/`xMax`/`samples`. */
 interface EditingDomainField {
    field:   'xMin' | 'xMax' | 'samples' | 'yMin' | 'yMax'
    text:    string
@@ -126,12 +122,8 @@ interface SortableEquationRowProps {
    children:      (handle: DragHandleProps) => React.ReactNode
 }
 
-/**
- * One equation row made vertically sortable. The row is the sortable NODE; the grab affordance (the
- * grip at the row's leading edge) is wired via the render-prop `handle` so typing in the name /
- * expression fields never starts a drag, only the grip carries the listeners (mirrors
- * GraphDataGrid's SortableCategoryRow).
- */
+/** One equation row made vertically sortable. The row is the sortable node, but only the grip (wired
+ *  via the render-prop `handle`) carries the drag listeners, so typing in a field never starts a drag. */
 function SortableEquationRow({ equationIndex, onContextMenu, children }: SortableEquationRowProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
       useSortable({ id: `${EQUATION_ID_PREFIX}${equationIndex}` })
@@ -157,17 +149,12 @@ function SortableEquationRow({ equationIndex, onContextMenu, children }: Sortabl
 // #############
 
 /**
- * The Data-tab editor for a `function` chart: a shared domain (x-range + sample count, plus an
- * optional pinned y-range) followed by one row per equation (color swatch + name + expression +
- * remove), replacing `GraphDataGrid` for this type. An equation list has no categories and no
- * per-cell numeric grid, so it earns its own dedicated surface.
+ * The Data-tab editor for a `function` chart: a shared domain (x-range + sample count + optional
+ * pinned y-range) then one row per equation, replacing `GraphDataGrid` for this type.
  *
- * Draft/commit model exactly like `GraphDataGrid`: text/number typing drafts on every keystroke
- * (instant preview) and commits on blur; add/remove/color commit immediately. An expression that
- * fails `compileExpression` gets a live invalid-ring + tooltip (the same affordance the numeric
- * grid uses for a bad number) but is never blocked or reverted. The renderer already treats an
- * uncompileable expression as "draw nothing for this curve," so the editor just surfaces that
- * state rather than fighting it.
+ * Draft/commit like `GraphDataGrid`: text typing drafts every keystroke and commits on blur;
+ * add/remove/color commit immediately. An expression that fails `compileExpression` gets a live
+ * invalid ring but is never blocked; the renderer already draws nothing for such a curve.
  */
 export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit, onCommitField }: EquationEditorProps) {
    const functionPlot = spec.functionPlot ?? FALLBACK_FUNCTION_PLOT
@@ -181,8 +168,7 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
    // Which equation's right-click menu is open (null = none), and where it was invoked.
    const [contextMenu, setContextMenu] = useState<EquationContextMenu | null>(null)
 
-   // One pointer sensor with a 5px activation threshold (matching the grid) so a click on the grip
-   // that doesn't move never registers as a drag.
+   // 5px activation threshold, so a click on the grip that doesn't move never registers as a drag.
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
    // ================
@@ -197,8 +183,7 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
       return !!editingField && editingField.field === field && editingField.invalid
    }
 
-   /** Apply a parsed domain field (xMin/xMax/samples) to the draft. Split by field so the call into
-    *  `setDomain` never needs a computed-key cast. */
+   /** Apply a parsed domain field to the draft. Split by field so `setDomain` needs no computed-key cast. */
    function draftDomainField(field: 'xMin' | 'xMax' | 'samples', parsed: number): void {
       if (field === 'xMin') onDraft(setDomain(spec, { xMin: parsed }))
       else if (field === 'xMax') onDraft(setDomain(spec, { xMax: parsed }))
@@ -404,7 +389,6 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
 
    return (
       <div className="graph-equation-editor">
-         {/* =============== Shared domain card: x-range + sample count, then the y-axis range =============== */}
          <div className="graph-editor-group">
             <span className="graph-section-label">{t.graphDomainSection}</span>
             <div className="graph-domain-row">
@@ -412,8 +396,7 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
                {domainField('xMax', t.graphDomainXMax, domain.xMax)}
                {domainField('samples', t.graphDomainSamples, domain.samples)}
             </div>
-            {/* The yMin/yMax fields are the Y-AXIS range (via setOption), NOT part of the x-Domain.
-                Their own labeled sub-group makes that mapping legible; blank = autoscale. */}
+            {/* yMin/yMax are the Y-AXIS range (via setOption), NOT part of the x-domain; blank = autoscale. */}
             <span className="graph-section-label">{t.graphYRangeSection}</span>
             <div className="graph-domain-row">
                {yRangeField('yMin', t.graphDomainYMin, yMin)}
@@ -421,7 +404,6 @@ export function EquationEditor({ spec, theme, t, onEditStart, onDraft, onCommit,
             </div>
          </div>
 
-         {/* =============== Equations card: one draggable row per curve =============== */}
          <div className="graph-editor-group">
             <DndContext
                sensors={sensors}

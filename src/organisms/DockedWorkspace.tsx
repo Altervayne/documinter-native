@@ -14,11 +14,11 @@ import { useLang } from '../contexts/LangContext'
 // # CONSTANTS #
 // #############
 
-// Pointer travel before a tab press becomes a drag (below this, it stays a click that activates the
-// tab). Matches the dnd-kit activation distance the panel bodies use, so the feel is consistent.
+// Pointer travel before a tab press becomes a drag (below this it stays a click). Matches the dnd-kit
+// activation distance the panel bodies use, so the feel is consistent.
 const ACTIVATION_DISTANCE_PX = 5
-// Width of the edge rail shown on an empty side during a drag: wide so docking to a fresh side is an
-// obvious target rather than a thin sliver.
+// Width of the edge rail shown on an empty side during a drag: wide, so docking to a fresh side is an
+// obvious target rather than a sliver.
 const EDGE_RAIL_PX = 112
 
 // #########
@@ -32,8 +32,8 @@ interface DockedWorkspaceProps {
    children:    ReactNode
 }
 
-/** What a drag started from: a docked tab (click activates it) or a floating panel's Pin (click docks
- *  it). The shared pipeline uses this to pick the click action and the neutral zones. */
+/** What a drag started from: a docked tab (click activates) or a floating panel's Pin (click docks).
+ *  The shared pipeline uses this to pick the click action and the neutral zones. */
 type DragSource = { kind: 'tab'; groupId: string } | { kind: 'floating' }
 
 // ################
@@ -53,14 +53,11 @@ function groupPanelCount(layout: DockLayout, groupId: string): number {
 // # COMPONENT #
 // #############
 
-/**
- * Hosts the two side docks around the center workspace and owns the shared tab drag-and-drop, so a tab
- * dragged out of one dock can land in the other. A press on a tab is a click (activate) until the
- * pointer travels past the activation distance, at which point it becomes a drag with a floating ghost
- * and live drop-zone highlights. Drops resolve by group id (merge into a group, or a new group before /
- * after a target), plus edge rails for starting a dock on a currently empty side. The config menu
- * (DockHost) stays as the permanent, non-drag way to do the same moves.
- */
+/** Hosts the two side docks around the center workspace and owns the shared tab drag-and-drop, so a tab
+ *  dragged out of one dock can land in the other. A tab press is a click until the pointer passes the
+ *  activation distance, then it becomes a drag with a ghost and live drop-zone highlights. Drops resolve
+ *  by group id, plus edge rails for starting a dock on an empty side. The config menu (DockHost) is the
+ *  permanent, non-drag way to do the same moves. */
 export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspaceProps) {
    const [draggingPanelId, setDraggingPanelId] = useState<PanelId | null>(null)
    const [pointer, setPointer]                 = useState<{ x: number; y: number } | null>(null)
@@ -69,13 +66,12 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
    const groupElements = useRef<Map<string, HTMLElement>>(new Map())
    const dockElements  = useRef<Map<DockSide, HTMLElement>>(new Map())
    const regionRef     = useRef<HTMLDivElement>(null)
-   // The group the drag started from, captured at press so the hit-test can mark self-drops as cancel.
-   // `sourceMultiTab` decides whether the source's above / below bands stay live (pull the tab out into
-   // its own group) or also cancel (a lone tab splitting off itself would be a no-op).
+   // The group the drag started from, captured at press so the hit-test marks self-drops as cancel.
+   // `sourceMultiTab` decides whether the source's above / below bands stay live (pull the tab into its
+   // own group) or also cancel (a lone tab splitting off itself is a no-op).
    const sourceGroupId  = useRef<string | null>(null)
    const sourceMultiTab = useRef(false)
-   // True while the drag started from a floating panel's Pin (the center / float zone then reads as a
-   // neutral no-op, since the panel is already a window).
+   // Drag started from a floating panel's Pin: the center / float zone reads as a no-op (already a window).
    const sourceIsFloating = useRef(false)
 
    function registerGroup(groupId: string, element: HTMLElement | null): void {
@@ -92,10 +88,9 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
       return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
    }
 
-   // Resolve where a drop at (x, y) would land, in precedence order: a group's three bands (above / merge
-   // / below, with the panel's own group center reading as cancel); the rest of a populated dock (its
-   // empty area, so a dock of collapsed groups still has a big target) docks to that side; an empty
-   // side's edge rail starts a dock there; and the open center pops the panel out as a window.
+   // Where a drop at (x, y) lands, in precedence order: a group's three bands (above / merge / below,
+   // the panel's own group center reading as cancel); a populated dock's empty area docks to that side;
+   // an empty side's edge rail starts a dock; the open center pops the panel out as a window.
    function computeDropTarget(pointerX: number, pointerY: number): DockDropTarget | null {
       for (const [groupId, element] of groupElements.current) {
          const rect = element.getBoundingClientRect()
@@ -132,8 +127,8 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
       } else if (target.kind === 'adjacent') {
          dock.movePanelAdjacentToGroup(panelId, target.groupId, target.position)
       } else if (target.kind === 'emptySide' || target.kind === 'dockSide') {
-         // Both start a new group at the bottom of that side (movePanelToSide creates the column if
-         // the side is empty), so an edge-rail drop and a populated-dock drop share the same action.
+         // Both start a new group at the bottom of that side (movePanelToSide creates the column when
+         // the side is empty), so edge-rail and populated-dock drops share one action.
          dock.movePanelToSide(panelId, target.side)
       } else if (target.kind === 'float') {
          // A tab dropped in the center pops out; a panel that is ALREADY floating stays put (no-op).
@@ -142,9 +137,8 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
       // 'cancel' is a deliberate no-op.
    }
 
-   // One drag pipeline for both sources: a docked tab (click activates it) and a floating panel's Pin
-   // (click docks it to its remembered side). A drag past the activation distance runs the shared
-   // hit-test + drop.
+   // One drag pipeline for both sources: a docked tab (click activates) and a floating panel's Pin (click
+   // docks to its remembered side). A drag past the activation distance runs the shared hit-test + drop.
    function beginDrag(panelId: PanelId, source: DragSource, event: ReactPointerEvent<HTMLButtonElement>): void {
       if (event.button !== 0) return
       const startX = event.clientX
@@ -250,8 +244,7 @@ export function DockedWorkspace({ dock, panelBodies, children }: DockedWorkspace
 // # DROP ZONES (edge / center) + GHOST #
 // #####################################
 
-/** The center float zone over the editor: a faint hint while dragging, filled when it is the target
- *  (a drop there pops the panel out as a window). */
+/** The center float zone over the editor: a faint hint while dragging, filled when it is the target. */
 function CenterFloatOverlay({ active }: { active: boolean }) {
    return (
       <div

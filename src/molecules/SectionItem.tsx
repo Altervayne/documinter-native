@@ -33,10 +33,9 @@ import { useLang } from '../contexts/LangContext'
 
 interface SectionItemProps {
    section:         Section
-   /** Position within the sections array, drives Insert above/below targets and Move up/down
-    *  disabled state (mirrors WysiwygSection's canvas menu). */
+   /** Drives Insert above/below targets and the Move up/down disabled state. */
    index:           number
-   /** Whether this is the last section, disables the panel menu's Move down. */
+   /** Disables the menu's Move down. */
    isLastSection:   boolean
    onToggle:        () => void
    onDuplicate:     () => void
@@ -81,18 +80,14 @@ export function SectionItem({
       scrollAndFlash(`[data-section-id="${section.id}"]`, 'start')
    }
 
-   // ====================================
-   //  Panel context menu (right-click on the section's header row)
-   // ====================================
+   // ==== Panel context menu (section header right-click) ====
    function handleSectionContextMenu(event: React.MouseEvent) {
       event.preventDefault()
       setSectionMenu({ x: event.clientX, y: event.clientY })
    }
 
-   /** "Rename" resolves to the canvas section title, the panel row is navigation-only (click
-    *  scrolls to the section), so it has no inline edit affordance of its own. Scrolls the canvas
-    *  title into view (it may be off-screen) and focuses it, same DOM reach-around the canvas
-    *  section menu uses for its own Rename. */
+   /** Rename resolves to the canvas title: the panel row is navigation-only, so it has no inline
+    *  edit of its own. Scrolls the canvas title (may be off-screen) into view and focuses it. */
    function focusCanvasTitle() {
       const titleEl = document.querySelector<HTMLElement>(`[data-section-id="${section.id}"] h2`)
       titleEl?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -124,15 +119,11 @@ export function SectionItem({
          ref={setNodeRef} style={style} {...attributes}
          className="group/section"
       >
-         {/* =================== */}
-         {/*  Section header row */}
-         {/* =================== */}
          <div
             className="flex items-center gap-1 h-8 mb-1 rounded-md hover:bg-accent/8 transition-colors group/header"
             onContextMenu={handleSectionContextMenu}
          >
 
-            {/* Drag grip */}
             <span
                {...listeners}
                className="shrink-0 px-0.5 text-muted/50 group-hover/header:text-muted/90 cursor-grab transition-colors"
@@ -142,7 +133,6 @@ export function SectionItem({
                <GripVertical size={16} />
             </span>
 
-            {/* Collapse chevron, click toggles only */}
             <button
                onClick={(event) => { event.stopPropagation(); onToggle() }}
                className="shrink-0 p-0.5 text-muted/50 hover:text-muted transition-colors cursor-pointer"
@@ -154,7 +144,7 @@ export function SectionItem({
                }
             </button>
 
-            {/* Title, click scrolls to section on canvas */}
+            {/* Click scrolls to the section on the canvas. */}
             <span
                className={`flex-1 min-w-0 truncate text-xs font-medium cursor-pointer select-none
                   ${section.title ? 'text-text/80' : 'text-muted/50 italic'}`}
@@ -164,7 +154,6 @@ export function SectionItem({
                {section.title || t.untitledDoc}
             </span>
 
-            {/* Hover-revealed: add block + duplicate + delete */}
             <div className="flex items-center gap-0.5 shrink-0 pr-1 transition-opacity opacity-0 pointer-events-none group-hover/section:opacity-100 group-hover/section:pointer-events-auto">
                <button
                   ref={addBlockButtonRef}
@@ -202,9 +191,6 @@ export function SectionItem({
             />
          )}
 
-         {/* ======================== */}
-         {/*  Block list / empty stub */}
-         {/* ======================== */}
          {!section.collapsed && (
             <div className="ml-5 flex flex-col">
                {section.blocks.length === 0 ? (
@@ -230,7 +216,6 @@ export function SectionItem({
             </div>
          )}
 
-         {/* Block type picker, opened by the + button in the hover bar */}
          {pickerOpen && (
             <BlockTypePicker
                anchorRect={pickerAnchorRect ?? new DOMRect(0, 0, 0, 0)}

@@ -1,22 +1,9 @@
-/**
- * DiagramBlock, the diagram (nodes + links) block's in-app view + node editor.
- *
- * The block uses the Block Editor Window. Inline, it shows only its rendered diagram (read-only
- * `renderDiagramToSvg`, self-contained SVG, no runtime, theme baked from the doc theme) plus a
- * hover-reveal Edit pill; the full node editor, an interactive 2D `DiagramCanvas`, a `ShapePalette`,
- * and a `DiagramInspector`, lives in a floating, non-modal `BlockEditorWindow`. The window is APP
- * CHROME (`--color-*`); only the rendered diagram SVG follows the doc theme.
- *
- * The draft/commit model mirrors the graph + image-markup blocks: a local `working` spec (also
- * mirrored in `workingRef` so pointer handlers read the latest value mid-drag) keeps a drag smooth;
- * `draft()` on live drag (no doc mutation), `commit()` on discrete actions (add / delete / drop after
- * a drag / style change) writes `patch({ diagram })`. The inline block renders the live `working`, so
- * it updates behind the non-modal window as the canvas is edited.
- *
- * This component creates / selects / moves / resizes / relabels / styles / deletes NODES; the model
- * already carries edges (and the read-only renderer draws them), but there is no edge drawing/editing
- * UI here yet. Deleting a node cascades to its incident edges via the pure `removeNode`, so the model
- * never dangles.
+/*
+ * The diagram block: inline it shows the read-only rendered SVG (doc-themed) plus a hover Edit pill;
+ * node + edge editing lives in a floating, non-modal BlockEditorWindow (app chrome, --color-*). Draft
+ * mirrors the graph + image-markup blocks: a `working` spec (also in `workingRef` so pointer handlers
+ * read it mid-drag) drafts on live drag, commits on discrete actions via patch({ diagram }). The inline
+ * block renders live `working`, so it updates behind the window. Deleting a node cascades to its edges.
  */
 
 // -- React Imports --
@@ -79,18 +66,14 @@ const FALLBACK_SPEC: DiagramSpec = { nodes: [], edges: [], options: {} }
 const ADD_CASCADE_STEP = 16
 const ADD_CASCADE_WRAP = 6
 
-/**
- * How far (diagram units) a duplicated node is nudged from its source on both axes, so a right-click
- * "Duplicate node" lands visibly clear of the original rather than exactly on top.
- */
+/** How far (diagram units) a duplicated node is nudged from its source, so it lands clear of the original. */
 const DUPLICATE_OFFSET = 20
 
 /** Zoom multipliers: a click of the +/- buttons, and one scroll-wheel notch. */
 const ZOOM_BUTTON_STEP = 1.25
 const WHEEL_ZOOM_STEP = 1.1
 
-/** Alignment snap threshold in SCREEN pixels (converted to diagram units through the live zoom, so
- *  the snap feels the same on screen at any zoom level). */
+/** Alignment snap threshold in SCREEN pixels (converted to diagram units through the live zoom). */
 const SNAP_THRESHOLD_PX = 7
 
 /** How near (SCREEN pixels, converted through the live zoom) a click must be to an edge to select it. */
@@ -135,22 +118,17 @@ function unionBox(boxes: NodeBox[]): NodeBox {
 }
 
 /**
- * Override the root `<svg>`'s viewBox on the (unchanged) renderer output so the EDITOR draws through
- * its current viewport instead of the renderer's autofit box. Editor-only + ephemeral: the renderer,
- * the stored spec, and the read-only/export SVG are untouched (they keep autofit), so serialization
- * stays byte-identical. Nodes are drawn at absolute coordinates regardless of the viewBox, so swapping
- * the window here is exactly the unbounded-canvas pan/zoom with no content-level clip.
+ * Override the renderer output's root viewBox so the editor draws through its current viewport instead
+ * of the renderer's autofit box. Editor-only + ephemeral; the read-only/export SVG keeps autofit, so
+ * serialization stays byte-identical. Nodes draw at absolute coords, so this is the pan/zoom itself.
  */
 function overrideSvgViewBox(svgMarkup: string, viewBox: DiagramViewBox): string {
    const value = `${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`
    return svgMarkup.replace(/viewBox="[^"]*"/, `viewBox="${value}"`)
 }
 
-/**
- * The drawn polyline of an edge (for the selection highlight), resolving its endpoint nodes and
- * reusing the SHARED {@link edgePolyline} so the highlight tracks exactly what the renderer draws.
- * Null when no edge is selected or an endpoint node is missing.
- */
+/** An edge's drawn polyline for the selection highlight, reusing the shared edgePolyline so it tracks
+ *  exactly what the renderer draws. Null when no edge is selected or an endpoint node is missing. */
 function edgePolylineFor(spec: DiagramSpec, edge: DiagramSpec['edges'][number] | null): Point[] | null {
    if (!edge) return null
    const fromNode = findNode(spec, edge.from)
@@ -188,19 +166,15 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const editorWindow   = usePopAWindow()
    const isEditing      = !readOnly && editorWindow.isOpen(block.id)
 
-   // ============
-   //  Draft state (mirrors GraphBlock / ImageMarkupEditor): a working spec + refs so pointer
-   //  handlers stay stale-closure-free mid-drag.
-   // ============
+   // Draft state: a working spec + refs so pointer handlers stay stale-closure-free mid-drag.
    const [working, setWorking] = useState<DiagramSpec>(block.diagram ?? FALLBACK_SPEC)
    const workingRef = useRef(working)
    const editing = useRef(false)
    const patchRef = useRef(patch)
    useEffect(() => { patchRef.current = patch })
 
-   // Node selection is a SET (marquee / shift-click can hold several); edge selection stays single.
-   // The two are mutually exclusive: selecting nodes clears the edge and vice versa, so the inspector
-   // shows exactly one context. A ref mirror keeps pointer handlers stale-closure-free mid-drag.
+   // Node selection is a SET (marquee / shift-click holds several); edge selection stays single. The
+   // two are mutually exclusive so the inspector shows exactly one context. Ref mirrors for mid-drag.
    const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
    const selectedIdsRef = useRef<ReadonlySet<string>>(selectedIds)
    const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
@@ -208,8 +182,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const [editingLabelId, setEditingLabelId] = useState<string | null>(null)
    const editingLabelIdRef = useRef<string | null>(null)
 
-   // The hovered node (its connection ports show) + the live edge-connect drag (source node + the
-   // cursor point the preview line tracks). All ephemeral editor state, never touches the document.
+   // The hovered node (its ports show) + the live edge-connect drag (source node + preview cursor).
    const [hoveredId, setHoveredId] = useState<string | null>(null)
    const hoveredIdRef = useRef<string | null>(null)
    const [connectFromId, setConnectFromId] = useState<string | null>(null)
@@ -219,7 +192,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    const [outputHovered, setOutputHovered] = useState(false)
    const [interacting, setInteracting] = useState(false)
 
-   // The open node context menu (right-click on a node), at the cursor's client coords, or null.
+   // The open node context menu (right-click on a node), at cursor client coords, or null.
    const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number } | null>(null)
 
    const rootRef = useRef<HTMLDivElement>(null)
@@ -232,16 +205,15 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       () => computeEditorCanvas(block.diagram ?? FALLBACK_SPEC),
    )
 
-   // Ephemeral view transform (zoom + pan), applied ON TOP of the fixed frame. Never persisted or
-   // serialized, reset on window open. Alignment guides show only while a node is dragged.
+   // Ephemeral view transform (zoom + pan) on TOP of the fixed frame, reset on window open.
    const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW_TRANSFORM)
    const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([])
 
-   // Spacing badges (equal-gap distance ticks) show alongside the alignment guides while a group drags.
+   // Equal-gap distance ticks, shown alongside the alignment guides while a group drags.
    const [spacingBadges, setSpacingBadges] = useState<SpacingBadge[]>([])
 
-   // The live marquee rectangle (diagram units, possibly with a negative size while dragged up-left), or
-   // null when no marquee is active. Mirrored in a ref so pointer-up reads the final rect synchronously.
+   // The live marquee rectangle (diagram units, size may go negative when dragged up-left), or null.
+   // Mirrored in a ref so pointer-up reads the final rect synchronously.
    const [marqueeRect, setMarqueeRectState] = useState<Rect | null>(null)
    const marqueeRectRef = useRef<Rect | null>(null)
    function setMarqueeRect(rect: Rect | null): void {
@@ -249,15 +221,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       setMarqueeRectState(rect)
    }
 
-   // Whether Space is held (its keydown/keyup is tracked while the editor is open): while held, an
-   // empty-canvas drag PANS instead of drawing a marquee, and the empty-canvas cursor reads "grab".
+   // While Space is held, an empty-canvas drag PANS instead of drawing a marquee (cursor reads "grab").
    const [spaceHeld, setSpaceHeld] = useState(false)
    const spaceHeldRef = useRef(false)
 
-   // The user-resizable canvas height (screen px) + the measured on-screen container size. Both are
-   // ephemeral editor state (never serialized). The frame's aspect is derived from the measured
-   // container (see `currentFrame`), so a taller canvas gives a taller frame/viewport, more room to
-   // work, while keeping the pointer mapping + the unbounded-canvas clip correct.
+   // The user-resizable canvas height (screen px) + the measured container size. The frame aspect is
+   // derived from the container (see `currentFrame`), so a taller canvas gives a taller viewport.
    const [canvasHeight, setCanvasHeight] = useState<number>(CANVAS_DEFAULT_HEIGHT)
    const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
    const resizeStartRef = useRef<{ pointerY: number; height: number } | null>(null)
@@ -288,19 +257,15 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       patchRef.current({ diagram: next })
    }
    /**
-    * Persist any pending inspector-field edit (a label typed into the node/edge field drafts into
-    * `working` on each keystroke but is not written to the document until here). Called on the field's
-    * blur AND, critically, at the top of a canvas pointer-down and on window close, so a click that
-    * changes the selection (which unmounts the field, suppressing its blur) can never discard the
-    * in-flight draft. `editing.current` is true exactly when such a draft is pending (a drag always
-    * ends by committing on pointer-up), so this is a no-op otherwise.
+    * Persist any pending inspector-field label draft. Called on the field's blur AND, critically, at the
+    * top of a canvas pointer-down and on window close: a click that changes the selection unmounts the
+    * field and swallows its blur, which would otherwise discard the in-flight draft. No-op when nothing
+    * is pending (`editing.current` is true exactly then; a drag ends by committing on pointer-up).
     */
    function flushPendingEdit(): void {
       if (editing.current) commit(workingRef.current)
    }
-   // Node + edge selection are mutually exclusive: selecting nodes clears the edge and vice versa, so the
-   // inspector always shows exactly one context (or the empty hint). Every node-selection change routes
-   // through selectNodes so the ref mirror + the edge-clear stay in lockstep.
+   // Route every node-selection change through here so the ref mirror + the edge-clear stay in lockstep.
    function selectNodes(ids: ReadonlySet<string>): void {
       selectedIdsRef.current = ids
       setSelectedIds(ids)
@@ -361,12 +326,10 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Canvas frame + height resize (the frame aspect FOLLOWS the measured container aspect, so the
-   //  pointer mapping + unbounded-canvas clip stay correct at any user-chosen height)
+   //  Canvas frame + height resize
    // ============
-   // The fixed reference frame: `editorCanvas.width` is the stable scale-1 horizontal extent, and the
-   // HEIGHT is derived so the frame aspect exactly matches the measured container (falls back to the
-   // content extent as a first-frame default when unmeasured).
+   // The fixed reference frame: `editorCanvas.width` is the stable scale-1 horizontal extent; the height
+   // is derived so the frame aspect matches the measured container (content extent when unmeasured).
    function currentFrame(): DiagramViewBox {
       if (containerSize.width > 0 && containerSize.height > 0) {
          return frameFromContainer(editorCanvas.width, containerSize.width, containerSize.height)
@@ -397,7 +360,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Zoom / pan levers (the view transform is ephemeral editor state, never touching the doc)
+   //  Zoom / pan levers
    // ============
    function zoomBy(factor: number): void {
       // Zoom toward the frame center (the +/- buttons have no cursor to zoom toward).
@@ -414,13 +377,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Add a node (one-click from the palette, placed at the canvas center + a mild cascade)
+   //  Add a node
    // ============
    function handleAddShape(shape: NodeShape): void {
       const current = workingRef.current
       const cascade = (current.nodes.length % ADD_CASCADE_WRAP) * ADD_CASCADE_STEP
-      // Place the new node at the center of what's CURRENTLY visible (the viewport), so it lands in view
-      // regardless of the zoom/pan or the resized canvas height, not off in a fixed frame corner.
+      // Place at the center of what's CURRENTLY visible, so it lands in view at any zoom/pan/height.
       const visible = viewportViewBox(currentFrame(), view)
       const center: Point = {
          x: visible.minX + visible.width / 2 + cascade,
@@ -434,7 +396,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    // ============
    //  Duplicate + the right-click node context menu
    // ============
-   /** Duplicate the selected node in place with an offset (the right-click "Duplicate node" action). */
    function duplicateSelectedNode(): void {
       const id = onlySelected(selectedIdsRef.current)
       if (!id) return
@@ -445,11 +406,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       commit(addNode(workingRef.current, duplicateNode(node, () => newId, DUPLICATE_OFFSET)))
    }
 
-   /**
-    * Right-click a node to select it and open the node context menu at the cursor. A right-click on
-    * empty canvas falls through (no preventDefault), leaving the native menu, since there is no
-    * empty-canvas action yet.
-    */
+   // Right-click a node selects it and opens the node menu; an empty-canvas right-click falls through
+   // to the native menu.
    function onCanvasContextMenu(point: Point, event: React.MouseEvent): void {
       const hit = hitTestNode(workingRef.current, point)
       if (!hit) return
@@ -460,7 +418,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       setNodeMenu({ x: event.clientX, y: event.clientY })
    }
 
-   /** Entries for the right-click node menu: Duplicate + Delete (Delete is destructive). */
    function nodeMenuEntries(): ContextMenuEntry[] {
       return [
          { label: t.diagramDuplicateNode, icon: <Copy size={14} />, onSelect: duplicateSelectedNode },
@@ -470,20 +427,17 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Canvas pointer interactions (info arrives already mapped: diagram point through the current
-   //  zoom/pan, a transform-independent view-space point for panning, and the screen px/unit ratio)
+   //  Canvas pointer interactions (info arrives already mapped through the current zoom/pan)
    // ============
    function onCanvasPointerDown(info: CanvasPointerInfo, event: React.PointerEvent): void {
-      // Persist any pending inspector-label draft BEFORE this click can change/clear the selection and
-      // unmount the field (which would otherwise swallow its blur and lose the text).
+      // Persist any pending label draft BEFORE this click can change the selection and swallow its blur.
       flushPendingEdit()
 
       const current = workingRef.current
       const point = info.diagramPoint
 
-      // (1) A press on a handle of the SINGLE selected node begins a resize (checked before a body hit;
-      // handles only exist when exactly one node is selected). The grab tolerance widens as we zoom OUT
-      // so the handles stay grabbable on screen.
+      // (1) A press on a handle of the SINGLE selected node begins a resize (handles exist only then).
+      // The grab tolerance widens as we zoom OUT so the handles stay grabbable on screen.
       const onlyId = onlySelected(selectedIdsRef.current)
       const selected = onlyId ? findNode(current, onlyId) : null
       if (selected) {
@@ -496,8 +450,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          }
       }
 
-      // (2) A press on a connection port of the hovered node begins an edge-CONNECT drag (the ports
-      // sit just outside the border, so this never shadows a body move). Tolerance scales with zoom.
+      // (2) A press on a port of the hovered node begins an edge-CONNECT drag (ports sit just outside
+      // the border, so this never shadows a body move). Tolerance scales with zoom.
       const hovered = hoveredIdRef.current ? findNode(current, hoveredIdRef.current) : null
       if (hovered && hitTestPort(hovered, point, PORT_HIT_TOLERANCE / view.scale)) {
          interactionRef.current = { mode: 'connect', from: hovered.id }
@@ -509,9 +463,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (3) A node body hit. A shift-click toggles it in / out of the set (a pure selection gesture, no
-      // move). Otherwise, a hit INSIDE the current selection group-moves the whole set; a hit OUTSIDE it
-      // first selects just that node, then moves it (the single-node move is the 1-element group case).
+      // (3) A node body hit. A shift-click toggles it in / out of the set (no move). Otherwise a hit
+      // inside the selection group-moves the whole set; a hit outside it first selects just that node.
       const hit = hitTestNode(current, point)
       if (hit) {
          if (event.shiftKey) {
@@ -529,8 +482,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (4) Off every node: an edge close enough to the click selects it (a plain click-select; there
-      // is no drag or waypoint editing yet). Waypoints/routing are honored by hitTestEdge.
+      // (4) Off every node: an edge close enough to the click selects it (waypoints honored by hitTestEdge).
       const edgeHit = hitTestEdge(current, point, EDGE_HIT_THRESHOLD_PX / info.pixelsPerDiagramUnit)
       if (edgeHit) {
          selectEdge(edgeHit.id)
@@ -538,8 +490,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // (5) The empty background. With Space held OR the middle mouse button, begin a PAN; otherwise
-      // begin a MARQUEE (its selection resolves on pointer-up, so a plain click just clears the set).
+      // (5) The empty background. Space held OR middle mouse begins a PAN; otherwise a MARQUEE (resolved
+      // on pointer-up, so a plain click just clears the set).
       if (spaceHeldRef.current || event.button === 1) {
          event.preventDefault()
          interactionRef.current = { mode: 'pan', startFrame: info.framePoint, startView: view }
@@ -559,16 +511,14 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       const interaction = interactionRef.current
       const current = workingRef.current
 
-      // No active drag: track which node is hovered so its connection ports show. A generous tolerance
-      // (covering the port ring just outside the border) keeps the node "hovered" while the pointer
-      // travels out to a port, so the ports don't blink away as the author reaches for them.
+      // No active drag: track the hovered node so its ports show. A generous tolerance (covering the
+      // port ring just outside the border) keeps it hovered while the pointer reaches out to a port.
       if (!interaction) {
          const hovered = hitTestNode(current, info.diagramPoint, PORT_GAP + PORT_HIT_TOLERANCE)
          setHovered(hovered ? hovered.id : null)
          return
       }
 
-      // A live connect drag: the preview line + drop-target outline follow the cursor.
       if (interaction.mode === 'connect') {
          setConnectCursor(info.diagramPoint)
          connectCursorRef.current = info.diagramPoint
@@ -586,7 +536,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       }
 
       if (interaction.mode === 'marquee') {
-         // Grow the marquee rectangle from its start toward the current point (any drag direction).
          const point = info.diagramPoint
          setMarqueeRect({
             x:      interaction.startPoint.x,
@@ -612,10 +561,9 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
             return
          }
 
-         // Probe the selection's BOUNDING BOX against the NON-selected nodes only: run both alignment
-         // (edge/center) and spacing (equal-gap) snaps, then apply the alignment snap on an axis if
-         // present, else the spacing snap (alignment wins ties per axis). Shift the whole group by the
-         // resulting per-axis delta, keeping the members' relative offsets.
+         // Probe the selection's bounding box against the NON-selected nodes: run alignment (edge/center)
+         // and spacing (equal-gap) snaps, apply alignment per axis if present else spacing, then shift
+         // the whole group by the per-axis delta (members keep their relative offsets).
          const groupBox = unionBox(movedNodes.filter(node => interaction.ids.has(node.id)).map(nodeBox))
          const otherBoxes = movedNodes.filter(node => !interaction.ids.has(node.id)).map(nodeBox)
          const threshold = SNAP_THRESHOLD_PX / info.pixelsPerDiagramUnit
@@ -628,16 +576,14 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          const snappedNodes = shiftX !== 0 || shiftY !== 0
             ? translateNodes(movedNodes, interaction.ids, shiftX, shiftY)
             : movedNodes
-         // Keep only the spacing badges for an axis alignment did NOT take (a horizontal badge marks an
-         // x snap, a vertical badge a y snap), so the chrome never shows an equal-gap that was overridden.
+         // Drop the spacing badges for an axis alignment took, so the chrome never shows an overridden gap.
          const shownBadges = spacing.spacingBadges.filter(badge =>
             badge.orientation === 'horizontal' ? align.snapX === undefined : align.snapY === undefined)
          setAlignmentGuides(align.guides)
          setSpacingBadges(shownBadges)
          draft({ ...current, nodes: snappedNodes })
       } else if (interaction.mode === 'resize') {
-         // Resize: compute the raw resized box, then snap the MOVING edge(s) (per the active handle) to
-         // neighbor edges/centers + show guides, the move-drag snap's sibling, holding the pinned edge.
+         // Snap the MOVING edge(s) (per the active handle) to neighbor edges/centers, holding the pinned edge.
          const resized = resizeNode(current, interaction.id, interaction.handle, info.diagramPoint)
          const resizedNode = findNode(resized, interaction.id)
          if (!resizedNode) return
@@ -666,9 +612,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       }
       setInteracting(false)
 
-      // A marquee resolves to the nodes it intersected; when Shift was held at start, the marquee UNIONs
-      // with the prior selection, otherwise it replaces it. A zero-ish drag (a click) grabs nothing, so
-      // a plain click clears the selection.
+      // A marquee resolves to the nodes it intersected; Shift at start UNIONs with the prior selection,
+      // else replaces it. A zero-ish drag grabs nothing, so a plain click clears the selection.
       if (interaction.mode === 'marquee') {
          const rect = marqueeRectRef.current
          setMarqueeRect(null)
@@ -682,8 +627,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // A connect drag commits a new edge if it was released over a DIFFERENT node (self-loops are
-      // out of scope, and a drop back on the source or on empty space simply cancels).
+      // A connect drag commits a new edge if released over a DIFFERENT node; else it cancels.
       if (interaction.mode === 'connect') {
          const dropPoint = connectCursorRef.current
          endConnect()
@@ -699,12 +643,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
          return
       }
 
-      // Only persist if the drag actually changed something (a draft ran): a plain select-click / a
-      // pan sets an interaction but never drafts, so committing here would spray a no-op undo entry.
+      // Persist only if the drag drafted: a select-click / pan sets an interaction but never drafts, so
+      // committing here would spray a no-op undo entry.
       if (editing.current) commit(workingRef.current)
    }
 
-   // Double-click a node to edit its label in place (the primary path; the inspector field is the other).
+   // Double-click a node to edit its label in place.
    function onCanvasDoubleClick(point: Point): void {
       const hit = hitTestNode(workingRef.current, point)
       if (hit) {
@@ -713,7 +657,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       }
    }
 
-   // Commit the edit-in-place label back to the node (blur / Enter).
    function commitLabelEdit(value: string): void {
       const id = editingLabelIdRef.current
       setEditingLabel(null)
@@ -725,9 +668,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    // ============
    //  Inspector levers
    // ============
-   // Label fields draft LIVE into `working` on each keystroke (capturing the element id at draft time),
-   // so the text is never trapped in an uncommitted, about-to-unmount field; the actual document write
-   // happens via flushPendingEdit (blur / canvas-pointerdown / window-close).
+   // Label fields draft LIVE into `working` on each keystroke, so the text is never trapped in an
+   // about-to-unmount field; the document write happens via flushPendingEdit.
    function handleLabelDraft(value: string): void {
       const id = onlySelected(selectedIdsRef.current)
       if (!id || !findNode(workingRef.current, id)) return
@@ -738,7 +680,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       if (!id || !findNode(workingRef.current, id)) return
       commit(updateNodeStyle(workingRef.current, id, stylePatch))
    }
-   /** Delete EVERY selected node (each cascades its incident edges via removeNode). */
+   /** Delete every selected node (each cascades its incident edges via removeNode). */
    function handleDeleteSelected(): void {
       const ids = selectedIdsRef.current
       if (ids.size === 0) return
@@ -750,7 +692,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Align / distribute (applied to the whole selection, one undo entry per action)
+   //  Align / distribute (whole selection, one undo entry per action)
    // ============
    function applyAlign(alignment: AlignAxis): void {
       const nodes = alignNodes(workingRef.current.nodes, selectedIdsRef.current, alignment)
@@ -778,9 +720,8 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // Keyboard while the editor is open: Space toggles pan-on-empty-drag, Delete/Backspace removes the
-   // selection (nodes cascade their edges, else the selected edge), Escape clears the selection, the
-   // arrow keys nudge the whole selection (Shift = a larger step), and Ctrl/Cmd+A selects every node.
-   // Any form field with focus bails first, so typing a label / color hex is never hijacked.
+   // selection (nodes cascade their edges, else the selected edge), Escape clears, arrows nudge the
+   // selection (Shift = larger step), Ctrl/Cmd+A selects all. A focused form field bails first.
    useEffect(() => {
       if (!isEditing) return
       function inFormField(event: KeyboardEvent): boolean {
@@ -790,7 +731,7 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
       function onKeyDown(event: KeyboardEvent): void {
          if (inFormField(event)) return
 
-         // Space held: pan-on-empty-drag. Swallow the key so it never scrolls the page or types.
+         // Swallow Space so it never scrolls the page or types.
          if (event.code === 'Space') {
             event.preventDefault()
             if (!spaceHeldRef.current) {
@@ -871,35 +812,30 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
    }
 
    // ============
-   //  Inline output (live `working`): rendered diagram, or the empty-state invite. Updates behind
-   //  the non-modal editor window.
+   //  Inline output (live `working`): rendered diagram, or the empty-state invite.
    // ============
    const hasNodes = working.nodes.length > 0
    const inlineSvg = hasNodes ? renderDiagramToSvg(working, diagramTheme) : ''
 
    // ============
-   //  Windowed editor: an UNBOUNDED canvas. Nodes render at their absolute diagram coordinates; the
-   //  editor's viewBox is the VIEWPORT derived from the zoom/pan over those absolute coords, so no
-   //  content is ever clipped to a fixed frame and any node is reachable by panning. `editorCanvas` is
-   //  only the fixed reference frame (the scale-1 viewport size + the container aspect), never a
-   //  content clip. The interaction overlay shares the same viewport viewBox, so its coordinates line
-   //  up 1:1 with the drawn nodes at any zoom/pan.
+   //  Windowed editor: an UNBOUNDED canvas. Nodes render at absolute coords; the editor's viewBox is
+   //  the viewport derived from the zoom/pan over them, so nothing is clipped and any node is reachable
+   //  by panning. The interaction overlay shares the same viewport viewBox, lining up 1:1 with nodes.
    // ============
    const fixedFrame = currentFrame()
    const viewport = viewportViewBox(fixedFrame, view)
    const canvasSvg = working.nodes.length > 0
       ? overrideSvgViewBox(renderDiagramToSvg(working, diagramTheme), viewport)
       : ''
-   // The selected nodes (chrome draws one SelectionChrome each; resize handles show only when the count
-   // is exactly one). A single selected node also feeds the inspector's per-node panel; 2+ shows the
-   // combined group bounding box + the "N nodes selected" inspector state instead.
+   // The selected nodes. One feeds the inspector's per-node panel + resize handles; 2+ shows the group
+   // bounding box + the "N nodes selected" state instead.
    const selectedNodes = working.nodes.filter(node => selectedIds.has(node.id))
    const onlySelectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
    const groupBox = selectedNodes.length >= 2 ? unionBox(selectedNodes.map(nodeBox)) : null
    const editingLabelNode = editingLabelId ? findNode(working, editingLabelId) : null
 
    // ============
-   //  Edge editor chrome (all derived from the ephemeral selection / hover / connect state)
+   //  Edge editor chrome (derived from the ephemeral selection / hover / connect state)
    // ============
    const selectedEdge = selectedEdgeId ? findEdge(working, selectedEdgeId) : null
    const selectedEdgePolyline = edgePolylineFor(working, selectedEdge)
@@ -922,14 +858,12 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
 
    const editorBody = (
       <div className="diagram-editor">
-         {/* ===== Add shape ===== */}
          <section className="diagram-section">
             <span className="diagram-section-label">{t.diagramShapesSection}</span>
             <ShapePalette onAddShape={handleAddShape} />
             <p className="diagram-hint">{t.diagramCanvasHint}</p>
          </section>
 
-         {/* ===== Canvas ===== */}
          <section className="diagram-section diagram-section-canvas">
             <div className="diagram-canvas-wrap">
                <div className="diagram-canvas-stage">
@@ -989,7 +923,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
                      </button>
                   </div>
                </div>
-               {/* Drag the bottom handle to make the editing surface taller/shorter (like a textarea). */}
                <div
                   className="diagram-canvas-resize"
                   role="separator"
@@ -1004,7 +937,6 @@ export function DiagramBlock({ block, patch, readOnly }: DiagramBlockProps) {
             </div>
          </section>
 
-         {/* ===== Inspector ===== */}
          <section className="diagram-section">
             <span className="diagram-section-label">{inspectorLabel}</span>
             <DiagramInspector
@@ -1089,12 +1021,9 @@ interface AlignDistributeControlsProps {
    t:            T
 }
 
-/**
- * The align + distribute cluster floated at the canvas top-left (mirroring the zoom cluster). The six
- * align buttons line every selected node up on the selection bounding box's edge / center; the two
- * distribute buttons even out the edge-to-edge gaps. Aligns need two selected nodes, distributes need
- * three, so below that count the buttons dim + disable. Each action commits one undo entry.
- */
+/** The align + distribute cluster floated at the canvas top-left. Align buttons line the selection up
+ *  on its bounding box edge / center; distribute buttons even out the edge-to-edge gaps. Aligns need
+ *  two selected nodes, distributes three; below that they disable. */
 function AlignDistributeControls({ count, onAlign, onDistribute, t }: AlignDistributeControlsProps) {
    const alignDisabled      = count < 2
    const distributeDisabled = count < 3

@@ -33,15 +33,11 @@ interface UseBlockContextMenuOptions {
    onDeleteTableRowAt: (rowIndex: number) => void
    onInsertTableColAt: (colIndex: number) => void
    onDeleteTableColAt: (colIndex: number) => void
-   /** Paged-format page-break action, computed by the caller (present only in paged mode for an
-    *  outer block that can break / already breaks after it). */
+   /** Page-break action, caller-computed; present only for an outer block in paged mode. */
    pageBreak?: { mode: 'insert' | 'remove'; onSelect: () => void }
-   /** Paged-format keep-together toggle, computed by the caller (present only in paged mode for an
-    *  outer splittable block). `active` reflects the current `keepTogether` state. */
+   /** Keep-together toggle, caller-computed; present only for an outer splittable block in paged mode. */
    keepTogether?: { active: boolean; onSelect: () => void }
-   /** Paged-format keep-with-next toggle, computed by the caller (present only in paged mode for an
-    *  outer block that has a following top-level block). `active` reflects the current `keepWithNext`
-    *  state. */
+   /** Keep-with-next toggle, caller-computed; present only for an outer block with a following one. */
    keepWithNext?: { active: boolean; onSelect: () => void }
 }
 
@@ -54,10 +50,9 @@ interface UseBlockContextMenuResult {
 }
 
 /**
- * Context-menu state for a WysiwygBlock: open position, the list-item / table-cell detection
- * from the right-click target's DOM, and assembly of the per-context action objects. The
- * list-item and table actions are caller-supplied handlers backed by the mutation hooks; this
- * hook computes no list mutation itself (getListItemContext is a read for the enable flags).
+ * Context-menu state for a WysiwygBlock: open position, the list-item / table-cell detection from
+ * the right-click target's DOM, and assembly of the per-context action objects. The list-item and
+ * table actions are caller-supplied; this hook computes no mutation itself.
  */
 export function useBlockContextMenu({
    block, blockDivRef, isAnchorDupe,
@@ -73,18 +68,15 @@ export function useBlockContextMenu({
 
    function openContextMenu(event: React.MouseEvent) {
       event.preventDefault()
-      // Block chrome isn't a DOM/React-tree ancestor of the section's gutter or title, so this
-      // wouldn't currently reach the section menu either way, stopped defensively anyway, matching
-      // the same portal-bubbling guard used by BlockEditorWindow, in case the section's attach
-      // point ever widens to the whole .doc-section.
+      // Stopped defensively: block chrome isn't a tree ancestor of the section gutter or title today,
+      // but this guards the section menu if that attach point ever widens to the whole .doc-section.
       event.stopPropagation()
       const target = event.target as Element
 
-      // List item detection
       const listItemEl = target.closest('[data-list-item-id]')
       setContextMenuListItemId(listItemEl?.getAttribute('data-list-item-id') ?? null)
 
-      // Table cell detection, derive row/col indices from the DOM structure
+      // Derive the table cell's row/col indices from the DOM structure.
       if (block.type === 'table' && blockDivRef.current) {
          const cell = target.closest('td, th')
          if (cell && blockDivRef.current.contains(cell)) {

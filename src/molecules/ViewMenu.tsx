@@ -9,8 +9,8 @@ import { isPanelVisible } from '../lib/paneTree'
 // # TYPES #
 // #########
 
-/** A dockable side panel presented as a View-menu toggle: on = visible (docked or floating), off =
- *  hidden. Toggling preserves the panel's previous config (docked-where / floating-at-geometry). */
+/** A dockable side panel as a View-menu toggle. Toggling preserves the panel's previous config
+ *  (docked-where / floating-at-geometry). */
 export interface DockPanelToggle {
    id:      string
    label:   string
@@ -22,14 +22,14 @@ export interface DockPanelToggle {
 interface ViewMenuProps {
    paneLayout:    PaneNode
    onTogglePanel: (id: PaneId) => void
-   /** The dockable side panels applicable to the current document, listed under the workspace panes. */
+   /** The dockable side panels for the current document, listed under the workspace panes. */
    dockPanels:    DockPanelToggle[]
    t:             T
 }
 
-// ###################################################
-// # PANEL CONFIG (STABLE, DEFINED AT MODULE LEVEL) #
-// ###################################################
+// ####################
+// # PANEL CONFIG #
+// ####################
 
 const PANEL_OPTIONS: {
    id:          PaneId
@@ -41,9 +41,8 @@ const PANEL_OPTIONS: {
    { id: 'markdown', icon: <FileText     size={14} />, labelKey: 'viewMarkdown', shortcutKey: 'shortcutToggleMarkdown' },
 ]
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
-// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
-// below, sized to the dropdown's own `w-56` Tailwind class.
+// In-flow `absolute` dropdown, not portaled. These size the right-edge guard below to the
+// dropdown's own `w-56` Tailwind class.
 const DROPDOWN_WIDTH = 224
 const EDGE_MARGIN     = 8
 
@@ -56,7 +55,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
    const [alignRight, setAlignRight] = useState(false)
    const containerRef     = useRef<HTMLDivElement>(null)
 
-   // Close on outside click.
    useEffect(() => {
       if (!open) return
       function handleOutsideMouseDown(event: MouseEvent) {
@@ -66,8 +64,8 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
-   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   // Right-edge guard: flip to right-aligned when a left-aligned dropdown would overflow the
+   // viewport near the header's right side.
    useLayoutEffect(() => {
       if (!open) return
       const containerRect = containerRef.current?.getBoundingClientRect()
@@ -97,7 +95,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
                className={`absolute top-full mt-1.5 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`}
                style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}
             >
-               {/* The three workspace panes. */}
                {PANEL_OPTIONS.map(({ id, icon, labelKey, shortcutKey }) => {
                   const isActive = isPanelVisible(paneLayout, id)
                   return (
@@ -118,7 +115,6 @@ export function ViewMenu({ paneLayout, onTogglePanel, dockPanels, t }: ViewMenuP
                   )
                })}
 
-               {/* The dockable side panels, each a show/hide toggle that preserves its previous config. */}
                {dockPanels.length > 0 && <div className="h-px bg-border my-1 mx-2" />}
                {dockPanels.map((panel) => (
                   <button

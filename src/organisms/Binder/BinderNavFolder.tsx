@@ -23,9 +23,8 @@ interface BinderNavFolderProps {
 }
 
 /**
- * A folder row in the drill-down nav. Single-click selects, double-click enters. The grip
- * reorders folders among siblings; the row is also a drop target for document cards
- * (highlights when a card is dragged over it).
+ * A folder row in the drill-down nav. Single-click selects, double-click enters. The grip reorders
+ * among siblings; the row is also a drop target for document cards, highlighting when one hovers it.
  */
 export function BinderNavFolder({
    folder, documentCount, isSelected, isEditing, isDocumentDragging, isSourceFolder, nestHighlight, reorderEdge,
@@ -64,8 +63,8 @@ export function BinderNavFolder({
       )
    }
 
-   // Highlight when this row is the active drop target: a card dropped onto it (doc drag), or a
-   // folder nested into it (folder drag, center zone). Never the dragged document's own folder.
+   // Highlight when this row is the active drop target: a card dropped onto it, or a folder nested
+   // into it (center zone). Never the dragged document's own folder.
    const dropHighlight = (isOver && isDocumentDragging && !isSourceFolder) || nestHighlight
 
    return (

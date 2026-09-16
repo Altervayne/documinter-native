@@ -6,9 +6,7 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
-// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
-// below, sized to the dropdown's own `min-w-56` Tailwind class.
+// Feed the right-edge guard below, sized to the dropdown's own `min-w-56` Tailwind width.
 const DROPDOWN_WIDTH = 224
 const EDGE_MARGIN     = 8
 
@@ -31,8 +29,7 @@ interface FileMenuProps {
    /** Single, format-aware Export dialog (HTML / PDF / Markdown / JSON), document mode only. */
    onExport:         () => void
    // Binder mode only:
-   /** Single, format-detecting Import (JSON backup / Markdown), lands as a new binder
-    *  record without opening a tab. Binder mode only. */
+   /** Format-detecting Import (JSON / Markdown), lands as a new binder record without opening a tab. */
    onImport:         () => void
    /** Download the whole binder as a `.tin` bundle. Binder mode only. */
    onSaveTin:        () => void
@@ -79,17 +76,11 @@ export function FileMenu({
       setOpen(false)
    }
 
-   // Inapplicable groups are not mounted (invisible), at whole-group + separator granularity,
-   // never individual items winking out mid-list.
+   // Inapplicable groups drop out whole, never individual items winking out mid-list.
    const isDocumentMode = mode === 'document'
-
-   // =======
-   //  Render
-   // =======
 
    return (
       <div ref={containerRef} className="relative">
-         {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
@@ -104,14 +95,11 @@ export function FileMenu({
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
-         {/* Dropdown */}
          {open && (
             <div className={`absolute top-full mt-1.5 min-w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
-               {/* New (opens the New Document dialog), both modes */}
                <MenuItem icon={<FilePlus size={13} />} label={t.fileNewDocument} onClick={() => handleItemClick(onNewDocument)} />
 
-               {/* Document mode: Open into the editor, then Save + Export groups. Open is
-                   workspace-only, the binder has no active document to replace it with. */}
+               {/* Open is workspace-only: the binder has no active document to replace. */}
                {isDocumentMode && (
                   <>
                      <MenuItem icon={<FolderOpen size={13} />} label={t.menuOpen} onClick={() => handleItemClick(onOpen)} />
@@ -120,13 +108,10 @@ export function FileMenu({
                      <MenuItem icon={<SaveAll size={13} />}       label={t.fileSaveAs}       onClick={() => handleItemClick(onSaveAs)} />
                      <MenuItem icon={<LayoutTemplate size={13} />} label={t.saveAsTemplate}  onClick={() => handleItemClick(onSaveAsTemplate)} />
                      <MenuSeparator />
-                     {/* One format-aware Export dialog (HTML / PDF / Markdown / JSON) */}
                      <MenuItem icon={<Download size={13} />} label={t.menuExport} onClick={() => handleItemClick(onExport)} />
                   </>
                )}
 
-               {/* Binder mode: the unified Import (lands as a new binder record, no tab opens) plus
-                   the whole-binder Tin save + open, not mounted in document mode. */}
                {!isDocumentMode && (
                   <>
                      <MenuSeparator />

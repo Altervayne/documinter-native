@@ -14,10 +14,7 @@ type DropZone = 'left' | 'right' | 'top' | 'bottom'
 // # PURE HELPERS #
 // ################
 
-/**
- * Returns which quadrant of `rect` the pointer falls in.
- * Returns null when the pointer is outside the rect.
- */
+/** Which quadrant of `rect` the pointer falls in, or null when it is outside. */
 function computeDropZone(
    pointerX: number,
    pointerY: number,
@@ -130,20 +127,11 @@ interface WorkspaceLayoutProps {
 // #############
 
 /**
- * Renders the workspace as a recursive PaneNode tree.
- *
- * Each PaneSplit renders two children in a flex container separated by a
- * resizable divider. Each PaneLeaf renders the panel content with an optional
- * draggable PaneHeader (shown only when multiple panels are visible).
- *
- * Drag-to-reposition: grabbing a PaneHeader and releasing over a quadrant of
- * another panel calls `relocatePanel` to move the leaf to its new position.
- *
- * Divider resize: each split's divider handles its own pointer capture and
- * calls `setSplitRatio` to update only its own ratio.
- *
- * Panels are mounted and unmounted as their leaves appear and disappear from
- * the tree (not always-mounted). Components re-derive content from props on mount.
+ * Renders the workspace as a recursive PaneNode tree: each PaneSplit is two children in a flex container
+ * split by a resizable divider, each PaneLeaf the panel content with an optional draggable PaneHeader
+ * (shown only when multiple panels are visible). Grabbing a header and releasing over a quadrant of
+ * another panel calls `relocatePanel`; a divider's resize calls `setSplitRatio` on its own ratio only.
+ * Panels mount and unmount as their leaves appear and disappear, re-deriving content from props.
  */
 export function WorkspaceLayout({
    paneLayout,
@@ -159,10 +147,10 @@ export function WorkspaceLayout({
    const [hoveredDropInfo, setHoveredDropInfo] = useState<{ paneId: PaneId; zone: DropZone } | null>(null)
    const [dragPosition, setDragPosition]       = useState<{ x: number; y: number } | null>(null)
 
-   // Refs to each leaf wrapper div, used to compute drop zones during drag
+   // Leaf wrapper divs, for drop-zone hit-testing during a drag.
    const leafRefsMap = useRef<Map<PaneId, HTMLDivElement | null>>(new Map())
 
-   // Always-current paneLayout for pointer event handlers (avoids stale closures mid-drag)
+   // Always-current paneLayout for the pointer handlers (avoids stale closures mid-drag).
    const paneLayoutRef = useRef(paneLayout)
    paneLayoutRef.current = paneLayout
 
@@ -313,7 +301,6 @@ export function WorkspaceLayout({
                {renderNode(node.children[0], [...path, 0])}
             </div>
 
-            {/* Divider */}
             <div
                className="flex-none bg-border hover:bg-accent/60 transition-colors select-none touch-none"
                style={isHorizontal
@@ -345,7 +332,7 @@ export function WorkspaceLayout({
             {renderNode(paneLayout, [])}
          </div>
 
-         {/* Drag ghost, follows cursor while a pane header is being dragged */}
+         {/* Drag ghost, follows the cursor while a pane header is dragged. */}
          {draggingPaneId !== null && dragPosition !== null && (
             <div
                className="fixed z-50 pointer-events-none"

@@ -1,14 +1,11 @@
 import { useDroppable } from '@dnd-kit/core'
 import { FilePlus2 } from 'lucide-react'
 
-// ############################################################
-// BlankPageDropZone, the fill-the-sheet drop target on a blank
-// paged page. Dropping a block here makes it that page's content
-// (handled in WysiwygArea's shared block DnD handler via the
-// `blank-page` drag data). A resting hint marks the page as an
-// intentional empty page; the target highlights while a block is
-// being dragged over it.
-// ############################################################
+/*
+ * The fill-the-sheet drop target on a blank paged page. A drop makes the block that page's content
+ * (WysiwygArea's shared DnD handler reads the `blank-page` drag data). The target highlights while a
+ * block is dragged over it.
+ */
 
 interface BlankPageDropZoneProps {
    id:      string

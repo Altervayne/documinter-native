@@ -16,20 +16,16 @@ interface TabContextMenuProps {
    position:    { x: number; y: number }
    onDuplicate: () => void
    onRename:    () => void
-   onClose:     () => void   // the tab action (close the tab, non-destructive)
-   onDismiss:   () => void   // close the menu itself
+   onClose:     () => void
+   onDismiss:   () => void
 }
 
 // #############
 // # COMPONENT #
 // #############
 
-/**
- * Right-click context menu for a tab. Thin adapter over the shared <ContextMenu>, it owns
- * the portal, the viewport clamp, keyboard nav, and dismissal. The menu's own dismissal maps
- * to `onDismiss`; `onClose` stays the tab-close action (distinct, closing a tab isn't the
- * same as dismissing the menu).
- */
+/** Right-click menu for a tab; thin adapter over <ContextMenu>. `onClose` closes the tab (not the
+ *  menu); `onDismiss` dismisses the menu. */
 export function TabContextMenu({ position, onDuplicate, onRename, onClose, onDismiss }: TabContextMenuProps) {
    const { t } = useLang()
 

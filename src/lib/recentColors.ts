@@ -1,10 +1,7 @@
-/**
- * recentColors.ts, persistent backlog of recently-used custom inline colors.
- *
- * Custom colors are those picked through the full ColorPicker that are NOT part of
- * the curated font/highlight palettes. Font and highlight keep separate lists since
- * they live in different color spaces. Each list is capped, deduped, most-recent-first,
- * and persisted to localStorage so the backlog survives reloads.
+/*
+ * Persistent backlog of recently-used custom inline colors (those picked through the full ColorPicker,
+ * outside the curated palettes). Font and highlight keep separate lists; each is capped, deduped,
+ * most-recent-first, and persisted to localStorage.
  */
 
 // #####################
@@ -28,7 +25,7 @@ const EMPTY_STORE: RecentColorsStore = { color: [], highlight: [] }
 // # HELPERS #
 // ###########
 
-/** True when value is an array of strings (defensive parse guard). */
+/** Defensive parse guard: an array of strings. */
 function isStringArray(value: unknown): value is string[] {
    return Array.isArray(value) && value.every(entry => typeof entry === 'string')
 }
@@ -37,10 +34,7 @@ function isStringArray(value: unknown): value is string[] {
 // # PUBLIC API #
 // ##############
 
-/**
- * Read both recent-color lists from localStorage.
- * Returns empty lists when absent, malformed, or storage is unavailable.
- */
+/** Both recent-color lists; empty when absent, malformed, or storage is unavailable. */
 export function readRecentColors(): RecentColorsStore {
    try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -55,11 +49,8 @@ export function readRecentColors(): RecentColorsStore {
    }
 }
 
-/**
- * Push a color to the front of the given list (dedupe, move-to-front, cap at MAX_RECENTS),
- * persist the result, and return the updated store. The incoming hex is lowercased to
- * keep dedup consistent with the normalised values produced by inline.ts.
- */
+/** Push a color to the front of a list (dedupe, move-to-front, cap), persist, return the new store.
+ *  The hex is lowercased so dedup matches the normalised values inline.ts produces. */
 export function pushRecentColor(kind: RecentColorKind, hex: string): RecentColorsStore {
    const normalized = hex.toLowerCase()
    const current    = readRecentColors()

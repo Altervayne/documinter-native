@@ -65,8 +65,8 @@ function newGroupId(): string {
    return `group-${Math.random().toString(36).slice(2)}`
 }
 
-/** Builds the first-load layout from the old Structure panel's stored open + side, so an existing
- *  user's dock starts exactly where their single panel was (migrated side, migrated collapsed rail). */
+/** First-load layout from the old Structure panel's stored open + side, so an existing user's dock
+ *  starts where their single panel was. */
 function migrateFromLegacy(): DockStorage {
    const open = localStorage.getItem(LEGACY_OPEN_KEY) !== 'false'
    const side = localStorage.getItem(LEGACY_DOCK_KEY) === 'right' ? 'right' : 'left'
@@ -110,9 +110,7 @@ export interface DockStateResult {
    /** Show or hide a panel, remembering how it was shown (docked-where or floating-at-geometry) so a
     *  later show restores it exactly. Drives the View-menu panel toggles and the panel close controls. */
    togglePanelVisibility: (panelId: PanelId) => void
-   /** Show a panel if it is currently hidden (docked or floating panels are left as they are). Unlike
-    *  togglePanelVisibility this never hides an already-visible panel, so it is safe to drive from a
-    *  "reveal this panel" menu entry that should only ever open. */
+   /** Show a panel if it is hidden; never hides an already-visible one (safe for a reveal-only menu entry). */
    revealPanel:           (panelId: PanelId) => void
    /** Pop a panel out of the dock into a floating window. */
    floatPanel:            (panelId: PanelId) => void
@@ -146,7 +144,7 @@ export function useDockState(context: PanelContext): DockStateResult {
    }, [storage])
 
    // Reconcile whenever the applicable-panel set changes. The key is a stable primitive so the effect
-   // only fires on a real change; the closure reads the fresh `applicable` computed alongside it.
+   // fires only on a real change; the closure reads the fresh `applicable` computed alongside it.
    const applicable    = applicablePanels(context)
    const applicableKey = applicable.join(',')
    useEffect(() => {
@@ -167,9 +165,8 @@ export function useDockState(context: PanelContext): DockStateResult {
       setStorage(current => ({ ...current, activeLayout: transform(current.activeLayout) }))
    }
 
-   // A relocation that lands the panel in the dock: apply the layout transform AND clear any floating
-   // entry for it, so a panel dragged out of a window into the dock can never stay both floating and
-   // docked. Harmless for a normal tab drag (the panel is not floating).
+   // Land a panel in the dock: apply the transform AND clear any floating entry, so a panel dragged from
+   // a window into the dock can't stay both floating and docked. Harmless for a normal tab drag.
    function relocateIntoDock(panelId: PanelId, transform: (layout: DockLayout) => DockLayout): void {
       setStorage(current => {
          const floating = { ...current.floatingPanels }
@@ -191,9 +188,8 @@ export function useDockState(context: PanelContext): DockStateResult {
       }),
 
       revealPanel: panelId => setStorage(current => {
-         // Only act when the panel is hidden: a visible panel (docked or floating) is left exactly as it
-         // is. When hidden, reuse the same show path as the toggle, which restores how it was last hidden
-         // (floating at its geometry, or docked at its side) or first-time docks it to its default side.
+         // Only act when hidden; reuse the toggle's show path, which restores how it was last hidden
+         // (floating at its geometry, or docked at its side) or first-time docks to the default side.
          if (isPanelVisible(current.activeLayout, current.floatingPanels, panelId)) return current
          const result = togglePanelVisibilityPure(
             { layout: current.activeLayout, floating: current.floatingPanels, hidden: current.closedPanels },

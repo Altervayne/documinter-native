@@ -10,9 +10,7 @@ import type { T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
-// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
-// below, sized to the dropdown's own `w-64` Tailwind class.
+// Feed the right-edge guard below, sized to the dropdown's own `w-64` Tailwind width.
 const DROPDOWN_WIDTH = 256
 const EDGE_MARGIN     = 8
 
@@ -43,17 +41,10 @@ interface DocumentMenuProps {
 // #############
 
 /**
- * The top-bar "Document" dropdown: the per-document customization set. It renders the SAME ordered
- * entry list as the document-background context menu; both derive from buildDocumentMenuEntries,
- * the single source of truth, so the two surfaces can never drift in label or order. The accent
- * section (a nameless swatch grid + a "Custom accent..." tile) is rendered by the shared
- * AccentSwatchGrid component; this surface only owns its own `customAccentSelected` flag, exactly
- * like the background context menu does. The Custom tile is a selectable choice, not a disclosure
- * toggle, so both surfaces reveal the same inline ColorPicker directly under the grid only while
- * Custom is the active choice.
- *
- * The document theme + accent edited here are PER-DOCUMENT; the app/chrome theme + language live in
- * the Preferences menu. The two are deliberately separate.
+ * The top-bar "Document" dropdown: the per-document customization set. Renders the SAME entry list
+ * as the document-background context menu (both from buildDocumentMenuEntries) so the two can never
+ * drift. This surface owns only its own `customAccentSelected` flag. The theme + accent edited here
+ * are PER-DOCUMENT; the app/chrome theme + language live in the Preferences menu.
  */
 export function DocumentMenu({
    t, docTheme, docAccent, previewMode, readOnly,
@@ -77,8 +68,7 @@ export function DocumentMenu({
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
-   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   // Flip to right-aligned when a left-aligned dropdown would overflow the viewport's right edge.
    useLayoutEffect(() => {
       if (!open) return
       const containerRect = containerRef.current?.getBoundingClientRect()
@@ -86,10 +76,8 @@ export function DocumentMenu({
       if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
-   // The shared entry list. This surface owns its own `customAccentSelected` flag: selecting the
-   // Custom tile applies the current docAccent (a smooth hand-off from whatever preset/color was
-   // active) and reveals the inline ColorPicker rendered directly under the accent swatch grid
-   // (AccentSwatchGrid); selecting a preset clears the flag again.
+   // Selecting the Custom tile applies the current docAccent and reveals the inline ColorPicker;
+   // selecting a preset clears the flag again.
    const entries = buildDocumentMenuEntries({
       t,
       docTheme,
@@ -113,24 +101,16 @@ export function DocumentMenu({
       onTogglePreview,
    })
 
-   // The accent-grid entry renders its own swatches/picker (see below) and never runs through
-   // this; every remaining item closes the dropdown on select. Custom's selected state is not
-   // reset here: it is a persistent choice, only cleared by picking a preset
-   // (onDeselectCustomAccent, wired into the accent grid) or by the dropdown's outside-click
-   // close. An unrelated item like Save or Export must leave it untouched.
+   // Custom's selected state is NOT reset here: it is a persistent choice, cleared only by picking a
+   // preset or by the outside-click close, so an unrelated item like Save or Export leaves it alone.
    function handleItemSelect(item: ContextMenuItem) {
       if (item.disabled) return
       item.onSelect()
       setOpen(false)
    }
 
-   // =======
-   //  Render
-   // =======
-
    return (
       <div ref={containerRef} className="relative">
-         {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
@@ -145,7 +125,6 @@ export function DocumentMenu({
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
-         {/* Dropdown */}
          {open && (
             <div className={`absolute top-full mt-1.5 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
                {entries.map((entry, entryIndex) => {

@@ -1,34 +1,24 @@
-/**
- * mathScale.ts, the math block's discrete display-size steps.
- *
- * A math block's `mathScale` is a font-size multiplier applied to the rendered MathML in the
- * editor preview, the read-only view, and the HTML export. The editor stepper walks these
- * discrete steps; the value rides the lossless JSON backup (portable Markdown drops it on export,
- * though the importer still reads a `scale=` fence token when one is present).
- *
- * Kept in its own tiny, side-effect-free module so the pure Markdown serializer can
- * share the step list + validation WITHOUT importing the UI-flavoured lib/constants.ts (which
- * pulls in lucide-react) or lib/math.ts (which eagerly kicks off the Temml asset load on import).
+/*
+ * The math block's discrete display-size steps. `mathScale` is a font-size multiplier on the rendered
+ * MathML (editor, read view, export). Kept in its own side-effect-free module so the pure Markdown
+ * serializer can share the steps + validation without pulling in lib/constants.ts (lucide-react) or
+ * lib/math.ts (eager Temml load).
  */
 
 /** Allowed discrete font-size multipliers for a math block, ascending. `1` is normal size. */
 export const MATH_SCALE_STEPS = [0.75, 1, 1.25, 1.5, 2] as const
 
-/** The default multiplier (normal size). An absent `mathScale` means this. */
+/** Default multiplier; an absent mathScale means this. */
 export const DEFAULT_MATH_SCALE = 1
 
 type MathScaleStep = (typeof MATH_SCALE_STEPS)[number]
 
-/** True when `scale` is exactly one of the allowed discrete steps. */
 export function isValidMathScale(scale: number): boolean {
    return (MATH_SCALE_STEPS as readonly number[]).includes(scale)
 }
 
-/**
- * Parse a `scale=<number>` token value into a valid step, or undefined. Returns undefined for a
- * missing token, a non-finite / non-positive number, or a value that is not one of the allowed
- * steps. Never throws, so junk on a fence info string is silently ignored (bare `math` default).
- */
+/** Parse a `scale=` token into a valid step, or undefined (missing, non-finite, non-positive, or not
+ *  a step). Never throws, so junk on a fence string is ignored. */
 export function parseMathScaleToken(raw: string | undefined): number | undefined {
    if (raw === undefined) return undefined
    const value = Number(raw)
@@ -36,10 +26,8 @@ export function parseMathScaleToken(raw: string | undefined): number | undefined
    return isValidMathScale(value) ? value : undefined
 }
 
-/**
- * Step the scale one notch up (`direction` = 1) or down (`direction` = -1) through the discrete
- * steps, clamped at the ends. An unknown current value is treated as the default before stepping.
- */
+/** Step one notch up (+1) or down (-1) through the steps, clamped at the ends. An unknown current
+ *  value starts from the default. */
 export function stepMathScale(current: number, direction: 1 | -1): number {
    const currentIndex = MATH_SCALE_STEPS.indexOf(current as MathScaleStep)
    const baseIndex    = currentIndex === -1

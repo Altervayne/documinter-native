@@ -17,9 +17,7 @@ import type { T } from '../lib/i18n'
 const COPYRIGHT = '© 2026 Florian Douay'
 const LICENSE_URL = 'https://www.apache.org/licenses/LICENSE-2.0'
 
-// Not portaled/JS-positioned (see molecules/ContextMenu.tsx for that pattern), this dropdown
-// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
-// below, sized to the dropdown's own `w-56` Tailwind class.
+// Feed the right-edge guard below, sized to the dropdown's own `w-56` Tailwind width.
 const DROPDOWN_WIDTH = 224
 const EDGE_MARGIN     = 8
 
@@ -50,8 +48,7 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
-   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   // Flip to right-aligned when a left-aligned dropdown would overflow the viewport's right edge.
    useLayoutEffect(() => {
       if (!open) return
       const containerRect = containerRef.current?.getBoundingClientRect()
@@ -59,13 +56,8 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
       if (containerRect) setAlignRight(containerRect.left + DROPDOWN_WIDTH > window.innerWidth - EDGE_MARGIN)
    }, [open])
 
-   // =======
-   //  Render
-   // =======
-
    return (
       <div ref={containerRef} className="relative">
-         {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
@@ -80,13 +72,11 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
-         {/* Dropdown */}
          {open && (
             <div
                className={`absolute top-full mt-1.5 w-56 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden ${alignRight ? 'right-0 left-auto' : 'left-0'}`}
                style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}
             >
-               {/* App identity */}
                <div className="px-4 py-3 flex items-center gap-3 border-b border-border">
                   {theme === 'dark'
                      ? <LogoColor className="h-6 w-auto shrink-0" />
@@ -101,7 +91,6 @@ export function AboutMenu({ theme, t }: AboutMenuProps) {
                   </div>
                </div>
 
-               {/* Legal */}
                <div className="px-4 py-3 flex flex-col gap-1.5">
                   <p className="text-[11px] text-muted select-all">{COPYRIGHT}</p>
                   <a

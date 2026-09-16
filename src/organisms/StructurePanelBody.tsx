@@ -31,11 +31,8 @@ interface StructurePanelBodyProps {
 // # COMPONENT #
 // #############
 
-/**
- * The Structure panel's body: the scrollable, drag-reorderable section tree plus the add-section
- * affordance. This is the panel content only, with no surrounding header, rail, or dock chrome, so it
- * renders identically whether it is hosted by the dock (DockHost) or a floating window (PanelWindow).
- */
+/** The Structure panel's body: the scrollable, drag-reorderable section tree plus the add-section
+ *  affordance. Chrome-free, so it renders the same docked or floating. */
 export function StructurePanelBody({
    sections,
    onAddSection, onToggleSec, onDuplicateSec, onRemoveSec,
@@ -122,8 +119,7 @@ export function StructurePanelBody({
             </DndContext>
          )}
 
-         {/* Sticky add-section button, only shown when sections already exist (the empty-state card
-             above handles the zero-section case). */}
+         {/* Sticky add-section button, shown only when sections exist (the empty-state card handles zero). */}
          {sections.length > 0 && (
             <div className="sticky bottom-0 bg-raised mt-4">
                <button

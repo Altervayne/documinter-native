@@ -1,15 +1,8 @@
-/**
- * SliderWithNumberInput.tsx, A range slider paired with an editable numeric input.
- *
- * A single reusable control for the Presentation window's sliders (watermark opacity / rotation /
- * tile size / spacing, header max-height): one label, a full-width `<input type="range">`, and a
- * coupled `<input type="number">` so the user can drag OR type an exact value. Both controls share
- * one stored (raw) value + one clamp, dragging the slider updates the number, and a typed value is
- * clamped into [min, max] and snapped to the nearest step before it commits.
- *
- * `displayScale` / `unit` let the number field show a friendlier unit than the raw stored domain
- * (e.g. watermark opacity is stored as a 0..1 fraction but is friendlier to type as a 0..100 percent)
- * without the raw value, its clamp, or the slider itself ever leaving the stored domain.
+/*
+ * A range slider coupled to an editable number field: drag or type an exact value. Both share one
+ * stored (raw) value; a typed value is clamped into [min, max] and snapped to the nearest step. The
+ * `displayScale` / `unit` let the number field show a friendlier unit (a 0..1 opacity typed as
+ * 0..100 percent) while the raw value and slider never leave the stored domain.
  */
 
 import { useState } from 'react'
@@ -48,9 +41,8 @@ export function SliderWithNumberInput({
    label, value, min, max, step, onChange,
    displayScale = 1, unit, displayPrecision = 0,
 }: SliderWithNumberInputProps) {
-   // While the number field is focused, its text is the source of truth (so partial typing like
-   // "1" of "150" isn't clobbered by the canonical formatted value on every keystroke); on blur it
-   // reverts to null and the field goes back to reflecting the committed, clamped value.
+   // While focused, the field's own text is the source of truth, so partial typing ("1" of "150")
+   // is not clobbered by the formatted value on every keystroke; null on blur reverts to committed.
    const [editingText, setEditingText] = useState<string | null>(null)
 
    const displayValue = roundToPrecision(value * displayScale, displayPrecision)

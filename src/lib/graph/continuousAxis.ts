@@ -1,19 +1,8 @@
-/**
- * The continuous (numeric) x-axis foundation shared by chart types that sample/plot over a real
- * numeric domain instead of a categorical band (function, scatter).
- *
- * Two small, generic pieces:
- *   - buildContinuousXAdapter: wraps an already-built numeric x-scale plus a fixed list of
- *     sampled x-values into the same narrow `{ center(index) }` shape cartesian.ts's line/area
- *     drawing loops (`buildPointRuns` / `renderLineSeries` / `renderAreaSeries`) already consume
- *     for a categorical `BandScale`, so those loops need zero changes to draw a sampled curve
- *     instead of a categorical series. `index` here is a sample index (a position in the sampled
- *     x-value list), the same way the existing band-scale adapter treats `index` as a category
- *     position.
- *   - renderNumericXAxisLabels: mirrors cartesian.ts's `renderCategoryLabels`, but draws formatted
- *     number tick labels (from `niceTicks` over the domain) instead of one label per category. No
- *     vertical gridlines or tick marks, matching the existing x-axis's plain-label minimalism
- *     (the category axis draws no vertical gridlines either).
+/*
+ * The continuous (numeric) x-axis foundation shared by chart types that plot over a real numeric
+ * domain instead of a categorical band (function, scatter). The adapter wraps a numeric x-scale
+ * into the same `{ center(index) }` shape cartesian.ts's line/area loops already consume, so those
+ * loops need no changes to draw a sampled curve.
  */
 
 import { niceTicks } from './scale'
@@ -36,11 +25,8 @@ export interface ContinuousXAdapter {
    center(index: number): number
 }
 
-/**
- * Build a `{ center(index) }` adapter over a fixed, ordered list of sampled x-values (e.g. the
- * evenly spaced samples across a function's domain), through an already-built numeric x-scale
- * (`linearScale([xMin, xMax], [plotLeft, plotRight])`, reused as-is, no new scale code needed).
- */
+/** Build a `{ center(index) }` adapter over a fixed, ordered list of sampled x-values, through an
+ *  already-built numeric x-scale. `index` is a position in the sampled x-value list. */
 export function buildContinuousXAdapter(
    sampleXValues: number[],
    xScale: (value: number) => number,
@@ -54,12 +40,8 @@ export function buildContinuousXAdapter(
 // # NUMERIC X-AXIS TICKS  #
 // #########################
 
-/**
- * Draw numeric x-axis tick labels along the bottom of the plot, at `niceTicks(xMin, xMax)`
- * positions mapped through `xScale`. Labels only (no vertical gridlines), a pure transposition
- * of cartesian.ts's category-label renderer onto a continuous domain, in the same muted ink /
- * font-size the y-ticks already use so the visual language stays unchanged.
- */
+/** Draw numeric x-axis tick labels along the bottom of the plot at `niceTicks(xMin, xMax)`
+ *  positions. Labels only, no vertical gridlines, matching the category axis. */
 export function renderNumericXAxisLabels(
    xMin: number,
    xMax: number,
@@ -70,8 +52,8 @@ export function renderNumericXAxisLabels(
    const xTicks = niceTicks(xMin, xMax, TARGET_X_TICK_COUNT)
    const parts: string[] = []
    for (const tick of xTicks.ticks) {
-      // A nice-tick can round slightly outside the actual sampled domain; skip it so the axis
-      // never labels a position past where the curve is actually drawn.
+      // A nice-tick can round slightly outside the sampled domain; skip it so the axis never labels
+      // a position past where the curve is drawn.
       if (tick < xMin || tick > xMax) continue
       parts.push(textElement({
          x: xScale(tick),

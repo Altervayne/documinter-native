@@ -1,18 +1,9 @@
-/**
- * render.ts, per-element SVG string builders for the image-markup renderer.
- *
- * Each function projects an element's NORMALIZED 0..1 coordinates into the fixed viewBox
- * (`vbWidth` x `vbHeight`, aspect-matched to the base image, see `geometry.ts`'s computeViewBox)
- * and returns a self-contained SVG fragment string, reusing the shared `lib/svg.ts` builders
- * (`element`, `selfClosingElement`, `textElement`, `escapeXml`). PURE, total: a non-finite datum
- * collapses to 0 via `attributesToString`'s `roundCoordinate`, so a bad element can never emit
- * `NaN`/`Infinity` into the markup (the "invalid never breaks the document" contract every graphic
- * block here honors).
- *
- * Because the viewBox aspect ratio always matches the base image's, scaling an x-fraction by
- * `vbWidth` and a y-fraction by `vbHeight` is a UNIFORM scale (no distortion), a length (stroke
- * width, radius, font size) is stored directly in viewBox units already (see types.ts), so it
- * needs no further scaling.
+/*
+ * Per-element SVG string builders for the image-markup renderer. Each projects an element's
+ * NORMALIZED 0..1 coordinates into the fixed viewBox and returns a self-contained SVG fragment. Total:
+ * a non-finite datum collapses to 0 via svg.ts's rounding, so a bad element never emits NaN/Infinity.
+ * The viewBox aspect matches the image, so scaling x by `vbWidth` and y by `vbHeight` is uniform; a
+ * length (stroke width, radius, font size) is already in viewBox units and needs no scaling.
  */
 
 import { selfClosingElement, textElement } from '../svg'
@@ -38,17 +29,16 @@ import {
 // # SHARED RESOLVERS #
 // ###################
 
-/** Resolve the stroke color, falling back to the shared annotation-red default. */
+/** Stroke color, falling back to the shared annotation-red default. */
 function resolveStroke(base: { stroke?: string }): string {
    return base.stroke ?? MARKUP_DEFAULT_STROKE
 }
 
-/** Resolve the stroke width (viewBox units), falling back to the shared default. */
+/** Stroke width (viewBox units), falling back to the shared default. */
 function resolveStrokeWidth(base: { strokeWidth?: number }): number {
    return base.strokeWidth ?? MARKUP_DEFAULT_STROKE_WIDTH
 }
 
-/** A point in normalized 0..1 image space. */
 interface NormalizedPoint {
    x: number
    y: number
@@ -126,16 +116,13 @@ export function renderArrow(markupArrow: MarkupArrow, vbWidth: number, vbHeight:
    const headType = markupArrow.arrowhead ?? MARKUP_DEFAULT_ARROWHEAD
    const headPosition = markupArrow.arrowheadPosition ?? MARKUP_DEFAULT_ARROWHEAD_POSITION
 
-   // The head sits at the tip (default) or the line's midpoint. When at the midpoint it is oriented
-   // along the same start-to-end direction as the line (the segment from `start` to the head point
-   // stays collinear with it).
+   // A mid-line head is oriented along the same start-to-end direction as the line.
    const headPoint: Point = headPosition === 'middle'
       ? { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
       : end
 
-   // The shaft runs the full line, EXCEPT for a `full` head at the `end`: there we stop the shaft at
-   // the arrowhead's base so the line's stroke width can't blunt the sharp tip. A chevron is open
-   // (its barbs meet AT the tip), so its shaft reaches the tip; a mid-line head never retracts.
+   // Stop the shaft at the arrowhead base ONLY for a `full` head at the `end`, so the stroke can't
+   // blunt the sharp tip. A chevron is open (barbs meet AT the tip) and a mid-line head never retracts.
    const shaftEnd = (headType === 'full' && headPosition === 'end')
       ? arrowShaftEnd(start.x, start.y, end.x, end.y)
       : end
@@ -149,7 +136,7 @@ export function renderArrow(markupArrow: MarkupArrow, vbWidth: number, vbHeight:
 
    const [tip, wingA, wingB] = arrowheadPolygonPoints(start.x, start.y, headPoint.x, headPoint.y)
    const head = headType === 'chevron'
-      // An open V: a two-leg polyline wingA -> tip -> wingB, stroked (never dashed) and never filled.
+      // An open V: a two-leg polyline, stroked (never dashed) and never filled.
       ? selfClosingElement('polyline', {
          points: `${round(wingA.x)},${round(wingA.y)} ${round(tip.x)},${round(tip.y)} ${round(wingB.x)},${round(wingB.y)}`,
          fill: 'none', stroke, 'stroke-width': strokeWidth,
@@ -174,8 +161,7 @@ export function renderText(markupText: MarkupText, vbWidth: number, vbHeight: nu
 
    let backgroundMarkup = ''
    if (markupText.background !== undefined && text !== '') {
-      // DOM-free width estimate (the same limitation the graph renderer accepts, see
-      // `lib/graph/layout.ts`'s estimateTextWidth doc comment): occasionally over/under-reserves.
+      // DOM-free width estimate: occasionally over/under-reserves.
       const estimatedWidth = estimateTextWidth(text, fontSize)
       const paddingX = fontSize * 0.25
       const paddingY = fontSize * 0.2
@@ -209,12 +195,10 @@ export function renderCallout(markupCallout: MarkupCallout, vbWidth: number, vbH
       ? (markupCallout.fillOpacity ?? MARKUP_DEFAULT_FILL_OPACITY)
       : MARKUP_DEFAULT_CALLOUT_FILL_OPACITY
 
-   // The box's corner radius, shared with the tail so the tail base attaches on the straight part of
-   // the rounded-rect edge rather than floating over a rounded corner.
+   // Shared with the tail so the tail base attaches on the straight part of the rounded-rect edge.
    const cornerRadius = Math.min(box.w, box.h) * MARKUP_CALLOUT_CORNER_RADIUS_FACTOR
 
-   // The tail is drawn FIRST (bottom layer) so its base line disappears under the box border,
-   // then the box, then the text on top.
+   // Tail FIRST (bottom layer) so its base line disappears under the box border, then box, then text.
    const [tailTip, tailBaseA, tailBaseB] = calloutTailPolygonPoints(box, tip, undefined, cornerRadius)
    const tailMarkup = selfClosingElement('polygon', {
       points: `${round(tailTip.x)},${round(tailTip.y)} ${round(tailBaseA.x)},${round(tailBaseA.y)} ${round(tailBaseB.x)},${round(tailBaseB.y)}`,

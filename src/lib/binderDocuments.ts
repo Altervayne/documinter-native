@@ -1,8 +1,6 @@
-/**
- * binderDocuments.ts, Document CRUD + move/order for the binder (IndexedDB).
- *
- * Reads/writes the `documents` (light record) and `documentContent` (heavy sections) stores
- * via the shared connection in binderDatabase. nextDocumentSortOrder is exported because
+/*
+ * Document CRUD + move / order for the binder (IndexedDB), over the `documents` (light) and
+ * `documentContent` (heavy) stores. nextDocumentSortOrder is exported because
  * binderFolders.deleteFolder reflows orphaned documents to root.
  */
 
@@ -26,15 +24,13 @@ import type {
    BinderDocumentRecord, BinderDocumentContent,
 } from '../types'
 
-// Re-export so existing importers (binderBackup) keep their `./binderDocuments` path while the source
-// of truth moves to documentRecord (both backends will share it).
+// Re-export so importers keep their `./binderDocuments` path; the source of truth is documentRecord.
 export { RECORD_SCHEMA_VERSION }
 export type { LoadedDocument }
 
-/** Presentation settings persisted per-document alongside the DocState. `presentation` carries the
- *  image-bearing export/editor extras (watermark, ...); it stores on the HEAVY content record, not
- *  the light card record, see saveDocument. `format` (infinite width, later paged A4) rides the same
- *  bundle, absent = today's infinite/normal behavior. */
+/** Persisted per-document alongside the DocState. `presentation` carries the image-bearing export /
+ *  editor extras (watermark, ...) and stores on the HEAVY content record, not the light card record.
+ *  `format` rides the same bundle; absent means infinite / normal behavior. */
 export interface DocPresentation {
    docTheme:  'light' | 'dark'
    docAccent: string
@@ -48,7 +44,7 @@ export async function nextDocumentSortOrder(documentsStore: IDBObjectStore, fold
    return siblings.reduce((max, sibling) => Math.max(max, sibling.sortOrder), -1) + 1
 }
 
-/** Read just a document's folder placement (light record), or null if the document is gone. */
+/** Null when the document is gone. */
 export async function getDocumentFolderId(id: string): Promise<string | null> {
    const database = await openDatabase()
    const transaction = database.transaction(DOCUMENTS_STORE, 'readonly')
@@ -58,11 +54,8 @@ export async function getDocumentFolderId(id: string): Promise<string | null> {
    return record ? record.folderId : null
 }
 
-/**
- * Save a document to IndexedDB. With existingId, updates that record (preserving
- * createdAt); otherwise creates a new one. Regenerates previewSections and updatedAt
- * every call. Returns the document id.
- */
+/** Upsert. With existingId, updates that record (preserving createdAt); otherwise creates one.
+ *  Regenerates previewSections and updatedAt every call. */
 export async function saveDocument(
    state: DocState,
    presentation: DocPresentation,
@@ -99,11 +92,9 @@ export async function saveDocument(
       folderId,
       sortOrder,
    })
-   // The image-bearing presentation extras live on the HEAVY content record ONLY (never the light
-   // card record above), so a full-bleed watermark base64 can't bloat the listDocuments() query.
-   // `format` is tiny (no base64) but groups with presentation for seam consistency; only written
-   // when it diverges from the default, so a document that never touched Page Setup stays byte-clean.
-   // The default-format guard is save-specific intent, so it lives here, not in buildDocumentContent.
+   // Presentation extras live on the HEAVY content record ONLY, so a watermark base64 can't bloat the
+   // listDocuments() query. `format` is only written when it diverges from the default, so a document
+   // that never touched Page Setup stays byte-clean; that guard is save-specific, hence here.
    const content = buildDocumentContent(id, state.sections, {
       presentation: presentation.presentation,
       format: presentation.format && !isDefaultFormat(presentation.format) ? presentation.format : undefined,
@@ -115,7 +106,7 @@ export async function saveDocument(
    return id
 }
 
-/** Read the full editable document without side effects. Internal, loadDocument wraps it. */
+/** No side effects, unlike loadDocument which wraps it. */
 async function readDocument(id: string): Promise<LoadedDocument | null> {
    const database = await openDatabase()
    const transaction = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readonly')
@@ -134,18 +125,15 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
    })
 }
 
-/**
- * Load the full editable document (DocState + presentation) by id, or null if absent.
- * Records the open in lastOpenedAt by default; pass { touch: false } for non-open reads
- * (e.g. exporting a document from the binder, which shouldn't count as opening it).
- */
+/** Full editable read. Bumps lastOpenedAt by default; pass { touch: false } for non-open reads
+ *  (e.g. exporting a document, which shouldn't count as opening it). */
 export async function loadDocument(id: string, options?: { touch?: boolean }): Promise<LoadedDocument | null> {
    const document = await readDocument(id)
    if (document && options?.touch !== false) await touchDocument(id)
    return document
 }
 
-/** Set lastOpenedAt to now. Called by loadDocument automatically (unless touch:false). */
+/** Set lastOpenedAt to now. */
 export async function touchDocument(id: string): Promise<void> {
    const database = await openDatabase()
    const transaction = database.transaction(DOCUMENTS_STORE, 'readwrite')
@@ -158,10 +146,8 @@ export async function touchDocument(id: string): Promise<void> {
    await transactionDone(transaction)
 }
 
-/**
- * List document records (light store only, no sections/base64), filtered by folder,
- * searched in-memory, and sorted. Defaults to all folders, updatedAt descending.
- */
+/** Light store only, filtered by folder, searched in-memory, sorted. Defaults to all folders,
+ *  updatedAt descending. */
 export async function listDocuments(filter?: DocumentListFilter): Promise<BinderDocumentRecord[]> {
    const database = await openDatabase()
    const transaction = database.transaction(DOCUMENTS_STORE, 'readonly')
@@ -172,8 +158,8 @@ export async function listDocuments(filter?: DocumentListFilter): Promise<Binder
       : store.getAll()
    let records = await requestToPromise<BinderDocumentRecord[]>(sourceRequest)
 
-   // Light records stored before the freeform-metadata migration still carry the legacy flat meta.
-   // Normalize on read so the cards + free-text search always see the { title, fields } shape.
+   // Records predating the freeform-metadata migration carry the legacy flat meta. Normalize on read
+   // so the cards + free-text search always see the { title, fields } shape.
    records = records.map(migrateListRecord)
 
    if (filter?.criteria) records = records.filter(record => matchesCriteria(record, filter.criteria!))
@@ -182,7 +168,7 @@ export async function listDocuments(filter?: DocumentListFilter): Promise<Binder
    return records
 }
 
-/** Permanently delete a document from both stores. Idempotent (absent id is a no-op). */
+/** Deletes from both stores. Idempotent: an absent id is a no-op. */
 export async function deleteDocument(id: string): Promise<void> {
    const database = await openDatabase()
    const transaction = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readwrite')
@@ -191,7 +177,7 @@ export async function deleteDocument(id: string): Promise<void> {
    await transactionDone(transaction)
 }
 
-/** Copy a document with a fresh id, createdAt, and updatedAt. Returns the new id. */
+/** Copy with a fresh id, createdAt, and updatedAt. */
 export async function duplicateDocument(id: string): Promise<string> {
    const database = await openDatabase()
    const transaction    = database.transaction([DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE], 'readwrite')
@@ -206,9 +192,8 @@ export async function duplicateDocument(id: string): Promise<string> {
 
    const newId = crypto.randomUUID()
    const now   = new Date().toISOString()
-   // Deep-clone sections with fresh section + block ids (no aliasing between copies).
+   // Fresh section + block ids, so no aliasing between copies.
    const clonedSections = cloneSectionsWithFreshIds(sourceContent.sections)
-   // The copy lands in the same folder, appended to the end, never-opened.
    const sortOrder = await nextDocumentSortOrder(documentsStore, sourceRecord.folderId)
 
    const newRecord = buildDocumentRecord({
@@ -223,8 +208,8 @@ export async function duplicateDocument(id: string): Promise<string> {
       folderId:     sourceRecord.folderId,
       sortOrder,
    })
-   // Duplicate copies the source's presentation and format verbatim (no default-format guard): the
-   // source already stored only a divergent format, so a byte-clean source stays byte-clean.
+   // Presentation + format copied verbatim (no guard): the source already stored only a divergent
+   // format, so a byte-clean source stays byte-clean.
    const newContent = buildDocumentContent(newId, clonedSections, {
       presentation: sourceContent.presentation,
       format: sourceContent.format,
@@ -236,12 +221,8 @@ export async function duplicateDocument(id: string): Promise<string> {
    return newId
 }
 
-/**
- * Populate contentText on any pre-v2 records that lack it (one-time, idempotent). Reads each
- * stale document's content to flatten its block text, then rewrites the light record. Returns
- * how many records were updated so the caller can refresh the view. A no-op once all records
- * carry contentText, so it is cheap to call on every binder open.
- */
+/** Populate contentText on records that lack it (idempotent). Returns how many were updated. A no-op
+ *  once every record carries contentText, so it is cheap to call on every binder open. */
 export async function backfillSearchText(): Promise<number> {
    const database = await openDatabase()
    const readTransaction = database.transaction(DOCUMENTS_STORE, 'readonly')

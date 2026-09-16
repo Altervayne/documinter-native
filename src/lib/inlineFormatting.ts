@@ -1,28 +1,13 @@
-/**
- * inlineFormatting.ts, Color application + selection helpers for the FormatToolbar.
- *
- * These operate on InlineContent and the live DOM Selection in service of the rich-text
- * toolbar; editor-interaction logic, kept separate from the pure inline-content model in
- * inline.ts.
- *
- * computeCursorPosition's relatives countCharsToPosition and deriveActiveColorsAt READ
- * live DOM state without modifying it; restoreSelectionRange is the sole writer, it
- * mutates the browser Selection to re-establish a range and touches nothing else.
- *
- * Exports:
- *   runsHaveSameFlags     , true when two runs share identical formatting flags
- *   mergeAdjacentRuns     , collapse neighbouring runs with identical flags
- *   countCharsToPosition  , flat char offset of a (node, offset) within an element
- *   caretCharOffsetAtPoint, flat char offset under a viewport point within an element
- *   applyColorToRange     , set/clear a color field over a flat char range
- *   restoreSelectionRange , re-select a flat char range after an innerHTML rewrite
- *   deriveActiveColorsAt  , active font/highlight color at a selection position
+/*
+ * Color application + selection helpers for the FormatToolbar, over InlineContent and the live DOM
+ * Selection. countCharsToPosition / caretCharOffsetAtPoint / deriveActiveColorsAt READ the DOM;
+ * restoreSelectionRange is the sole Selection writer. The pure inline-content model is in inline.ts.
  */
 
 import { domToInlineContent } from './inline'
 import type { InlineContent, InlineRun } from '../types'
 
-/** Returns true when two InlineRun objects have identical formatting flags (ignoring text). */
+/** True when two runs have identical formatting flags, ignoring text. */
 export function runsHaveSameFlags(runA: InlineRun, runB: InlineRun): boolean {
    return !!runA.bold          === !!runB.bold
        && !!runA.italic        === !!runB.italic
@@ -33,7 +18,7 @@ export function runsHaveSameFlags(runA: InlineRun, runB: InlineRun): boolean {
        && (runA.highlight ?? '') === (runB.highlight ?? '')
 }
 
-/** Merge adjacent runs that have identical flags. Called after splitting to normalise. */
+/** Merge adjacent runs with identical flags. */
 export function mergeAdjacentRuns(runs: InlineRun[]): InlineRun[] {
    if (runs.length === 0) return runs
    const merged: InlineRun[] = [{ ...runs[0] }]
@@ -49,12 +34,8 @@ export function mergeAdjacentRuns(runs: InlineRun[]): InlineRun[] {
    return merged
 }
 
-/**
- * Walk the DOM, counting characters until the given `targetNode` / `targetOffset`.
- * Returns the flat character offset from the element's start. Returns -1 on failure.
- *
- * '\n' from <br> counts as 1 character (matches walkNodes behaviour above).
- */
+/** Flat character offset from `root`'s start to (targetNode, targetOffset); '\n' from <br> counts as
+ *  one. -1 when the target isn't found. */
 export function countCharsToPosition(
    root:         HTMLElement,
    targetNode:   Node,
@@ -88,17 +69,13 @@ export function countCharsToPosition(
    return found ? count : -1
 }
 
-/**
- * Map a viewport point to a flat char offset within `root`, via the browser's point-to-caret API
- * (`caretPositionFromPoint` in most engines, `caretRangeFromPoint` in WebKit/Blink). Returns -1 when
- * neither resolves a caret inside `root`.
- */
+/** Flat char offset under a viewport point, via caretPositionFromPoint (WebKit/Blink:
+ *  caretRangeFromPoint). -1 when neither resolves a caret inside `root`. */
 export function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clientY: number): number {
    let node: Node | null = null
    let offset = 0
-   // Hit-test against the element's OWN document, not the ambient global. A `root` living in a detached
-   // or offscreen document would miss every hit against the top-level `document`; its `ownerDocument` is
-   // the one holding the rendered geometry.
+   // Hit-test against the element's OWN document: a root in a detached or offscreen document would
+   // miss every hit against the top-level `document`.
    const ownerDocument = root.ownerDocument
    const withCaretPosition = ownerDocument as Document & {
       caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
@@ -115,19 +92,8 @@ export function caretCharOffsetAtPoint(root: HTMLElement, clientX: number, clien
    return countCharsToPosition(root, node, offset)
 }
 
-/**
- * Apply a color (or clear it) to runs that overlap the character range [start, end).
- *
- * - `field` , `'color'` for font color, `'highlight'` for background highlight.
- * - `value` , hex string to set, or `undefined` to clear the field.
- *
- * Strategy:
- *   1. Build a flat array of (run, startOffset, endOffset) segments.
- *   2. For each segment that overlaps [start, end):
- *      a. Split the run at the selection boundaries if needed.
- *      b. Apply or clear the field on the interior piece.
- *   3. Merge adjacent identical-flag runs.
- */
+/** Set (`value` hex) or clear (`value` undefined) a color `field` ('color' or 'highlight') over the
+ *  character range [start, end). Splits runs at the boundaries and re-merges. */
 export function applyColorToRange(
    content:  InlineContent,
    start:    number,
@@ -135,9 +101,8 @@ export function applyColorToRange(
    field:    'color' | 'highlight',
    value:    string | undefined,
 ): InlineContent {
-   // Expand each run into individual characters with their flags, apply the field,
-   // then re-collapse into runs. This is the simplest correct approach and handles
-   // all edge-cases (selection spanning multiple runs, partial first/last run, etc.)
+   // Expand runs to characters, apply the field, re-collapse: handles selections spanning runs and
+   // partial first/last runs uniformly.
    type CharEntry = { char: string; run: InlineRun }
    const chars: CharEntry[] = []
    for (const run of content) {
@@ -146,7 +111,6 @@ export function applyColorToRange(
       }
    }
 
-   // Apply the color field to chars in [start, end)
    const modifiedChars: CharEntry[] = chars.map((entry, index) => {
       if (index < start || index >= end) return entry
       const newRun: InlineRun = { ...entry.run }
@@ -158,7 +122,6 @@ export function applyColorToRange(
       return { char: entry.char, run: newRun }
    })
 
-   // Re-collapse chars into runs
    if (modifiedChars.length === 0) return []
    const resultRuns: InlineRun[] = []
    let currentRun: InlineRun = { ...modifiedChars[0].run, text: modifiedChars[0].char }
@@ -178,12 +141,8 @@ export function applyColorToRange(
    return mergeAdjacentRuns(resultRuns)
 }
 
-/**
- * After rewriting an element's innerHTML, restore a text selection described by
- * flat character offsets [start, end). Walks the new DOM to find the right nodes.
- *
- * The sole DOM-mutating function in this module: it rewrites the browser Selection.
- */
+/** Restore a text selection over the flat char range [start, end) after an innerHTML rewrite, walking
+ *  the new DOM. The only Selection-mutating function here. */
 export function restoreSelectionRange(element: HTMLElement, start: number, end: number): void {
    function resolveOffset(target: number): { node: Node; offset: number } | null {
       let count = 0
@@ -212,7 +171,7 @@ export function restoreSelectionRange(element: HTMLElement, start: number, end: 
          const result = walk(child)
          if (result) return result
       }
-      // Fallback: place cursor at end of element
+      // Fallback: cursor at the end of the element.
       return { node: element, offset: element.childNodes.length }
    }
 
@@ -232,17 +191,9 @@ export function restoreSelectionRange(element: HTMLElement, start: number, end: 
    }
 }
 
-/**
- * Derive the active font + highlight colors for the selection position described
- * by (node, offset), relative to the rich element's current InlineContent.
- *
- * Boundary handling mirrors computeCursorPosition: when the position lands exactly
- * on a run boundary, the run that STARTS at the boundary wins. This is what makes a
- * freshly-applied color read back correctly, after a color pick the selection start
- * sits on the new run's leading boundary, and the covered (colored) run must win over
- * the preceding (uncolored) one. A naive `offset <= charCount` test reads the
- * preceding run and clears the indicator.
- */
+/** Active font + highlight colors for the position (node, offset), relative to the element's
+ *  InlineContent. On a run boundary the run that STARTS at the boundary wins, so a freshly applied
+ *  color reads back from the covered run instead of the preceding uncolored one. */
 export function deriveActiveColorsAt(
    richElement: HTMLElement,
    node:        Node,

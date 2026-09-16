@@ -1,9 +1,7 @@
-/**
- * documentPreview.ts, Pure snapshot + full-text builders for binder records.
- *
- * buildPreviewSections produces the card-preview snapshot (first N blocks, image src stripped);
- * extractDocumentText flattens every block to searchable plain text. Both are pure and used by
- * binderDocuments when writing a record.
+/*
+ * Pure snapshot + full-text builders for binder records. buildPreviewSections produces the
+ * card-preview snapshot (first N blocks, image src stripped); extractDocumentText flattens every
+ * block to searchable plain text.
  */
 
 import type { Block, InlineContent, ListItem, PreviewSection, Section } from '../types'
@@ -25,10 +23,7 @@ function stripImageSource(block: Block): Block {
    return block
 }
 
-/**
- * Section-grouped snapshot of the first N blocks (document order), image src stripped.
- * Preserves section titles so the card preview can render recognizable section headings.
- */
+/** Section-grouped snapshot of the first N blocks, image src stripped, section titles preserved. */
 export function buildPreviewSections(sections: Section[]): PreviewSection[] {
    const result: PreviewSection[] = []
    let count = 0
@@ -58,8 +53,7 @@ function blockText(block: Block): string {
    if (block.latex)    parts.push(block.latex)
    if (block.alt)      parts.push(block.alt)
    if (block.caption)  parts.push(block.caption)
-   // Image markup overlay: alt/caption are on the block itself (covered above); pull any text/callout
-   // annotation labels into the searchable text.
+   // Pull any text / callout annotation labels off the markup overlay into the searchable text.
    if (block.imageMarkup) {
       for (const oneElement of block.imageMarkup.elements) {
          if ('text' in oneElement && oneElement.text) parts.push(oneElement.text)

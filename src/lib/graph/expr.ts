@@ -1,43 +1,20 @@
-/**
- * expr.ts, a pure, home-grown, SAFE math-expression evaluator in one variable `x`.
- *
- * NO `eval`, NO `new Function`, NO dynamic code generation, NO property/global access driven by
- * user input. The pipeline is the textbook four stages, each a pure function, each independently
- * unit-testable, matching the house style of scale.ts / stats.ts:
- *
- *    tokenize  ->  parse (precedence-climbing recursive descent)  ->  AST  ->  evaluate
- *
- * `compileExpression` never throws: an invalid expression returns `null` at compile time.
- * `evaluate` never throws either: a domain error (sqrt of a negative number, division by zero,
- * a result that is not finite, ...) returns `null` for that one sample, which the graph renderer
- * already understands as "draw a gap here" (the same contract every other graph value already
- * honors). Compile once with `compileExpression`, then call `evaluate` many times (once per
- * sample point) without re-parsing.
+/*
+ * A safe math-expression evaluator in one variable `x`. No eval, no new Function, no dynamic code
+ * generation or property access driven by user input: the pipeline is tokenize -> parse
+ * (precedence-climbing recursive descent) -> AST -> evaluate, and every function call resolves
+ * through the fixed FUNCTION_TABLE allowlist, so there is no injection surface. Both entry points
+ * are total: compileExpression returns null on an invalid expression, evaluate returns null on a
+ * domain error (the graph renderer reads that as "draw a gap"). Compile once, evaluate per sample.
  *
  * Grammar:
- *   - Numbers: decimal literals with an optional exponent (`1`, `2.5`, `1e-5`, `2.5E3`).
- *   - Variable: `x` only.
- *   - Constants: `pi`, `e`.
- *   - Functions (closed allowlist, case-sensitive, always parenthesized):
- *       sin cos tan asin acos atan sinh cosh tanh exp ln log log2 sqrt abs floor ceil round sign
- *     plus the variadic `min(...)` / `max(...)`. `log` is base-10, `ln` is natural log.
- *   - Operators: binary `+ - * /`, right-associative `^`, unary `-` / unary `+`, parentheses.
- *     Precedence, tightest first: `^`  >  unary `-`/`+`  >  `* /`  >  `+ -`.
- *     `^` binds tighter than unary minus, so `-2^2` parses as `-(2^2) = -4`, and `^` itself is
- *     right-associative, so `2^3^2` parses as `2^(3^2) = 512`.
- *   - Implicit multiplication, narrowly scoped: whenever a completed primary (a number, `x`, a
- *     constant, a function call, or a parenthesized group) is immediately followed by a token that
- *     can START a new primary (a number, `x`, a known constant/function name, or `(`) with no
- *     explicit operator between them, a synthetic multiplication is spliced in. This is
- *     unambiguous here because `x` is the only bare identifier in the grammar, there is never a
- *     "is this one identifier or two juxtaposed ones" question. Explicitly NOT supported: a
- *     function name used without parentheses (`sinx` is a parse error, not `sin(x)`).
- *
- * Safety: the evaluator is a pure AST walk. Every function call resolves through a single fixed
- * allowlist object (`FUNCTION_TABLE`) keyed by the exact function names above; an identifier that
- * is not `x`, `pi`, `e`, or a table key is a PARSE error (never reached at eval time). There is no
- * code generation and no dynamic property lookup driven by the source string, so there is no
- * injection surface.
+ *   - Numbers with optional exponent (`1`, `2.5`, `1e-5`), the variable `x`, constants `pi`/`e`.
+ *   - Functions (closed allowlist, always parenthesized): sin cos tan asin acos atan sinh cosh tanh
+ *     exp ln log log2 sqrt abs floor ceil round sign, plus variadic min/max. `log` is base-10.
+ *   - Operators `+ - * /`, right-associative `^`, unary `-`/`+`. Precedence tightest first:
+ *     `^` > unary `-`/`+` > `* /` > `+ -`, so `-2^2 = -4` and `2^3^2 = 512`.
+ *   - Implicit multiplication where a completed primary is followed by a token that starts a new
+ *     one (`2x`, `2(x+1)`, `x pi`); unambiguous since `x` is the only bare identifier. A function
+ *     without parens (`sinx`) is a parse error, not `sin(x)`.
  */
 
 // #####################
@@ -58,8 +35,7 @@ function isIdentifierStartCharacter(character: string): boolean {
    return /[a-zA-Z]/.test(character)
 }
 
-/** A character that may CONTINUE an identifier once started: ASCII letters or digits, so a
- *  function name like `log2` lexes as one identifier rather than "log" followed by a number. */
+/** A character that may CONTINUE an identifier: letters or digits, so `log2` lexes as one token. */
 function isIdentifierContinuationCharacter(character: string): boolean {
    return /[a-zA-Z0-9]/.test(character)
 }
@@ -80,13 +56,12 @@ function tokenize(source: string): Token[] | null {
    while (position < length) {
       const character = source[position]
 
-      // ====== whitespace: skip ======
       if (character === ' ' || character === '\t' || character === '\n' || character === '\r') {
          position++
          continue
       }
 
-      // ====== numbers: digits, one optional decimal point, one optional exponent ======
+      // Numbers: digits, one optional decimal point, one optional exponent.
       if (isDigitCharacter(character) || (character === '.' && isDigitCharacter(source[position + 1] ?? ''))) {
          const start = position
          while (position < length && isDigitCharacter(source[position])) position++
@@ -99,8 +74,7 @@ function tokenize(source: string): Token[] | null {
             position++
             if (source[position] === '+' || source[position] === '-') position++
             if (!isDigitCharacter(source[position] ?? '')) {
-               // Not actually an exponent suffix (e.g. a bare trailing "e"), back out so the
-               // letter is re-lexed as the start of an identifier instead.
+               // Not an exponent suffix (a bare trailing "e"): back out so it re-lexes as an identifier.
                position = exponentStart
             } else {
                while (position < length && isDigitCharacter(source[position])) position++
@@ -113,7 +87,6 @@ function tokenize(source: string): Token[] | null {
          continue
       }
 
-      // ====== identifiers: x, pi, e, sin, cos, min, max, log2, ... ======
       if (isIdentifierStartCharacter(character)) {
          const start = position
          while (position < length && isIdentifierContinuationCharacter(source[position])) position++
@@ -122,7 +95,6 @@ function tokenize(source: string): Token[] | null {
          continue
       }
 
-      // ====== operators and punctuation ======
       if (character === '+' || character === '-' || character === '*' || character === '/' || character === '^') {
          tokens.push({ kind: 'operator', operator: character })
          position++
@@ -144,8 +116,7 @@ function tokenize(source: string): Token[] | null {
          continue
       }
 
-      // ====== anything else is a lexical error ======
-      return null
+      return null // any other character is a lexical error
    }
 
    return tokens
@@ -182,18 +153,9 @@ function isKnownFunctionName(name: string): boolean {
    return SINGLE_ARGUMENT_FUNCTION_NAMES.has(name) || VARIADIC_FUNCTION_NAMES.has(name)
 }
 
-/**
- * Precedence-climbing recursive-descent parser. Each tier is one function, matching the grammar
- * directly (a direct transcription, not a token-shunting state machine):
- *
- *    parseExpression  ->  parseTerm  ->  parseUnary  ->  parsePower  ->  parsePrimary
- *      (+ -)              (* /, incl.     (unary - +)    (^, right-      (numbers, x,
- *                          implicit mult.)                 assoc.)        constants, calls,
- *                                                                          parens)
- *
- * Returns `null` on any syntax error (unexpected token, unbalanced parens, trailing input, an
- * unknown identifier), never throws.
- */
+/** Precedence-climbing recursive-descent parser, one function per grammar tier
+ *  (parseExpression -> parseTerm -> parseUnary -> parsePower -> parsePrimary). Returns null on any
+ *  syntax error, never throws. */
 class Parser {
    private readonly tokens: Token[]
    private position = 0
@@ -248,8 +210,8 @@ class Parser {
             if (right === null) return null
             left = { kind: 'binary', operator: token.operator, left, right }
          } else if (this.startsPrimary()) {
-            // Implicit multiplication: no explicit operator, but the next token can start a new
-            // primary (2x, 2(x+1), 2sin(x), (x+1)(x-1), x pi, ...). Splice in a synthetic '*'.
+            // Implicit multiplication: the next token starts a new primary (2x, 2(x+1)) with no
+            // operator between, so splice in a synthetic '*'.
             const right = this.parseUnary()
             if (right === null) return null
             left = { kind: 'binary', operator: '*', left, right }
@@ -278,8 +240,7 @@ class Parser {
       const token = this.peek()
       if (token?.kind === 'operator' && token.operator === '^') {
          this.advance()
-         // Right-associative: recurse back into parseUnary (not parsePower) so a unary sign on
-         // the exponent (e.g. 2^-2) is handled, and so the recursion naturally right-associates.
+         // Recurse into parseUnary so a signed exponent (2^-2) works and `^` right-associates.
          const exponent = this.parseUnary()
          if (exponent === null) return null
          return { kind: 'binary', operator: '^', left: base, right: exponent }
@@ -307,8 +268,7 @@ class Parser {
       if (token.kind === 'ident') {
          const name = token.name
 
-         // A function call always requires an explicit '(': "sinx" is a parse error, never an
-         // implicit "sin(x)".
+         // A function call always requires an explicit '(': "sinx" is a parse error, not "sin(x)".
          if (isKnownFunctionName(name)) {
             const openParen = this.peek()
             if (openParen?.kind !== 'leftParen') return null
@@ -362,18 +322,14 @@ class Parser {
 // # 4. COMPILE        #
 // #####################
 
-/** A parsed, ready-to-evaluate expression. Compile once with {@link compileExpression}, then call
- *  {@link evaluate} once per sample point without re-parsing. */
+/** A parsed, ready-to-evaluate expression. Compile once, then {@link evaluate} per sample point. */
 export interface CompiledExpression {
    readonly ast: ExpressionNode
    readonly source: string
 }
 
-/**
- * Tokenize + parse `source` into a {@link CompiledExpression}. Returns `null` on any lexical or
- * syntax error (unknown character, unbalanced parens, trailing input, an unknown identifier, a
- * malformed function call, ...), never throws.
- */
+/** Tokenize + parse `source` into a {@link CompiledExpression}. Returns null on any lexical or
+ *  syntax error, never throws. */
 export function compileExpression(source: string): CompiledExpression | null {
    const tokens = tokenize(source)
    if (tokens === null) return null
@@ -391,12 +347,8 @@ export function compileExpression(source: string): CompiledExpression | null {
 // # 5. EVALUATE       #
 // #####################
 
-/**
- * The closed allowlist of callable functions. This is the ONLY way the evaluator ever reaches a
- * `Math.*` call, the parser has already validated every call's name against
- * {@link SINGLE_ARGUMENT_FUNCTION_NAMES} / {@link VARIADIC_FUNCTION_NAMES}, so an AST `call` node
- * always has a matching entry here. No dynamic property access, no `eval`, no `Function`.
- */
+/** The closed allowlist of callable functions: the only way the evaluator reaches a `Math.*` call.
+ *  The parser has already validated every call name, so an AST `call` node always has an entry here. */
 const FUNCTION_TABLE: Record<string, (args: number[]) => number> = {
    sin: (args) => Math.sin(args[0]),
    cos: (args) => Math.cos(args[0]),
@@ -421,12 +373,8 @@ const FUNCTION_TABLE: Record<string, (args: number[]) => number> = {
    max: (args) => Math.max(...args),
 }
 
-/**
- * Domain-error guards for functions whose mathematical domain is narrower than "any finite
- * number." Checked BEFORE calling the function so a domain violation is caught explicitly rather
- * than relying on the post-call `Number.isFinite` guard alone (kept for clarity + so the
- * documented domain-error list in the study matches the code one-for-one).
- */
+/** Domain-error guards for functions whose domain is narrower than "any finite number", checked
+ *  before the call rather than relying on the post-call finite guard alone. */
 function violatesDomain(name: string, args: number[]): boolean {
    const firstArgument = args[0]
    switch (name) {
@@ -444,12 +392,8 @@ function violatesDomain(name: string, args: number[]): boolean {
    }
 }
 
-/**
- * Evaluate a compiled expression at a given `x`. Returns `null` on a domain error (division by
- * zero, `sqrt` of a negative number, `ln`/`log`/`log2` of a non-positive number, `asin`/`acos`
- * outside `[-1, 1]`, or any result that is not finite), the same "gap" signal the graph renderer
- * already understands for a missing data point. Never throws.
- */
+/** Evaluate a compiled expression at `x`. Returns null on any domain error or non-finite result
+ *  (the renderer's "gap" signal), never throws. */
 export function evaluate(compiled: CompiledExpression, x: number): number | null {
    return evaluateNode(compiled.ast, x)
 }
@@ -526,13 +470,8 @@ function evaluateNode(node: ExpressionNode, x: number): number | null {
 // # CONVENIENCE WRAPPER   #
 // #########################
 
-/**
- * Convenience one-shot helper: compile + evaluate in a single call. Prefer {@link
- * compileExpression} + {@link evaluate} when evaluating the same source at many `x` values (e.g.
- * sampling a curve) so the source is parsed only once. Returns `null` on either a compile error
- * or a domain error, the two failure modes are indistinguishable from this entry point by
- * design, since both mean "no value to plot here."
- */
+/** One-shot compile + evaluate. Prefer {@link compileExpression} + {@link evaluate} when sampling
+ *  the same source at many `x` values so it parses once. Returns null on a compile or domain error. */
 export function evaluateExpression(source: string, x: number): number | null {
    const compiled = compileExpression(source)
    if (compiled === null) return null

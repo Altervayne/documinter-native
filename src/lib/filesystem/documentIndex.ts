@@ -2,16 +2,15 @@
  * documentIndex.ts, The native `.documinter/index.sqlite` wrapper (plugin-sql).
  *
  * A thin class over a plugin-sql Database: parameter-binding + delegating ALL shaping/parsing to the
- * pure documentIndexMapping module. This is the rebuildable search/list/sort cache for the future
- * filesystem backend (arc A1.3 wires it to createFilesystemBackend; nothing instantiates it yet, and it
- * does NOT replace IndexedDB). Files are the truth, this index is disposable, losing it costs a rescan.
+ * pure documentIndexMapping module. This is the rebuildable search/list/sort cache for the filesystem
+ * backend. Files are the truth, this index is disposable, losing it costs a rescan.
  *
  * FTS sync (see SCHEMA_STATEMENTS): `documents_fts` is a standalone fts5 table this class keeps in
  * lockstep with `documents` by hand, keyed on `documents.rowid`. Upsert uses ON CONFLICT(id) DO UPDATE
  * so the rowid stays stable across edits, then rewrites the FTS row for that rowid; delete removes both.
- * The text MATCH runs in SQL here; the caller (A1.3) composes the pure `documentComparator` + the NON
+ * The text MATCH runs in SQL here; the caller composes the pure `documentComparator` + the NON
  * text parts of `matchesCriteria` (dates, never-opened) on the returned records, so ordering matches the
- * IndexedDB backend exactly. That JS/SQL split is the design's, not an accident.
+ * IndexedDB backend exactly.
  *
  * Every value is bound (never string-interpolated) and every call runs a single statement (plugin-sql
  * executes one statement per execute/select).
@@ -65,8 +64,8 @@ export class DocumentIndex {
     * the user's Binder, `<binder>/.documinter/index.sqlite`, NOT under appDataDir. plugin-sql's Rust side
     * does `app_config_dir.push(<tail after "sqlite:">)`, and Rust's PathBuf::push REPLACES the base when
     * the pushed component is itself absolute, so prefixing an absolute path with `sqlite:` resolves to
-    * that exact file (confirmed against tauri-plugin-sql wrapper.rs path_mapper). The caller (A1.3) MUST
-    * mkdir the `.documinter/` directory first, plugin-sql creates the DB file but not its parent folder.
+    * that exact file. The caller MUST mkdir the `.documinter/` directory first, plugin-sql creates the DB
+    * file but not its parent folder.
     */
    static async open(sqlitePath: string): Promise<DocumentIndex> {
       const database = await Database.load(`sqlite:${sqlitePath}`)
@@ -250,7 +249,7 @@ export class DocumentIndex {
       )
    }
 
-   /** Remove one folder row (by path id). Descendant reflow is the caller's job (arc A1.3). */
+   /** Remove one folder row (by path id). Descendant reflow is the caller's job. */
    async deleteFolder(path: string): Promise<void> {
       await this.database.execute(`DELETE FROM folders WHERE path = $1`, [path])
    }

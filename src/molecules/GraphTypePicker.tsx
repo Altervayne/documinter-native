@@ -22,10 +22,7 @@ interface GraphTypePickerProps {
 // # TYPE LIST #
 // #############
 
-/**
- * The chart types in the order they appear in the picker, each paired with the i18n key for its
- * label. Kept here, next to the picker, so the card grid and the GraphType union never drift.
- */
+/** The i18n label key for each chart type, kept next to the picker so the grid and GraphType never drift. */
 type GraphTypeLabelKey =
    | 'graphTypeBar'
    | 'graphTypeBarGrouped'
@@ -55,12 +52,9 @@ const GRAPH_TYPES: { type: GraphType; labelKey: GraphTypeLabelKey }[] = [
 // # CANNED SAMPLE #
 // ################
 
-/**
- * A small, illustrative, STABLE dataset per chart type used only to render the card thumbnails,
- * NOT the author's data, so the cards never re-shape as the real spec is edited. Legend + title +
- * value labels are left off (options stay lean) so the chart SHAPE reads clearly at thumbnail size.
- * Pure and deterministic: same type in, same spec out.
- */
+/** A STABLE illustrative dataset per chart type for the card thumbnails, NOT the author's data, so
+ *  the cards never re-shape as the real spec is edited. Legend/title/labels off, so the shape reads
+ *  clearly at thumbnail size. */
 export function sampleSpecForType(type: GraphType): GraphSpec {
    switch (type) {
       case 'pie':
@@ -108,7 +102,7 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
             options: { legend: false },
          }
       case 'function':
-         // The 8th card's thumbnail: a canned sin(x) curve over a small domain, illustrative only.
+         // A canned sin(x) curve over a small domain, illustrative only.
          return {
             type,
             data: { labels: [], series: [] },
@@ -119,7 +113,7 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
             },
          }
       case 'scatter':
-         // The 9th card's thumbnail: a small canned 2-series point cloud, illustrative only.
+         // A canned 2-series point cloud, illustrative only.
          return {
             type,
             data: { labels: [], series: [] },
@@ -132,7 +126,7 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
             },
          }
       case 'histogram':
-         // The 10th card's thumbnail: a small canned, roughly bell-shaped sample list, illustrative only.
+         // A canned, roughly bell-shaped sample list, illustrative only.
          return {
             type,
             data: { labels: [], series: [] },
@@ -149,11 +143,9 @@ export function sampleSpecForType(type: GraphType): GraphSpec {
 // #############
 
 /**
- * The chart-type picker: a grid of preview cards, one per GraphType. Each card renders a REAL
- * mini chart of that type via the shared `renderGraphToSvg`, fed the
- * canned sample spec above, so the author picks a shape by seeing it rather than reading a label.
- * The cards depend only on the type list + theme (never on the author's data), so they are stable.
- * Clicking a card routes through the pure `setType` helper via `onChange`.
+ * The chart-type picker: a grid of cards, one per GraphType. Each renders a REAL mini chart via
+ * `renderGraphToSvg` on the canned sample above, so the author picks a shape by seeing it. The cards
+ * depend only on the type list + theme, never the author's data, so they stay stable.
  */
 export function GraphTypePicker({ value, onChange, theme, t }: GraphTypePickerProps) {
    return (

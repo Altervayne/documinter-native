@@ -23,12 +23,8 @@ export interface ContextMenuItem {
    disabled?: boolean
 }
 
-/**
- * One row of a menu: an actionable item, a horizontal separator, a non-interactive section
- * header, or the accent picker's swatch grid (a nameless grid of color tiles + an inline-
- * expanding custom-color picker, see molecules/AccentSwatchGrid). Items are the entries without
- * a `type` discriminant.
- */
+/** One menu row: an item, a separator, a section header, or the accent swatch grid. Items are the
+ *  entries with no `type` discriminant. */
 export type ContextMenuEntry =
    | ContextMenuItem
    | { type: 'separator' }
@@ -54,8 +50,7 @@ function isMenuItem(entry: ContextMenuEntry): entry is ContextMenuItem {
    return !('type' in entry)
 }
 
-// Advance the roving focus by one step, skipping disabled items. Bounded by the item
-// count so an all-disabled menu (should never happen in practice) can't spin forever.
+// Advance the roving focus one step, skipping disabled items; bounded so an all-disabled menu can't spin forever.
 function stepFocus(items: ContextMenuItem[], current: number, direction: 1 | -1): number {
    const count = items.length
    if (count === 0) return current
@@ -71,10 +66,9 @@ function stepFocus(items: ContextMenuItem[], current: number, direction: 1 | -1)
 // #############
 
 /**
- * Portaled context menu with a declarative `entries` API (items, separators, section
- * headers). Owns viewport clamping (via useViewportClampedPosition, two-sided, measured),
- * roving-focus keyboard navigation, and outside-pointerdown / Escape / scroll dismissal.
- * Selecting an item runs its `onSelect` and then closes the menu.
+ * Portaled context menu with a declarative `entries` API. Owns viewport clamping, roving-focus
+ * keyboard navigation, and outside-pointerdown / Escape / scroll dismissal. Selecting an item runs
+ * its `onSelect` and closes the menu.
  */
 export function ContextMenu({ position, entries, onClose, width, className }: ContextMenuProps) {
    const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({
@@ -146,9 +140,8 @@ export function ContextMenu({ position, entries, onClose, width, className }: Co
          ].join(' ')}
          style={{
             top, left, width,
-            // Cap the menu to the viewport minus the same margin the clamp keeps on every edge, so a
-            // menu taller than the screen (BlockContextMenu's pagination + list-item + table-cell
-            // sections can stack past 600px) scrolls internally instead of spilling past the bottom.
+            // Cap to the viewport (minus the clamp's edge margin) so a menu taller than the screen
+            // scrolls internally instead of spilling past the bottom.
             maxHeight: `calc(100vh - ${2 * DEFAULT_MARGIN}px)`,
             animation: 'menu-in 120ms ease-out both',
             transformOrigin: '0% 0%',

@@ -68,9 +68,8 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       }
    }, [onChanged, showToast, t, backend])
 
-   // Import one or more dropped files as new documents in targetFolderId. Non-JSON files and
-   // files that don't parse as a Documinter backup are skipped; the restored documents keep the
-   // theme + accent stored in their backup. Reports the outcome with a single toast.
+   // Import dropped JSON files as new documents in targetFolderId; non-JSON and non-backup files are
+   // skipped. Restored documents keep the theme + accent from their backup. One summary toast.
    const handleImportJSON = useCallback(async (files: File[], targetFolderId: string) => {
       const jsonFiles = files.filter(file => file.name.toLowerCase().endsWith('.json'))
       if (jsonFiles.length === 0) { showToast(t.binderImportInvalid, { type: 'error' }); return }
@@ -108,9 +107,8 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
    }, [onChanged, showToast, t, backend])
 
    const handleReorder = useCallback(async (orderedIds: string[]) => {
-      // Optimistic reorder: reflect the new order in the same frame as the drop. The persist +
-      // re-read are async, so without this the grid shows the old order for a frame or two
-      // (and the drop animation lands on the stale position).
+      // Optimistic: reflect the new order in the drop's frame. The persist + re-read are async, so
+      // without this the grid flashes the old order and the drop animation lands on a stale slot.
       setDocuments(current => {
          const byId = new Map(current.map(record => [record.id, record]))
          const next = orderedIds

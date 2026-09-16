@@ -61,16 +61,12 @@ export interface BlockContextMenuProps {
    onClose:        () => void
    listItem?:      ListItemContextActions
    tableCell?:     TableCellContextActions
-   /** Paged-format page-break action. Present only in paged mode for an outer block that has a place
-    *  to break (or already has a break) after it. `insert` adds a break after this block, `remove`
-    *  drops the one already there. */
+   /** Paged mode only, for an outer block with a place to break after it. `insert` adds a break,
+    *  `remove` drops one already there. */
    pageBreak?:     { mode: 'insert' | 'remove'; onSelect: () => void }
-   /** Paged-format keep-together toggle. Present only in paged mode for an outer splittable block.
-    *  `active` = the block is currently held whole; the label / action swaps on it. */
+   /** Paged mode only. `active` = the block is held whole; the label and action swap on it. */
    keepTogether?:  { active: boolean; onSelect: () => void }
-   /** Paged-format keep-with-next toggle. Present only in paged mode for an outer block that has a
-    *  following top-level block. `active` = a break is currently forbidden after this block; the label /
-    *  action swaps on it. */
+   /** Paged mode only. `active` = a break is forbidden after this block; the label and action swap on it. */
    keepWithNext?:  { active: boolean; onSelect: () => void }
 }
 
@@ -79,10 +75,8 @@ export interface BlockContextMenuProps {
 // #############
 
 /**
- * WYSIWYG block right-click menu: a base Block section plus conditional List-item and
- * Table-cell sections. This is a thin adapter over the shared <ContextMenu>, it maps the
- * per-context actions to a declarative `entries` array; the shared component owns the
- * portal, the (measured, two-sided) viewport clamp, keyboard nav, and dismissal.
+ * WYSIWYG block right-click menu: a base Block section plus conditional Pagination, List-item, and
+ * Table-cell sections. Thin adapter over <ContextMenu>, mapping the per-context actions to `entries`.
  */
 export function BlockContextMenu({
    position, canMoveUp, canMoveDown,
@@ -122,9 +116,7 @@ export function BlockContextMenu({
    ]
 
    // ============ Pagination section (paged format only) ============
-   // The three actions below are each conditional on the paged layout having a place for them, so
-   // the header only goes up when at least one is present; the present ones then sit together under
-   // it as one group, no separators between them.
+   // Each action is conditional, so the header only goes up when at least one is present.
    if (pageBreak || keepTogether || keepWithNext) {
       entries.push(
          { type: 'separator' },
@@ -132,7 +124,6 @@ export function BlockContextMenu({
       )
    }
 
-   // Page-break entry: inserts a break after this block, or (once one is already there) removes it.
    if (pageBreak) {
       const isRemove = pageBreak.mode === 'remove'
       entries.push({
@@ -143,8 +134,7 @@ export function BlockContextMenu({
       })
    }
 
-   // Keep-together toggle: the menu has no checkbox affordance, so the state reads from the label +
-   // verb swap: held blocks offer "allow splitting", unheld blocks offer "keep on one page".
+   // No checkbox affordance: held blocks offer "allow splitting", unheld offer "keep on one page".
    if (keepTogether) {
       entries.push({
          label:    keepTogether.active ? t.blockAllowSplit : t.blockKeepTogether,
@@ -153,8 +143,7 @@ export function BlockContextMenu({
       })
    }
 
-   // Keep-with-next toggle: distinct from keep-together, this forbids a break AFTER the block
-   // (pinning it to its follower), not a split WITHIN it. Same label + verb swap as above.
+   // Forbids a break AFTER the block (pinning it to its follower), not a split WITHIN it.
    if (keepWithNext) {
       entries.push({
          label:    keepWithNext.active ? t.blockAllowBreakAfter : t.blockKeepWithNext,

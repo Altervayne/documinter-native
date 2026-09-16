@@ -13,23 +13,19 @@ import { useViewportClampedPosition } from '../hooks/useViewportClampedPosition'
 // #########
 
 interface ColorSwatchFieldProps {
-   /** The color currently shown in the swatch, and the value the picker opens on. */
+   /** Shown in the swatch, and the value the picker opens on. */
    value: string
-   /** Localised heading shown atop the popover (typically the same label as the field itself). */
+   /** Heading shown atop the popover. */
    title: string
-   /** Accessible name + tooltip for the swatch button. */
    ariaLabel: string
-   /** Apply a picked hex; fires live while the user drags/types inside the picker. */
+   /** Apply a picked hex; fires live while dragging/typing in the picker. */
    onChange: (hex: string) => void
-   /**
-    * Clear an override back to its fallback default. Omit entirely to hide the reset row,
-    * fields that always carry a literal color with no theme/palette fallback to revert to
-    * (e.g. the image-markup stroke/fill/text colors) simply don't pass it.
-    */
+   /** Clear an override back to its fallback default. Omit to hide the reset row, for a field with no
+    *  fallback to revert to (the image-markup stroke/fill/text colors). */
    onReset?: () => void
-   /** Localised label for the reset action. Required whenever `onReset` is supplied. */
+   /** Required whenever `onReset` is supplied. */
    resetLabel?: string
-   /** Extra class name(s) appended after the shared `color-swatch-btn` base class. */
+   /** Appended after the shared `color-swatch-btn` base class. */
    className?: string
 }
 
@@ -38,15 +34,10 @@ interface ColorSwatchFieldProps {
 // #############
 
 /**
- * A swatch button that opens the app's `react-piqua-color` `ColorPicker` in a floating,
- * portaled, viewport-clamped popover. Backs the diagram inspector's `ColorRow` and the
- * image-markup editor's stroke/fill/text controls.
- *
- * Mirrors the shell of `GraphSeriesColorPopover` / `MetaFieldColorPopover`, same portal-to-
- * `document.body` + `useViewportClampedPosition({ type: 'rect' })` anchoring, so it renders
- * correctly above the floating Block Editor Window these editors are hosted in. Unlike those
- * two (whose reset action is always present), the reset row here is optional: pass `onReset`
- * only when the field can fall back to something (a theme default, a palette slot).
+ * A swatch button that opens the app ColorPicker in a floating, portaled, viewport-clamped popover.
+ * Backs the diagram inspector's `ColorRow` and the image-markup editor's stroke/fill/text controls.
+ * Unlike the graph/meta-field popovers the reset row here is optional (pass `onReset` only when the
+ * field can fall back to something).
  */
 export function ColorSwatchField({ value, title, ariaLabel, onChange, onReset, resetLabel, className }: ColorSwatchFieldProps) {
    const [isOpen, setIsOpen]         = useState(false)
@@ -107,9 +98,8 @@ interface ColorSwatchPopoverProps {
 function ColorSwatchPopover({ anchorRect, value, title, resetLabel, onPick, onReset, onClose }: ColorSwatchPopoverProps) {
    const { ref, top, left } = useViewportClampedPosition<HTMLDivElement>({ type: 'rect', rect: anchorRect })
 
-   // Dismiss on a pointerdown outside the popover, ignoring the swatch trigger itself (its own
-   // click toggles the popover via the parent's `toggle`, so closing it here too would just
-   // re-open it a beat later).
+   // Dismiss on outside pointerdown, ignoring the swatch trigger (its own click toggles the popover;
+   // closing here too would just re-open it).
    useEffect(() => {
       function handlePointerDown(event: PointerEvent) {
          const target = event.target as HTMLElement
@@ -122,8 +112,8 @@ function ColorSwatchPopover({ anchorRect, value, title, resetLabel, onPick, onRe
    }, [onClose, ref])
 
    return createPortal(
-      // z above the modal layer (dialogs are z-[10000]): the swatch is used inside modals like the
-      // New Document dialog, and an open color picker is always the topmost transient interaction.
+      // z above the modal layer (dialogs are z-[10000]): the swatch is used inside modals, and an
+      // open picker is always the topmost transient interaction.
       <div
          ref={ref}
          className="fixed z-[10001] w-62 rounded-lg border border-border bg-raised shadow-xl overflow-hidden"

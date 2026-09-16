@@ -1,20 +1,18 @@
-/**
- * geometry.ts, pure coordinate math for the image-markup renderer: the viewBox aspect ratio,
- * arrowhead wing points, the callout tail polygon, and the ellipse bounding-box <-> center/radii
- * conversion. PURE FUNCTIONS, no SVG string building (that lives in render.ts), unit-tested in
- * isolation exactly like `lib/graph`'s scale.ts / layout.ts.
+/*
+ * Pure coordinate math for the image-markup renderer: the viewBox aspect ratio, arrowhead wing points,
+ * the callout tail polygon, and the ellipse bounding-box to center/radii conversion. No SVG string
+ * building (that lives in render.ts).
  */
 
 import { MARKUP_ARROWHEAD_ANGLE_DEGREES, MARKUP_ARROWHEAD_LENGTH, MARKUP_CALLOUT_TAIL_BASE_WIDTH, MARKUP_VIEWBOX_LONG_EDGE } from './types'
 import type { MarkupStrokeStyle } from './types'
 
-/** A plain 2D point in whatever coordinate space the caller is working in. */
 export interface Point {
    x: number
    y: number
 }
 
-/** An axis-aligned box (top-left + size), the shape rect/ellipse/callout all share. */
+/** An axis-aligned box (top-left + size), shared by rect/ellipse/callout. */
 export interface Box {
    x: number
    y: number
@@ -27,11 +25,9 @@ export interface Box {
 // #############
 
 /**
- * Compute the fixed internal viewBox dimensions for a base image of `imageWidth` x `imageHeight`:
- * the LONGEST edge is normalized to {@link MARKUP_VIEWBOX_LONG_EDGE}, the other edge follows the
- * image's aspect ratio. A missing/zero/non-finite image size (no image picked yet, or a `.mint`
- * reopen with no pixels) falls back to a square viewBox, a sane, never-degenerate placeholder
- * canvas for the overlay to still render onto.
+ * The fixed viewBox dimensions for a base image: the longest edge is {@link MARKUP_VIEWBOX_LONG_EDGE},
+ * the other follows the aspect ratio. A missing/zero/non-finite size (no image yet, or a `.mint` reopen
+ * with no pixels) falls back to a square viewBox so the overlay still has a canvas.
  */
 export function computeViewBox(imageWidth: number, imageHeight: number): { vbWidth: number; vbHeight: number } {
    const longEdge = MARKUP_VIEWBOX_LONG_EDGE
@@ -49,12 +45,10 @@ export function computeViewBox(imageWidth: number, imageHeight: number): { vbWid
 // ###############
 
 /**
- * Compute the two wing points of an arrowhead triangle whose tip sits at `(tipX, tipY)`, pointing
- * away from `(fromX, fromY)` (the tail end of the line/arrow). Returns a 3-point polygon
- * `[tip, wingA, wingB]` ready to hand to an SVG `<polygon>`. Arrowheads are drawn as explicit
- * polygons rather than an SVG `<marker>`, since marker ids can collide across multiple SVGs in one
- * export. A degenerate zero-length line (tip === tail) falls back to pointing along +x so the
- * polygon is still a valid (if arbitrary) triangle rather than three coincident points.
+ * The two wing points of an arrowhead triangle whose tip sits at `(tipX, tipY)`, pointing away from
+ * `(fromX, fromY)`. Returns `[tip, wingA, wingB]` for an SVG `<polygon>` (explicit polygons, not a
+ * `<marker>`, since marker ids collide across SVGs in one export). A zero-length line falls back to
+ * pointing along +x so the triangle stays valid.
  */
 export function arrowheadPolygonPoints(
    fromX: number, fromY: number, tipX: number, tipY: number,
@@ -75,11 +69,10 @@ export function arrowheadPolygonPoints(
 }
 
 /**
- * The point on the shaft axis at the BASE of the arrowhead, i.e. the tip retracted toward
- * `(fromX, fromY)` by the arrowhead's axial depth (`length x cos(halfAngle)`, how far the two wings
- * sit behind the tip along the line). Used by {@link renderArrow} to STOP the shaft short of the tip
- * so the line's own stroke width never thickens or blunts the sharp point. Clamped so a shaft
- * shorter than the arrowhead collapses to `(fromX, fromY)` rather than reversing past the tail.
+ * The point on the shaft axis at the BASE of the arrowhead: the tip retracted toward `(fromX, fromY)`
+ * by the arrowhead's axial depth (`length x cos(halfAngle)`). {@link renderArrow} stops the shaft here
+ * so the line's stroke never blunts the sharp point. Clamped so a shaft shorter than the arrowhead
+ * collapses to `(fromX, fromY)` rather than reversing past the tail.
  */
 export function arrowShaftEnd(
    fromX: number, fromY: number, tipX: number, tipY: number,
@@ -104,11 +97,10 @@ export function arrowShaftEnd(
 // ####################
 
 /**
- * The SVG `stroke-dasharray` value for a contour {@link MarkupStrokeStyle}, scaled to the stroke
- * width so the dash/dot rhythm reads consistently at any thickness, or `undefined` for `solid`
- * (and any unknown value) so a default-styled element emits NO dash attribute and renders as a
- * plain solid stroke. `dashed` = long dash + gap; `dotted` = a short dash (a round dot under the
- * line/arrow round caps) + a wider gap.
+ * The `stroke-dasharray` for a contour style, scaled to the stroke width so the rhythm reads
+ * consistently at any thickness. `undefined` for `solid` (and any unknown value) so the element emits
+ * no dash attribute. `dashed` = long dash + gap; `dotted` = a short dash (a round dot under the round
+ * caps) + a wider gap.
  */
 export function strokeDashArray(strokeStyle: MarkupStrokeStyle | undefined, strokeWidth: number): string | undefined {
    const width = Number.isFinite(strokeWidth) && strokeWidth > 0 ? strokeWidth : 1
@@ -128,22 +120,14 @@ function roundDash(value: number): number {
 // ####################
 
 /**
- * Compute the callout tail polygon: a triangle from the box edge closest to `tip` out to the tip
- * itself. Determines which of the box's four edges the tip lies "beyond" by comparing the tip's
- * offset from the box center against the box's half-width/half-height (scaled so the comparison
- * is fair for a non-square box), then places two base points straddling the nearest point on that
- * edge.
+ * The callout tail polygon: a triangle from the box edge closest to `tip` out to the tip. Picks which
+ * of the four edges the tip lies beyond by comparing its offset from center against the half-extents
+ * (scaled fair for a non-square box), then straddles two base points around the nearest point on it.
  *
- * `cornerRadius` (viewBox units, matching the box's drawn `rx`) INSETS the allowed base span on each
- * edge by the radius so the base always attaches on the STRAIGHT part of the rounded-rect perimeter,
- * never over a rounded corner where the outline has curved inward and the base would float in a gap.
- * The tail is drawn under the box, so a base flush on the straight edge reads as a speech-bubble
- * pointer joined to the bubble. `cornerRadius` defaults to 0 (square-corner behavior), so existing
- * callers/tests are byte-identical.
- *
- * Returns `[tip, baseA, baseB]`, ready for an SVG `<polygon>`. Never throws: a degenerate
- * (zero-size) box still yields a valid triangle (the base points collapse to the box's single
- * point, which draws as a degenerate but harmless sliver).
+ * `cornerRadius` INSETS the allowed base span on each edge by the radius, so the base attaches on the
+ * STRAIGHT part of the rounded-rect perimeter, never over a rounded corner where it would float in a
+ * gap. Defaults to 0 (square-corner behavior). Returns `[tip, baseA, baseB]`; a zero-size box still
+ * yields a valid (harmless sliver) triangle.
  */
 export function calloutTailPolygonPoints(
    box: Box, tip: Point, baseWidth = MARKUP_CALLOUT_TAIL_BASE_WIDTH, cornerRadius = 0,

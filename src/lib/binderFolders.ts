@@ -1,9 +1,7 @@
-/**
- * binderFolders.ts, Folder CRUD + move/order for the binder (IndexedDB).
- *
- * Reads/writes the `folders` store via the shared connection in binderDatabase. deleteFolder
- * reflows orphaned documents to root using binderDocuments.nextDocumentSortOrder (the one
- * document-side dependency).
+/*
+ * Folder CRUD + move / order for the binder (IndexedDB), over the `folders` store. deleteFolder
+ * reflows orphaned documents to root via binderDocuments.nextDocumentSortOrder, the one
+ * document-side dependency.
  */
 
 import {
@@ -13,14 +11,13 @@ import {
 import { nextDocumentSortOrder } from './binderDocuments'
 import type { BinderDocumentRecord, BinderFolderRecord } from '../types'
 
-/** Read a single folder record by id (its own readonly transaction). */
 export async function getFolder(id: string): Promise<BinderFolderRecord | undefined> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readonly')
    return requestToPromise<BinderFolderRecord | undefined>(transaction.objectStore(FOLDERS_STORE).get(id))
 }
 
-/** Create a folder under parentId ('0' = root), appended after existing siblings. Returns its id. */
+/** Under parentId ('0' = root), appended after existing siblings. */
 export async function createFolder(name: string, parentId: string): Promise<string> {
    const database = await openDatabase()
    const id  = crypto.randomUUID()
@@ -34,7 +31,7 @@ export async function createFolder(name: string, parentId: string): Promise<stri
    return id
 }
 
-/** Rename a folder. No-op if the folder is gone. */
+/** No-op if the folder is gone. */
 export async function renameFolder(id: string, name: string): Promise<void> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readwrite')
@@ -49,24 +46,22 @@ export async function renameFolder(id: string, name: string): Promise<void> {
 }
 
 /**
- * Delete a folder and all descendant folders. By default the documents in any deleted folder
- * are kept, moved to root (folderId '0'), appended to the end of root in their discovered order.
- * With { recursive: true } the documents are permanently deleted from both stores instead.
- * Returns the ids of the documents that were deleted (empty unless recursive), so the caller can
- * clear a now-stale "currently open" document.
+ * Delete a folder and all descendant folders. By default the contained documents are kept, moved to
+ * root and appended in discovered order; with { recursive: true } they are deleted from both stores.
+ * Returns the deleted document ids (empty unless recursive), so the caller can clear a now-stale
+ * "currently open" document.
  */
 export async function deleteFolder(id: string, options?: { recursive?: boolean }): Promise<string[]> {
    const recursive = options?.recursive ?? false
    const database = await openDatabase()
 
-   // Collect the folder and all descendants (iterative breadth-first).
+   // Collect the folder and all descendants, breadth-first.
    const toDelete: string[] = [id]
    for (let index = 0; index < toDelete.length; index++) {
       const children = await getFolderChildren(toDelete[index])
       for (const child of children) toDelete.push(child.id)
    }
 
-   // Handle the contained documents, then delete the folders themselves.
    const stores = recursive
       ? [FOLDERS_STORE, DOCUMENTS_STORE, DOCUMENT_CONTENT_STORE]
       : [FOLDERS_STORE, DOCUMENTS_STORE]
@@ -103,15 +98,14 @@ export async function deleteFolder(id: string, options?: { recursive?: boolean }
    return deletedDocumentIds
 }
 
-/** Every folder record in the binder, unordered. The whole-tree read a Tin export needs; the
- *  tree is rebuilt from parentId by the caller (mirror of listDocuments reading the whole store). */
+/** Every folder record, unordered. The caller rebuilds the tree from parentId. */
 export async function listAllFolders(): Promise<BinderFolderRecord[]> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readonly')
    return requestToPromise<BinderFolderRecord[]>(transaction.objectStore(FOLDERS_STORE).getAll())
 }
 
-/** Direct children of a folder, sorted by sortOrder ascending. */
+/** Direct children, sorted by sortOrder ascending. */
 export async function getFolderChildren(parentId: string): Promise<BinderFolderRecord[]> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readonly')
@@ -121,10 +115,8 @@ export async function getFolderChildren(parentId: string): Promise<BinderFolderR
    return children.sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-/**
- * Folder ancestors from the root-most ancestor down to the immediate parent (excludes
- * the folder itself; empty for a top-level folder). Iterative walk of the parentId chain.
- */
+/** Root-most ancestor down to the immediate parent. Excludes the folder itself; empty for a
+ *  top-level folder. */
 export async function getFolderAncestors(id: string): Promise<BinderFolderRecord[]> {
    const chain: BinderFolderRecord[] = []
    const self = await getFolder(id)
@@ -139,11 +131,8 @@ export async function getFolderAncestors(id: string): Promise<BinderFolderRecord
    return chain
 }
 
-/**
- * Move a folder under a new parent, appended to the end of the target parent's children
- * (sortOrder = max sibling sortOrder + 1). Does NOT validate cycles, the caller must ensure
- * targetParentId is not the folder itself or a descendant of it.
- */
+/** Move under a new parent, appended to its children. Does NOT validate cycles: the caller must
+ *  ensure targetParentId is not the folder itself or a descendant of it. */
 export async function moveFolder(id: string, targetParentId: string): Promise<void> {
    const database = await openDatabase()
    const transaction = database.transaction(FOLDERS_STORE, 'readwrite')

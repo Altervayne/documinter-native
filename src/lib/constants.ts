@@ -13,9 +13,8 @@ export const ACCENT_PRESETS: string[] = [
 // ==========================================================
 //  Accent preset friendly names
 // ==========================================================
-// The document background context menu's accent rows show a human name (this lookup) rather
-// than the raw hex, the color swatch icon still conveys the exact value. Keyed by hex so a
-// caller can resolve a name for any ACCENT_PRESETS entry without relying on array position.
+// Accent rows show a human name rather than the raw hex. Keyed by hex so a name resolves for any
+// ACCENT_PRESETS entry without relying on array position.
 export const ACCENT_PRESET_NAME_KEYS: Record<string, keyof T> = {
    '#f97316': 'accentNameOrange',
    '#2563eb': 'accentNameBlue',
@@ -26,9 +25,7 @@ export const ACCENT_PRESET_NAME_KEYS: Record<string, keyof T> = {
    '#2dcea8': 'accentNameTeal',
 }
 
-/** Resolves an ACCENT_PRESETS hex to its localized friendly name, falling back to the raw hex
- *  for any color with no entry in ACCENT_PRESET_NAME_KEYS (defensive, every current preset has
- *  one, but a future preset added without a name shouldn't render a blank label). */
+/** Localized friendly name for a hex, falling back to the raw hex for any color with no entry. */
 export function accentPresetName(hex: string, t: T): string {
    const nameKey = ACCENT_PRESET_NAME_KEYS[hex]
    return nameKey ? t[nameKey] : hex
@@ -96,7 +93,7 @@ export const BLOCK_ICONS: { type: BlockType; icon: LucideIcon }[] = [
    { type: 'hr',        icon: SeparatorHorizontal },
 ]
 
-/** Keyed by BlockType, useful for O(1) icon lookups. */
+/** Keyed by BlockType for O(1) icon lookups. */
 export const BLOCK_ICONS_MAP: Record<BlockType, LucideIcon> = Object.fromEntries(
    BLOCK_ICONS.map(blockIcon => [blockIcon.type, blockIcon.icon])
 ) as Record<BlockType, LucideIcon>

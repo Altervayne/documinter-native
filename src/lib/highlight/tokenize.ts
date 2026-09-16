@@ -4,13 +4,9 @@ function escChar(ch: string): string {
    return ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-/**
- * Greedy left-to-right tokenizer.
- * Each rule's pattern must have the `y` (sticky) flag.
- * Returns an HTML string with <span class="tok-{type}">...</span> wrappers.
- */
+/** Greedy left-to-right tokenizer: at each position the first matching rule wins. Patterns are forced
+ *  sticky so a match is anchored at the cursor. Returns HTML with <span class="tok-{type}"> wrappers. */
 export function tokenize(code: string, rules: TokenRule[]): string {
-   // Ensure all patterns are sticky
    const stickyRules = rules.map(rule => ({
       type: rule.type,
       re: new RegExp(rule.pattern.source, rule.pattern.flags.includes('y') ? rule.pattern.flags : rule.pattern.flags + 'y'),

@@ -2,11 +2,9 @@
 // # DOCUMENT TEMPLATE MODEL                                                                     #
 // #                                                                                             #
 // # A template captures a document's CHROME (meta scaffold, theme, accent, presentation extras, #
-// # page format including the header / footer bands) so a new document starts pre-styled instead #
-// # of blank. It never captures content (sections/blocks) nor the content-position-dependent     #
-// # `format.pages` array.                                                                        #
-// # Everything here is pure and JSON-serializable, tested in isolation; the IndexedDB store     #
-// # (lib/templateStore.ts) and the App wiring build on it.                                      #
+// # page format with header / footer bands) so a new document starts pre-styled, not blank. It  #
+// # never captures content (sections/blocks) nor the content-position-dependent `format.pages`. #
+// # All of it is pure and JSON-serializable; the store and App wiring build on it.              #
 // ###############################################################################################
 
 // -- Type Imports --
@@ -57,9 +55,8 @@ function blankMetaValues(meta: DocMeta): DocMeta {
    }
 }
 
-/** Captures a format for a template: strips the content-position-dependent `pages` array and drops the
- *  whole thing when it reduces to the default (infinite, no width / margins), so a template carries
- *  only a meaningful kind + width + margins. */
+/** Strips the content-position-dependent `pages` array and drops the whole format when it reduces to
+ *  the default, so a template carries only a meaningful kind + width + margins. */
 function captureFormat(format: DocFormat | undefined): DocFormat | undefined {
    if (!format) return undefined
    const { pages: _pages, ...withoutPages } = format
@@ -71,11 +68,8 @@ function captureFormat(format: DocFormat | undefined): DocFormat | undefined {
 // # CAPTURE / INSTANTIATE #
 // ####################
 
-/**
- * Captures the chrome of a live document into a named template: blanks the meta values (keeps the
- * scaffold), strips `format.pages` and any default format, and normalizes the presentation (absent when
- * empty). `id` + `now` are injected so this stays pure and deterministic.
- */
+/** Capture a live document's chrome into a named template: blank the meta values (keep the scaffold),
+ *  strip `format.pages` and any default format, normalize presentation. `id` + `now` are injected. */
 export function captureTemplate(name: string, source: TemplateChrome, id: string, now: number): DocumentTemplate {
    const presentation = normalizePresentation(source.presentation)
    const format       = captureFormat(source.format)
@@ -92,11 +86,8 @@ export function captureTemplate(name: string, source: TemplateChrome, id: string
    }
 }
 
-/**
- * The chrome to seed a fresh document with from a template: fresh meta field ids (values already
- * blank), a deep-cloned presentation, and a format with no `pages` (never captured). App spreads this
- * onto `createBlankDocument`'s output.
- */
+/** The chrome to seed a fresh document from a template: fresh meta field ids (values already blank), a
+ *  deep-cloned presentation, and a format with no `pages`. */
 export function instantiateTemplate(template: DocumentTemplate, newFieldId: FieldIdFactory): TemplateChrome {
    return {
       meta: {
@@ -106,9 +97,8 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
       docTheme:  template.docTheme,
       docAccent: template.docAccent,
       presentation: template.presentation ? structuredClone(template.presentation) : undefined,
-      // Deep-clone: the format nests margins plus the header / footer bands (whose items can hold a
-      // base64 logo), so a shallow spread would alias every instantiated document back to the stored
-      // template. structuredClone severs all of it.
+      // Deep-clone: the format nests bands whose items can hold a base64 logo, so a shallow spread
+      // would alias every instantiated document back to the stored template.
       format:       template.format ? structuredClone(template.format) : undefined,
    }
 }
@@ -118,17 +108,12 @@ export function instantiateTemplate(template: DocumentTemplate, newFieldId: Fiel
 // ##########################
 
 /**
- * Re-styles the ACTIVE document with a template's chrome while keeping its content: `meta` and
- * `sections` pass through untouched. `docTheme` / `docAccent` / `presentation` are fully adopted from
- * the template, an absent template presentation clears the document's own (a template is a complete
- * look, not a patch). `format` adopts the template's kind / width / margins / header / footer bands,
- * but the document's own `format.pages` always wins: page breaks are content-relative (where in THIS
- * document's flow a page ends), a template never carries them (captureFormat strips them at capture
- * time), so blending in the template's format must never drop them. When the template's format
- * reduces to the default (no template.format, or the document had no pages to keep), the result is
- * `undefined` like any other untouched-format document. Deep-clones the template's presentation /
- * format so the document never aliases the stored template object, the same hazard instantiateTemplate
- * guards against.
+ * Re-style the ACTIVE document with a template's chrome, keeping its content: `meta` and `sections`
+ * pass through. Theme / accent / presentation are fully adopted (an absent template presentation
+ * clears the document's own; a template is a complete look, not a patch). `format` adopts the
+ * template's kind / width / margins / bands, but the document's own `format.pages` always wins: page
+ * breaks are content-relative and a template never carries them, so blending must never drop them.
+ * Deep-clones presentation / format so the document never aliases the stored template.
  */
 export function applyTemplateChrome(current: DocSnapshot, template: DocumentTemplate): DocSnapshot {
    const templateFormat = template.format ? structuredClone(template.format) : { ...DEFAULT_FORMAT }
@@ -152,16 +137,13 @@ export function applyTemplateChrome(current: DocSnapshot, template: DocumentTemp
 // # BUILT-IN TEMPLATES #
 // ######################
 
-// The app's default document accent (App.tsx keeps its own copy for createBlankDocument). Exported
-// so the New Document dialog's "Blank" base and this built-in agree on one value.
+// The app's default document accent. Exported so the New Document dialog's "Blank" base and this
+// built-in agree on one value.
 export const DEFAULT_DOC_ACCENT = '#2dcea8'
 
-/**
- * The one built-in template: the classic "default layout" the app seeds new documents with, an
- * accent-tinted `Module` field above the title and `Environment` / `Date` / `Author` fields below it
- * (all value-blank), infinite canvas, default theme + accent. Its field ids are placeholders, replaced
- * on instantiation. `name` is English here; the picker localizes built-in names by id.
- */
+/** The one built-in template: an accent-tinted `Module` field above the title and `Environment` /
+ *  `Date` / `Author` below it (all value-blank), infinite canvas, default theme + accent. Its field
+ *  ids are placeholders, replaced on instantiation. `name` is English; the picker localizes by id. */
 export const BUILT_IN_TEMPLATES: DocumentTemplate[] = [
    {
       id:        'builtin-default',

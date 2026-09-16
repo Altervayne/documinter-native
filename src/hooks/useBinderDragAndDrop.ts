@@ -10,8 +10,7 @@ import { useBinderNav } from './useBinderNav'
 import type { BinderDocumentRecord, BinderFolderRecord } from '../types'
 import type { FolderDropTarget } from '../organisms/Binder/BinderNav'
 
-// Which drop a card-over-nav will perform: into the hovered folder (down a level), to the
-// current folder's parent via the Back button (up a level), or nothing.
+// Which drop a card-over-nav performs: into the hovered folder (down), to the parent via Back (up), or nothing.
 export type DropIntent = 'down' | 'up' | null
 
 // The item currently being dragged: a document card (carries its record) or a folder (id + label).
@@ -19,8 +18,8 @@ export type ActiveDrag =
    | { type: 'doc'; record: BinderDocumentRecord }
    | { type: 'folder'; id: string; label: string }
 
-// Spring-loaded navigation: dwelling on a folder / Back button for this long during a drag
-// navigates there (drilling in / up) without ending the drag, so items can be moved many levels.
+// Spring-loaded nav: dwelling on a folder / Back for this long during a drag navigates there without
+// ending the drag, so items can be moved many levels.
 export const SPRING_HOLD_MS = 900
 type SpringTarget = { kind: 'folder'; id: string } | { kind: 'back' }
 
@@ -97,8 +96,8 @@ export function useBinderDragAndDrop({
       setSpringActive(false)
    }, [])
 
-   // Sync the data the dwell timer needs every render (the timer fires long after the closure that
-   // started it, possibly after a navigation, so it must read the live view).
+   // Refresh every render: the timer fires long after the closure that started it, possibly after a
+   // navigation, so it must read the live view.
    useEffect(() => {
       springDataRef.current = { subfolders, ancestors, navigateTo }
    })
@@ -222,8 +221,8 @@ export function useBinderDragAndDrop({
       }
    }, [documents, subfolders, resetSpring])
 
-   // Nest folder A into B, rejected if B is a descendant of A (would create a cycle). Among the
-   // visible siblings a cycle is impossible, but the full ancestor walk is validated regardless.
+   // Nest folder A into B, rejected if B is a descendant of A (a cycle). Visible siblings can't cycle,
+   // but the full ancestor walk is validated regardless.
    const nestFolder = useCallback(async (folderId: string, targetParentId: string) => {
       const folderAncestors = await backend.getFolderAncestors(targetParentId)
       if (folderAncestors.some(ancestor => ancestor.id === folderId)) return

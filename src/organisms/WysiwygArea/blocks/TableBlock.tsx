@@ -9,8 +9,7 @@ interface TableBlockProps {
    onAddRow:    () => void
    onAddCol:    () => void
    onRemoveRow: () => void
-   /** Inserts an already-built block right after this table block (the "Create chart from this
-    *  table" one-shot extract). */
+   /** Inserts an already-built block right after this one (the one-shot "Create chart" extract). */
    onInsertBlockAfter: (newBlock: Block) => void
    readOnly?:   boolean
 }
@@ -20,9 +19,8 @@ export function TableBlock({ block, patch, onAddRow, onAddCol, onRemoveRow, onIn
    const richHeaders = block.richHeaders ?? []
    const richRows    = block.richRows    ?? []
 
-   // One-shot extract: build a default bar chart from this table's current data and drop it in
-   // right after the table. Pure data mapping (graphDataFromTable); no link is retained between
-   // the chart and the table after this.
+   // One-shot extract: build a default bar chart from this table's data and drop it in after the
+   // table. No link is retained.
    function handleCreateChart(): void {
       const newBlock: Block = {
          id:   crypto.randomUUID(),

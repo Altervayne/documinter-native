@@ -1,11 +1,7 @@
-/**
- * documentRecord.ts, Storage-agnostic document record logic shared by every binder backend.
- *
- * The pure record-building and read-time migration bodies that used to live inline in the IndexedDB
- * functions of binderDocuments. They carry no transaction plumbing, so a future filesystem backend
- * imports the SAME builders and migrators, and both backends emit byte-identical light records and
- * run the identical read-time pipeline. No IndexedDB, no async, no crypto side effects beyond the
- * injectable id factory in cloneSectionsWithFreshIds.
+/*
+ * Storage-agnostic document record logic shared by every binder backend: the pure record-building and
+ * read-time migration bodies, no transaction plumbing. Both backends import the SAME builders and
+ * migrators, so they emit byte-identical light records and run the identical read-time pipeline.
  */
 
 import { buildPreviewSections, extractDocumentText } from './documentPreview'
@@ -18,9 +14,7 @@ import type {
    BinderDocumentRecord, BinderDocumentContent,
 } from '../types'
 
-export const RECORD_SCHEMA_VERSION = 4   // v4 adds field zones (position) + color to freeform meta
-                                  // (v3 moved meta to the freeform { title, fields } shape;
-                                  //  v2 added contentText, the flattened block text for full-text search)
+export const RECORD_SCHEMA_VERSION = 4   // v4: field zones (position) + color on freeform meta
 
 /** Full editable document returned by loadDocument, DocState plus presentation. */
 export interface LoadedDocument {
@@ -36,10 +30,9 @@ export interface LoadedDocument {
 // # LIGHT RECORD BUILD #
 // ####################
 
-/** The caller-supplied identity + placement + presentation fields for one light record. Everything
- *  else (sectionTitles, contentText, previewSections, schemaVersion) derives from `sections` here, so
- *  save and duplicate can never drift on the derived shape. `meta` is taken verbatim: save passes the
- *  live state meta, duplicate passes a migrated copy, and that difference is the caller's to make. */
+/** The caller-supplied identity + placement + presentation fields. Everything derived (sectionTitles,
+ *  contentText, previewSections, schemaVersion) comes from `sections`, so save and duplicate can never
+ *  drift there. `meta` is taken verbatim; the caller chooses live-state vs migrated. */
 export interface DocumentRecordParams {
    id:           string
    meta:         DocMeta
@@ -53,9 +46,7 @@ export interface DocumentRecordParams {
    sortOrder:    number
 }
 
-/** Build the light card record (no sections, no base64) exactly as saveDocument and duplicateDocument
- *  did inline. The derived fields (sectionTitles / contentText / previewSections) come from `sections`,
- *  the rest passes through from the caller. */
+/** The light card record (no sections, no base64). Derived fields come from `sections`. */
 export function buildDocumentRecord(params: DocumentRecordParams): BinderDocumentRecord {
    return {
       id:            params.id,
@@ -78,17 +69,16 @@ export function buildDocumentRecord(params: DocumentRecordParams): BinderDocumen
 // # HEAVY CONTENT BUILD #
 // #####################
 
-/** The optional presentation bundle spread onto a heavy content record. Both fields are conditional:
- *  an absent one is omitted, never written as `undefined`, so an untouched document stays byte-clean. */
+/** Spread onto a heavy content record. An absent field is omitted, never written as `undefined`, so
+ *  an untouched document stays byte-clean. */
 export interface DocumentContentExtras {
    presentation?: DocPresentationExtras
    format?: DocFormat
 }
 
-/** Build the heavy content record (full sections, base64 retained). The presentation and format
- *  spreads are conditional exactly as the two inline call sites were: absent stays absent. The
- *  default-format guard is NOT here, it is save-specific intent and stays at the save call site (it
- *  passes format only when it diverges from the default); duplicate passes source.format verbatim. */
+/** The heavy content record (full sections, base64 retained). Presentation and format spread in only
+ *  when present. The default-format guard is NOT here: it is save-specific and stays at the save call
+ *  site; duplicate passes source.format verbatim. */
 export function buildDocumentContent(id: string, sections: Section[], extras: DocumentContentExtras): BinderDocumentContent {
    return {
       id,
@@ -98,9 +88,8 @@ export function buildDocumentContent(id: string, sections: Section[], extras: Do
    }
 }
 
-/** Deep-clone sections with fresh section + block ids (no aliasing between copies), used by duplicate.
- *  The id factory is injectable (defaulting to crypto.randomUUID) so the function stays pure-ish and
- *  testable without stubbing global crypto. */
+/** Deep-clone sections with fresh section + block ids, so no aliasing between copies. The id factory
+ *  is injectable, so the function stays testable without stubbing global crypto. */
 export function cloneSectionsWithFreshIds(sections: Section[], newId: () => string = () => crypto.randomUUID()): Section[] {
    return sections.map(section => ({
       ...section,
@@ -114,7 +103,7 @@ export function cloneSectionsWithFreshIds(sections: Section[], newId: () => stri
 // ####################
 
 /** The raw stored halves fed into assembleLoadedDocument: the light record's meta + presentation
- *  fields plus the heavy record's sections + presentation + format. */
+ *  fields plus the heavy record's sections + format. */
 export interface LoadedDocumentInput {
    meta:      DocMeta
    sections:  Section[]
@@ -124,11 +113,9 @@ export interface LoadedDocumentInput {
    format?: DocFormat
 }
 
-/** Run the read-time pipeline that turns a stored record + content into an editable LoadedDocument:
- *  migrate ids first (so page-break anchors resolve against the migrated block ids), normalize the
- *  presentation extras defensively (mirror of migrateMeta), and normalize the format after its own
- *  legacy migrations. Absent presentation collapses to undefined; absent format becomes DEFAULT_FORMAT
- *  (see normalizeFormat). */
+/** The read-time pipeline: migrate ids first (so page-break anchors resolve against the migrated block
+ *  ids), then normalize presentation and format after their own legacy migrations. Absent presentation
+ *  collapses to undefined; absent format becomes DEFAULT_FORMAT. */
 export function assembleLoadedDocument(input: LoadedDocumentInput): LoadedDocument {
    const migrated = migrateIds({ meta: input.meta, sections: input.sections })
    return {
@@ -136,18 +123,14 @@ export function assembleLoadedDocument(input: LoadedDocumentInput): LoadedDocume
       sections: migrated.sections,
       docTheme: input.docTheme,
       docAccent: input.docAccent,
-      // Presentation extras ride on the heavy content record; normalize defensively on read
-      // (clamp opacity, drop an empty-src watermark), the mirror of migrateMeta for metadata.
+      // Normalize defensively on read: clamp opacity, drop an empty-src watermark.
       presentation: normalizePresentation(input.presentation),
-      // format normalizes to a concrete DocFormat even when absent (unlike presentation, which
-      // collapses to undefined), see normalizeFormat: absent -> DEFAULT_FORMAT (infinite/normal).
       format: normalizeFormat(migrateFormatBands(migrateFormatPageBreaks(input.format, migrated.sections))),
    }
 }
 
-/** Normalize a stored light record's legacy flat meta up to the freeform { title, fields } shape on
- *  read, so the cards + free-text search always see the current shape. One source of truth shared by
- *  the IndexedDB list reader and any future filesystem index reader. */
+/** Normalize a light record's legacy flat meta up to the freeform { title, fields } shape on read.
+ *  Shared by every backend's list reader. */
 export function migrateListRecord(record: BinderDocumentRecord): BinderDocumentRecord {
    return { ...record, meta: migrateMeta(record.meta) }
 }

@@ -15,10 +15,7 @@ interface BinderContextMenuProps {
    onSaveAsTemplate: () => void
 }
 
-/**
- * Card context menu, shared by the row's overflow button and right-click. Thin adapter over the shared
- * <ContextMenu>, it owns the portal, the viewport clamp, keyboard nav, and dismissal.
- */
+/** Card context menu, shared by the row's overflow button and right-click. Thin adapter over <ContextMenu>. */
 export function BinderContextMenu({
    x, y, onClose, onOpen, onDuplicate, onDelete, onExportHtml, onExportMarkdown, onSaveAsTemplate,
 }: BinderContextMenuProps) {

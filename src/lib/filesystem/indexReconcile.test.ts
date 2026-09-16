@@ -125,8 +125,8 @@ describe('reconcileDocuments', () => {
    })
 
    // ====
-   // lastOpenedAt preservation (FIX 2): the per-machine open stamp lives in the index, never in the file,
-   // so reconcile must carry the existing row's value across an open instead of resetting it from disk.
+   // lastOpenedAt preservation: the per-machine open stamp lives in the index, never in the file, so
+   // reconcile must carry the existing row's value across an open instead of resetting it from disk.
    // ====
 
    it('preserves the index row lastOpenedAt for an already-indexed file even when the file carries none', () => {

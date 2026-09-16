@@ -1,24 +1,9 @@
-/**
- * imageMarkupFence.ts, the ` ```imagemarkup ` fence serializer / parser for the image-markup block.
- *
- * The fence NEVER carries the base64 image pixels, in EITHER `.mint` or `.md`. Both text formats
- * stay pure, human-readable, standalone-readable text, exactly like the existing `image` block, which
- * drops its base64 `src` on serialization (see `markdown.ts`'s `case 'image'`). Only the base image's
- * PIXEL DIMENSIONS (`w=`/`h=`, needed to reconstruct the viewBox aspect ratio without decoding any
- * image) plus `alt=`/`caption=` metadata ride the info string; the overlay stack rides the body as
- * one compact `kind key=value ...` line per element, in z-order. Consequence: a `.mint`/`.md` reopen
- * restores the block + every annotation but with an EMPTY `src` (no pixels), the renderer already
- * tolerates that gracefully (see `lib/imageMarkup/index.ts`). Full fidelity (base image pixels) is
- * the JSON path only (binder IndexedDB + the self-contained HTML export).
- *
- * The element-line grammar reuses the same `key=value` tokenizer/quoter as the top-level info
- * string (`fenceInfoString.ts`), also shared with the graph fence; each line is tokenized exactly
- * like an info string, with the leading token naming the element `kind`.
- *
- * Both directions are total: `imageMarkupSpecToFence` never throws on a partial spec, and
- * `fenceToImageMarkupSpec` never throws on a malformed fence (unknown element kinds and bad
- * numeric fields are skipped/zeroed rather than thrown), so a hand-edited file can never break
- * the document.
+/*
+ * The ` ```imagemarkup ` fence serializer/parser. NEVER carries the base64 pixels, in `.mint` or
+ * `.md`: only the base PIXEL DIMENSIONS (w=/h=, to rebuild the viewBox aspect) plus alt=/caption=
+ * ride the info string, and the overlay stack rides the body as one `kind key=value ...` line per
+ * element in z-order. A reopen restores every annotation with an EMPTY `src` (full pixels are the
+ * JSON path). Both directions are total: unknown kinds and bad numeric fields are skipped/zeroed.
  */
 
 import type {
@@ -31,20 +16,20 @@ import { serializeInfoValue, unquoteInfoValue, tokenizeInfoString } from './fenc
 // # ROUNDING  #
 // #############
 
-/** Round a normalized 0..1 coordinate to the fence's precision (4 decimal places). */
+/** Round a normalized coordinate to the fence's precision. */
 function roundCoordinate(value: number): number {
    if (!Number.isFinite(value)) return 0
    const factor = 10 ** MARKUP_COORDINATE_PRECISION
    return Math.round(value * factor) / factor
 }
 
-/** Round a viewBox-unit length (stroke width, font size, radius) to 2 decimal places. */
+/** Round a viewBox-unit length (stroke width, font size, radius) to 2 decimals. */
 function roundLength(value: number): number {
    if (!Number.isFinite(value)) return 0
    return Math.round(value * 100) / 100
 }
 
-/** Parse a `key=value` token's numeric value; a missing/malformed token falls back to `fallback`. */
+/** Parse a token's numeric value; a missing/malformed token falls back to `fallback`. */
 function parseNumberToken(raw: string | undefined, fallback = 0): number {
    if (raw === undefined) return fallback
    const parsed = Number(raw)
@@ -65,7 +50,7 @@ interface ParsedMarkupInfo {
 function parseInfoString(fenceInfo: string): ParsedMarkupInfo {
    const tokens = tokenizeInfoString(fenceInfo)
    const info: ParsedMarkupInfo = { width: 0, height: 0 }
-   // tokens[0] is the `imagemarkup` tag itself; options start at index 1.
+   // tokens[0] is the `imagemarkup` tag; options start at index 1.
    for (const token of tokens.slice(1)) {
       const equalsIndex = token.indexOf('=')
       if (equalsIndex === -1) continue
@@ -110,7 +95,7 @@ function serializeInfoTokens(spec: ImageMarkupSpec): string[] {
 // # ELEMENT LINES (body)             #
 // ###################################
 
-/** The shared MarkupBase style fields, read from / written to the fence independently of `kind`. */
+/** The shared MarkupBase style fields, read/written independently of `kind`. */
 interface MarkupStyleFields {
    stroke?:      string
    strokeWidth?: number
@@ -119,7 +104,6 @@ interface MarkupStyleFields {
    fillOpacity?: number
 }
 
-/** Read the shared MarkupBase style fields (stroke/strokeWidth/strokeStyle/fill/fillOpacity) off a token map. */
 function readBaseStyle(fields: Map<string, string>): MarkupStyleFields {
    const style: MarkupStyleFields = {}
    const stroke = fields.get('stroke')
@@ -141,8 +125,8 @@ function readBaseStyle(fields: Map<string, string>): MarkupStyleFields {
    return style
 }
 
-/** Serialize the shared MarkupBase style fields to `key=value` tokens, only when set. `strokeStyle`
- *  is emitted only when non-default (dashed/dotted), so a solid contour stays byte-identical. */
+/** Serialize the shared style fields, only when set. `strokeStyle` is emitted only when non-default,
+ *  so a solid contour stays byte-identical. */
 function serializeBaseStyle(base: MarkupStyleFields): string[] {
    const tokens: string[] = []
    if (base.stroke !== undefined)      tokens.push(`stroke=${serializeInfoValue(base.stroke)}`)
@@ -155,7 +139,7 @@ function serializeBaseStyle(base: MarkupStyleFields): string[] {
    return tokens
 }
 
-/** Tokenize one element line into its kind + a key->value field map (last write wins on duplicates). */
+/** Tokenize one element line into its kind + a key->value field map (last write wins). */
 function parseElementLine(line: string): { kind: string; fields: Map<string, string> } | null {
    const tokens = tokenizeInfoString(line)
    if (tokens.length === 0) return null
@@ -189,11 +173,8 @@ function serializePoints(points: { x: number; y: number }[]): string {
    return points.map(point => `${roundCoordinate(point.x)},${roundCoordinate(point.y)}`).join(' ')
 }
 
-/**
- * Parse one element line (kind already validated against {@link VALID_MARKUP_KINDS} by the caller)
- * into a {@link MarkupElement}. Never throws: missing/malformed numeric fields fall back to 0, a
- * missing `text` falls back to '', and freehand degenerates to an empty point list.
- */
+/** One element line (kind pre-validated) into a MarkupElement. Never throws: malformed numbers fall
+ *  back to 0, a missing text to '', freehand to an empty point list. */
 function elementFromFields(kind: MarkupElementKind, fields: Map<string, string>): MarkupElement {
    const id = crypto.randomUUID()
    const base = readBaseStyle(fields)
@@ -251,7 +232,7 @@ function elementFromFields(kind: MarkupElementKind, fields: Map<string, string>)
    }
 }
 
-/** Serialize one {@link MarkupElement} to its fence body line (no leading/trailing backticks). */
+/** Serialize one MarkupElement to its fence body line. */
 function elementToLine(markupElement: MarkupElement): string {
    const tokens: string[] = [markupElement.kind]
    const pushCoordinate = (key: string, value: number) => tokens.push(`${key}=${roundCoordinate(value)}`)
@@ -276,7 +257,7 @@ function elementToLine(markupElement: MarkupElement): string {
       case 'arrow':
          pushCoordinate('x1', markupElement.x1); pushCoordinate('y1', markupElement.y1)
          pushCoordinate('x2', markupElement.x2); pushCoordinate('y2', markupElement.y2)
-         // Arrowhead shape/placement emitted only when non-default, so a plain arrow stays byte-identical.
+         // Emitted only when non-default, so a plain arrow stays byte-identical.
          if (markupElement.arrowhead !== undefined && markupElement.arrowhead !== 'full')
             tokens.push(`arrowhead=${markupElement.arrowhead}`)
          if (markupElement.arrowheadPosition !== undefined && markupElement.arrowheadPosition !== 'end')
@@ -312,23 +293,16 @@ function elementToLine(markupElement: MarkupElement): string {
 // # PUBLIC API   #
 // ################
 
-/**
- * Serialize an ImageMarkupSpec to its fence pieces: the full info string (including the leading
- * `imagemarkup` tag) and the element-lines body. The caller wraps them in the ``` ... ``` fence.
- * The base64 `src` is NEVER emitted (see the module doc), same output in both `.mint` and `.md`.
- */
+/** Serialize an ImageMarkupSpec to its fence pieces (info string + element-lines body). The base64
+ *  `src` is NEVER emitted. */
 export function imageMarkupSpecToFence(spec: ImageMarkupSpec): { info: string; body: string } {
    const tokens = [`imagemarkup`, ...serializeInfoTokens(spec)]
    const body = (spec.elements ?? []).map(elementToLine).join('\n')
    return { info: tokens.join(' '), body }
 }
 
-/**
- * Parse an `imagemarkup` fence (its whole info string + its body) back into an ImageMarkupSpec.
- * `src` always comes back EMPTY (fences never carry base64 pixels), full fidelity is
- * the JSON path only. Total: an unknown element kind or a malformed numeric field degrades
- * gracefully (skipped / zeroed) rather than throwing.
- */
+/** Parse an `imagemarkup` fence back into an ImageMarkupSpec. `src` always comes back EMPTY. Total: an
+ *  unknown kind or a malformed numeric field is skipped/zeroed, never thrown. */
 export function fenceToImageMarkupSpec(fenceInfo: string, body: string): ImageMarkupSpec {
    const info = parseInfoString(fenceInfo)
    const elements: MarkupElement[] = []
@@ -337,7 +311,7 @@ export function fenceToImageMarkupSpec(fenceInfo: string, body: string): ImageMa
       if (line === '') continue
       const parsed = parseElementLine(line)
       if (!parsed) continue
-      if (!VALID_MARKUP_KINDS.has(parsed.kind as MarkupElementKind)) continue // unknown kind: skip, forward-compatible
+      if (!VALID_MARKUP_KINDS.has(parsed.kind as MarkupElementKind)) continue
       elements.push(elementFromFields(parsed.kind as MarkupElementKind, parsed.fields))
    }
    const spec: ImageMarkupSpec = { src: '', width: info.width, height: info.height, elements }

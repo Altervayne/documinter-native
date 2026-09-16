@@ -60,9 +60,8 @@ export const translations = {
       bgMenuAddSection:        'Add section',
       bgMenuCustomAccent:      'Custom accent…',
       bgMenuCustomAccentTitle: 'Custom accent',
-      // Accent preset names, shown as the background menu's accent row labels (the swatch
-      // itself conveys the exact color), one key per ACCENT_PRESETS hex, see
-      // lib/constants.ts's ACCENT_PRESET_NAME_KEYS for the hex -> key mapping.
+      // Accent preset names for the background menu's accent row, one key per ACCENT_PRESETS hex; see
+      // lib/constants.ts ACCENT_PRESET_NAME_KEYS for the hex-to-key mapping.
       accentNameOrange: 'Orange',
       accentNameBlue:   'Blue',
       accentNameGreen:  'Green',
@@ -986,9 +985,8 @@ export const translations = {
       bgMenuAddSection:        'Ajouter une section',
       bgMenuCustomAccent:      'Accent personnalisé…',
       bgMenuCustomAccentTitle: 'Accent personnalisé',
-      // Accent preset names, shown as the background menu's accent row labels (the swatch
-      // itself conveys the exact color), one key per ACCENT_PRESETS hex, see
-      // lib/constants.ts's ACCENT_PRESET_NAME_KEYS for the hex -> key mapping.
+      // Accent preset names for the background menu's accent row, one key per ACCENT_PRESETS hex; see
+      // lib/constants.ts ACCENT_PRESET_NAME_KEYS for the hex-to-key mapping.
       accentNameOrange: 'Orange',
       accentNameBlue:   'Bleu',
       accentNameGreen:  'Vert',

@@ -1,18 +1,8 @@
-/**
- * imageDownscale.ts, Shared image import -> downscaled base64 utility.
- *
- * A reusable pick-to-base64 helper for the presentation features (watermark now; header/logo next)
- * and, eventually, the image block. Unlike compressImage (image.ts), which is tuned for inline
- * content (1200x900, JPEG), this one:
- *   - caps the LONGEST EDGE (so a wide banner logo isn't over-shrunk on its short axis),
- *   - PRESERVES TRANSPARENCY (logos need alpha), re-encoding to PNG or WebP and keeping the smaller,
- *   - never hard-blocks a large image, it just downscales.
- *
- * The pure size math (fitWithinLongestEdge) is factored out and unit-tested; the canvas encode is
- * browser-only (jsdom has no real canvas) and therefore not covered by unit tests.
- *
- * SVGs and animated images (GIF/WebP/APNG) skip the canvas re-encode entirely: it would rasterize
- * vector art and flatten animation to a single frame, so those are embedded as raw bytes instead.
+/*
+ * Pick-to-base64 downscaler for presentation images (watermark, logo). Unlike compressImage it caps
+ * the LONGEST edge (a wide banner keeps its short axis) and preserves transparency, re-encoding to
+ * PNG or WebP and keeping the smaller; it never blocks a large image, just downscales. SVGs and
+ * animated rasters embed raw (canvas would rasterize vector art and flatten animation).
  */
 
 import { isSvgFile, isAnimatedImageBytes, readFileAsDataUrl } from './imageFormat'
@@ -20,11 +10,8 @@ import { isSvgFile, isAnimatedImageBytes, readFileAsDataUrl } from './imageForma
 /** Default cap on the longest edge of a downscaled image, in device pixels. */
 export const DEFAULT_MAX_EDGE = 2048
 
-/**
- * Scale a width/height down so its longest edge is at most maxEdge, preserving aspect ratio.
- * Never scales UP (an image already within the cap is returned rounded, unchanged in size). Pure,
- * no DOM, this is the piece the unit tests exercise.
- */
+/** Scale width/height down so the longest edge is at most maxEdge, preserving aspect ratio. Never
+ *  scales up (an image within the cap is returned rounded, same size). Pure, no DOM. */
 export function fitWithinLongestEdge(
    width:  number,
    height: number,
@@ -38,7 +25,6 @@ export function fitWithinLongestEdge(
    }
 }
 
-/** Returns true if the canvas has any non-fully-opaque pixels (alpha < 255). */
 function hasTransparency(context: CanvasRenderingContext2D, width: number, height: number): boolean {
    const data = context.getImageData(0, 0, width, height).data
    for (let index = 3; index < data.length; index += 4) {
@@ -47,33 +33,22 @@ function hasTransparency(context: CanvasRenderingContext2D, width: number, heigh
    return false
 }
 
-/** Pick the shortest data URL (smallest encoded payload) from a set of candidates. */
 function pickSmallest(candidates: string[]): string {
    return candidates.reduce((smallest, candidate) =>
       candidate.length < smallest.length ? candidate : smallest)
 }
 
-/** The result of a downscale: the encoded data URL plus the dimensions it was encoded at. */
 export interface DownscaledImage {
    src:    string
    width:  number
    height: number
 }
 
-/**
- * Downscale an image File to a base64 data URL whose longest edge is at most maxEdge, alongside the
- * dimensions it was encoded at (callers that need the natural aspect ratio, e.g. the watermark tile
- * pattern, derive it from width / height rather than re-loading the file).
- *
- * Transparency is preserved: a transparent source is re-encoded as WebP and PNG (both keep alpha)
- * and the smaller is kept; an opaque source is re-encoded as WebP and JPEG and the smaller is kept.
- * WebP falls out of the comparison automatically on the rare browser that can't encode it (the
- * toDataURL falls back to PNG, which the size compare then simply doesn't prefer over the real PNG).
- *
- * An SVG or animated source (GIF/WebP/APNG) instead embeds the original bytes untouched, and reads
- * width/height off the decoded image rather than a canvas so the watermark tile keeps a sane aspect
- * ratio (an SVG with no intrinsic size falls back to a square of maxEdge).
- */
+/** Downscale an image File to a base64 data URL whose longest edge is at most maxEdge, plus the
+ *  dimensions it was encoded at. Transparent sources re-encode to WebP and PNG, opaque to WebP and
+ *  JPEG, keeping the smaller (WebP drops out on a browser that can't encode it). An SVG or animated
+ *  source embeds its raw bytes and reads dims off the decoded image (an SVG with no intrinsic size
+ *  falls back to a square of maxEdge). */
 export async function downscaleImageToDataUrl(file: File, maxEdge = DEFAULT_MAX_EDGE): Promise<DownscaledImage> {
    const isSvg = isSvgFile(file)
    const bytes = isSvg ? null : new Uint8Array(await file.arrayBuffer())
@@ -113,12 +88,8 @@ export async function downscaleImageToDataUrl(file: File, maxEdge = DEFAULT_MAX_
    })
 }
 
-/**
- * Decode an image's natural pixel dimensions from an existing `data:`/URL `src`, WITHOUT re-encoding
- * it. Used when markup is first added to an image that already has pixels but no stored dims (the
- * overlay's normalized-0..1 coordinate system needs the base aspect ratio). Total: a src that fails
- * to load resolves to { width: 0, height: 0 } rather than rejecting, so adding markup never throws.
- */
+/** Natural pixel dimensions of an existing data:/URL src, without re-encoding. A src that fails to
+ *  load resolves to { width: 0, height: 0 } rather than rejecting, so adding markup never throws. */
 export function decodeImageSize(src: string): Promise<{ width: number; height: number }> {
    return new Promise(resolve => {
       if (!src) { resolve({ width: 0, height: 0 }); return }

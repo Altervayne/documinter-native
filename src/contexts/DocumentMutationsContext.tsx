@@ -1,12 +1,6 @@
-/**
- * DocumentMutationsContext, Provides all document mutation functions to the
- * component tree below App.tsx.
- *
- * Exports: DocumentMutations (interface), DocumentMutationsContext,
- *          useDocumentMutations
- *
- * Kept as a context rather than prop-drilling because mutations are consumed
- * at many levels of the WysiwygArea subtree.
+/*
+ * Every document mutation, published as a context rather than prop-drilled because the WysiwygArea
+ * subtree consumes them at many levels.
  */
 
 /* eslint-disable react-refresh/only-export-components -- context + hook co-location is intentional */

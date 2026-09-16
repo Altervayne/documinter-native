@@ -30,11 +30,9 @@ interface UseBinderSearchResult {
 }
 
 /**
- * Owns the binder's session-local search + advanced-filter draft state, the two 250ms debounces
- * (text and per-field queries), and the assembled `criteria` / `hasActiveCriteria`. State stays
- * local to the binder subtree, the root consumes this hook and threads the results into
- * BinderControls and the document-list query. Sort (sortBy/sortDir) is not search state and
- * stays in the root.
+ * Owns the binder's session-local search + advanced-filter draft state, the 250ms text debounce, and the
+ * assembled `criteria` / `hasActiveCriteria`. The root consumes this and threads the results into
+ * BinderControls and the document-list query. Sort (sortBy/sortDir) is not search state; it stays in the root.
  */
 export function useBinderSearch(): UseBinderSearchResult {
    const [searchInput, setSearchInput]         = useState('')

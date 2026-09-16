@@ -18,12 +18,9 @@ export function stripTags(s: string): string {
 }
 
 /**
- * Sanitize innerHTML from a rich ContentEditable.
- * Keeps only <strong>, <em>, <u>, <s>, <a>, <br>.
- * Normalises <b> -> <strong>, <i> -> <em>.
- * Inline styles produced by some browsers (bold/italic/underline spans) are
- * converted to their semantic equivalents. Everything else loses its tags but
- * keeps its text content. Trailing <br> added by browsers is stripped.
+ * Sanitize innerHTML from a rich ContentEditable down to <strong>/<em>/<u>/<s>/<a>/<br>. <b>/<i> and
+ * browser-produced bold/italic/underline style spans fold to their semantic tags; everything else keeps
+ * its text but loses its tags. A trailing browser-added <br> is stripped.
  */
 export function sanitizeRichText(html: string): string {
    const parser = new DOMParser()

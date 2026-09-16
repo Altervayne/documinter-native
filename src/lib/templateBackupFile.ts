@@ -1,12 +1,9 @@
-// ###############################################################################################
-// # TEMPLATE BACKUP FILE                                                                        #
-// #                                                                                             #
-// # Portable single-template file: download a DocumentTemplate to a `.documinter-template.json`  #
-// # and read one back. The mirror of documentBackupFile.ts, but for a template's chrome (no      #
-// # content). On import the id / timestamps are regenerated (via captureTemplate) so an imported #
-// # template is always a fresh user template, never a built-in and never colliding with a stored #
-// # id. Pure file I/O; the store (templateStore.ts) persists what this returns.                  #
-// ###############################################################################################
+/*
+ * Portable single-template file: download a DocumentTemplate to a `.documinter-template.json` and read
+ * one back, the mirror of documentBackupFile.ts for a template's chrome (no content). On import the id
+ * and timestamps are regenerated (via captureTemplate), so an imported template is always a fresh user
+ * template, never a built-in and never colliding with a stored id.
+ */
 
 // -- Type Imports --
 import type { DocMeta } from '../types'

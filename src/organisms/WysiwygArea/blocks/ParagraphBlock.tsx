@@ -17,10 +17,9 @@ export function ParagraphBlock({ block, patch, readOnly }: ParagraphBlockProps) 
    const placeholder = tag === 'h3' ? t.blockH3 : tag === 'h4' ? t.blockH4 : t.clickToEdit
    const content: InlineContent = block.richText ?? []
 
-   // A page-split fragment (see pageLayout.ts sliceParagraphBlock): only a slice of the paragraph's
-   // richText, so it renders READ-ONLY (committing a partial richText would clobber the model). Pressing
-   // it asks the paragraph to reflow whole and focus, caret at the pressed char. Never a fragment in
-   // preview (readOnly), where nothing splits.
+   // A page-split fragment (pageLayout.ts sliceParagraphBlock) is only a slice of the richText, so it
+   // renders READ-ONLY (committing a partial richText would clobber the model). Pressing it asks the
+   // paragraph to reflow whole and focus, caret at the pressed char. Never a fragment in preview.
    const fragment = !readOnly ? block.paragraphFragment : undefined
 
    if (fragment) {
@@ -31,13 +30,12 @@ export function ParagraphBlock({ block, patch, readOnly }: ParagraphBlockProps) 
             onCommit={() => {}}
             readOnly
             onMouseDown={event => {
-               // Only a primary (left) press opens the edit overlay. A right press must fall through to
-               // the block wrapper's context menu (useBlockContextMenu): focusing here would mount the
-               // floating overlay, which is a peer of the sheets and swallows the contextmenu into the
-               // document background menu, so a spanning paragraph would lose its own block menu.
+               // Only a left press opens the edit overlay; a right press must fall through to the block
+               // wrapper's context menu (focusing here would mount the overlay, whose contextmenu goes to
+               // the document background menu, so a spanning paragraph would lose its own block menu).
                if (event.button !== 0) return
-               // Map the press to a char offset inside the fragment, then shift by the fragment's start
-               // to get the model-absolute offset the whole editable will place the caret at.
+               // Map the press to a fragment-local char offset, then shift by the fragment's start to
+               // get the model-absolute caret offset.
                const localOffset = caretCharOffsetAtPoint(event.currentTarget, event.clientX, event.clientY)
                const caretOffset = fragment.charStart + (localOffset < 0 ? 0 : localOffset)
                paragraphFocus.requestFocus(block.id, caretOffset)
@@ -46,10 +44,9 @@ export function ParagraphBlock({ block, patch, readOnly }: ParagraphBlockProps) 
       )
    }
 
-   // A whole paragraph (the focused one, or one short enough not to overflow) edits as usual. Focus holds
-   // it as the focused id so the paged re-measure freezes while it is edited (no re-mount under the caret,
-   // no lost typing); blur clears that id so it re-splits. The clear is a no-op unless this paragraph is
-   // still the focused one (the guard lives in notifyBlur), so wiring both on every editable is safe.
+   // A whole paragraph edits as usual. Focus holds it as the focused id so the paged re-measure freezes
+   // while it is edited (no re-mount under the caret, no lost typing); blur clears that id so it
+   // re-splits. The clear is a no-op unless this is still the focused paragraph (guard in notifyBlur).
    return (
       <ContentEditable
          tag={tag}

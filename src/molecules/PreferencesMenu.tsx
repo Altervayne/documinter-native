@@ -6,9 +6,8 @@ import type { Lang, T } from '../lib/i18n'
 // # CONSTANTS #
 // #############
 
-// Not portaled or JS-positioned (see molecules/ContextMenu.tsx for that pattern); this dropdown
-// stays in-flow `absolute` under its trigger. These are only used for the light right-edge guard
-// below, sized to the dropdown's own `w-64` Tailwind class.
+// In-flow `absolute` dropdown, not portaled. These size the right-edge guard below to the
+// dropdown's own `w-64` Tailwind class.
 const DROPDOWN_WIDTH = 256
 const EDGE_MARGIN     = 8
 
@@ -17,7 +16,7 @@ const EDGE_MARGIN     = 8
 // #########
 
 interface PreferencesMenuProps {
-   /** The app/chrome theme (html[data-theme]), distinct from the per-document theme (Document menu). */
+   /** The app/chrome theme (html[data-theme]), distinct from the per-document theme. */
    theme:         'light' | 'dark'
    onToggleTheme: () => void
    lang:          Lang
@@ -30,9 +29,8 @@ interface PreferencesMenuProps {
 // #############
 
 /**
- * The Preferences menu: app-wide settings only, the app/chrome light/dark theme (html[data-theme])
- * and the UI language. Per-document appearance (doc theme + accent) lives in the Document menu; the
- * two are deliberately separate settings.
+ * The Preferences menu: app-wide settings only, the chrome light/dark theme (html[data-theme]) and
+ * the UI language. Per-document appearance lives in the Document menu, deliberately separate.
  */
 export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }: PreferencesMenuProps) {
    const [open, setOpen]            = useState(false)
@@ -48,8 +46,8 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
       return () => document.removeEventListener('mousedown', handleOutsideMouseDown)
    }, [open])
 
-   // Light right-edge guard: on a narrow window, a left-aligned dropdown near the right side of
-   // the header can overflow past the viewport edge. Flip to right-aligned when there isn't room.
+   // Right-edge guard: flip to right-aligned when a left-aligned dropdown would overflow the
+   // viewport near the header's right side.
    useLayoutEffect(() => {
       if (!open) return
       const containerRect = containerRef.current?.getBoundingClientRect()
@@ -61,13 +59,8 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
       if (theme !== targetTheme) onToggleTheme()
    }
 
-   // =======
-   //  Render
-   // =======
-
    return (
       <div ref={containerRef} className="relative">
-         {/* Trigger */}
          <button
             onClick={() => setOpen(wasOpen => !wasOpen)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-medium
@@ -82,7 +75,6 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
             <ChevronDown size={11} className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
          </button>
 
-         {/* Dropdown */}
          {open && (
             <div className={`absolute top-full mt-1.5 w-64 rounded-lg border border-border bg-raised shadow-xl z-200 overflow-hidden py-2 ${alignRight ? 'right-0 left-auto' : 'left-0'}`} style={{ animation: 'menu-in 120ms ease-out both', transformOrigin: alignRight ? '100% 0%' : '0% 0%' }}>
 
@@ -97,7 +89,6 @@ export function PreferencesMenu({ theme, onToggleTheme, lang, onLangChange, t }:
                   onChange={(value) => handleAppThemeClick(value as 'light' | 'dark')}
                />
 
-               {/* Language */}
                <ToggleRow
                   label={t.language}
                   options={[

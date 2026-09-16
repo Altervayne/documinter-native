@@ -29,11 +29,9 @@ import type { Block, InlineContent, ListItem, ListMarker } from '../../../types'
 // #############
 
 /**
- * The list-item structural operations a ListBlock performs, each pre-bound to this block by the
- * caller (top-level blocks via useBlockMutations, inner blocks via containerMutations). Bundled
- * into one object and threaded through the recursive levels, mirroring how ContainerMutations is
- * threaded into ContainerColumn. The underlying algorithms live in lib/listItemTree.ts; the
- * components only invoke these handlers, they never compute a list mutation themselves.
+ * The list-item structural operations, each pre-bound to this block by the caller (top-level via
+ * useBlockMutations, inner via containerMutations) and threaded through the recursive levels. The
+ * algorithms live in lib/listItemTree.ts; these components only invoke the handlers.
  */
 export interface ListItemOperations {
    indent:         (itemId: string) => void
@@ -46,10 +44,7 @@ export interface ListItemOperations {
    toggle?:        (itemId: string) => void
 }
 
-/**
- * Returns true when the cursor (selection) is at the very start of the element's
- * text content, works correctly for rich contenteditable elements with nested tags.
- */
+/** True when the caret is at the very start of the element's text content (handles nested tags). */
 function isCursorAtStart(element: HTMLElement): boolean {
    const selection = window.getSelection()
    if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
@@ -70,11 +65,11 @@ interface ListItemRowProps {
    /** This row's 0-based position among its siblings, used to number an ordered marker. */
    index:          number
    itemOps:        ListItemOperations
-   /** THIS sub-list's marker (list only): the root sub-list uses `block.listMarker`, a nested one
-    *  the owning parent item's `childMarker`. Default `dot`. Ignored in checklist mode. */
+   /** THIS sub-list's marker: root uses `block.listMarker`, a nested one the parent's `childMarker`.
+    *  Default `dot`. Ignored in checklist mode. */
    marker:         ListMarker
-   /** Root-item offset of a page-split list fragment, so an ordered top level keeps counting across
-    *  sheets. Only applied at depth 0 (children never split). Default 0 for a whole list. */
+   /** Root-item offset of a page-split fragment, so an ordered top level keeps counting across sheets.
+    *  Depth 0 only. Default 0. */
    itemOffset?:    number
    /** Render a checkbox marker (checklist) instead of a bullet (list). */
    checklist?:     boolean
@@ -105,9 +100,8 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
       ? undefined
       : { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
 
-   // The marker shown before the row, drawn from THIS sub-list's marker (default dot). An ordered
-   // marker renders the item's ordinal (the top level continues numbering across a page-split via
-   // itemOffset); an unordered marker renders its glyph.
+   // The marker before the row. Ordered renders the item's ordinal (the top level continues numbering
+   // across a page-split via itemOffset); unordered renders its glyph.
    const ordered = isOrderedMarker(marker)
    let bullet: string
    if (ordered) {
@@ -117,21 +111,16 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
       bullet = UNORDERED_MARKER_GLYPH[marker as 'dot' | 'circle' | 'square' | 'dash' | 'arrow']
    }
 
-   // The marker column's width, wide enough that an ordered marker's widest common ordinal
-   // ("viii.", "XVIII.") never clips, right-aligned like a native <ol> so every item's text starts
-   // at the same x regardless of its own marker's width. Bullets are single glyphs and would align
-   // in a 1ch column on their own, but stay on this same column so bullet and number sub-lists share
-   // one layout. `ch` resolves against the marker's own monospace font, so it tracks the glyph width
-   // exactly rather than guessing an em ratio. A marker rarer than the common case (very deep ordered
-   // lists) simply grows the column for that one row instead of clipping.
+   // The marker column width, right-aligned like a native <ol> so every item's text starts at the same
+   // x. Wide enough that a common ordinal ("viii.", "XVIII.") never clips; `ch` tracks the marker's
+   // monospace glyph width. A rarer, wider marker just grows the column for that one row.
    const markerColumnMinWidth = ordered ? '5.5ch' : '1ch'
 
    function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
       const element = event.currentTarget
 
-      // Tab / Shift+Tab: indent / unindent.
-      // preventDefault is critical: it stops the browser's focus-change behavior.
-      // After the state update the item moves in the DOM, so focus is restored explicitly below.
+      // Tab / Shift+Tab: indent / unindent. preventDefault stops the browser's focus change; the item
+      // moves in the DOM on the state update, so focus is restored explicitly below.
       if (event.key === 'Tab') {
          event.preventDefault()
          const currentItemId = item.id
@@ -147,7 +136,7 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
          return
       }
 
-      // Enter, create new sibling immediately after (Shift+Enter falls through to <br>)
+      // Enter creates a new sibling after this one (Shift+Enter falls through to <br>).
       if (event.key === 'Enter' && !event.shiftKey) {
          event.preventDefault()
          const newItem: ListItem = { id: crypto.randomUUID(), richText: [], children: [], ...(checklist ? { checked: false } : {}) }
@@ -159,7 +148,8 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
          return
       }
 
-      // Backspace at start, unindent or delete
+      // Backspace at start: unindent, or delete an empty depth-0 item. A non-empty depth-0 item falls
+      // through to default browser behavior.
       if (event.key === 'Backspace' && isCursorAtStart(element)) {
          if (depth > 0) {
             event.preventDefault()
@@ -171,7 +161,6 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
             itemOps.remove(item.id)
             return
          }
-         // depth === 0, non-empty: default browser behavior
       }
    }
 
@@ -185,9 +174,8 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
          onMouseLeave={readOnly ? undefined : () => setHovered(false)}
       >
          <div className="flex items-baseline gap-1.5 py-0.5 min-h-[1.5rem]">
-            {/* Drag handle, uses negative margin to float outside the content area.
-                Left column (default): marginLeft -16 places it before the bullet.
-                Right column: order:3 sends it to the flex end; marginRight -16 floats it right. */}
+            {/* Drag handle, floated outside the content area with negative margin. Right column: order:3
+                sends it to the flex end and marginRight floats it right; left column places it before the bullet. */}
             {!readOnly && !isDragOverlay && (
                <span
                   {...listeners}
@@ -229,8 +217,8 @@ function ListItemRow({ item, depth, index, itemOps, marker, itemOffset = 0, chec
             />
          </div>
 
-         {/* Children, recursive, indented. Their sub-list draws THIS item's childMarker (default dot).
-             Children never page-split, so their itemOffset stays 0. */}
+         {/* Children: their sub-list draws THIS item's childMarker (default dot). Children never
+             page-split, so their itemOffset stays 0. */}
          {item.children.length > 0 && (
             <div style={{ paddingLeft: 20 }}>
                <ListLevel
@@ -364,18 +352,16 @@ interface ListBlockProps {
    onAddItem: () => void
    /** Render checkbox markers + enable the toggle (checklist block). */
    checklist?: boolean
-   /** Block-level mutation lever (see WysiwygBlock's `patch`), used to commit `listMarker` /
-    *  per-item `childMarker`. Only wired up for `list` blocks; a checklist never shows the marker
-    *  picker so it never needs this. Optional so ChecklistBlock's prop spread stays untouched. */
+   /** Block-level mutation lever, to commit `listMarker` / per-item `childMarker`. Only wired for
+    *  `list` blocks (a checklist has no marker picker); optional so ChecklistBlock's spread stays untouched. */
    patch?:    (partialBlock: Partial<Block>) => void
    readOnly?: boolean
    gripSide?: 'left' | 'right'
-   /** Whether this render holds the list's last root item. False only for a non-tail fragment of a
-    *  list split across a page boundary (see pageLayout.ts), which shows no add-item button of its
-    *  own since the button belongs on the last page the list spans. Default true. */
+   /** Whether this render holds the list's last root item. False only for a non-tail page-split
+    *  fragment, which shows no add-item button (it belongs on the last page). Default true. */
    isListTail?: boolean
-   /** Root-item offset of a page-split list fragment, so an ordered top level keeps numbering across
-    *  sheets (see pageLayout.ts sliceListBlock). 0 for a whole list. Ignored by checklists. */
+   /** Root-item offset of a page-split fragment, so an ordered top level keeps numbering across sheets.
+    *  0 for a whole list. Ignored by checklists. */
    itemOffset?: number
 }
 

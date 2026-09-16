@@ -47,8 +47,8 @@ export interface BinderProps {
    initialFolder:     BinderFolderRecord | null
    /** Which top-level view to open into (Documents by default; Templates from "New from template"). */
    initialView?:      'documents' | 'templates'
-   /** Bumped by the caller after adding a record straight to IndexedDB from outside the binder
-    *  (File -> Import...), so the list picks up the new card without an in-binder action to trigger it. */
+   /** Bumped by the caller after adding a record from outside the binder (File -> Import...), so the
+    *  list picks up the new card without an in-binder action. */
    refreshToken:      number
    /** Open a stored document in the editor (adds or focuses its tab). */
    onOpenDocument:    (id: string) => void
@@ -63,16 +63,16 @@ export interface BinderProps {
    /** Report the folder currently being browsed, so App can target a File-menu Tin import at it.
     *  Fires on mount and on every navigation; root is the sentinel '0'. */
    onCurrentFolderChange: (folderId: string) => void
-   /** A `.tin` file was dropped onto the binder body; App owns the merge/replace mode dialog, so the
-    *  parsed bundle bubbles up with the folder it was dropped into as the merge target. */
+   /** A `.tin` file was dropped onto the binder body; the parsed bundle bubbles up with its drop
+    *  folder as the merge target (App owns the merge/replace mode dialog). */
    onTinDropped:      (tin: TinFile, targetFolderId: string) => void
 }
 
 const ROOT_FOLDER_ID = '0'
 
 /**
- * Binder root, the in-app document library. Replaces the editor full-screen when open.
- * Two-pane drill-down: left folder nav + breadcrumb + document grid for the current folder.
+ * Binder root, the in-app document library, full-screen over the editor when open. Two-pane
+ * drill-down: folder nav + breadcrumb + the document grid for the current folder.
  */
 export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initialView = 'documents', refreshToken, onOpenDocument, onNewDocument, onNewFromTemplate, onApplyTemplate, onDocumentDeleted, onCurrentFolderChange, onTinDropped }: BinderProps) {
    const { t } = useLang()
@@ -82,16 +82,14 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    // ============================
    //  Navigation + shared refresh
    // ============================
-   // Seeded from initialFolder so the binder opens directly into the current document's folder.
    const [currentFolderId, setCurrentFolderId] = useState(initialFolder?.id ?? ROOT_FOLDER_ID)
    const [currentFolder, setCurrentFolder]     = useState<BinderFolderRecord | null>(initialFolder)
    const [view, setView]                       = useState<'documents' | 'templates'>(initialView)
    const [dataVersion, setDataVersion]         = useState(0)
    const bumpData = useCallback(() => setDataVersion(version => version + 1), [])
 
-   // File -> Import... writes a new document straight to IndexedDB from outside this component
-   // (HeaderMenuBar owns no list state), then bumps refreshToken. Skip the mount-time firing, the
-   // initial list read below already covers it.
+   // File -> Import... adds a document from outside this component, then bumps refreshToken. Skip the
+   // mount-time firing; the initial list read below already covers it.
    const isFirstRefreshTokenRef = useRef(true)
    useEffect(() => {
       if (isFirstRefreshTokenRef.current) { isFirstRefreshTokenRef.current = false; return }
@@ -99,9 +97,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    }, [refreshToken, bumpData])
 
    // =======================================================================================
-   //  Search + sort (session-local; an active search is global, escaping the current folder).
-   //  Search/filter state lives in useBinderSearch; sort stays local to the root, composed with
-   //  the hook's criteria into the document-list query below.
+   //  Search + sort (session-local; an active search goes global, escaping the current folder).
+   //  Search/filter state lives in useBinderSearch; sort stays local, composed with its criteria.
    // =======================================================================================
    const search = useBinderSearch()
    const { resetSearch } = search   // pulled out so navigateTo can depend on the stable callback
@@ -117,10 +114,9 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       return () => { active = false }
    }, [bumpData, backend])
 
-   // Live external-change subscription (native filesystem backend, arc B). When the watcher reconciles an
-   // Explorer edit it fires a BinderChange; bumping the shared data version re-reads the nav + grid +
-   // templates together. On the IndexedDB backend subscribe is inert (nothing edits the store behind the
-   // app's back), so this is a harmless no-op there.
+   // Live external-change subscription (filesystem backend): when the watcher reconciles an Explorer
+   // edit, bumping the data version re-reads nav + grid + templates. Inert on the IndexedDB backend,
+   // where nothing edits the store behind the app's back.
    useEffect(() => backend.subscribe(bumpData), [backend, bumpData])
 
    const templates = useTemplates(dataVersion, bumpData)
@@ -146,8 +142,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    const [folderMenu, setFolderMenu]                 = useState<{ folder: BinderFolderRecord; x: number; y: number } | null>(null)
    const [folderPendingDelete, setFolderPendingDelete]     = useState<BinderFolderRecord | null>(null)
    const [documentPendingDelete, setDocumentPendingDelete] = useState<BinderDocumentRecord | null>(null)
-   // Text-input dialog shared by "save document as template" (mode 'save', keyed by the source
-   // document id) and "rename template" (mode 'rename', keyed by the template id).
+   // Text-input dialog shared by "save document as template" (mode 'save') and "rename template".
    const [templateNameDialog, setTemplateNameDialog]       = useState<
       | { mode: 'save'; documentId: string; initialName: string }
       | { mode: 'rename'; templateId: string; initialName: string }
@@ -164,14 +159,13 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       resetSearch()               // navigating exits a global search + clears advanced filters
    }, [resetSearch])
 
-   // Keep App told which folder is on screen, so a File-menu Tin import (whose picker lives up in the
-   // header, out of this component) can graft the bundle into the folder the user is looking at.
+   // Keep App told which folder is on screen, so a File-menu Tin import (whose picker lives in the
+   // header) can graft the bundle into the folder the user is looking at.
    useEffect(() => { onCurrentFolderChange(currentFolderId) }, [currentFolderId, onCurrentFolderChange])
 
    // ==================
    //  Template actions
    // ==================
-   // "Save as template" from a document card: name it, then capture that stored document's chrome.
    const openSaveAsTemplate = useCallback((record: BinderDocumentRecord) => {
       setTemplateNameDialog({ mode: 'save', documentId: record.id, initialName: record.meta.title ?? '' })
    }, [])
@@ -181,7 +175,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       setTemplateNameDialog(null)
       if (!dialog) return
       if (dialog.mode === 'rename') { void templates.handleRename(dialog.templateId, name); return }
-      // Save mode: load the document's chrome (no content is captured) and store the template.
+      // Save mode: capture only the document's chrome, no content.
       const loaded = await backend.loadDocument(dialog.documentId, { touch: false })
       if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
       await templates.handleSave(name, {
@@ -213,8 +207,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       setEditingFolderId(id)
    }, [nav, navigateTo, t])
 
-   // "Export folder as Tin...": collect this folder + its whole subtree (descendant folders + the
-   // documents filed in any of them) into a `.tin` bundle and download it. Carries no templates
+   // Collect the folder + its whole subtree into a `.tin` bundle and download it. Carries no templates
    // (those are app-wide, not folder-scoped); the file is named from the folder.
    const handleExportFolderTin = useCallback(async (folder: BinderFolderRecord) => {
       try {
@@ -231,8 +224,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       setFolderPendingDelete(null)
       if (!folder) return
       void nav.deleteFolder(folder.id, recursive).then(deletedDocumentIds => {
-         // A recursive delete may have removed documents open in tabs; close each so a later
-         // autosave doesn't resurrect it (saveDocument upserts a missing id).
+         // A recursive delete may remove documents open in tabs; close each so a later autosave
+         // doesn't resurrect it (saveDocument upserts a missing id).
          for (const deletedId of deletedDocumentIds) {
             if (openDocumentIds.includes(deletedId)) onDocumentDeleted(deletedId)
          }
@@ -254,14 +247,13 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
    // ============
    //  Drag & drop
    // ============
-   // Cards are always grabbable (whole card), but card-on-card reordering only persists in
-   // manual sort; in any other sort, only dropping a card onto a folder (a move) does anything.
+   // Card-on-card reordering only persists in manual sort; in any other sort only a drop onto a
+   // folder (a move) does anything.
    const manualSortActive = sortBy === 'manual' && !search.hasActiveCriteria
    const clearDocumentSelection = useCallback(() => setSelectedDocumentId(null), [])
 
    // The whole drag-and-drop subsystem (puck morph, spring folder-nav, back/cancel hit-tests) lives
-   // in useBinderDragAndDrop. The root binds its handlers to the DndContext and renders the overlay +
-   // nav drop targets from its returned state and refs.
+   // in useBinderDragAndDrop; the root binds its handlers and renders from its state and refs.
    const {
       sensors, onDragStart, onDragEnd, onDragCancel, setIsOverFolder,
       navRef, backRef, cancelRef,
@@ -277,15 +269,14 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
       clearDocumentSelection,
    })
 
-   // Native file-drop import covers the whole binder body (nav + templates pane + document grid) and
-   // routes each dropped file by its content: a template export becomes a stored template, a document
-   // backup becomes a new document in the current folder. Orthogonal to dnd-kit's pointer dragging.
+   // Native file-drop import covers the whole binder body and routes each dropped file by content: a
+   // template export becomes a template, a document backup a new document. Separate from dnd-kit.
    const fileImport = useBinderFileImport({ currentFolderId, onImported: bumpData, onTinDropped })
 
    return (
       <div className="flex flex-col flex-1 min-h-0 bg-bg">
-         {/* pointerWithin: the drop target is whatever sits directly under the cursor, so a card
-             dropped onto a folder unambiguously lands in that folder, not the nearest-center one. */}
+         {/* pointerWithin: the drop target is whatever sits directly under the cursor, so a card lands
+             in the folder it is over, not the nearest-center one. */}
          <DndContext
             sensors={sensors}
             collisionDetection={pointerWithin}
@@ -302,8 +293,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
          >
             {fileImport.isFileDragOver && (
                <div className="absolute inset-3 z-20 pointer-events-none flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-accent/60 bg-accent/10 text-accent">
-                  {/* Shadow only on the icon + label so they stay legible over whatever content the
-                      translucent overlay sits on top of (the drop zone spans the whole binder body). */}
+                  {/* Shadow on the icon + label so they stay legible over the content the translucent
+                      overlay sits on. */}
                   <div
                      className="flex flex-col items-center gap-2.5"
                      style={{ filter: 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45))' }}
@@ -315,9 +306,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
             )}
             <BinderNav
                view={view}
-               // Toggle back to the Documents view WITHOUT touching the current folder, so leaving for
-               // Templates and returning lands on the same folder. Going up / to the root is the Back
-               // row's and the breadcrumb's job.
+               // Toggle back to Documents without touching the current folder, so leaving for Templates
+               // and returning lands on the same folder. Going up is the Back row's and breadcrumb's job.
                onSelectDocuments={() => setView('documents')}
                onSelectTemplates={() => setView('templates')}
                currentFolder={currentFolder}
@@ -428,7 +418,7 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
          <DragOverlay>
             {activeDrag && (
                activeDrag.type === 'doc' ? (
-                  // State A: full card clone, which funnels into the cursor puck (State B, below).
+                  // State A: full card clone, which funnels into the cursor puck (State B below).
                   <div
                      ref={overlayCardRef}
                      data-over-nav={isOverNav ? 'true' : 'false'}
@@ -456,9 +446,8 @@ export function Binder({ openDocumentIds, activeDocumentId, initialFolder, initi
          </DragOverlay>
 
          {/* State B of the morph: a "puck" pinned to the live cursor (fixed, outside the overlay so
-             dnd-kit's transform can't offset it), dot on the cursor, label pill top-right, and a
-             direction arrow on the left. Mounted for the whole drag; faded in by CSS. A card uses
-             its document accent + a title pill; a folder uses the app accent + a folder pill. */}
+             dnd-kit's transform can't offset it). Mounted for the whole drag, faded in by CSS. A card
+             uses its document accent + a title pill; a folder uses the app accent + a folder pill. */}
          {activeDrag && (
             <div
                ref={clusterRef}

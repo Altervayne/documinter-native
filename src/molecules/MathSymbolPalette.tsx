@@ -22,38 +22,21 @@ const PANEL_MAX_HEIGHT = 380
 interface MathSymbolPaletteContentProps {
    /** Splice a snippet's `insert` string into the source at the current caret/selection. */
    onInsert: (insert: string) => void
-   /**
-    * Open the structured-construct builder for `kind`. Wired to the generator launcher row
-    * (shown when `showGenerators` is true), not to catalog entries: every catalog entry inserts
-    * its raw skeleton like any other symbol.
-    */
+   /** Open the structured-construct builder. Wired to the launcher row, not to catalog entries. */
    onOpenBuilder: (kind: MathBuilderKind) => void
-   /**
-    * Whether to render the "Generate..." launcher row (matrix / cases / aligned builders). True
-    * in the editor context; false when the palette opens inside a builder modal - the recursion
-    * guard so a builder can never offer to open another builder.
-    */
+   /** Render the "Generate..." launcher row. False inside a builder so it cannot open another. */
    showGenerators: boolean
-   /**
-    * Focus the filter input on mount. True for the anchored popover (the palette is the active
-    * surface, so type-to-filter should be ready). False for the draggable window, which is a
-    * persistent tool beside the math source: it must not steal focus so the user keeps typing
-    * LaTeX in the textarea while clicking symbols.
-    */
+   /** Focus the filter on mount. False for the draggable window, which must not steal focus from
+    *  the math source textarea the user is typing in. */
    autoFocusFilter: boolean
 }
 
-// The anchored popover always autofocuses its filter (it's the active surface), so it hardcodes
-// `autoFocusFilter={true}` internally and does not expose it. Omit keeps callers from having to
-// pass a prop the shell discards.
 interface MathSymbolPaletteProps extends Omit<MathSymbolPaletteContentProps, 'autoFocusFilter'> {
-   /** The trigger button's viewport rect; the panel clamps itself around it. */
+   /** The trigger's viewport rect; the panel clamps itself around it. */
    anchorRect: DOMRect
-   /** Close the palette (Escape / outside click). */
    onClose: () => void
 }
 
-/** The three structured builders the launcher row can open, paired with their icons. */
 const GENERATOR_LAUNCHERS: { kind: MathBuilderKind; Icon: typeof Grid3x3 }[] = [
    { kind: 'matrix',  Icon: Grid3x3 },
    { kind: 'cases',   Icon: Braces  },
@@ -65,26 +48,17 @@ const GENERATOR_LAUNCHERS: { kind: MathBuilderKind; Icon: typeof Grid3x3 }[] = [
 // ####################
 
 /**
- * The presentation-agnostic body of the symbol palette: the type-to-filter input, the pinned
- * generator launcher row, and the scrollable categorized grids of glyph buttons, plus all the
- * insertion wiring. It owns no shell behavior (no portal, no viewport clamp, no Escape, no
- * outside-click). Whatever hosts it supplies the frame:
- *  - the anchored popover `MathSymbolPalette` (below) wraps it in a portaled, clamped box;
- *  - the math block wraps it in a draggable `BlockEditorWindow`, which owns drag / Escape / close.
- *
- * Each button shows the actual glyph: the entry's `latex` is rendered to inline MathML by Temml
- * instead of being printed as raw source, so the palette is scannable by sight. The human `name`
- * drives the tooltip, the aria-label, and the filter. Glyph rendering is gated on Temml readiness
- * (falling back to the raw `latex` text until then), mirroring MathBlock.
- *
- * Buttons commit their insert on mousedown with preventDefault: that keeps focus on the source
- * textarea (never blurring it, which would fire its commit-on-blur and steal focus), so the panel
- * can inject a snippet and hand the caret straight back to the textarea.
+ * Shell-agnostic body of the symbol palette: the type-to-filter input, the generator launcher row,
+ * and the scrollable categorized glyph grids. It owns no shell behavior (no portal, clamp, Escape,
+ * or outside-click); the host supplies the frame (the popover below, or a draggable BlockEditorWindow
+ * on the math block). Each button renders the entry's `latex` to inline MathML via Temml so it is
+ * scannable by sight, gated on Temml readiness (raw `latex` text until then). Buttons commit on
+ * mousedown + preventDefault so the source textarea never blurs (which would fire commit-on-blur and
+ * steal focus); the caret is handed straight back after the injection.
  */
 export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerators, autoFocusFilter }: MathSymbolPaletteContentProps) {
    const { t } = useLang()
 
-   // Re-render once Temml finishes its one-time load, so glyphs replace the raw-text fallback.
    const [temmlReady, setTemmlReady] = useState(isTemmlReady())
    useEffect(() => onTemmlReady(() => setTemmlReady(true)), [])
 
@@ -92,9 +66,8 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
    const normalizedQuery = filterQuery.trim().toLowerCase()
    const isFiltering     = normalizedQuery !== ''
 
-   // Accordion state: the set of expanded categories. Default empty so the panel opens compact
-   // (all collapsed). While filtering, every matching category opens regardless of the set, since
-   // search must surface matches instantly without mutating the set the user built up.
+   // Default empty so the panel opens compact. Filtering forces every match open regardless of the
+   // set, without mutating the set the user built up.
    const [expandedKeys, setExpandedKeys] = useState<Set<MathSymbolCategoryKey>>(() => new Set())
    function toggleCategory(key: MathSymbolCategoryKey): void {
       setExpandedKeys(current => {
@@ -105,13 +78,12 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
       })
    }
 
-   // Case-insensitive match across every category, on both the human name and the LaTeX.
    const matches = (entry: MathSymbolEntry): boolean =>
       normalizedQuery === '' ||
       entry.name.toLowerCase().includes(normalizedQuery) ||
       entry.latex.toLowerCase().includes(normalizedQuery)
 
-   // Groups drive rendering (a header + its glyph grid); empty groups drop out while filtering.
+   // Empty groups drop out while filtering.
    const groups = MATH_SYMBOL_CATEGORIES
       .map(category => ({ key: category.key, entries: category.entries.filter(matches) }))
       .filter(group => group.entries.length > 0)
@@ -136,8 +108,6 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
       aligned: t.blockMathGenerateAligned,
    }
 
-   // Optional filter autofocus. Skipped in window mode so the palette never steals focus from the
-   // math source textarea the user is typing in.
    const filterInputRef = useRef<HTMLInputElement>(null)
    useEffect(() => {
       if (autoFocusFilter) filterInputRef.current?.focus()
@@ -154,10 +124,8 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
             className="math-symbol-palette-filter"
          />
 
-         {/* Generator launcher row, pinned under the filter, outside the scroll area so it is
-             always reachable. Hidden inside a builder (showGenerators === false) so a builder can
-             never open another builder. Mousedown + preventDefault mirrors the glyph buttons:
-             MathBlock snapshots the textarea caret on open, so the source must not blur here. */}
+         {/* Outside the scroll area so it stays reachable. Mousedown + preventDefault mirrors the
+             glyph buttons so the snapshotted textarea caret is not lost to a blur. */}
          {showGenerators && (
             <div className="math-symbol-palette-generators">
                <div className="math-symbol-palette-generator-heading">{t.blockMathGenerateHeading}</div>
@@ -179,15 +147,13 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
             </div>
          )}
 
-         {/* Scroll lives on this inner element, not the rounded outer box, so the scrollbar
-             never squares off the rounded corners it would otherwise sit on. */}
+         {/* Scroll on this inner element, not the rounded outer box, so the scrollbar never squares
+             off the rounded corners. */}
          <div className="math-symbol-palette-scroll">
             {groups.length === 0 && (
                <div className="math-symbol-palette-empty">{t.blockMathSymbolNoMatches}</div>
             )}
             {groups.map(group => {
-               // A category renders its grid only when open. Filtering forces every match open so
-               // search surfaces everything instantly, without touching the user's expanded set.
                const isOpen = isFiltering || expandedKeys.has(group.key)
                return (
                <div key={group.key} className="math-symbol-palette-group">
@@ -196,8 +162,8 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
                      className="math-symbol-palette-heading"
                      aria-expanded={isOpen}
                      aria-label={categoryLabels[group.key]}
-                     // MOUSEDOWN + preventDefault keeps focus on the filter input (never blurs it),
-                     // so toggling a section does not disturb the type-to-filter flow.
+                     // Mousedown + preventDefault keeps focus on the filter so toggling a section
+                     // does not disturb the type-to-filter flow.
                      onMouseDown={event => event.preventDefault()}
                      onClick={() => toggleCategory(group.key)}
                   >
@@ -213,12 +179,9 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
                   <div className="math-symbol-palette-grid">
                      {group.entries.map(entry => {
                         const rendered = temmlReady ? renderLatexToMathML(entry.latex, false) : null
-                        // Defensive fallback. Only inject MathML when Temml rendered cleanly
-                        // (ok === true). Otherwise show text, never `dangerouslySetInnerHTML`
-                        // of anything but verified-good markup, so a stray unsupported command
-                        // can never paint a broken or blank button. While Temml is still loading
-                        // (rendered === null) the raw LaTeX reads best; once it is ready and a
-                        // render explicitly failed, the human name is the clearer fallback.
+                        // Only inject MathML when Temml rendered cleanly, so a stray unsupported
+                        // command can never paint a broken button. While loading, the raw LaTeX
+                        // reads best; once ready and failed, the human name is the clearer fallback.
                         return (
                            <button
                               key={entry.name}
@@ -226,9 +189,8 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
                               className="math-symbol-palette-btn"
                               title={entry.name}
                               aria-label={entry.name}
-                              // MOUSEDOWN + preventDefault: do NOT blur the source textarea
-                              // (which would commit-on-blur and steal focus). The click still
-                              // inserts and the injection hands the caret back to the textarea.
+                              // Mousedown + preventDefault: do not blur the source textarea (which
+                              // would commit-on-blur and steal focus); the insert still fires.
                               onMouseDown={event => { event.preventDefault(); onInsert(entry.insert) }}
                            >
                               {rendered?.ok
@@ -256,22 +218,19 @@ export function MathSymbolPaletteContent({ onInsert, onOpenBuilder, showGenerato
 // ###################
 
 /**
- * Anchored-popover presentation of the symbol palette: an inline, viewport-clamped panel (portaled
- * to the body, like BlockTypePicker) anchored to a trigger button, that closes on Escape or an
- * outside click. It owns the shell behavior and hosts `MathSymbolPaletteContent` for the body.
- *
- * This is the presentation used by the math builder modal (filling cells). The math block itself
- * hosts the content in a draggable BlockEditorWindow instead.
+ * Anchored-popover presentation of the symbol palette: a viewport-clamped panel portaled to the
+ * body, anchored to a trigger, closing on Escape or an outside click. Used by the math builder
+ * modal; the math block hosts the content in a draggable BlockEditorWindow instead.
  */
 export function MathSymbolPalette({ anchorRect, onInsert, onOpenBuilder, showGenerators, onClose }: MathSymbolPaletteProps) {
-   // Measured, two-sided clamp on both axes: flips above/below the trigger, then keeps the
-   // panel fully on-screen even when neither side has enough room (shared with BlockTypePicker).
+   // Two-sided clamp: flips above/below the trigger, then keeps the panel on-screen when neither
+   // side fits (shared with BlockTypePicker).
    const { ref: panelRef, top, left } = useViewportClampedPosition<HTMLDivElement>({
       type: 'rect', rect: anchorRect,
    })
    const openAbove = top < anchorRect.top
 
-   // Escape closes; the handler stops propagation so it does not also reach the block/editor.
+   // Escape closes; stop propagation so it does not also reach the block/editor.
    useEffect(() => {
       function onKeyDown(event: KeyboardEvent) {
          if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose() }
@@ -280,9 +239,8 @@ export function MathSymbolPalette({ anchorRect, onInsert, onOpenBuilder, showGen
       return () => document.removeEventListener('keydown', onKeyDown)
    }, [onClose])
 
-   // Outside click closes. A glyph button's mousedown is preventDefault'd (so it never blurs
-   // the textarea), but it still bubbles as a pointerdown; the contains() check keeps clicks
-   // inside the panel from closing it.
+   // Outside click closes. A glyph mousedown is preventDefault'd but still bubbles as a
+   // pointerdown; the contains() check keeps clicks inside the panel from closing it.
    useEffect(() => {
       function onPointerDown(event: PointerEvent) {
          if (!panelRef.current?.contains(event.target as Node)) onClose()

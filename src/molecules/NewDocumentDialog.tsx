@@ -34,8 +34,7 @@ export interface NewDocumentChoice {
 }
 
 interface NewDocumentDialogProps {
-   /** Create the document: `template` is null for a blank start, else the chosen template; the
-    *  choice carries the (possibly overridden) accent / theme / format to apply on top. */
+   /** `template` is null for a blank start; `choice` carries the accent / theme / format on top. */
    onCreate: (template: DocumentTemplate | null, choice: NewDocumentChoice) => void
    onCancel: () => void
 }
@@ -46,7 +45,7 @@ const BLANK_ID = 'blank'
 // # HELPERS   #
 // #############
 
-/** The base chrome settings for a selectable entry: a template's own values, or the blank defaults. */
+/** Base chrome for an entry: a template's own values, or the blank defaults. */
 function baseChoiceFor(template: DocumentTemplate | null): NewDocumentChoice {
    if (!template) return { accent: DEFAULT_DOC_ACCENT, theme: 'light', format: undefined }
    return { accent: template.docAccent, theme: template.docTheme, format: template.format }
@@ -57,15 +56,13 @@ function baseChoiceFor(template: DocumentTemplate | null): NewDocumentChoice {
 // #############
 
 /**
- * The single "New document" entry point: pick a starting template (or Blank) on the left, then
- * speed through or tweak the accent / theme / page format on the right before creating.
- * Document-level, so it renders as a modal (document dialogs are modals; per-block editing uses
- * windows). Rendered inside App's LangProvider, so it can load the templates list itself via
- * useTemplates.
+ * The "New document" entry point: pick a template (or Blank) on the left, tweak the accent / theme /
+ * page format on the right, then create. A modal, since document dialogs are modals (per-block
+ * editing uses windows).
  */
 export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps) {
    const { t } = useLang()
-   // The dialog only reads the list; it never mutates templates, so onChanged is a no-op.
+   // Read-only; never mutates templates, so onChanged is a no-op.
    const { templates, isLoading } = useTemplates(0, () => {})
 
    const [selectedId, setSelectedId] = useState<string>(BLANK_ID)
@@ -81,15 +78,13 @@ export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps
 
    const selectedTemplate = selectedId === BLANK_ID ? null : templates.find(template => template.id === selectedId) ?? null
 
-   // Selecting an entry resets the tweakable settings to that entry's own chrome; later edits layer
-   // on top until the next selection.
+   // Selecting an entry resets the settings to its own chrome; later edits layer on until the next.
    function selectEntry(template: DocumentTemplate | null) {
       setSelectedId(template?.id ?? BLANK_ID)
       setChoice(baseChoiceFor(template))
    }
 
-   // The segmented format control works in page-kind terms; switching kind keeps the selected
-   // template's margins when the kind still matches, else falls back to a bare kind (default margins).
+   // Switching kind keeps the template's margins when the kind still matches, else a bare kind.
    const formatKind: PageKind = choice.format?.kind ?? 'infinite'
    function setFormatKind(kind: PageKind) {
       if (kind === 'infinite') { setChoice(current => ({ ...current, format: undefined })); return }
@@ -116,7 +111,6 @@ export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps
             <div className="px-4 pt-4 pb-3 border-b border-border text-sm font-semibold text-text">{t.newDocument}</div>
 
             <div className="flex min-h-0" style={{ height: '22rem' }}>
-               {/* Left: template rail (Blank first, then built-ins + user templates) */}
                <div className="w-56 shrink-0 border-r border-border overflow-y-auto p-2 flex flex-col gap-1">
                   <TemplateRow
                      label={t.newDocumentBlank}
@@ -137,7 +131,6 @@ export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps
                   ))}
                </div>
 
-               {/* Right: scaffold preview + the tweakable settings */}
                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
                   <div>
                      <div className="text-xs font-medium text-muted mb-1.5">{t.newDocumentFields}</div>
@@ -207,9 +200,9 @@ export function NewDocumentDialog({ onCreate, onCancel }: NewDocumentDialogProps
    )
 }
 
-// ##################################
-// # SHARED PRIMITIVES (FILE-LOCAL) #
-// ##################################
+// #################################
+// # SHARED PRIMITIVE (FILE-LOCAL) #
+// #################################
 
 interface TemplateRowProps {
    label:    string

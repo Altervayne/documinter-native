@@ -17,7 +17,7 @@ import { useLang } from '../contexts/LangContext'
 import { useBinderBackend } from '../contexts/BinderBackendContext'
 
 interface SaveAsDialogProps {
-   initialFolder: BinderFolderRecord | null   // the document's current folder (null = root)
+   initialFolder: BinderFolderRecord | null   // null = root
    onConfirm:     (destinationFolderId: string) => void
    onCancel:      () => void
 }
@@ -25,10 +25,8 @@ interface SaveAsDialogProps {
 const ROOT_FOLDER_ID = '0'
 
 /**
- * Save As dialog: a folder navigator that picks where the copy is saved. Drill into the folder tree
- * (the folder shown in the breadcrumb is the destination); the copy keeps the document's own title,
- * the title is part of the document and is renamed in the tab, never here. Reuses BinderBreadcrumb;
- * mirrors ConfirmDialog's portal/backdrop shell.
+ * Save As dialog: a folder navigator picking where the copy is saved (the breadcrumb folder is the
+ * destination). The copy keeps the document's own title, renamed in the tab, never here.
  */
 export function SaveAsDialog({ initialFolder, onConfirm, onCancel }: SaveAsDialogProps) {
    const { t } = useLang()
@@ -37,7 +35,7 @@ export function SaveAsDialog({ initialFolder, onConfirm, onCancel }: SaveAsDialo
    const [ancestors,     setAncestors]     = useState<BinderFolderRecord[]>([])
    const [subfolders,    setSubfolders]    = useState<BinderFolderRecord[]>([])
 
-   // Load the shown folder's subfolders (to descend into) + ancestors (for the breadcrumb).
+   // Subfolders to descend into, ancestors for the breadcrumb.
    useEffect(() => {
       let cancelled = false
       const folderId = currentFolder?.id ?? ROOT_FOLDER_ID

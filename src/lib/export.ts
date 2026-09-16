@@ -37,19 +37,16 @@ export interface ExportOptions {
     *  byte-identical (see resolveDocumentSheetWidthPx). */
    format?: DocFormat
    /** The reflowed pages to render (splittable lists and paragraphs auto-flowed across sheets). The DOM
-    *  entry points pass the export's own offscreen measurement here (see lib/exportLayout); tests pass a
-    *  deterministic layout. When absent (a DOM-less context, e.g. the binder mini-preview), it falls back
+    *  entry points pass the export's own offscreen measurement. Absent (a DOM-less context) falls back
     *  to the plain forced-break partition, which never splits a block. */
    pagedLayout?: Page[]
 }
 
 const DEFAULTS: ExportOptions = { theme: 'light', accent: '#f97316' }
 
-// Shared empty catalog for the no-tables fallback: an unlinked graph never touches it, and a linked
-// one that can't resolve falls back to its snapshot. Avoids allocating a fresh Map per graph block.
+// Shared empty catalog for the no-tables fallback, so no fresh Map is allocated per graph block.
 const EMPTY_TABLE_CATALOG: GraphTableCatalog = new Map()
 
-/** Render an InlineContent array to export-safe HTML. */
 function richToHtml(richText: InlineContent | undefined): string {
    if (!richText || richText.length === 0) return ''
    return renderInlineContent(richText)
@@ -65,9 +62,8 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
    if (block.type === 'h3')      return withHandle(block, `<h3>${richToHtml(block.richText)}</h3>`)
    if (block.type === 'h4')      return withHandle(block, `<h4>${richToHtml(block.richText)}</h4>`)
    if (block.type === 'callout') {
-      // A custom hex takes an inline-style path (mirrors the editor's render override); the
-      // preset styles keep the plain class path so byte-for-byte export stays unchanged for
-      // every callout that never touched the custom color.
+      // A custom hex takes an inline-style path; the preset styles keep the plain class path, so a
+      // callout that never touched the custom color exports byte-identical.
       if (block.calloutColor) {
          const surface   = getColors(options?.theme ?? 'light').cardBg
          const styleAttr = ` style="border-color:${block.calloutColor};background:color-mix(in srgb, ${block.calloutColor} 12%, ${surface})"`
@@ -80,47 +76,42 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       return withHandle(block, `<pre><code>${highlighted}</code></pre>`)
    }
    if (block.type === 'math') {
-      // Self-contained: the block ships pure MathML markup, no runtime, no fonts. An empty
-      // formula renders nothing; an invalid one falls back to its escaped LaTeX source.
+      // Self-contained pure MathML, no runtime. An empty formula renders nothing; an invalid one
+      // falls back to its escaped LaTeX source.
       const latex = (block.latex ?? '').trim()
       if (!latex) return ''
       const rendered = renderLatexToMathML(latex, true)
       const inner = rendered.ok
          ? rendered.mathml
          : `<code class="doc-math-error">${esc(latex)}</code>`
-      // The MathML scales with the wrapper's font-size. Emit the inline size only for a
-      // non-default scale, so a default scale emits no extra style.
+      // Emit the inline font-size only for a non-default scale, so a default scale emits no style.
       const scale     = block.mathScale
       const styleAttr = scale !== undefined && scale !== 1 ? ` style="font-size:${scale}em"` : ''
       return withHandle(block, `<div class="doc-math"${styleAttr}>${inner}</div>`)
    }
    if (block.type === 'graph') {
-      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Colors are
-      // baked as literal hex for the export's single theme (matching the math block's MathML),
-      // so the graph theme is resolved from the export theme rather than a live CSS variable.
+      // Self-contained inline SVG, colors baked as literal hex for the export's single theme, so the
+      // graph theme is resolved from the export theme, not a live CSS variable.
       if (!block.graph) return ''
       const graphTheme = options?.theme === 'dark' ? DARK_GRAPH_THEME : LIGHT_GRAPH_THEME
-      // A linked graph resolves to concrete data from the document's table catalog and bakes a
-      // static SVG, export stays zero-runtime. A dangling source (handle missing at export) falls
-      // back to the materialized snapshot in `block.graph.data`; `resolveGraphSpec` handles both.
+      // A linked graph bakes concrete data from the table catalog; a dangling source falls back to the
+      // materialized snapshot in `block.graph.data`. resolveGraphSpec handles both.
       const { renderSpec } = resolveGraphSpec(block.graph, options?.tables ?? EMPTY_TABLE_CATALOG)
       const svg = renderGraphToSvg(renderSpec, graphTheme)
       return withHandle(block, `<div class="doc-graph">${svg}</div>`)
    }
    if (block.type === 'diagram') {
-      // Self-contained: the block ships a pure inline SVG, no runtime, no fonts. Colors are baked
-      // as literal hex for the export's single theme (matching the graph/math blocks), so the
-      // diagram theme is resolved from the export theme rather than a live CSS variable.
+      // Self-contained inline SVG, colors baked for the export's single theme, so the diagram theme
+      // is resolved from the export theme, not a live CSS variable.
       if (!block.diagram) return ''
       const diagramTheme = options?.theme === 'dark' ? DARK_DIAGRAM_THEME : LIGHT_DIAGRAM_THEME
       const svg = renderDiagramToSvg(block.diagram, diagramTheme)
       return withHandle(block, `<div class="doc-diagram">${svg}</div>`)
    }
    if (block.type === 'list') {
-      // Any non-`dot` marker anywhere in the tree (root or an item's child sub-list) switches the
-      // list to the per-sub-list `<ol>`/`<ul>` render with its list-style-type / marker class. An
-      // all-`dot` list keeps the historical bare `<ul>`, byte-identical, so an untouched document
-      // exports the same HTML as before (and the browser's own defaults still vary the bullet).
+      // Any non-`dot` marker anywhere in the tree switches to the per-sub-list `<ol>`/`<ul>` render
+      // with its list-style-type / marker class. An all-`dot` list keeps the bare `<ul>`, so an
+      // untouched document exports byte-identical HTML.
       function subListHasCustomMarker(items: ListItem[]): boolean {
          return items.some(item =>
             (item.childMarker !== undefined && item.childMarker !== 'dot') ||
@@ -138,9 +129,9 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
          }
          return withHandle(block, `<ul>${(block.items ?? []).map(exportListItem).join('')}</ul>`)
       }
-      // Each sub-list renders its OWN marker: the root sub-list from block.listMarker, a nested
-      // sub-list from the owning parent item's childMarker (default dot). The marker travels down
-      // per item, never a depth index, so two sibling sub-lists stay independent.
+      // Each sub-list renders its OWN marker: the root from block.listMarker, a nested one from the
+      // parent item's childMarker. The marker travels down per item, not a depth index, so two
+      // sibling sub-lists stay independent.
       function renderMarkedSubList(items: ListItem[], marker: ReturnType<typeof markerOrDefault>): string {
          const tag         = isOrderedMarker(marker) ? 'ol' : 'ul'
          const styleType   = markerListStyleType(marker)
@@ -158,8 +149,7 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       return withHandle(block, renderMarkedSubList(block.items ?? [], rootMarker))
    }
    if (block.type === 'checklist') {
-      // Real, interactive checkboxes: a reader of the exported file can tick items (native
-      // local DOM toggle, no persistence). `checked` reflects the saved state.
+      // Real interactive checkboxes: a reader can tick items (local DOM toggle, no persistence).
       function exportChecklistItem(item: ListItem): string {
          const childHtml = item.children.length > 0
             ? `<ul class="doc-checklist">${item.children.map(exportChecklistItem).join('')}</ul>`
@@ -179,18 +169,16 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
       return withHandle(block, `<div class="table-wrap"><table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`)
    }
    if (block.type === 'image') {
-      // A marked-up image is the full-fidelity path: a self-contained inline SVG (base64 baked in,
-      // unlike the `.mint`/`.md` fence which drops it). Annotation colors are the author's explicit
-      // per-element choices, so, unlike graph, there is no theme argument (see lib/imageMarkup).
-      // Handled BEFORE the empty-src short-circuit so a src-less-but-annotated image still renders
-      // its placeholder ground + overlay.
+      // A marked-up image is a self-contained inline SVG (base64 baked in, unlike the fence). Its
+      // annotation colors are the author's explicit choices, so no theme argument. Handled BEFORE the
+      // empty-src short-circuit so a src-less-but-annotated image still renders its ground + overlay.
       if (block.imageMarkup) {
          const svg = renderImageMarkupToSvg(imageBlockToMarkupSpec(block))
          return withHandle(block, `<div class="doc-image-markup">${svg}</div>`)
       }
       if (!block.src) {
-         // Preview snapshots strip image src. With imagePlaceholder on (binder mini preview),
-         // render a muted placeholder; otherwise (full export) emit nothing, as before.
+         // Preview snapshots strip image src. imagePlaceholder renders a muted placeholder; a full
+         // export emits nothing.
          if (!options?.imagePlaceholder) return ''
          return withHandle(block, `<div class="doc-image-placeholder" role="img" aria-label="${esc(block.alt) || 'Image'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>`)
       }
@@ -221,25 +209,18 @@ function exportBlock(block: Block, options?: { imagePlaceholder?: boolean; theme
    return ''
 }
 
-/**
- * Render a block array to an HTML string using the same per-block logic as the full
- * HTML export. Pure, no downloads, no DOM access. Used by the binder document mini
- * preview to render each preview section's blocks inside a `.doc-render` wrapper.
- * Pass `{ imagePlaceholder: true }` to render src-less images as a muted placeholder.
- */
+/** Render a block array with the same per-block logic as the full export. Pure, no DOM access. Used
+ *  by the binder mini preview. `{ imagePlaceholder: true }` renders src-less images as a placeholder. */
 export function renderBlocksToDocHtml(blocks: Block[], options?: { imagePlaceholder?: boolean; theme?: 'light' | 'dark' }): string {
-   // Build the table catalog from THIS block slice so a linked graph resolves against any table
-   // present in the same preview; a table outside the slice simply falls back to its snapshot.
+   // Catalog from THIS slice so a linked graph resolves against a table in the same preview; a table
+   // outside the slice falls back to its snapshot.
    const tables = collectTableSources(blocks)
    return blocks.map(block => exportBlock(block, { ...options, tables })).join('\n')
 }
 
-/**
- * Render ONE page's HTML the way the paged export does: the document header (`<h1>` + meta zones) on
- * the first page, then each section slice as `<div class="doc-section"><h2>N. Title</h2>...blocks...</div>`,
- * so the Pages-panel thumbnail reflects the actual page (titles + headings), not a bare block list.
- * `sections` is the full document flow, used only to number a slice's section (matches the export).
- */
+/** Render ONE page's HTML the way the paged export does: the document header on the first page, then
+ *  each section slice with its `<h2>N. Title</h2>`, so the Pages-panel thumbnail reflects the real
+ *  page. `sections` is the full flow, used only to number a slice's section. */
 export function renderPagePreviewHtml(
    page: Page,
    opts: { isFirstPage: boolean; meta: DocMeta; sections: Section[]; accent: string; theme: 'light' | 'dark'; fallbackTitle: string; imagePlaceholder?: boolean },
@@ -318,10 +299,9 @@ function getColors(theme: 'light' | 'dark'): Colors {
 }
 
 function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasHeader: boolean, hasCustomNav: boolean, sheetWidthPx: number, pagedStyles: string): string {
-   // Watermark CSS is appended ONLY when a watermark is present, so an absent watermark leaves the
-   // style block unchanged. The rules layer a static image behind the card content: .doc-card
-   // becomes the positioning context (overflow clips to its radius), the .doc-watermark layer sits
-   // at z-index 0, and the content (.doc-render / .doc-footer) rides above.
+   // Appended ONLY when a watermark is present, so an absent one leaves the style block unchanged.
+   // .doc-card is the positioning context (overflow clips to its radius), the .doc-watermark layer
+   // sits at z-index 0, and the content rides above.
    const watermarkStyles = hasWatermark ? `
             /* Background watermark (presentation) */
             .doc-card { position: relative; overflow: hidden; }
@@ -335,10 +315,8 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-card > .doc-render { position: relative; z-index: 1; }
             .doc-card > .doc-footer { position: relative; z-index: 1; }
    ` : ''
-   // Header logo CSS, same additive/guarded convention as the watermark above. 'above' is its own
-   // row before <h1> (margin under it separates it from the title); 'beside' wraps the logo + <h1>
-   // in one row, vertically centered, with the title's own margin-bottom suppressed (the row's
-   // spacing to what follows comes from .page-header itself).
+   // Same guarded convention as the watermark. 'above' is its own row before <h1>; 'beside' wraps
+   // logo + <h1> in one centered row, with the title's own margin-bottom suppressed.
    const headerStyles = hasHeader ? `
             /* Header logo (presentation) */
             .doc-render .page-logo-row              { display: flex; align-items: center; gap: 0.75rem; }
@@ -346,10 +324,8 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .doc-render .page-logo-row-beside h1     { margin-bottom: 0; }
             .doc-render .page-logo                   { display: block; width: auto; max-width: 100%; height: auto; }
    ` : ''
-   // Nav CSS (external-link marker + divider separator) is appended ONLY for a customized nav, so an
-   // absent nav model leaves the style block unchanged, same guard convention as the watermark and
-   // header above. A section-only nav never emits either element, so gating on the model's presence
-   // (not on which entry kinds it holds) is sufficient.
+   // Appended ONLY for a customized nav, same guarded convention. A section-only nav never emits
+   // either element, so gating on the model's presence (not its entry kinds) is enough.
    const navStyles = hasCustomNav ? `
             /* Custom sidebar nav (presentation) */
             .nav-external::after { content: " \\2197"; opacity: 0.55; font-size: 0.9em; }
@@ -592,14 +568,11 @@ ${watermarkStyles}${headerStyles}${navStyles}${pagedStyles}   `
 // #############################################################
 
 /**
- * The paged-A4 stylesheet, emitted ONLY for a paged format (empty string otherwise, so an infinite
- * export stays byte-identical). It gives each derived page its own A4 `.doc-page` sheet: on screen the
- * sheets stack like the editor (fixed A4 px size, margins as padding, a soft shadow); an `@page` rule
- * plus `page-break-after: always` and `@media print` overrides make browser print-to-PDF emit one true
- * A4 page per sheet at the right orientation and margins, with `page-break-inside: avoid` keeping
- * self-contained figures (SVG graphs / diagrams, images, tables, math, callouts, code) off a page seam.
- * `pageCount` (the number of derived sheets) pins the sheet stack's own printed height to an exact
- * page-count multiple, see the `.doc-pages` rule in `@media print` for why that matters.
+ * The paged-A4 stylesheet, emitted ONLY for a paged format (empty otherwise, so infinite export stays
+ * byte-identical). Each derived page gets its own A4 `.doc-page` sheet: on screen the sheets stack like
+ * the editor; an `@page` rule plus `@media print` overrides make print-to-PDF emit one true A4 page per
+ * sheet, `page-break-inside: avoid` keeping self-contained figures off a page seam. `pageCount` pins the
+ * stack's printed height to an exact page-count multiple (see the `.doc-pages` print rule).
  */
 function buildPagedStyles(
    accent:        string,
@@ -619,12 +592,10 @@ function buildPagedStyles(
             .doc-page > .doc-render { position: relative; z-index: 1; }`
       : ''
 
-   // The height the print sheets are floored to, a hair UNDER the true physical A4 page. `sheetHeightPx`
-   // is the ROUNDED constant (1123px); a real A4 page is 297mm = 1122.52px at 96dpi, so a sheet floored to
-   // 1123 is ~0.5px too tall, and over several pages that accumulated overshoot tips a 1-2px sliver onto a
-   // phantom extra page. Flooring to the real page height (truncated just BELOW it, so a sheet is always
-   // <= one page and never overshoots) keeps the sheet stack within a whole number of physical pages: no
-   // phantom trailing page, and the sub-pixel remainder is far too small to drift a footer or show a gap.
+   // Print sheets are floored a hair UNDER the true physical A4 page. `sheetHeightPx` is the ROUNDED
+   // constant (1123px); a real A4 page is 1122.52px at 96dpi, so a 1123 sheet is ~0.5px too tall and
+   // the accumulated overshoot eventually tips a sliver onto a phantom extra page. Flooring to the real
+   // page height keeps a sheet always <= one page, so the stack stays a whole number of physical pages.
    const printSheetHeightPx = Math.floor(millimetresToPx(orientation === 'landscape' ? 210 : 297) * 100) / 100
 
    return `
@@ -671,42 +642,35 @@ function buildPagedStyles(
             .doc-render .doc-diagram, .doc-render .table-wrap, .doc-render .doc-math,
             .doc-render .callout, .doc-render pre { page-break-inside: avoid; break-inside: avoid; }
             @media print {
-                  /* Margins stay as the sheet's .doc-render padding (reliable CSS px, 96dpi -> mm), so
-                     the top band never collapses the way an @page margin does. The sheets become plain
-                     full-width blocks (no centering flex) so the left edge is not shaved. print-color-
-                     adjust: exact (an inherited property) makes the accent, callout fills, code blocks,
-                     and watermark print without the reader toggling "Background graphics". The page
-                     background follows the document's sheet colour so a dark document does not print
-                     white below a short page. The floating sidebar and back-to-top are position:fixed,
-                     which repeats them on every sheet, so both are hidden. */
+                  /* Margins stay as .doc-render padding (reliable CSS px), so the top band never
+                     collapses the way an @page margin does. Sheets become plain full-width blocks so
+                     the left edge is not shaved. print-color-adjust: exact prints the accent, callout
+                     fills, code, and watermark without the reader toggling "Background graphics". The
+                     page background follows the sheet colour so a dark document does not print white
+                     below a short page. The position:fixed sidebar and back-to-top would repeat on
+                     every sheet, so both are hidden. */
                   html, body { margin: 0; background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                   .sidebar, #toTopBtn { display: none !important; }
                   .main { margin: 0; padding: 0; }
                   /* The stack owns an EXACT page-count multiple of a sheet's height, so the whole canvas
-                     is painted in the document's sheet colour and no un-themed paper shows through, drift
-                     and all. The multiplier is max(100vh, sheetHeightPx), NOT plain 100vh: each .doc-page
-                     is floored to sheetHeightPx by its min-height, so when the print engine's "100vh"
-                     resolves SHORTER than a real A4 sheet (which happens in an interactive iframe print,
-                     where 100vh does not track the physical page the way it does in headless print-to-pdf),
-                     a plain N*100vh stack comes out shorter than its own children and overflow: hidden then
-                     CLIPS the bottom of the LAST sheet, taking its background fill and its footer band with
-                     it. Matching the stack to the sheets' real floored height keeps it from ever being
-                     shorter than what it contains. overflow: hidden still clips the opposite case (content
-                     drifting a hair PAST the last page) the same way each .doc-page clips its own spill. */
+                     paints in the sheet colour and no un-themed paper shows through. The multiplier is
+                     max(100vh, sheetHeightPx), NOT plain 100vh: when the print engine's "100vh" resolves
+                     SHORTER than a real A4 sheet (an interactive iframe print), a plain N*100vh stack
+                     comes out shorter than its children and overflow: hidden then CLIPS the last sheet's
+                     fill and footer band. Matching the stack to the sheets' real floored height prevents
+                     that; overflow: hidden still clips content drifting a hair PAST the last page. */
                   .doc-pages {
                         display: block; gap: 0; margin: 0; padding: 0;
                         height: calc(${pageCount} * max(100vh, ${printSheetHeightPx}px)); overflow: hidden;
                         background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
                   }
-                  /* Each sheet fills exactly one physical page (height: 100vh) so the footer band pins to
-                     the real page bottom; the full-height boxes then paginate NATURALLY (one per page),
-                     so NO page-break-after is used, an explicit break there plus a full-height box would
-                     emit an empty page after every sheet. overflow: hidden clips any sub-pixel spill. The
-                     base rule's min-height (the A4 px floor) is KEPT, not reset: it is what pins a sheet
-                     to a whole physical page when the print engine's "100vh" resolves a hair short, so
-                     the sheets stay aligned to the page boundaries instead of flowing continuously into
-                     one another. The sheet colour is restated here so a SHORT last page's blank tail
-                     prints in the document background rather than the un-themed paper canvas. */
+                  /* Each sheet fills one physical page (height: 100vh) so the footer band pins to the
+                     real page bottom; the full-height boxes paginate NATURALLY (one per page), so NO
+                     page-break-after, which plus a full-height box would emit an empty page after every
+                     sheet. The base rule's min-height (the A4 px floor) is KEPT, not reset: it pins a
+                     sheet to a whole page when the print engine's "100vh" resolves a hair short. The
+                     sheet colour is restated so a SHORT last page's blank tail prints in the document
+                     background, not un-themed paper. */
                   .doc-page {
                         box-shadow: none; border-radius: 0; width: 100%; height: 100vh; min-height: ${printSheetHeightPx}px; margin: 0; overflow: hidden;
                         background: ${colors.cardBg}; -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -719,22 +683,16 @@ const STRINGS = {
    fr: { fallback: 'Documentation', madeWith: 'Fait avec Documinter', pageWord: 'Page', ofWord: 'sur' },
 }
 
-/**
- * Resolve a field color to an export-safe literal, or null when it should fall back to the
- * default muted gray supplied by CSS. 'accent' tracks the document accent (export has no live
- * CSS var, so the accent value is substituted); any other string is a literal hex.
- */
+/** An export-safe literal color, or null to fall back to the CSS default muted gray. 'accent'
+ *  substitutes the document accent (export has no live CSS var); any other string is a literal hex. */
 function resolveExportColor(color: string | undefined, accent: string): string | null {
    if (color === undefined) return null
    if (color === 'accent')  return accent
    return color
 }
 
-/**
- * Render the freeform metadata fields for one placement zone (above or below the title) as a
- * horizontal `.page-meta` row, skipping any field that is fully empty. Each field shows its
- * label (when present) followed by its value, tinted with the field's resolved color.
- */
+/** Render one placement zone's freeform fields as a horizontal `.page-meta` row, skipping fully-empty
+ *  fields. Each shows its label (when present) then value, tinted with the field's resolved color. */
 function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: string): string {
    const rows = meta.fields
       .filter(field => field.position === position)
@@ -756,26 +714,17 @@ function renderMetaZone(meta: DocMeta, position: 'above' | 'below', accent: stri
    return `<div class="${zoneClass}">${rows.join('')}</div>`
 }
 
-/**
- * Render a SINGLE (non-tiled) background watermark layer as a self-contained
- * `<div class="doc-watermark">` whose base64 image is inlined (no external fetch, no runtime). Fit /
- * position map to CSS background-* via the shared resolveWatermarkLayout; offset + rotation compose
- * into one CSS transform via the shared watermarkTransform (the div is full-bleed via
- * .doc-watermark's `inset:0`, so the default center transform origin already lands on the sheet's
- * center), and opacity is dimmed for the dark theme exactly as the editor dims it (shared
- * effectiveWatermarkOpacity). Only ever called when the watermark has a src, so an absent one emits
- * nothing. The TILED case is renderWatermarkPatternSvg (presentation.ts), shared verbatim with the
- * editor render, see the branch in generateExportHTML below.
- */
+/** Render a SINGLE (non-tiled) watermark as a self-contained `<div class="doc-watermark">` with its
+ *  base64 image inlined. Fit / position map to CSS background-* (resolveWatermarkLayout), offset +
+ *  rotation to one transform (watermarkTransform), opacity dimmed for the dark theme exactly as the
+ *  editor dims it. The TILED case is renderWatermarkPatternSvg, shared verbatim with the editor. */
 function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): string {
    const layout  = resolveWatermarkLayout(watermark)
    const opacity = effectiveWatermarkOpacity(watermark.opacity, theme)
    const style = [
-      // Single-quote the url() so its base64 data URL cannot collide with the double-quoted
-      // style="..." attribute this string is dropped into. A double-quoted url() would close the
-      // attribute early and the browser would parse the base64 as stray attribute names, killing the
-      // embed. Data URLs are base64 (readAsDataURL / canvas toDataURL both encode), so they never
-      // contain a single quote of their own.
+      // Single-quote the url() so the base64 data URL cannot collide with the double-quoted style="..."
+      // attribute this drops into (a double-quoted url() would close it early). Data URLs are base64,
+      // so they never contain a single quote of their own.
       `background-image:url('${watermark.src}')`,
       `background-repeat:${layout.repeat}`,
       `background-size:${layout.size}`,
@@ -786,14 +735,9 @@ function renderWatermarkLayer(watermark: Watermark, theme: 'light' | 'dark'): st
    return `<div class="doc-watermark" aria-hidden="true" style="${style}"></div>`
 }
 
-/**
- * Render the page title, optionally wrapped with a header logo. Absent header (or empty src)
- * emits exactly `<h1>...</h1>`, nothing extra. A present header inlines its
- * base64 image as `.page-logo`: 'above' places it on its own row before the title, 'beside' wraps
- * logo + title together in one flex row; both honor `align` via `justify-content` (the shared
- * headerJustifyContent, same helper the editor's inline style uses) and `maxHeight` via an inline
- * style on the `<img>`.
- */
+/** Render the page title, optionally wrapped with a header logo. Absent header emits exactly
+ *  `<h1>...</h1>`. A present header inlines its base64 image as `.page-logo`: 'above' on its own row
+ *  before the title, 'beside' wraps logo + title in one flex row; both honor `align` and `maxHeight`. */
 function renderPageTitle(meta: DocMeta, fallbackTitle: string, header: Header | undefined): string {
    const titleHtml = `<h1>${esc(meta.title) || fallbackTitle}</h1>`
    if (!header?.src) return titleHtml
@@ -811,60 +755,53 @@ export function generateExportHTML(meta: DocMeta, sections: Section[], opts: Exp
    const { theme, accent, lang = 'en' } = opts
    const strings = STRINGS[lang]
    const colors  = getColors(theme)
-   // Watermark: guarded on the optional field so an absent watermark yields byte-identical output
-   // (no markup AND no extra CSS). The base64 src is inlined, exactly like image blocks, no runtime.
+   // Watermark: guarded on the optional field so an absent one yields byte-identical output (no markup
+   // AND no CSS). The base64 src is inlined, like image blocks.
    const watermark = opts.presentation?.watermark
    const hasWatermark = !!watermark?.src
-   // Header logo: same guard convention. Guards both the <img>/wrapper markup (renderPageTitle) and
-   // the .page-logo* CSS below.
+   // Header logo: same guard, over both renderPageTitle's markup and the .page-logo* CSS.
    const header = opts.presentation?.header
    const hasHeader = !!header?.src
-   // Custom nav: when present, the sidebar is built from the reconciled model (below) and the nav
-   // CSS plus the external-link scroll-spy guard are emitted; when absent, it falls back to the
-   // default per-section derivation.
+   // Custom nav: present builds the sidebar from the reconciled model and emits the nav CSS; absent
+   // falls back to the default per-section derivation.
    const hasCustomNav = !!opts.presentation?.nav
-   // Document sheet width: absent format or infinite+normal both resolve to the same 860px as the
-   // plain export; only a non-normal infinite width (or a paged A4 sheet) changes it.
+   // Absent format or infinite+normal resolve to the same 860px as the plain export; only a non-normal
+   // infinite width (or a paged A4 sheet) changes it.
    const sheetWidthPx = resolveDocumentSheetWidthPx(opts.format)
 
-   // Paged (A4) export: guarded on a paged format, so an infinite or absent format leaves both the
-   // CSS (pagedStyles empty) and the <main> markup unchanged.
+   // Paged (A4) export: guarded on a paged format, so infinite or absent leaves both the CSS and the
+   // <main> markup unchanged.
    const paged = !!opts.format && opts.format.kind !== 'infinite'
    const pagedIsLandscape   = opts.format?.kind === 'a4-landscape'
    const pagedMargins       = opts.format?.margins ?? DEFAULT_A4_MARGINS
    const pagedSheetWidthPx  = pagedIsLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
    const pagedSheetHeightPx = pagedIsLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
-   // Derived pages are needed here already (not just further down where the sheet markup is built) so
-   // the print stylesheet can pin the sheet stack's total height to an exact page-count multiple of
-   // 100vh, see buildPagedStyles for why.
+   // Derived here already (not just where the sheet markup is built) so the print stylesheet can pin
+   // the stack height to an exact page-count multiple; see buildPagedStyles.
    const exportPages = opts.pagedLayout ?? partitionIntoPages(sections, opts.format?.pages ?? [])
    const pagedStyles = paged
       ? buildPagedStyles(accent, colors, pagedIsLandscape ? 'landscape' : 'portrait', pagedMargins, pagedSheetWidthPx, pagedSheetHeightPx, hasWatermark, exportPages.length)
       : ''
 
    const styles  = buildStyles(accent, colors, hasWatermark, hasHeader, hasCustomNav, sheetWidthPx, pagedStyles)
-   // Tiled uses the shared SVG <pattern> builder (identical to the editor's render, see
-   // WysiwygArea/index.tsx); single uses the positioned/fit CSS layer. The pattern id only needs to
-   // be unique within this one exported document, so a short random suffix is enough.
-   // The clip wrapper is NOT transformed, so it clips a rotated/offset single watermark (and the
-   // tiled pattern svg) to the sheet box without touching .doc-card/.doc-page's own overflow rule.
+   // Tiled uses the shared SVG <pattern> builder; single uses the positioned/fit CSS layer. The pattern
+   // id only needs to be unique within this document, so a short random suffix is enough. The clip
+   // wrapper is NOT transformed, so it clips a rotated/offset watermark to the sheet box without
+   // touching .doc-card/.doc-page's own overflow rule.
    const watermarkHTML = hasWatermark
       ? `<div class="doc-watermark-clip">${watermark!.tile
          ? renderWatermarkPatternSvg(watermark!, theme, `doc-watermark-pattern-${Math.random().toString(36).slice(2, 10)}`)
          : renderWatermarkLayer(watermark!, theme)}</div>`
       : ''
 
-   // Build the document-wide `handle -> table cells` catalog ONCE (from all sections, including
-   // container columns), then thread it into every block export so a linked graph resolves to
-   // concrete data and bakes a static SVG, the exported HTML carries no live link, dangling falls
-   // back to the graph's materialized snapshot.
+   // Build the `handle -> table cells` catalog ONCE (all sections, container columns included), then
+   // thread it into every block export so a linked graph bakes a static SVG; the exported HTML carries
+   // no live link, dangling falls back to the graph's snapshot.
    const tables = collectTableSources(sections.flatMap(section => section.blocks))
 
-   // The sidebar nav is built from the reconciled model: an absent nav yields one numbered link per
-   // section, in document order. A section-target link keeps its `#anchor` href so the scroll-spy
-   // below still tracks it; an external link opens in a new tab and is not observed; a divider
-   // renders as a static separator. Numbering (from reconcileNav) prefixes only section-target
-   // links, so dividers and external links never carry a nonsensical number.
+   // Sidebar nav from the reconciled model: absent yields one numbered link per section. A
+   // section-target link keeps its `#anchor` href for the scroll-spy; an external link opens in a new
+   // tab; a divider is a static separator. Numbering prefixes only section-target links.
    const navLinks = reconcileNav(opts.presentation?.nav, sections).map(entry => {
       if (entry.kind === 'divider') {
          return `        <div class="nav-divider">${esc(entry.label)}</div>`
@@ -885,10 +822,9 @@ ${blocksHTML}
             </div>`
    }).join('\n')
 
-   // The nav-link click handler smooth-scrolls to a section anchor. With a customized nav the sidebar
-   // can hold external links (non-`#` hrefs), so guard on `href.charAt(0) === '#'` and let the browser
-   // navigate offsite links normally; the observer above only ever matched `#`-anchors, so it needs no
-   // change. Absent nav uses the plain unguarded handler.
+   // The nav-link click handler smooth-scrolls to a section anchor. A customized nav can hold external
+   // links (non-`#` hrefs), so guard on `href.charAt(0) === '#'` and let the browser navigate offsite
+   // normally. Absent nav uses the plain unguarded handler.
    const navClickBody = hasCustomNav
       ? `const href = l.getAttribute('href');
                   if (!href || href.charAt(0) !== '#') return;
@@ -899,13 +835,11 @@ ${blocksHTML}
                   const t = document.querySelector(l.getAttribute('href'));
                   if (t) t.scrollIntoView({ behavior: 'smooth' });`
 
-   // The scroll-spy IntersectionObserver observes the `.doc-section` wrappers so a section link gets
-   // the `.active` highlight as its section scrolls into the band. A custom nav can also link to an
-   // anchored block (`#handle`); those block elements aren't `.doc-section`, so collect the handles
-   // the nav actually references (live anchors only) and observe them too, so anchor links highlight
-   // like section links. Absent anchor links leave navAnchorIds empty, so no extra script is
-   // emitted. The `en.target.id`-keyed matcher in the observer callback is already generic (a block
-   // div's id IS its handle), so it needs no change.
+   // The scroll-spy observer highlights a section link as its `.doc-section` scrolls into the band. A
+   // custom nav can also link to an anchored block (`#handle`), which is not a `.doc-section`, so
+   // collect the handles the nav references (live anchors only) and observe them too. No anchor links
+   // leaves navAnchorIds empty, so no extra script. The observer's `en.target.id` matcher is already
+   // generic (a block div's id IS its handle).
    const anchoredHandles = collectAnchoredHandles(sections)
    const navAnchorIds: string[] = []
    for (const entry of reconcileNavEntries(opts.presentation?.nav, sections)) {
@@ -917,18 +851,15 @@ ${blocksHTML}
       ? `\n      ${JSON.stringify(navAnchorIds)}.forEach(id => { const anchorEl = document.getElementById(id); if (anchorEl) observer.observe(anchorEl); });`
       : ''
 
-   // The "made with" footer, extracted once so the infinite doc-card and the last paged sheet reuse the
-   // exact same markup (referencing it in the infinite branch below keeps that path byte-identical).
+   // The "made with" footer, extracted once so the infinite doc-card and the last paged sheet reuse
+   // the exact same markup.
    const docFooterHTML = `<div class="doc-footer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.01 273.36"><path fill="currentColor" d="M194.49,186.08l35.56-24.07s-29.29,40.79-50.76,41.06c0,0-14.06.1-14.46-13.15v-81.98s.71-16.01-15.98-16.01c0,0-7.08-1.01-11.63,5.97l-32.16,60.12-33.07-60.02s-3.03-6.07-11.93-6.07c0,0-14.97-1.11-14.97,14.06v82.04s.07,13.96-14.7,13.96c0,0-14.38.07-14.38-13.03V14.97h122.06v55.05h55.01v81s4.87-10.62,17.01-13.48V59.01L151.09,0H.07s-.07,190.02-.07,190.02c0,0,1.31,28.01,30.34,28.01s29.83-28.31,29.83-28.31v-81.71l38.02,70.08,12.74-.1,37.99-69.98v82.11s-.81,27.91,30.07,27.91c0,0,19.82,1.82,34.18-18.1,0,0,37.01,8.39,39.84-58.75,0,0-63.1-5.26-58.52,44.9Z"/><polygon fill="currentColor" points="193.73 259.32 14 259.32 14 227.97 0 220.24 0 273.36 208.8 273.36 208.8 221.08 193.73 228.21 193.73 259.32"/></svg>${strings.madeWith}</div>`
 
-   // Paged pages: each derived page is one A4 `.doc-page` sheet holding its slices. A slice renders its
-   // section heading only when it STARTS the section (continuation slices flow headingless); the page-1
-   // title block rides page 1. The running header / footer bands ride EVERY sheet in the margin bands.
-   // Empty for an infinite export.
+   // Paged pages: each derived page is one A4 `.doc-page` sheet. A slice renders its section heading
+   // only when it STARTS the section (continuation slices flow headingless); the title block rides page
+   // 1. The running header / footer bands ride EVERY sheet. Empty for an infinite export.
    const headerBand = resolveHeader(opts.format)
    const footerBand = resolveFooterBand(opts.format)
-   // exportPages (the supplied pagedLayout, falling back to the plain forced-break partition) is hoisted
-   // above the styles block, see the comment there.
    const pagesHTML = paged
       ? exportPages.map((page, pageIndex, allPages) => {
            const pageWatermarkHTML = !hasWatermark
@@ -955,8 +886,7 @@ ${blocksHTML}
         }).join('\n')
       : ''
 
-   // The <main> body: infinite = today's single .doc-card (verbatim, byte-identical); paged = the
-   // stacked A4 sheets.
+   // The <main> body: infinite = the single .doc-card; paged = the stacked A4 sheets.
    const mainHTML = paged
       ? `<main class="main">
       <div class="doc-pages">
@@ -1024,5 +954,5 @@ ${mainHTML}
 </html>`
 }
 
-// The DOM entry points `downloadHTML` and `printDocument` live in exportLayout.ts: they self-measure the
-// paged layout before generating HTML. generateExportHTML above stays pure and synchronous.
+// The DOM entry points `downloadHTML` and `printDocument` live in exportLayout.ts: they self-measure
+// the paged layout before generating HTML. generateExportHTML above stays pure and synchronous.

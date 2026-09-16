@@ -39,17 +39,12 @@ export interface PagesPanelData {
  * Derives everything the Pages panel needs from the active document's sections + format, plus the
  * reorder / duplicate / delete / jump handlers, so the panel body can be hosted anywhere in the dock.
  *
- * DISPLAY vs OPERATE split: the panel SHOWS the measured, reflowed `laidOutPages` (App-computed) so its
- * count and thumbnails match the editor, auto (continuation) sheets included. Page OPERATIONS still run
- * on the forced-break model (`forcedPages` = `partitionIntoPages`), the only place the paged format
- * mutates the real flow. A displayed page index is mapped back to its forced index by matching page id:
- * real pages carry the same id in both lists (page 1 = FIRST_PAGE_ID, later pages = their PageBreak id),
- * while auto pages (`isAutoPageId`) exist only in the display list and are not independently operable.
- *
- * Each mutation routes through the same pure pageModel transforms and commits BOTH the section flow and
- * the break markers in one event (React batches the two setState calls). Jump-to-page is a global DOM
- * query, so it works regardless of where the panel is hosted. When the document is not paged this
- * returns an empty page list; the dock only shows the Pages panel for a paged document anyway.
+ * DISPLAY vs OPERATE split: the panel SHOWS the measured, reflowed `laidOutPages` so its count and
+ * thumbnails match the editor (auto continuation sheets included), but page OPERATIONS run on the
+ * forced-break model (`forcedPages`), the only place the paged format mutates the real flow. A displayed
+ * index maps back by matching page id; auto pages (`isAutoPageId`) live only in the display list and are
+ * not independently operable. Each mutation commits the section flow AND the break markers in one event.
+ * Not-paged returns an empty list.
  */
 export function usePagesPanelData(
    sections:                 Section[],
@@ -66,8 +61,7 @@ export function usePagesPanelData(
    const pages        = paged ? laidOutPages : []
    const forcedPages  = paged ? partitionIntoPages(sections, pageBreaks) : []
 
-   // Map a displayed page index to its index in the forced-break model. Auto (continuation) pages have
-   // no forced counterpart, so they return -1: not independently operable.
+   // Displayed index -> forced-break index. Auto continuation pages have no forced counterpart, so -1.
    function forcedIndexForDisplayIndex(displayIndex: number): number {
       const page = pages[displayIndex]
       if (!page || isAutoPageId(page.id)) return -1
@@ -79,9 +73,8 @@ export function usePagesPanelData(
    const sheetWidthPx  = isLandscape ? A4_LANDSCAPE_WIDTH_PX  : A4_PORTRAIT_WIDTH_PX
    const sheetHeightPx = isLandscape ? A4_LANDSCAPE_HEIGHT_PX : A4_PORTRAIT_HEIGHT_PX
 
-   // Commit a page operation's result: the moved block ranges AND the re-derived break markers, in one
-   // history entry (the combined lever records sections + format together). An empty break list drops
-   // the `pages` key so an untouched, non-default format stays clean.
+   // Commit a page op: the moved block ranges AND the re-derived break markers, in one history entry.
+   // An empty break list drops the `pages` key so an untouched, non-default format stays clean.
    function commitPageOperation(result: { sections: Section[]; pages: DocFormat['pages'] }): void {
       const base = normalizeFormat(format)
       let nextFormat: DocFormat | undefined
@@ -95,8 +88,7 @@ export function usePagesPanelData(
    }
 
    function onReorder(fromIndex: number, toIndex: number): void {
-      // Both endpoints must be real pages: an auto continuation belongs to the block flowing onto it, so
-      // it cannot be reordered, nor can another page take its slot.
+      // Both endpoints must be real pages: an auto continuation can't be reordered, nor take another's slot.
       const fromForced = forcedIndexForDisplayIndex(fromIndex)
       const toForced   = forcedIndexForDisplayIndex(toIndex)
       if (fromForced === -1 || toForced === -1) return
@@ -128,9 +120,8 @@ export function usePagesPanelData(
       })
    }
 
-   // Manual page creation: a blank page after the given displayed index. Inserting after an auto
-   // continuation lands the blank after that page's governing REAL page (the nearest preceding non-auto
-   // sheet), so the blank comes out after the whole block flow rather than mid-continuation.
+   // Blank page after the given displayed index. After an auto continuation, land it past the governing
+   // REAL page (nearest preceding non-auto sheet), so it comes after the whole block flow, not mid-flow.
    function onInsertAfter(pageIndex: number): void {
       let displayIndex = pageIndex
       while (displayIndex >= 0 && pages[displayIndex] && isAutoPageId(pages[displayIndex].id)) displayIndex -= 1
@@ -143,9 +134,8 @@ export function usePagesPanelData(
       commitPageOperation(insertBlankPageAfter(sections, pageBreaks, Math.max(0, forcedPages.length - 1)))
    }
 
-   // Dissolve a manual break WITHOUT dropping its blocks (the non-destructive opposite of onDelete): the
-   // page's content merges back onto the previous sheet. Only an author page carries a removable break, so
-   // auto continuations (forced index -1) and page 1 (forced index 0, no break to remove) are skipped.
+   // Dissolve a manual break WITHOUT dropping its blocks: the content merges back onto the previous sheet.
+   // Only an author page has a removable break, so auto continuations (-1) and page 1 (index 0) are skipped.
    function onRemoveBreak(displayIndex: number): void {
       const forcedIndex = forcedIndexForDisplayIndex(displayIndex)
       if (forcedIndex <= 0) return
@@ -153,8 +143,8 @@ export function usePagesPanelData(
       commitPageOperation({ sections, pages: removePageBreak(pageBreaks, forcedPage.id) })
    }
 
-   // Jump-to-page: scroll the clicked thumbnail's sheet into view. The paged sheets carry a unique
-   // [data-page-id]; only the active tab's pages are ever in the DOM, so a document query is safe.
+   // Scroll the clicked thumbnail's sheet into view. Only the active tab's pages are in the DOM, so a
+   // document-wide [data-page-id] query is safe.
    function onJump(pageId: string): void {
       document.querySelector(`[data-page-id="${CSS.escape(pageId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
    }

@@ -1,9 +1,6 @@
-/**
- * autosaveStorage.ts, legacy localStorage autosave (read on startup, migrated to IndexedDB).
- *
- * The current autosave path is IndexedDB-backed; these helpers exist to read and clear the old
- * `documinter-autosave` localStorage key during the one-time migration on mount (see App.tsx
- * hydration).
+/*
+ * Legacy localStorage autosave. The live autosave path is IndexedDB-backed; these helpers only
+ * read and clear the old `documinter-autosave` key during the one-time migration on mount.
  */
 
 import { migrateIds } from './documentMigration'
@@ -18,7 +15,7 @@ export interface AutosaveData {
    docAccent: string
 }
 
-/** Read the autosaved document from localStorage. Returns null if absent or malformed. */
+/** Null when the key is absent or malformed. */
 export function readAutosave(): AutosaveData | null {
    try {
       const raw = localStorage.getItem(AUTOSAVE_KEY)
@@ -37,12 +34,10 @@ export function readAutosave(): AutosaveData | null {
    }
 }
 
-/** Write the current document state to localStorage. Called on a debounce in App.tsx. */
 export function writeAutosave(data: AutosaveData): void {
    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data))
 }
 
-/** Remove the legacy localStorage autosave key (after a successful IndexedDB migration). */
 export function clearLegacyAutosave(): void {
    localStorage.removeItem(AUTOSAVE_KEY)
 }

@@ -1,13 +1,11 @@
 // ###############################################################################################
 // # BINDER BACKUP                                                                               #
 // #                                                                                             #
-// # The bulk storage side of the `.tin` format: read the whole binder (or one folder subtree)    #
-// # into a TinFile manifest, and write a TinFile back in one of two modes. Merge grafts the       #
-// # bundle into the current binder non-destructively (folders get fresh ids, documents get fresh  #
-// # ids, everything re-homes under a target folder). Replace wipes the binder and restores every  #
-// # record verbatim so it matches the exported state byte for byte. The id-remap is factored out  #
-// # as a pure, deterministic function (remapTinForMerge) so the graft graph is unit-testable      #
-// # without IndexedDB. tinFile.ts owns the format + compression; this owns the store glue.        #
+// # The bulk side of the `.tin` format: read the whole binder (or one folder subtree) into a    #
+// # TinFile, and write one back in two modes. Merge grafts a bundle in non-destructively (with  #
+// # fresh folder + document ids, re-homed under a target folder). Replace wipes the binder and  #
+// # restores every record verbatim, so it matches the exported state byte for byte. tinFile.ts  #
+// # owns the format + compression; this owns the store glue.                                    #
 // ###############################################################################################
 
 // -- Lib Imports --
@@ -42,8 +40,7 @@ export type TinIdFactory = () => string
 // # RECORD MAPPING  #
 // ###################
 
-/** BinderFolderRecord -> TinFolder (identical fields, picked explicitly to drop any stray props).
- *  Exported so the filesystem backend collects a Tin with byte-identical record shape (not reinvented). */
+/** Fields picked explicitly to drop stray props. Shared so both backends emit an identical shape. */
 export function toTinFolder(folder: BinderFolderRecord): TinFolder {
    return {
       id:        folder.id,
@@ -55,9 +52,8 @@ export function toTinFolder(folder: BinderFolderRecord): TinFolder {
    }
 }
 
-/** Light placement (from the card record) + heavy body (from the loaded document) -> TinDocument.
- *  Drops a default format so a document that never touched Page Setup stays byte-clean. Exported for
- *  the filesystem backend's collect (shared so both backends emit the identical TinDocument shape). */
+/** Light placement + heavy body -> TinDocument. Drops a default format so a document that never
+ *  touched Page Setup stays byte-clean. Shared so both backends emit an identical shape. */
 export function toTinDocument(record: BinderDocumentRecord, loaded: LoadedDocument): TinDocument {
    return {
       id:        record.id,
@@ -74,8 +70,8 @@ export function toTinDocument(record: BinderDocumentRecord, loaded: LoadedDocume
    }
 }
 
-/** DocumentTemplate chrome + name -> TinTemplate. Built-ins are code, never exported. Exported so the
- *  filesystem backend maps its `.mintplate` templates into a Tin with the same shape. */
+/** Built-ins are code, never exported. Shared so the filesystem backend maps `.mintplate`
+ *  templates the same way. */
 export function toTinTemplate(template: { name: string } & TemplateChrome): TinTemplate {
    return {
       name:      template.name,
@@ -114,11 +110,8 @@ export async function collectBinderForTin(): Promise<TinFile> {
    }
 }
 
-/**
- * Read one folder and everything under it into a TinFile: the root folder record, every descendant
- * folder (breadth-first down the parentId tree), and every document filed in any of those folders.
- * Carries no templates (a subtree Tin is structure + documents only).
- */
+/** Read one folder and everything under it into a TinFile. Carries no templates: a subtree Tin is
+ *  structure + documents only. */
 export async function collectFolderSubtreeForTin(rootFolderId: string): Promise<TinFile> {
    const allFolders = await listAllFolders()
    const childrenByParent = new Map<string, BinderFolderRecord[]>()
@@ -135,7 +128,7 @@ export async function collectFolderSubtreeForTin(rootFolderId: string): Promise<
       subtree.push(root)
       folderIds.add(root.id)
    }
-   // Breadth-first walk of descendants (the deleteFolder collection pattern, over the in-memory map).
+   // Breadth-first walk of descendants over the in-memory child map.
    const frontier = [rootFolderId]
    for (let index = 0; index < frontier.length; index++) {
       for (const child of childrenByParent.get(frontier[index]) ?? []) {
@@ -169,17 +162,11 @@ export async function collectFolderSubtreeForTin(rootFolderId: string): Promise<
 
 /**
  * Re-id a Tin for a non-destructive graft under `targetFolderId`. Pure and deterministic given
- * `makeId`, so the graft graph is unit-testable without IndexedDB.
- *
- * Every folder gets a fresh id. An id map carries each old folder id to its new one, plus the root
- * sentinel '0' to `targetFolderId`. Pointers resolve through the map with a fallback to the target:
- * a parentId of '0' becomes the target, a parentId pointing at an imported folder becomes that
- * folder's new id, and a parentId pointing OUTSIDE the bundle (a subtree export's root, whose parent
- * was left behind) also becomes the target, so the subtree re-homes cleanly under it. Document
- * folderId resolves the same way. Any record whose remapped parent is the target is a top-level item
- * of the graft, so its sortOrder is offset by `sortOrderOffset` to land after existing content
- * instead of interleaving. Document ids are NOT touched here; importTin mints them at write time
- * (nothing references a document id, so freshness is a write-layer concern).
+ * `makeId`. Every folder gets a fresh id; an id map carries each old folder id to its new one, plus
+ * the root sentinel '0' to `targetFolderId`. Pointers resolve through the map with a fallback to the
+ * target, so a parentId pointing OUTSIDE the bundle (a subtree export's root) re-homes under it.
+ * A record landing at the target is top-level, so its sortOrder is offset to land after existing
+ * content instead of interleaving. Document ids are untouched here; importTin mints them at write.
  */
 export function remapTinForMerge(
    tin: TinFile,
@@ -219,9 +206,8 @@ export function remapTinForMerge(
 // # IMPORT (WRITE)  #
 // ###################
 
-/** Build the light + heavy store records for one imported document under `id`. Runs the same
- *  read-time migrators the JSON backup import runs (id / meta / page-break / band healing), then
- *  regenerates the search + preview fields and stamps the current record schema version. */
+/** Light + heavy store records for one imported document. Runs the read-time migrators (id / meta /
+ *  page-break / band healing), regenerates the search + preview fields, stamps the schema version. */
 function buildDocumentRecords(document: TinDocument, id: string): {
    record: BinderDocumentRecord
    content: BinderDocumentContent
@@ -254,8 +240,7 @@ function buildDocumentRecords(document: TinDocument, id: string): {
    return { record, content }
 }
 
-/** Write folder records into the folders store in one transaction. Verbatim: the caller supplies
- *  already-remapped (merge) or already-verbatim (replace) records. */
+/** One transaction. Verbatim: the caller supplies already-remapped or already-verbatim records. */
 async function writeFolders(folders: TinFolder[]): Promise<void> {
    if (folders.length === 0) return
    const database    = await openDatabase()
@@ -265,8 +250,8 @@ async function writeFolders(folders: TinFolder[]): Promise<void> {
    await transactionDone(transaction)
 }
 
-/** Write documents (light + heavy) in one transaction. `makeDocumentId` picks the target id per
- *  document: a fresh UUID for merge, the record's own id for a verbatim replace. */
+/** One transaction. `makeDocumentId` picks the target id: a fresh UUID for merge, the record's own
+ *  id for a verbatim replace. */
 async function writeDocuments(documents: TinDocument[], makeDocumentId: (document: TinDocument) => string): Promise<void> {
    if (documents.length === 0) return
    const database     = await openDatabase()
@@ -281,8 +266,8 @@ async function writeDocuments(documents: TinDocument[], makeDocumentId: (documen
    await transactionDone(transaction)
 }
 
-/** Materialize each Tin template as a fresh stored user template (new id + timestamps). The Tin
- *  format carries only name + chrome, so a template is always re-captured, never written verbatim. */
+/** Re-capture each Tin template as a fresh user template (new id + timestamps): the format carries
+ *  only name + chrome, never a verbatim record. */
 async function writeTemplates(templates: TinTemplate[]): Promise<void> {
    for (const { name, ...chrome } of templates) {
       await saveTemplate(captureTemplate(name, chrome, crypto.randomUUID(), Date.now()))
@@ -290,13 +275,11 @@ async function writeTemplates(templates: TinTemplate[]): Promise<void> {
 }
 
 /**
- * Wipe the binder and restore a Tin verbatim, all in ONE readwrite transaction across the four stores.
- * Clearing then re-writing inside a single transaction is what makes Replace safe: if any write fails
- * the transaction aborts and rolls back to the pre-import binder, so a failed restore can never leave a
- * half-erased, half-written mess (the old separate-transaction version could). Every put is queued
- * SYNCHRONOUSLY (buildDocumentRecords + captureTemplate are pure and synchronous, no await mid-flight),
- * so the transaction never auto-commits early. Document ids are reused (a verbatim restore); templates
- * are re-captured with fresh ids since the format carries only name + chrome.
+ * Wipe the binder and restore a Tin verbatim in ONE readwrite transaction across the four stores.
+ * Clearing then re-writing in a single transaction is what makes Replace safe: any failed write
+ * aborts and rolls back to the pre-import binder, never a half-erased, half-written mess. Every put
+ * is queued SYNCHRONOUSLY (buildDocumentRecords + captureTemplate are pure, no await mid-flight), so
+ * the transaction never auto-commits early. Document ids are reused; templates get fresh ids.
  */
 async function replaceBinder(tin: TinFile): Promise<void> {
    const database    = await openDatabase()
@@ -325,8 +308,8 @@ async function replaceBinder(tin: TinFile): Promise<void> {
    await transactionDone(transaction)
 }
 
-/** The next free sort position among a folder's existing children, taken across BOTH the folder
- *  siblings and the document siblings so a graft's top-level items clear whichever is higher. */
+/** Next free sort position among a folder's children, across BOTH folder and document siblings so a
+ *  graft's top-level items clear whichever is higher. */
 async function nextTopLevelSortOrder(targetFolderId: string): Promise<number> {
    const folders   = await listAllFolders()
    const documents = await listDocuments({ folderId: targetFolderId })
@@ -338,12 +321,10 @@ async function nextTopLevelSortOrder(targetFolderId: string): Promise<number> {
 }
 
 /**
- * Write a TinFile into the binder. Merge grafts the bundle under `targetFolderId` (default root)
- * with fresh folder + document ids, top-level items appended after existing content; it never
- * touches records already present. Replace wipes folders / documents / documentContent / templates,
- * then restores every record verbatim (ids reused, no remap), so the binder matches the exported
- * state; `targetFolderId` is ignored in replace. Both modes heal each document through the read-time
- * migrators. Returns the per-kind write counts.
+ * Merge grafts the bundle under `targetFolderId` (default root) with fresh ids, appended after
+ * existing content, never touching records already present. Replace wipes all four stores then
+ * restores every record verbatim (ids reused), so the binder matches the exported state, and ignores
+ * `targetFolderId`. Both modes heal each document through the read-time migrators.
  */
 export async function importTin(
    tin: TinFile,

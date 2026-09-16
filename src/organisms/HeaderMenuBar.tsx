@@ -42,9 +42,8 @@ import { useBinderBackend } from '../contexts/BinderBackendContext'
 //  Open format sniffing
 // ====================
 
-// Route one picked file to the right existing loader. Extension decides when it is one we know;
-// otherwise the trimmed content is sniffed: `{` -> JSON backup, anything else -> Markdown (a
-// leading `---` is Markdown front matter). HTML is export-only and never routed here.
+// Route a picked file to the right loader. Extension decides when known; otherwise the content is
+// sniffed (`{` -> JSON backup, else Markdown). HTML is export-only and never routed here.
 type OpenFormat = 'backup' | 'markdown'
 
 function detectOpenFormat(fileName: string, text: string): OpenFormat {
@@ -57,8 +56,7 @@ function detectOpenFormat(fileName: string, text: string): OpenFormat {
    return 'markdown'
 }
 
-// The picker accepts everything detectOpenFormat knows how to route, shared by Open (lands in a
-// new tab) and Import (lands as a new binder record).
+// Everything detectOpenFormat can route; shared by Open (new tab) and Import (new binder record).
 const OPEN_FILE_ACCEPT = '.json,.documint,.md,.markdown,.txt'
 
 // #########################
@@ -77,15 +75,14 @@ interface SaveStatusIndicatorProps {
 }
 
 function SaveStatusIndicator({ status, neverSaved, labelDirty, labelSaving, labelSaved, labelNever }: SaveStatusIndicatorProps) {
-   // Remember the last non-clean status so the pill keeps showing that label
-   // while it fades out after the status returns to 'clean'. Uses React's
-   // "adjust state during render" pattern, so no ref read/write happens during render.
+   // Remember the last non-clean status so the pill keeps showing that label while it fades out after
+   // the status returns to 'clean' (React's adjust-state-during-render pattern).
    const [displayed, setDisplayed] = useState<'dirty' | 'saving' | 'saved'>('dirty')
 
    if (status !== 'clean' && status !== displayed) setDisplayed(status)
 
-   // A never-saved scratch tab is a standing risk (no record, no autosave), so its warning bypasses
-   // the fade state machine entirely: always rendered, full opacity, red, until the doc is saved.
+   // A never-saved scratch tab is a standing risk, so its warning bypasses the fade state machine:
+   // always rendered, full opacity, red, until the doc is saved.
    if (neverSaved) {
       return (
          <div className="flex items-center gap-1.5 font-mono text-xs select-none pointer-events-none text-red">
@@ -190,17 +187,16 @@ interface HeaderMenuBarProps {
 // # RESPONSIVE COLLAPSE
 // ####################
 
-// Keep at least this much draggable slack between the left menus and the right controls; when the bar
-// cannot hold the full-label content plus this gap, it collapses to icons (see index.css .hdr-compact).
+// Draggable slack kept between the left menus and right controls; when the bar can't hold the full
+// labels plus this gap, it collapses to icons (see index.css .hdr-compact).
 const MIN_DRAG_GAP = 32
 
 /**
- * Measures the title bar and returns whether it must run in compact (icon-only) mode. The left menu
- * group and the right control group are shrink-0, so their measured widths are the real content widths;
- * when they plus a minimum drag gap exceed the bar, we compact. The natural (expanded) width is cached
- * so we only expand again once the FULL content fits, which keeps the toggle from oscillating. Measured
- * in a layout effect (before paint), so the bar never flashes an overflow that would push the window
- * controls off screen. resetKey (mode + language) re-expands so the fresh label widths are re-measured.
+ * Measures the title bar and returns whether it must run compact (icon-only). The left and right groups
+ * are shrink-0, so their measured widths are the real content widths; when they plus MIN_DRAG_GAP exceed
+ * the bar, compact. The natural width is cached so it expands again only once the FULL content fits (no
+ * oscillation). Measured before paint so the bar never flashes an overflow. resetKey (mode + language)
+ * re-expands to re-measure the fresh label widths.
  */
 function useHeaderCompaction(resetKey: string) {
    const [compact, setCompact] = useState(false)
@@ -222,12 +218,11 @@ function useHeaderCompaction(resetKey: string) {
       return () => observer.disconnect()
    }, [])
 
-   // Measured every commit (no deps), so it converges: each setCompact re-renders and re-measures until
-   // the flag settles, and a same-value setCompact bails without a re-render. Runs before paint, so the
-   // bar never flashes an overflow. Available width is the COLLAPSIBLE region's width (the flex-1 box that
-   // excludes the always-present window controls), so the controls are never part of the budget. On a
-   // content change (mode / language) while compact, we drop to expanded first, because the compact widths
-   // cannot tell us the true full-label width.
+   // Measured every commit (no deps), so it converges: each setCompact re-measures until the flag settles,
+   // a same-value setCompact bails without a re-render. Available width is the COLLAPSIBLE region (the
+   // flex-1 box excluding the window controls), so the controls are never part of the budget. A content
+   // change (mode / language) while compact drops to expanded first, since compact widths can't tell us
+   // the true full-label width.
    useLayoutEffect(() => {
       const collapsible = collapsibleRef.current, left = leftRef.current, right = rightRef.current
       if (!collapsible || !left || !right) return
@@ -267,12 +262,10 @@ export function HeaderMenuBar({
    const isDocumentMode = mode === 'document'
    const isMarkdownOnly = !isPanelVisible(paneLayout, 'wysiwyg')
 
-   // Title-bar responsive collapse. mode + lang key it so a mode switch or a language change (which both
-   // resize the labels) re-measures. compact hides labels via the .hdr-compact / .hdr-collapse CSS pair.
+   // Title-bar responsive collapse, keyed on mode + lang (both resize the labels) so it re-measures.
    const { compact, barRef, collapsibleRef, leftRef, rightRef } = useHeaderCompaction(`${mode}-${lang}`)
 
-   // Ctrl+E (Cmd+E) opens the Export dialog. Document mode only, export acts on the open
-   // document, which the binder view doesn't present.
+   // Ctrl+E (Cmd+E) opens the Export dialog. Document mode only (export acts on the open document).
    useEffect(() => {
       if (!isDocumentMode) return
       function handleKeyDown(event: KeyboardEvent) {
@@ -289,9 +282,8 @@ export function HeaderMenuBar({
    //  File actions
    // =============
 
-   // One unified Open: a single picker whose selection is format-detected and handed to the
-   // matching EXISTING loader (JSON backup / Markdown). Both paths land in the editor (the import
-   // handlers leave binder mode); the toast reflects the detected format.
+   // Unified Open: one picker, format-detected and handed to the matching loader (JSON backup / Markdown).
+   // Both paths land in the editor (leaving binder mode); the toast reflects the detected format.
    function handleOpen() {
       const input  = document.createElement('input')
       input.type   = 'file'
@@ -318,10 +310,9 @@ export function HeaderMenuBar({
       input.click()
    }
 
-   // The unified binder Import: the same picker + format-detecting pipeline as handleOpen, but the
-   // loaded document becomes a new binder record (saveDocument with no existingId, landing in the
-   // binder root) instead of a tab. Never touches the open tabs or leaves binder mode; the caller
-   // bumps the binder's list so the new card shows up right away.
+   // Binder Import: the same picker + detection as handleOpen, but the loaded document becomes a new
+   // binder record (saveDocument, no existingId) in the root instead of a tab. Never touches the open
+   // tabs or leaves binder mode; the caller bumps the binder list so the card shows up right away.
    function handleImport() {
       const input  = document.createElement('input')
       input.type   = 'file'
@@ -360,24 +351,21 @@ export function HeaderMenuBar({
 
    return (
       <>
-         {/* data-tauri-drag-region turns the bar's empty areas into the native window drag handle.
-             Inert in the browser; inside Tauri it drags only when the grabbed target IS the region,
-             so the menus and buttons below stay clickable. The OS title bar is off in the shell, so
-             this bar plus WindowControls is the title bar. */}
+         {/* data-tauri-drag-region turns the bar's empty areas into the native window drag handle
+             (inert in the browser; in Tauri only the region itself drags, so menus stay clickable).
+             The OS title bar is off in the shell, so this bar plus WindowControls IS the title bar. */}
          <div ref={barRef} data-tauri-drag-region className={`shrink-0 flex items-center gap-1 p-1 px-3 bg-raised border-b border-border z-200 ${compact ? 'hdr-compact' : ''}`}>
 
-            {/* Collapsible region: everything EXCEPT the window controls. flex-1 min-w-0 so it yields all
-                its width to the shrink-0 controls first. When it runs low the labels fold (compact); even
-                past that, its content can only overflow WITHIN this box, never push the controls off. */}
+            {/* Collapsible region: everything EXCEPT the window controls. flex-1 min-w-0 so it yields
+                width to the controls first; when low the labels fold, and overflow stays WITHIN this box. */}
             <div ref={collapsibleRef} className="flex-1 min-w-0 flex items-center gap-1">
 
             {/* Left group: identity + menus. shrink-0 so useHeaderCompaction reads its true content width;
                 a drag region so the decorative logo (pointer-events-none) still drags the window. */}
             <div ref={leftRef} data-tauri-drag-region className="flex items-center gap-1 shrink-0 min-w-0">
 
-            {/* The logo + wordmark are decorative, not interactive. pointer-events-none lets a click fall
-                through to the drag region, so you can drag the window by grabbing the logo. The wordmark
-                is the first label to fold away when the bar runs low on width (hdr-collapse). */}
+            {/* Logo + wordmark are decorative: pointer-events-none lets a click fall through to the drag
+                region, so grabbing the logo drags the window. The wordmark folds away first (hdr-collapse). */}
             <div className="flex items-center gap-2 mr-1 shrink-0 select-none pointer-events-none">
                {theme === 'dark'
                   ? <LogoColor className="h-7 w-auto" />
@@ -387,7 +375,7 @@ export function HeaderMenuBar({
             </div>
 
             {/* Native only: the open Binder's name + switch / open / create. Renders nothing on the web
-                (no NativeBinderContext) and before a Binder is open. */}
+                or before a Binder is open. */}
             <BinderSwitcher />
 
             <FileMenu
@@ -412,9 +400,9 @@ export function HeaderMenuBar({
                onLangChange={setLang}
                t={t}
             />
-            {/* Document = the per-document customization set, sharing its entry list with the
-                document-background context menu via buildDocumentMenuEntries (parity). Document mode
-                only; reachable in preview too (readOnly just disables "Add section"). */}
+            {/* Document = the per-document customization set, sharing its entries with the document-background
+                context menu via buildDocumentMenuEntries. Document mode only; in preview readOnly just
+                disables "Add section". */}
             {isDocumentMode && (
                <DocumentMenu
                   t={t}
@@ -437,18 +425,17 @@ export function HeaderMenuBar({
             <AboutMenu theme={theme} t={t} />
             </div>
 
-            {/* Spacer: the widest empty band and the main drag handle. Flex-grows to fill, so it is the
-                first thing to give up width; the left / right groups never shrink. */}
+            {/* Spacer: the widest empty band and main drag handle. Flex-grows, so it gives up width first;
+                the left / right groups never shrink. */}
             <div data-tauri-drag-region className="flex-1 self-stretch" />
 
-            {/* Right group: status + document actions (the window controls are a separate sibling below).
-                shrink-0 so its width is measured true; a drag region so the pointer-events-none save pill
-                drags through. Folds to icons under pressure, and only ever gives way after the spacer. */}
+            {/* Right group: status + document actions (window controls are a separate sibling below).
+                shrink-0 so its width measures true; a drag region so the save pill drags through. Folds
+                to icons under pressure, only after the spacer. */}
             <div ref={rightRef} data-tauri-drag-region className="flex items-center gap-1 shrink-0">
 
-            {/* The save-status pill is a display, never clicked (it already sets pointer-events-none on
-                itself). pointer-events-none here too, so its band drags the window; its label folds away
-                (hdr-collapse, inside the indicator) when the bar is compact so it stops reserving width. */}
+            {/* The save-status pill is display-only. pointer-events-none here so its band drags the window;
+                its label folds away (hdr-collapse) when compact so it stops reserving width. */}
             <div className="shrink-0 flex items-center pointer-events-none">
                <SaveStatusIndicator
                   status={saveStatus}
@@ -460,8 +447,8 @@ export function HeaderMenuBar({
                />
             </div>
 
-            {/* Document history: Undo / Redo, disabled at the ends of the stack. Keyboard equivalents
-                (Ctrl+Z / Ctrl+Y) live in App and keep working regardless of these buttons. */}
+            {/* Document history: Undo / Redo, disabled at the ends of the stack. Ctrl+Z / Ctrl+Y live in
+                App and keep working regardless of these buttons. */}
             {isDocumentMode && (
                <>
                   <Button
@@ -487,7 +474,7 @@ export function HeaderMenuBar({
                </>
             )}
 
-            {/* Standalone binder toggle, always visible; label reflects mode */}
+            {/* Binder toggle, always visible; label reflects mode. */}
             <Button
                variant={isDocumentMode ? 'ghost' : 'primary'}
                onClick={onToggleBinder}
@@ -511,11 +498,9 @@ export function HeaderMenuBar({
 
             </div>
 
-            {/* Native caption buttons. OUTSIDE the collapsible region and never shrunk, so they own the
-                right edge and can never be pushed off screen no matter how tight the bar gets, only the
-                menus and actions to their left fold or give way. flush to the corner via WindowControls'
-                own negative margin. Only in the Tauri shell; in the browser isTauri() is false so nothing
-                renders and the layout is unaffected. */}
+            {/* Native caption buttons, OUTSIDE the collapsible region and never shrunk, so they own the
+                right edge and can never be pushed off screen; only the menus to their left fold. Tauri
+                shell only (isTauri() is false in the browser, so nothing renders). */}
             {isTauri() && <WindowControls />}
          </div>
 

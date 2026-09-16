@@ -1,17 +1,8 @@
 /*
- * NativeBinderHost, the native-only Binder lifecycle owner + the Welcome picker (arc A1.4).
- *
- * On the web the app runs against the IndexedDB backend and never mounts this. On native there is no
- * default Binder: this host picks one (create / open), grants its folder to the fs scope, opens it as a
- * live filesystem backend, and provides that backend to <App/>. It restores the last-active Binder on
- * launch and can switch between Binders; a switch remounts the provided subtree under a key (the Binder
- * path) so every open tab and all transient App state reset, matching the deferred-binder blank reset.
- *
- * The pre-Binder surface (Welcome + launch-restore) lives OUTSIDE <App/>, so it carries its own
- * LangProvider and its own title bar: window decorations are off, and the app's title bar lives inside
- * HeaderMenuBar which only mounts once a Binder is open. Without this the Welcome window would have no
- * drag handle and no close button. The frame renders the title bar in every pre-Binder phase (loading
- * included) so the window is always movable and closable.
+ * Native-only. Picks a Binder (create / open / switch), opens it as a filesystem backend, and provides
+ * it to <App/>. A switch remounts the subtree by Binder path so tabs and transient state reset. The
+ * pre-Binder surface (Welcome + launch-restore) sits outside <App/> with its own title bar, since
+ * decorations are off and HeaderMenuBar (the real title bar) only mounts once a Binder is open.
  */
 
 // -- React Imports --
@@ -48,12 +39,9 @@ import type { BinderBackend } from '../lib/binderBackend'
 // # THE LIFECYCLE HOOK
 // ####################
 
-/** The three surfaces the host can show: the brief launch-restore, the Welcome picker (no Binder open),
- *  and the app itself (a Binder is open). */
 type BinderPhase = 'loading' | 'welcome' | 'open'
 
-/** A translatable notice code rather than a baked string, so the Welcome screen renders it in the
- *  active language. Only one case for now (the restore target vanished). */
+/** A code, not a baked string, so the Welcome screen renders it in the active language. */
 type BinderNotice = 'missing-folder'
 
 interface NativeBinder {
@@ -69,11 +57,8 @@ interface NativeBinder {
    switchBinder(path: string): Promise<void>
 }
 
-/**
- * Owns the active-Binder state and the create / open / switch / launch-restore flows. Every flow ends
- * by handing back a live filesystem backend + its path; the host renders <App/> under it. Errors surface
- * as inline text rather than throwing, so a failed pick / mkdir never dead-ends the Welcome screen.
- */
+/** Owns the active-Binder state + the create / open / switch / launch-restore flows. Errors surface as
+ *  state, never thrown, so a failed pick never dead-ends the Welcome screen. */
 function useNativeBinder(): NativeBinder {
    const [phase, setPhase]                 = useState<BinderPhase>('loading')
    const [backend, setBackend]             = useState<BinderBackend | null>(null)
@@ -83,12 +68,8 @@ function useNativeBinder(): NativeBinder {
    const [error, setError]                 = useState<string | null>(null)
    const [busy, setBusy]                   = useState(false)
 
-   // ====
-   // Launch restore: re-open the last-active Binder (persisted-scope has re-granted its folder). On a
-   // missing folder, clear the active pointer (keep it in the known list for a later retry) and fall
-   // back to Welcome with a gentle notice. StrictMode double-invokes this effect in dev, so a backend
-   // opened by a torn-down run is disposed in cleanup and the surviving run opens a fresh one.
-   // ====
+   // Re-open the last-active Binder on launch; a missing folder falls back to Welcome. StrictMode
+   // double-invokes this in dev, so a backend opened by a torn-down run is disposed in cleanup.
    useEffect(() => {
       let cancelled = false
       let openedBackend: BinderBackend | null = null
@@ -100,9 +81,8 @@ function useNativeBinder(): NativeBinder {
             return
          }
          try {
-            // Re-grant the folder scope (persisted-scope usually restores it, but this guarantees it).
-            // Grant-only, so a Binder folder deleted since last launch is not recreated: createFilesystem
-            // Backend's exists check then throws and we fall back to Welcome with the missing-folder notice.
+            // Grant-only (not create), so a folder deleted since last launch is not resurrected: the
+            // backend's exists check throws and we fall through to the missing-folder notice.
             await invoke('allow_binder_directory', { path: registry.activePath })
             const restored = await createFilesystemBackend(registry.activePath)
             openedBackend = restored
@@ -126,13 +106,9 @@ function useNativeBinder(): NativeBinder {
       }
    }, [])
 
-   // ====
-   // Flows. Each opens the backend, remembers + persists the Binder, then flips to the app.
-   // ====
-
-   // Adopt a freshly opened backend as the active Binder, then dispose the one it replaces (if any). The
-   // new backend is always opened BEFORE this runs, so a failed open never reaches here and the current
-   // Binder keeps working; the key-remount on the changed activePath resets App and clears its tabs.
+   // Adopt a freshly opened backend, then dispose the one it replaces. The new backend is always opened
+   // BEFORE this runs, so a failed open leaves the current Binder working. The activePath change remounts
+   // App and clears its tabs.
    const finishOpen = (nextBackend: BinderBackend, path: string, name?: string): void => {
       const previous = backend
       const updated = rememberBinder(readBinderRegistry(), { path, name })
@@ -150,11 +126,10 @@ function useNativeBinder(): NativeBinder {
       setBusy(true)
       setError(null)
       try {
-         // Default location: <home>/Documents/Documinter/<slug>. Path APIs so the separator stays native.
          const base   = parentDir ?? await join(await documentDir(), 'Documinter')
          const target = await join(base, slugify(name))
          // Rust creates the folder (its std::fs is not gated by the fs scope) then grants it, so we never
-         // hit the scoped mkdir on a path that is not yet in scope. Covers first-run parent creation too.
+         // hit the scoped mkdir on a path not yet in scope.
          await invoke('create_binder_directory', { path: target })
          const nextBackend = await createFilesystemBackend(target)
          finishOpen(nextBackend, target, name)
@@ -169,8 +144,8 @@ function useNativeBinder(): NativeBinder {
       setBusy(true)
       setError(null)
       try {
+         // A cancelled dialog returns null; a directory pick is a single string.
          const picked = await open({ directory: true })
-         // A cancelled dialog returns null; directory picks are single, so this is a string when set.
          if (typeof picked !== 'string') return
          await invoke('allow_binder_directory', { path: picked })
          const nextBackend = await createFilesystemBackend(picked)
@@ -186,8 +161,6 @@ function useNativeBinder(): NativeBinder {
       setBusy(true)
       setError(null)
       try {
-         // Open the new Binder first, then finishOpen disposes the outgoing one. A failed open (a deleted
-         // folder, say) leaves the current Binder untouched instead of tearing it down first.
          const nextBackend = await createFilesystemBackend(path)
          finishOpen(nextBackend, path)
       } catch (failure) {
@@ -204,17 +177,13 @@ function useNativeBinder(): NativeBinder {
 // # THE HOST
 // ####################
 
-/**
- * Native entry point. Once a Binder is open it renders <App/> under the filesystem backend, keyed by the
- * Binder path so a switch remounts App and clears its tabs. Before that, it renders the Welcome frame
- * (which owns its own language + title bar).
- */
+/** Renders <App/> under the filesystem backend once a Binder is open (keyed by path so a switch remounts
+ *  it), otherwise the Welcome frame. */
 export function NativeBinderHost() {
    const binder = useNativeBinder()
 
    if (binder.phase === 'open' && binder.backend !== null && binder.activePath !== null) {
-      // The switcher (inside App) reads these controls to switch / open / create a Binder. activeName
-      // prefers the registry's remembered name, falling back to the folder name for a just-opened path.
+      // The header switcher reads these controls; activeName falls back to the folder name for a fresh open.
       const activeName = binder.known.find(entry => entry.path === binder.activePath)?.name
          ?? binderNameFromPath(binder.activePath)
       const controls: NativeBinderControls = {
@@ -245,9 +214,8 @@ export function NativeBinderHost() {
 // # THE WELCOME FRAME
 // ####################
 
-/** The pre-Binder chrome: its own language state (mirrors App's `documinter-lang` so the choice carries
- *  through), a title bar with the window controls, and the Welcome content. The title bar renders in the
- *  loading phase too, so the window is always draggable + closable even if a restore is slow. */
+/** The pre-Binder chrome: its own language state (mirrors App's `documinter-lang`) and a title bar that
+ *  renders in the loading phase too, so the window stays draggable + closable even during a slow restore. */
 function WelcomeFrame({ binder }: { binder: NativeBinder }) {
    const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('documinter-lang') as Lang) ?? 'en')
    useEffect(() => { localStorage.setItem('documinter-lang', lang) }, [lang])
@@ -264,9 +232,8 @@ function WelcomeFrame({ binder }: { binder: NativeBinder }) {
    )
 }
 
-/** The title bar for the Welcome frame. The empty middle is the drag handle; a small language toggle sits
- *  on the left and the window caption buttons on the right (flush to the corner, same as the app header).
- *  data-tauri-drag-region only on the non-interactive areas so the toggle + controls stay clickable. */
+/** The empty middle is the drag handle; data-tauri-drag-region sits only there so the toggle and controls
+ *  stay clickable. */
 function WelcomeTitleBar({ lang, setLang }: { lang: Lang; setLang: (language: Lang) => void }) {
    return (
       <div className="shrink-0 flex items-center gap-1 p-1 px-3">
@@ -277,7 +244,7 @@ function WelcomeTitleBar({ lang, setLang }: { lang: Lang; setLang: (language: La
    )
 }
 
-/** A compact EN / FR segment (no <select>, per the app's convention). Two languages, so two buttons. */
+/** EN / FR segment; the app avoids <select> for small option sets. */
 function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (language: Lang) => void }) {
    const languages: Lang[] = ['en', 'fr']
    return (
@@ -303,22 +270,19 @@ function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (language: Lan
 // # THE WELCOME CONTENT
 // ####################
 
-/** The onboarding body: presents Documinter, explains what a Binder is, then the create + open actions
- *  and any recent Binders. Centered, and scrolls within the frame when the window is short. */
+/** The onboarding body: presents Documinter, explains Binders, and offers create / open / recent. */
 function WelcomeContent({ binder }: { binder: NativeBinder }) {
    const { t } = useLang()
 
    return (
       <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-8 px-6 py-12">
 
-         {/* Identity: the mark, the name, and a one-line pitch. */}
          <div className="flex flex-col items-center gap-3 text-center">
             <LogoColor className="h-16 w-auto" />
             <h1 className="text-3xl font-semibold tracking-tight">Documinter</h1>
             <p className="max-w-md text-sm text-muted">{t.welcomeTagline}</p>
          </div>
 
-         {/* What this is + what a Binder is, so the empty first run explains itself. */}
          <div className="w-full rounded-lg border border-border bg-raised p-5 text-sm leading-relaxed text-muted">
             <p>{t.welcomeIntro}</p>
             <p className="mt-3 font-medium text-text">{t.welcomeBinderTitle}</p>
@@ -331,7 +295,6 @@ function WelcomeContent({ binder }: { binder: NativeBinder }) {
             </p>
          )}
 
-         {/* The two ways in. */}
          <div className="grid w-full gap-4 sm:grid-cols-2">
             <CreateBinderCard binder={binder} />
             <OpenBinderCard binder={binder} />
@@ -346,15 +309,13 @@ function WelcomeContent({ binder }: { binder: NativeBinder }) {
    )
 }
 
-/** Create: a name + a location (defaulting to ~/Documents/Documinter, changeable via a folder pick). The
- *  resolved default parent is read once on mount so the path is shown before anything is created. */
+/** Create: a name + a location (defaults to ~/Documents/Documinter, changeable via a folder pick). */
 function CreateBinderCard({ binder }: { binder: NativeBinder }) {
    const { t } = useLang()
    const [name, setName] = useState('')
    const [parent, setParent] = useState<string | null>(null)
 
-   // Resolve the default parent (~/Documents/Documinter) for display. The flow falls back to the same
-   // default when parent is null, so this is presentation only, not the source of truth.
+   // Resolve the default parent for display only; the flow re-derives it when parent is null.
    useEffect(() => {
       let active = true
       void (async () => {
@@ -445,8 +406,7 @@ function OpenBinderCard({ binder }: { binder: NativeBinder }) {
    )
 }
 
-/** Recent Binders: one click reopens a known folder (persisted-scope has re-granted it). Useful after the
- *  first run, and as the recovery path when a restore target was missing. */
+/** Recent Binders: one click reopens a known folder. */
 function RecentBinders({ binder }: { binder: NativeBinder }) {
    const { t } = useLang()
    return (

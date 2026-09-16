@@ -19,11 +19,8 @@ interface PlainEditableProps {
 }
 
 /**
- * Plain-text contenteditable element.
- *
- * Stores and emits raw innerText, no HTML, no inline formatting.
- * Use this for single-line fields: section titles, document meta, code block overlays.
- * For rich formatted text use ContentEditable (InlineContent).
+ * Plain-text contenteditable: stores and emits raw innerText, no HTML. For section titles, meta, and
+ * code overlays; for rich formatted text use ContentEditable.
  */
 export function PlainEditable({
    tag: Tag = 'p',
@@ -43,14 +40,14 @@ export function PlainEditable({
    const editing         = useRef(false)
    const snapshotOnFocus = useRef<string>('')
 
-   // Mount + readOnly toggle: repopulate because React removes managed children
-   // when switching readOnly=true -> false, leaving the element blank.
+   // Repopulate on a readOnly toggle: React removes managed children when readOnly goes true -> false,
+   // leaving the element blank.
    useLayoutEffect(() => {
       if (!ref.current) return
       ref.current.innerText = content
    }, [readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
-   // External changes: sync only when not actively editing
+   // Sync from the prop only when not actively editing, to avoid clobbering mid-edit.
    useEffect(() => {
       if (!ref.current || editing.current) return
       if (ref.current.innerText !== content) ref.current.innerText = content

@@ -2,14 +2,10 @@
 // # BINDER BACKEND                                                                              #
 // #                                                                                             #
 // # The persistence seam. The whole app talks to one BinderBackend interface, so the storage    #
-// # engine can be swapped without touching a single call site. createIndexedDbBackend is the     #
-// # first implementation: a thin delegation over the existing binder*.ts / templateStore.ts /    #
-// # binderBackup.ts free functions, which stay put and become the IndexedDB backend. A later      #
-// # filesystem backend implements the same interface against files + a rebuildable index.        #
-// #                                                                                             #
-// # Two normalizations are applied at the delegation boundary so the interface reads cleanly:    #
-// # createFolder takes (parentId, name) (the lib takes (name, parentId)), and getFolder returns  #
-// # null for a missing folder (the lib returns undefined). Everything else delegates 1:1.        #
+// # engine can be swapped without touching a single call site. createIndexedDbBackend delegates #
+// # over the binder*.ts / templateStore.ts / binderBackup.ts free functions, which hold the     #
+// # IndexedDB logic. The filesystem backend implements the same interface against files + a     #
+// # rebuildable index.                                                                          #
 // ###############################################################################################
 
 // -- Lib Imports --
@@ -33,9 +29,8 @@ import type { DocumentTemplate } from './documentTemplate'
 import type { TinFile } from './tinFile'
 import type { TinImportSummary } from './binderBackup'
 
-/** An external content change the UI reconciles by re-querying. The IndexedDB backend never fires
- *  one (nothing edits the store behind the app's back); the filesystem backend fires on Explorer
- *  add / change / delete / move / rename. Coarse on purpose: the UI just re-runs its list reads. */
+/** An external content change the UI reconciles by re-querying. IndexedDB never fires one; the
+ *  filesystem backend fires on Explorer add / change / delete / move / rename. Coarse on purpose. */
 export type BinderChange =
    | { kind: 'documents' }
    | { kind: 'folders' }
@@ -44,18 +39,17 @@ export type BinderChange =
 
 /**
  * The persistence surface every backend implements. Operations are whole and atomic; no transaction,
- * store handle, or cursor crosses the seam. Ids are opaque strings the app passes around. The light /
- * heavy split is preserved: listDocuments returns metadata records (no sections, no base64), while
- * loadDocument / saveDocument move the full content.
+ * store handle, or cursor crosses the seam. The light / heavy split holds: listDocuments returns
+ * metadata records (no sections, no base64), loadDocument / saveDocument move the full content.
  */
 export interface BinderBackend {
    // ===== DOCUMENTS =====
    /** Upsert. A new id is minted when existingId is absent; a new document appends to targetFolderId
-    *  (default root). Writes the light record + heavy content together. Returns the id. */
+    *  (default root). Writes the light record + heavy content together. */
    saveDocument(state: DocState, presentation: DocPresentation, existingId?: string, targetFolderId?: string): Promise<string>
    /** Full editable read (runs the read-time migrators). touch bumps lastOpenedAt unless touch:false. */
    loadDocument(id: string, options?: { touch?: boolean }): Promise<LoadedDocument | null>
-   /** Light records only, filtered by folder + searched + sorted. No heavy content, no base64. */
+   /** Light records only, filtered by folder + searched + sorted. No heavy content. */
    listDocuments(filter?: DocumentListFilter): Promise<BinderDocumentRecord[]>
    getDocumentFolderId(id: string): Promise<string | null>
    deleteDocument(id: string): Promise<void>
@@ -98,10 +92,9 @@ export interface BinderBackend {
 }
 
 /**
- * The IndexedDB backend: a thin delegation over the existing binder*.ts / templateStore.ts /
- * binderBackup.ts functions, which hold the real logic. Only two boundary normalizations differ
- * from a straight pass-through (createFolder arg order, getFolder undefined -> null); the rest
- * forward verbatim. subscribe / dispose are inert since nothing edits IndexedDB behind the app.
+ * The IndexedDB backend: thin delegation over the binder*.ts / templateStore.ts / binderBackup.ts
+ * functions. Two boundary normalizations differ from a pass-through (createFolder arg order,
+ * getFolder undefined -> null); the rest forward verbatim. subscribe / dispose are inert.
  */
 export function createIndexedDbBackend(): BinderBackend {
    return {
@@ -116,9 +109,7 @@ export function createIndexedDbBackend(): BinderBackend {
       reorderDocuments,
 
       // ===== FOLDERS =====
-      // The lib returns undefined for a missing folder; the interface uses null.
       getFolder: async (id: string) => (await getFolder(id)) ?? null,
-      // The interface takes (parentId, name); the lib takes (name, parentId).
       createFolder: (parentId: string, name: string) => createFolder(name, parentId),
       renameFolder,
       deleteFolder,

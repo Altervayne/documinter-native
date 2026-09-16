@@ -1,11 +1,8 @@
-// ###############################################################################################
-// # PAGE NUMBERING                                                                              #
-// #                                                                                             #
-// # Pure formatting for a paged document's page number: turn a (style, page number, total) into  #
-// # the printed string. Shared by the editor's paged view (WysiwygArea) and the paged HTML export #
-// # (lib/export.ts) so both read identically. The words "Page" / "of" are passed in localized    #
-// # (the caller has the active language); this stays pure + DOM-free + unit-testable.            #
-// ###############################################################################################
+/*
+ * Pure formatting for a paged document's page number: turn (style, page number, total) into the printed
+ * string. Shared by the editor's paged view and the paged HTML export so both read identically; the
+ * words "Page" / "of" are passed in localized.
+ */
 
 // -- Type Imports --
 import type { PageNumberStyle } from './format'

@@ -1,15 +1,7 @@
-/**
- * document.ts, Document primitive factories, block display utilities, and
- * shared mutation helpers used by the three mutation hooks.
- *
- * Exports:
- *   Factories:  mkSection, mkBlock, cloneBlock
- *   Display:    blockAnchor, generateHandle, generateUniqueHandle, blkPreview
- *   Utilities:  moveItem, mutateSec
- *
- * moveItem and mutateSec live here so useBlockMutations, useSectionMutations, and
- * useContainerMutations all work from a single authoritative copy instead of each
- * duplicating the logic.
+/*
+ * Document primitive factories, block display utilities, and shared mutation helpers. moveItem and
+ * mutateSec live here so the block / section / container mutation hooks all work from one copy
+ * instead of each duplicating the logic.
  */
 
 import type { Dispatch, SetStateAction } from 'react'
@@ -110,7 +102,7 @@ export function mkBlock(type: BlockType, t: T): Block {
 // # BLOCK DISPLAY UTILITIES #
 // ###########################
 
-/** Return the HTML anchor id for a block, just the user-defined handle slug. */
+/** The block's anchor id: its user-defined handle slug. */
 export function blockAnchor(block: { handle?: string }): string {
    return block.handle ?? ''
 }
@@ -127,10 +119,8 @@ export function listItemPlainText(item: { richText?: { text: string }[] }): stri
    return item.richText.map(run => run.text).join('').replace(/\n/g, ' ')
 }
 
-/**
- * Suggest an anchor handle slug derived from the block's content.
- * Uses the first line of text, code, or list item. Falls back to a UUID fragment.
- */
+/** An anchor handle slug from the block's first line of text / code / list item, or a UUID fragment
+ *  when empty. */
 export function generateHandle(block: Block): string {
    const rawText = block.richText
       ? blockPlainText(block)
@@ -148,14 +138,9 @@ export function generateHandle(block: Block): string {
    return slug || crypto.randomUUID().substring(0, 8)
 }
 
-/**
- * Generate a handle for `block` guaranteed not to collide with `existingHandles` (the document-wide
- * handle list, e.g. from `useDocumentHandles()`). Starts from {@link generateHandle}; on a collision,
- * appends `-2`, `-3`, ... until a free slug is found. Used when auto-assigning a durable handle to a
- * handle-less table on the graph<->table live link: the anchor editor's own confirm flow does not
- * dedupe (it only warns), but an auto-assignment happening behind the scenes must never silently
- * collide with an existing anchor.
- */
+/** Like generateHandle but guaranteed free of `existingHandles`, appending `-2`, `-3`, ... on a
+ *  collision. The anchor editor only warns on a clash; an auto-assignment behind the scenes (the
+ *  graph <-> table live link) must never silently collide. */
 export function generateUniqueHandle(block: Block, existingHandles: string[]): string {
    const base = generateHandle(block)
    if (!existingHandles.includes(base)) return base
@@ -217,10 +202,7 @@ export function blkPreview(block: Block): string {
 // # MUTATION HELPERS, SHARED BY THE THREE MUTATION HOOKS #
 // #########################################################
 
-/**
- * Swap two items in an array by index. Returns the original array unchanged
- * if either index is out of bounds.
- */
+/** Swap two items by index. Returns the array unchanged if either index is out of bounds. */
 export function moveItem<T>(arr: T[], from: number, to: number): T[] {
    if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return arr
    const next = [...arr]
@@ -228,10 +210,7 @@ export function moveItem<T>(arr: T[], from: number, to: number): T[] {
    return next
 }
 
-/**
- * Apply a transformation to a single section identified by secId,
- * leaving all other sections untouched.
- */
+/** Apply a transform to the single section matching secId, leaving the rest untouched. */
 export function mutateSec(
    setSections: Dispatch<SetStateAction<Section[]>>,
    secId: string,
@@ -245,11 +224,10 @@ export function mutateSec(
 // ##############################################################################################
 
 /**
- * Whether a document holds nothing worth warning about before discarding it: no blocks anywhere, no
- * title, and no filled-in meta field values. True of a fresh blank OR a template-created doc (a
- * template seeds a meta scaffold with BLANK values, trivially recreatable), false of a document
- * opened from a file (real content). App's closeTab uses it to decide whether losing an unsaved,
- * not-yet-in-the-binder tab warrants a confirmation.
+ * Whether a document holds nothing worth warning about before discarding: no blocks, no title, no
+ * filled-in meta values. True of a fresh blank OR a template-created doc (a template seeds only blank
+ * values), false of a document opened from a file. closeTab uses it to decide whether losing an
+ * unsaved, not-yet-in-the-binder tab warrants a confirmation.
  */
 export function isEmptyDocument(document: { meta: DocMeta; sections: Section[] }): boolean {
    const hasBlocks      = document.sections.some(section => section.blocks.length > 0)
@@ -257,9 +235,8 @@ export function isEmptyDocument(document: { meta: DocMeta; sections: Section[] }
    return !hasBlocks && !document.meta.title.trim() && !hasFieldValues
 }
 
-/** Find a block anywhere on the canvas (a section body, or a container column) together with its
- *  owning section. The shared drag ghost uses this so it can render inner container blocks too, which
- *  are not in `section.blocks`. Returns null when the id isn't found. */
+/** Find a block anywhere on the canvas (section body or container column) with its owning section.
+ *  The shared drag ghost uses this to render inner container blocks, which are not in section.blocks. */
 export function findBlockOnCanvas(sections: Section[], blockId: string): { section: Section; block: Block } | null {
    for (const section of sections) {
       for (const block of section.blocks) {
@@ -296,11 +273,10 @@ function insertBefore(arr: Block[], moving: Block, beforeBlockId: string | null)
 }
 
 /**
- * Move a block out of `from` and into `to`, positioned immediately before `beforeBlockId` (appended
- * when null). Supports moves between section bodies, between a section body and a container column,
- * and between columns, in one immutable pass (only the affected section objects are rebuilt).
- * Same-location moves reorder in place. No-op-safe: an unknown block / location returns `sections`
- * unchanged. Pure; the block DnD handler + the moveBlockAcross mutation drive it.
+ * Move a block out of `from` and into `to`, before `beforeBlockId` (appended when null), in one
+ * immutable pass that rebuilds only the affected sections. Handles section bodies, container columns,
+ * and moves between them; same-location moves reorder in place. No-op-safe: an unknown block or
+ * location returns `sections` unchanged.
  */
 export function relocateBlock(
    sections: Section[],

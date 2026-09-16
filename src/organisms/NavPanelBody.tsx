@@ -50,18 +50,14 @@ interface NavPanelBodyProps {
 // #############
 
 /**
- * The document-level Navigation editor body, chrome-free so the same form serves both the floating
- * NavWindow (Document -> Navigation...) and a docked side panel. Its controls mutate the document's
- * `presentation.nav` object; the editor bakes the exported sidebar nav only, so it has no effect on the
- * live editor sheet (the nav is an export-only surface).
- *
- * The outer `.doc-settings-panel` owns the scroll + padding so the body fills its host (a docked panel
- * or the floating window body, whose padding is neutralized for `.doc-settings-panel` in doc.css).
+ * The document-level Navigation editor body, chrome-free so the same form serves the floating NavWindow
+ * (Document -> Navigation...) and a docked side panel. Its controls mutate `presentation.nav`, which
+ * bakes the exported sidebar nav only (no effect on the live editor sheet, an export-only surface).
+ * `.doc-settings-panel` owns the scroll + padding so the body fills its host (padding neutralized in doc.css).
  */
 export function NavPanelBody({ presentation, sections, onChange }: NavPanelBodyProps) {
-   // Patch the nav field, collapsing an emptied extras object back to undefined so no empty shell
-   // lingers in storage / export. Passing undefined resets the nav back to the zero-config default
-   // (reconciled fresh from the sections) and, if it was the only extra, drops the whole extras object.
+   // Patch the nav field, collapsing an emptied extras object back to undefined so no empty shell lingers.
+   // Passing undefined resets nav to the zero-config default (reconciled fresh from the sections).
    function updateNav(nextNav: NavModel | undefined): void {
       const nextExtras: DocPresentationExtras = { ...presentation, nav: nextNav }
       if (!nextExtras.nav) delete nextExtras.nav
@@ -82,14 +78,14 @@ export function NavPanelBody({ presentation, sections, onChange }: NavPanelBodyP
 // ###############
 
 /** A single-axis lock: every nav-entry drag glides vertically only (x pinned), without depending on
- *  `@dnd-kit/modifiers` (not installed). Mirrors the graph editors' sortable lock. */
+ *  `@dnd-kit/modifiers` (not installed). */
 const LOCK_VERTICAL_MODIFIER: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
-/** The drag-handle wiring a sortable nav row hands to its grip (mirrors ScatterEditor/GraphDataGrid). */
+/** The drag-handle wiring a sortable nav row hands to its grip. */
 type DragHandleProps = Pick<ReturnType<typeof useSortable>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
 
-/** A stable, collision-free sortable id per entry: an auto entry keys off its (unique) sectionId; a
- *  custom / divider entry keys off its own generated id. */
+/** A stable, collision-free sortable id per entry: an auto entry keys off its sectionId, a custom /
+ *  divider entry off its own generated id. */
 function navEntryDomId(entry: NavEntry): string {
    return entry.kind === 'auto' ? `nav-auto-${entry.sectionId}` : `nav-${entry.id}`
 }
@@ -100,11 +96,8 @@ interface SortableNavEntryProps {
    children: (handle: DragHandleProps) => React.ReactNode
 }
 
-/**
- * One nav entry made vertically sortable. The row is the sortable NODE; only the leading grip carries
- * the drag listeners (render-prop `handle`), so typing in a label / URL field never starts a reorder
- * (same pattern as SortableScatterPoint).
- */
+/** One nav entry made vertically sortable. The row is the sortable NODE; only the leading grip carries
+ *  the drag listeners (render-prop `handle`), so typing in a label / URL field never starts a reorder. */
 function SortableNavEntry({ entry, children }: SortableNavEntryProps) {
    const { setNodeRef, transform, transition, isDragging, attributes, listeners, setActivatorNodeRef } =
       useSortable({ id: navEntryDomId(entry) })
@@ -128,13 +121,9 @@ interface NavSectionProps {
    onChange: (next: NavModel | undefined) => void
 }
 
-/**
- * The sidebar-nav editor: a reorderable list over the reconciled nav entries (one per section by
- * default, plus any custom links / dividers). It edits the model that bakes the exported sidebar nav
- * (this list has no effect on the live editor sheet; the nav is an export-only surface). Every commit
- * writes the full reconciled entry array, so the first touch seeds `nav` from the zero-config
- * derivation and then customizes it; "Reset" clears the model back to that same default.
- */
+/** The sidebar-nav editor: a reorderable list over the reconciled entries (one per section by default,
+ *  plus custom links / dividers). Every commit writes the full reconciled array, so the first touch
+ *  seeds `nav` from the zero-config derivation; "Reset" clears it back to that default. */
 function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const { t } = useLang()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -144,8 +133,7 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const titleBySectionId = new Map(sections.map(section => [section.id, section.title]))
    const isCustomized = nav !== undefined
 
-   // Every block carrying a deep-link handle: the "Element link" target universe, matching the
-   // inline "jump to block" picker (FormatToolbar). No anchors -> the element-link adder is disabled.
+   // Every block carrying a deep-link handle: the anchor-link target universe. No anchors disables the adder.
    const anchoredBlocks = getAnchoredBlocks(sections)
 
    /** A readable option label for an anchored block: its content preview plus the `#handle`. */
@@ -195,8 +183,7 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
       const firstAnchor = anchoredBlocks[0]?.block
       const handle = firstAnchor?.handle
       if (!handle) return
-      // Seed the label from the block's content preview so the new link is meaningful on sight,
-      // falling back to the raw handle when the block has no previewable text.
+      // Seed the label from the block's content preview, falling back to the raw handle.
       const label = blkPreview(firstAnchor).trim() || handle
       const entry: NavCustomEntry = { kind: 'custom', id: crypto.randomUUID(), label, target: { type: 'anchor', handle } }
       commit([...entries, entry])

@@ -19,10 +19,9 @@ interface PromptDialogProps {
 }
 
 /**
- * A single-line text-input modal (name this thing / rename this thing). Portal-rendered over a
- * dimmed backdrop like ConfirmDialog; the input auto-focuses and selects its initial value on
- * mount, Enter confirms a non-empty (trimmed) value, Escape and backdrop-click cancel. Confirm is
- * disabled while the field is blank.
+ * Single-line text-input modal (name / rename). Portal + backdrop like ConfirmDialog; the input
+ * auto-focuses and selects its initial value, Enter confirms a non-empty trimmed value, Escape and
+ * backdrop cancel, and Confirm is disabled while blank.
  */
 export function PromptDialog({ title, label, initialValue = '', placeholder, confirmLabel, cancelLabel, onConfirm, onCancel }: PromptDialogProps) {
    const [value, setValue] = useState(initialValue)

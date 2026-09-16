@@ -1,17 +1,8 @@
-/**
- * index.ts, the public entry point for the home-grown diagram (nodes + links) renderer.
- *
- * `renderDiagramToSvg(spec, theme)` is the ONLY export a caller needs: it lays out nodes at their
- * literal diagram-unit coordinates, clips each edge to its endpoints' borders, draws hand-drawn
- * arrowheads, wraps labels DOM-free, and returns one self-contained, responsive <svg> string
- * (viewBox + width:100%) with an accessible root <title>/<desc> and per-node/-edge <title>
- * tooltips. It mirrors the graph block's `renderGraphToSvg`: pure, synchronous, deterministic,
- * total (never throws), zero runtime, zero external fonts, colors baked as literal theme hex,
- * safe to inline verbatim into the HTML export.
- *
- * An empty/degenerate spec renders a graceful empty-state placeholder SVG (the same "invalid
- * never breaks the document" contract Math and Graph honor). An edge referencing a missing node
- * id is skipped, never thrown.
+/*
+ * The public entry point for the diagram (nodes + links) renderer. `renderDiagramToSvg(spec, theme)`
+ * returns one self-contained, responsive <svg> string: pure, synchronous, deterministic, total,
+ * colors baked as literal theme hex, safe to inline into the HTML export. An empty spec renders an
+ * empty-state placeholder; an edge to a missing node id is skipped, never thrown.
  */
 
 import type { DiagramSpec, DiagramNode, DiagramEdge, DiagramTheme, EdgeArrow } from './types'
@@ -33,30 +24,23 @@ import {
 // # CONSTANTS #
 // #############
 
-// The system sans stack labels render in, so the export ships no font asset. Font names use
-// SINGLE quotes because this string sits inside a double-quoted `style="..."` attribute on the
-// root <svg>; double quotes here would prematurely close the attribute.
+// Font names use SINGLE quotes: this string sits inside the double-quoted `style="..."` attribute
+// on the root <svg>, where a double quote would prematurely close the attribute.
 const FONT_STACK = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 
-/** Node label font size, in diagram units. */
 const LABEL_FONT_SIZE = 14
 
-/** Edge label font size, in diagram units. */
 const EDGE_LABEL_FONT_SIZE = 12
 
 /** Inner horizontal padding reserved inside a node box for its label. */
 const LABEL_PADDING = 8
 
-/** Edge line stroke width, in diagram units. */
 const EDGE_STROKE_WIDTH = 1.5
 
-/** Dash pattern for a dashed edge. */
 const EDGE_DASH_ARRAY = '6 4'
 
-/** Autofit padding around the content bounding box, in diagram units. */
 const AUTOFIT_PADDING = 24
 
-/** The empty-state placeholder viewBox extent. */
 const EMPTY_WIDTH = 260
 const EMPTY_HEIGHT = 120
 
@@ -64,22 +48,17 @@ const EMPTY_HEIGHT = 120
 // # PUBLIC ENTRYPOINT #
 // #####################
 
-/**
- * Render a diagram spec to a complete, self-contained SVG string for the given resolved theme.
- * Pure, synchronous, deterministic, total. Colors are baked as literal theme hex, so the output
- * needs no runtime, no external font, and no CSS variables, inline it straight into an export.
- */
+/** Render a diagram spec to a complete, self-contained SVG string for the resolved theme. */
 export function renderDiagramToSvg(spec: DiagramSpec, theme: DiagramTheme): string {
    if (!spec.nodes || spec.nodes.length === 0) {
       return renderEmptyState(spec, theme)
    }
 
-   // A node id -> node lookup so edges resolve their endpoints (and can skip a dangling reference).
    const nodesById = new Map<string, DiagramNode>()
    for (const node of spec.nodes) nodesById.set(node.id, node)
 
-   // Edges are drawn UNDER the nodes (lines behind shapes); the arrowhead body sits outside the
-   // node border, so a node drawn on top never covers it.
+   // Edges draw UNDER the nodes; the arrowhead body sits outside the node border so a node on top
+   // never covers it.
    const edgeMarkup = (spec.edges ?? [])
       .map(edge => renderEdge(edge, nodesById, theme))
       .filter(markup => markup !== '')
@@ -112,8 +91,8 @@ function renderNode(node: DiagramNode, theme: DiagramTheme): string {
 
 /** Render a node's label as one or more centered <tspan> lines, wrapped/clipped to the box. */
 function renderNodeLabel(node: DiagramNode, color: string): string {
-   // A chevron's point/notch eats into the box on both sides; reserve that depth on top of the usual
-   // padding so the label stays clear of the point.
+   // A chevron's point/notch eats into the box on both sides; reserve that depth so the label stays
+   // clear of the point.
    const horizontalInset = LABEL_PADDING + (node.shape === 'chevron' ? chevronPointDepth(node) : 0)
    const maxWidth = Math.max(0, node.width - horizontalInset * 2)
    const lines = wrapLabel(node.label, maxWidth, LABEL_FONT_SIZE, maxLabelLines(node.height, LABEL_FONT_SIZE))
@@ -136,11 +115,8 @@ function renderNodeLabel(node: DiagramNode, color: string): string {
 // # EDGE RENDERING    #
 // #####################
 
-/**
- * Render one edge: its clipped path, arrowhead(s), and optional mid-edge label, wrapped in a <g>
- * with a native <title>. Returns '' (drawing nothing) when either endpoint node is missing, so a
- * dangling edge is silently skipped rather than throwing.
- */
+/** Render one edge: clipped path, arrowhead(s), optional mid-edge label. Returns '' when either
+ *  endpoint node is missing, so a dangling edge is silently skipped. */
 function renderEdge(edge: DiagramEdge, nodesById: Map<string, DiagramNode>, theme: DiagramTheme): string {
    const fromNode = nodesById.get(edge.from)
    const toNode = nodesById.get(edge.to)
@@ -170,7 +146,7 @@ function renderEdge(edge: DiagramEdge, nodesById: Map<string, DiagramNode>, them
    return element('g', {}, `${title}${path}${arrows}${label}`)
 }
 
-/** Whether an arrow value is one of the accepted set (a hand-edited spec may carry garbage). */
+/** Whether an arrow value is accepted (a hand-edited spec may carry garbage). */
 function isValidArrow(arrow: string): arrow is EdgeArrow {
    return arrow === 'none' || arrow === 'end' || arrow === 'start' || arrow === 'both'
 }
@@ -223,7 +199,7 @@ function renderEdgeLabel(edge: DiagramEdge, points: Point[], theme: DiagramTheme
    return `${halo}${text}`
 }
 
-/** The midpoint of the polyline's middle segment (or its middle waypoint for an odd point count). */
+/** The midpoint of the polyline's middle segment (or its middle waypoint for an odd count). */
 function polylineMidpoint(points: Point[]): Point {
    if (points.length === 0) return { x: 0, y: 0 }
    if (points.length === 1) return points[0]
@@ -235,7 +211,7 @@ function polylineMidpoint(points: Point[]): Point {
    return { x: (lower.x + upper.x) / 2, y: (lower.y + upper.y) / 2 }
 }
 
-/** A one-line tooltip for an edge: its label, else "from -> to" using the node labels/ids. */
+/** An edge tooltip: its label, else "from to" using the node labels/ids. */
 function edgeTooltip(edge: DiagramEdge, fromNode: DiagramNode, toNode: DiagramNode): string {
    const fromLabel = fromNode.label.trim() || fromNode.id
    const toLabel = toNode.label.trim() || toNode.id
@@ -247,11 +223,8 @@ function edgeTooltip(edge: DiagramEdge, fromNode: DiagramNode, toNode: DiagramNo
 // # VIEWBOX / ENVELOPE #
 // #####################
 
-/**
- * The `viewBox` string. An explicit `options.canvas` (positive, finite w/h) maps to `0 0 W H`;
- * otherwise the viewBox is the autofit content bounding box (every node's box + every waypoint)
- * padded by AUTOFIT_PADDING, so the whole diagram is always framed with breathing room.
- */
+/** The `viewBox` string. An explicit `options.canvas` maps to `0 0 W H`; otherwise the autofit
+ *  content bounding box padded by AUTOFIT_PADDING. */
 function resolveViewBox(spec: DiagramSpec): string {
    const canvas = spec.options.canvas
    if (canvas && Number.isFinite(canvas.width) && Number.isFinite(canvas.height)
@@ -283,7 +256,7 @@ function wrapSvg(viewBox: string, accessibleTitle: string, accessibleDesc: strin
 // # EMPTY / A11Y      #
 // #####################
 
-/** A minimal placeholder SVG for an empty diagram, never breaks the surrounding document. */
+/** A minimal placeholder SVG for an empty diagram. */
 function renderEmptyState(spec: DiagramSpec, theme: DiagramTheme): string {
    const title = spec.options.title ?? 'Empty diagram'
    const note = textElement({

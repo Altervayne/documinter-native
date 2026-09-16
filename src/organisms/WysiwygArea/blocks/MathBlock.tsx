@@ -9,8 +9,8 @@ import type { MathBuilderKind, MatrixBracket } from '../../../lib/mathStructures
 import { useLang } from '../../../contexts/LangContext'
 import type { Block } from '../../../types'
 
-/** Wrapper font-size for the rendered MathML: the MathML scales with `em`. Normal size stays
- *  unset so the default markup is untouched (in-app parity with the byte-identical HTML export). */
+/** Wrapper font-size for the rendered MathML (it scales with `em`). Normal size stays unset so the
+ *  default markup is untouched, keeping in-app parity with the byte-identical HTML export. */
 function mathScaleStyle(scale: number): { fontSize: string } | undefined {
    return scale === DEFAULT_MATH_SCALE ? undefined : { fontSize: `${scale}em` }
 }
@@ -21,47 +21,38 @@ interface MathBlockProps {
    readOnly?: boolean
 }
 
-/**
- * Math equation block, mirroring the code block: the LaTeX source is stored on the
- * block (`latex`) and rendered to native MathML by Temml for both the live editor
- * preview and the read-only view. Invalid LaTeX never breaks the document; the parse
- * error surfaces in the preview area while the source stays editable.
+/*
+ * The math equation block: the LaTeX source (`latex`) renders to native MathML via Temml for both the
+ * editor preview and the read-only view. Invalid LaTeX never breaks the document; the parse error
+ * surfaces in the preview while the source stays editable.
  */
 export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
    const { t } = useLang()
 
-   // Local draft so the preview updates live on every keystroke without spamming a
-   // document mutation; the stored `latex` is committed on blur. Mirrors the
-   // not-editing sync pattern used by PlainEditable.
+   // Local draft so the preview updates live without spamming a mutation; committed on blur.
    const [draft, setDraft] = useState(block.latex ?? '')
    const editing = useRef(false)
 
-   // Symbol palette: a pure-UI assisted-input tool over the same `latex` source, hosted in a
-   // persistent, draggable BlockEditorWindow (NOT a modal / not the window coordinator's single
-   // open block, it is a per-block tool). The textarea ref lets an inserted snippet read the live
-   // caret/selection and hand focus straight back; the palette opens with focusOnOpen={false} so
-   // the source textarea keeps focus and the user can keep typing while inserting symbols.
+   // Symbol palette: an assisted-input tool over the same `latex` source, in a persistent draggable
+   // BlockEditorWindow (a per-block tool, not a modal). The textarea ref lets an inserted snippet read
+   // the live caret and hand focus back; focusOnOpen={false} keeps the textarea focused while inserting.
    const textareaRef = useRef<HTMLTextAreaElement>(null)
    const rootRef = useRef<HTMLDivElement>(null)
    const [paletteOpen,   setPaletteOpen]   = useState(false)
    // The math block's viewport rect at open time; the window sits offset from it, then clamps.
    const [paletteAnchor, setPaletteAnchor] = useState<DOMRect | null>(null)
 
-   // A snippet insert mutates `draft` synchronously, then this pending caret offset restores
-   // focus + selection to the textarea AFTER React commits the new value (a layout effect keyed
-   // to it, so the caret lands correctly even though the value changed in the same render).
+   // A snippet insert mutates `draft` synchronously; this pending caret offset restores focus +
+   // selection AFTER React commits the new value (via a layout effect keyed to it).
    const [pendingCaret, setPendingCaret] = useState<number | null>(null)
 
-   // Structured-construct builder (matrix / cases / aligned). `builderKind` holds the open
-   // request; `builderCaret` snapshots the textarea selection at OPEN time, the modal steals
-   // focus, so the insertion point must be captured up-front and can no longer be read live.
+   // Structured-construct builder (matrix / cases / aligned). `builderKind` holds the open request;
+   // `builderCaret` snapshots the selection at OPEN time, since the modal steals focus.
    const [builderKind,  setBuilderKind]  = useState<{ kind: MathBuilderKind; bracket?: MatrixBracket } | null>(null)
    const [builderCaret, setBuilderCaret] = useState<{ start: number; end: number } | null>(null)
 
-   // Temml loads as a raw asset (see lib/math.ts), so on first paint it may not be
-   // ready yet. Track readiness and re-render once the one-time load completes; until
-   // then the preview/read view show a "rendering..." placeholder instead of calling
-   // the (synchronous) renderer, which would otherwise report a transient load error.
+   // Temml loads as a raw asset (see lib/math.ts), so on first paint it may not be ready. Track
+   // readiness and re-render on load; until then show a placeholder rather than a transient load error.
    const [temmlReady, setTemmlReady] = useState(isTemmlReady())
    useEffect(() => onTemmlReady(() => setTemmlReady(true)), [])
 
@@ -73,8 +64,8 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       if (!editing.current) setDraft(block.latex ?? '')
    }, [block.latex])
 
-   // After a palette insert has committed the new `draft`, put focus back on the textarea with
-   // the caret/selection at the computed offset. Runs before paint so there is no visible jump.
+   // After a palette insert commits the new `draft`, put focus back with the caret at the computed
+   // offset. Runs before paint so there is no visible jump.
    useLayoutEffect(() => {
       if (pendingCaret === null) return
       const textarea = textareaRef.current
@@ -85,12 +76,9 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       setPendingCaret(null)
    }, [pendingCaret])
 
-   // ==========================
-   //  Palette snippet insertion
-   // ==========================
-   // Core splice, shared by the palette insert (live selection) and the builder insert (a caret
-   // captured at open time). Resolves the snippet against the selected text, splices it in, and
-   // schedules the caret restore. Marks `editing` but does not commit; commit stays on blur.
+   // Core splice, shared by the palette insert (live selection) and the builder insert (a captured
+   // caret). Resolves the snippet against the selection, splices it in, schedules the caret restore.
+   // Marks `editing` but commits on blur.
    function spliceInsertAt(insert: string, selectionStart: number, selectionEnd: number): void {
       const selectedText = draft.slice(selectionStart, selectionEnd)
       const { text, caretOffset } = buildSnippetInsertion(insert, selectedText)
@@ -105,11 +93,8 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       spliceInsertAt(insert, textarea.selectionStart, textarea.selectionEnd)
    }
 
-   // ==========================
-   //  Structured builder
-   // ==========================
-   // Open request from the palette: snapshot the CURRENT selection before the modal steals
-   // focus, then open the builder and close the palette.
+   // Open request from the palette: snapshot the selection before the modal steals focus, then open
+   // the builder and close the palette.
    function openBuilder(kind: MathBuilderKind, bracket?: MatrixBracket): void {
       const textarea = textareaRef.current
       const start = textarea ? textarea.selectionStart : draft.length
@@ -119,9 +104,8 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
       setPaletteOpen(false)
    }
 
-   // Builder Insert: splice the emitted LaTeX at the captured selection (no marker, so a plain
-   // replace-at-selection, caret after), then close the modal. The pending-caret layout effect
-   // hands focus back to the textarea.
+   // Builder Insert: splice the emitted LaTeX at the captured selection, then close the modal. The
+   // pending-caret layout effect hands focus back.
    function insertFromBuilder(latex: string): void {
       const caret = builderCaret ?? { start: draft.length, end: draft.length }
       spliceInsertAt(latex, caret.start, caret.end)
@@ -131,14 +115,12 @@ export function MathBlock({ block, patch, readOnly }: MathBlockProps) {
 
    function togglePalette(): void {
       if (paletteOpen) { setPaletteOpen(false); return }
-      // Anchor the window offset from the whole math block, so it sits beside the source/preview
-      // rather than crowding the tiny f(x) button.
+      // Anchor off the whole math block, so the window sits beside the source rather than the tiny button.
       setPaletteAnchor(rootRef.current?.getBoundingClientRect() ?? new DOMRect())
       setPaletteOpen(true)
    }
 
-   // Display scale: an absent value means normal size. Applied to the `.doc-math` wrapper so the
-   // rendered MathML grows/shrinks in the preview and read view, matching the HTML export.
+   // Display scale (absent = normal). Applied to the `.doc-math` wrapper, matching the HTML export.
    const scale      = block.mathScale ?? DEFAULT_MATH_SCALE
    const scaleStyle = mathScaleStyle(scale)
 

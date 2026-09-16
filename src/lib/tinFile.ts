@@ -1,14 +1,10 @@
-// ###############################################################################################
-// # TIN FILE                                                                                    #
-// #                                                                                             #
-// # The `.tin` format: a gzip-compressed UTF-8 JSON manifest that captures a full binder (or one #
-// # folder subtree) as one portable file: user templates, every folder (flat, tree rebuilt from  #
-// # parentId), and every self-contained document (images are already inline base64 in the model, #
-// # so no side asset bundle). This module is the PURE format layer: the manifest shape, its       #
-// # marker + version envelope (mirrors templateBackupFile), and the gzip helpers over the native  #
-// # CompressionStream / DecompressionStream. No IndexedDB here; the collect / import glue lives in #
-// # binderBackup.ts.                                                                              #
-// ###############################################################################################
+/*
+ * The `.tin` format: a gzip-compressed UTF-8 JSON manifest capturing a full binder (or one folder
+ * subtree) as one portable file: user templates, every folder (flat, tree rebuilt from parentId), and
+ * every self-contained document (images are already inline base64, so no side asset bundle). This is
+ * the PURE format layer (manifest shape, marker + version envelope, gzip helpers); the collect / import
+ * glue lives in binderBackup.ts.
+ */
 
 // -- Lib Imports --
 import { slugify } from './text'
@@ -81,11 +77,9 @@ export function serializeTin(tin: TinFile): string {
 }
 
 /**
- * Parse a manifest string, or null if it is not a valid Tin. Total: never throws. Rejects
- * non-JSON, a missing / non-true `documinterTin` marker, a schemaVersion that is not a finite
- * number at or below what this build knows, and any of `templates` / `folders` / `documents`
- * that is not an array. Per-record healing (id / meta / format migrators) happens later, on
- * import, so a manifest from an older build still lands cleanly.
+ * Parse a manifest string, or null if it is not a valid Tin (never throws). Rejects non-JSON, a missing
+ * `documinterTin` marker, a schemaVersion above what this build knows, and a non-array templates /
+ * folders / documents. Per-record healing happens later on import.
  */
 export function parseTin(text: string): TinFile | null {
    try {
@@ -103,11 +97,9 @@ export function parseTin(text: string): TinFile | null {
 // ###############
 // # COMPRESSION #
 // ###############
-// Native gzip via the Web Streams CompressionStream / DecompressionStream globals (present in the
-// Node 22 test runner and every browser the PWA targets). No dependency. A Blob feeds a one-chunk
-// source stream through the codec; Response collects the bytes. Any codec error (a corrupt gzip
-// stream) propagates to the piped readable and rejects the returned promise, so the caller catches
-// it rather than a partial result leaking through.
+// Native gzip via the Web Streams CompressionStream / DecompressionStream globals (present in the Node
+// test runner and every browser the PWA targets). A corrupt gzip stream rejects the returned promise,
+// so the caller catches it rather than a partial result leaking through.
 
 /** Gzip a UTF-8 string to its compressed bytes. */
 export async function gzipString(text: string): Promise<Uint8Array> {

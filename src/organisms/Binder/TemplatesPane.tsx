@@ -16,10 +16,8 @@ interface TemplatesPaneProps {
 }
 
 /**
- * The binder's Templates view: a header explaining what templates are over a grid of TemplateCards
- * (built-ins first, then user templates). Replaces the folder breadcrumb + document grid when the
- * nav's Templates entry is active. There is always at least the one built-in, so there is no empty
- * state; the header's hint tells the user how to add their own.
+ * The binder's Templates view: a header over a grid of TemplateCards (built-ins first, then user
+ * templates). There is always at least one built-in, so no empty state is needed.
  */
 export function TemplatesPane({ templates, isLoading, onUse, onApply, onDuplicate, onExport, onRename, onDelete, onImport }: TemplatesPaneProps) {
    const { t } = useLang()
