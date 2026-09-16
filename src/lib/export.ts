@@ -245,6 +245,7 @@ interface Colors {
    border: string
    sidebarBg: string; navLink: string; navHover: string
    preBg: string; preBorder: string; preText: string
+   preGutterBg: string; preGutterLine: string; preGutterText: string
    inlineCodeBg: string; inlineCodeText: string; inlineCodeBorder: string
    thBg: string; tdHover: string
    calloutInfoBg: string; calloutInfoBorder: string
@@ -266,6 +267,7 @@ function getColors(theme: 'light' | 'dark'): Colors {
          border: '#30363d',
          sidebarBg: '#0d1117', navLink: '#8b949e', navHover: '#e6edf3',
          preBg: '#0d1117', preBorder: '#21262d', preText: '#c9d1d9',
+         preGutterBg: '#161b22', preGutterLine: '#21262d', preGutterText: '#6e7681',
          inlineCodeBg: 'rgba(56,139,253,0.1)', inlineCodeText: '#79c0ff', inlineCodeBorder: 'rgba(56,139,253,0.25)',
          thBg: '#0d1117', tdHover: '#1c2128',
          calloutInfoBg: '#051d40', calloutInfoBorder: '#388bfd',
@@ -285,6 +287,7 @@ function getColors(theme: 'light' | 'dark'): Colors {
       border: '#e5e7eb',
       sidebarBg: '#ffffff', navLink: '#6b7280', navHover: '#111827',
       preBg: '#f8fafc', preBorder: '#e2e8f0', preText: '#334155',
+      preGutterBg: '#eef2f6', preGutterLine: '#e2e8f0', preGutterText: '#94a3b8',
       inlineCodeBg: '#eff6ff', inlineCodeText: '#2563eb', inlineCodeBorder: '#dbeafe',
       thBg: '#f9fafb', tdHover: '#f9fafb',
       calloutInfoBg: '#eff6ff', calloutInfoBorder: '#2563eb',
@@ -453,9 +456,14 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             /* Inline code */
             .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: ${colors.inlineCodeBg}; color: ${colors.inlineCodeText}; padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid ${colors.inlineCodeBorder}; }
 
-            /* Code block */
-            .doc-render pre            { background: ${colors.preBg}; border: 1px solid ${colors.preBorder}; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; }
-            .doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: ${colors.preText}; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
+            /* Code block. Long lines WRAP (never scroll): print cannot scroll, so an overflowing line
+               would be clipped at the page edge. A line-number strip counts each source line, so a
+               wrapped line's continuation rows carry no number (the tell that the line wrapped). */
+            .doc-render pre            { background: ${colors.preBg}; border: 1px solid ${colors.preBorder}; border-radius: 6px; margin: 1.25rem 0; }
+            .doc-render pre code       { display: block; padding: 1rem 1.25rem 1rem 3.6em; background: none; border: none; color: ${colors.preText}; font-size: 0.82rem; line-height: 1.7; counter-reset: code-line; background-image: linear-gradient(to right, ${colors.preGutterBg} 0, ${colors.preGutterBg} 2.9em, ${colors.preGutterLine} 2.9em, ${colors.preGutterLine} 2.96em, transparent 2.96em); }
+            .doc-render pre code .code-line         { display: block; position: relative; counter-increment: code-line; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2.5ch; text-indent: -2.5ch; }
+            .doc-render pre code .code-line::before { content: counter(code-line); position: absolute; left: -3.1em; width: 2.2em; text-align: right; text-indent: 0; color: ${colors.preGutterText}; }
+            .doc-render pre code .code-line:empty   { min-height: 1.7em; }
 
             /* Math block, centered display equation. The inner override makes the display math
                inline-block so text-align:center can center it (Temml's own rule sets width:100%). */
@@ -513,6 +521,11 @@ function buildStyles(accent: string, colors: Colors, hasWatermark: boolean, hasH
             .tok-fn   { color: ${colors.tokFn}; }
             .tok-op   { color: ${colors.tokOp}; }
             .tok-type { color: ${colors.tokType}; }
+            .tok-bold { font-weight: 700; }
+            .tok-em   { font-style: italic; }
+            .tok-del  { text-decoration: line-through; }
+            .tok-fm   { color: ${colors.tokCmt}; }
+            .tok-code { color: ${colors.tokStr}; }
 
             /* Back to top */
             #toTopBtn {

@@ -619,11 +619,20 @@
 /* Inline code */
 .doc-render code           { font-family: 'JetBrains Mono', monospace; font-size: 0.82em; background: color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, #fff); color: var(--doc-accent, var(--color-accent)); padding: 0.15em 0.4em; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--doc-accent, var(--color-accent)) 28%, #fff); }
 
-/* Code block */
-.doc-render pre            { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; overflow-x: auto; margin: 1.25rem 0; cursor: text; }
-.doc-render pre code       { display: block; padding: 1rem 1.25rem; background: none; border: none; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre; }
-/* Editable code (click-to-edit mode), reset inline-code styles */
-.doc-render pre [contenteditable] { display: block; padding: 1rem 1.25rem; background: none !important; border: none; box-shadow: none !important; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre; font-family: 'JetBrains Mono', monospace; }
+/* Code block. Long lines WRAP (never scroll): a scroll container's background stops at the fold and
+   print clips the overflow, so the paged export would drop the tail of a long line. */
+.doc-render pre            { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin: 1.25rem 0; cursor: text; }
+/* A line-number strip: one counter per source line, painted in a faint left band. A wrapped line's
+   continuation rows carry no number, the visual tell that the line wrapped. */
+.doc-render pre code       { display: block; padding: 1rem 1.25rem 1rem 3.6em; background: none; border: none; color: #334155; font-size: 0.82rem; line-height: 1.7; counter-reset: code-line; background-image: linear-gradient(to right, #eef2f6 0, #eef2f6 2.9em, #e2e8f0 2.9em, #e2e8f0 2.96em, transparent 2.96em); }
+/* Each source line is its own block (tokenize wrapLines): it counts once and hang-indents its wrapped
+   continuations under the line start. The number is an unselectable ::before so copying skips it. */
+.doc-render pre code .code-line         { display: block; position: relative; counter-increment: code-line; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2.5ch; text-indent: -2.5ch; }
+.doc-render pre code .code-line::before { content: counter(code-line); position: absolute; left: -3.1em; width: 2.2em; text-align: right; text-indent: 0; color: #94a3b8; user-select: none; }
+.doc-render pre code .code-line:empty   { min-height: 1.7em; }
+/* Editable code (click-to-edit mode), reset inline-code styles. Wraps too, and keeps the strip's left
+   inset so the text does not shift when the numbers drop away during editing. */
+.doc-render pre [contenteditable] { display: block; padding: 1rem 1.25rem 1rem 3.6em; background: none !important; border: none; box-shadow: none !important; color: #334155; font-size: 0.82rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; font-family: 'JetBrains Mono', monospace; }
 
 /* Math block, read/preview display equation.
    The inner override makes the display math inline-block so text-align:center can
@@ -1976,6 +1985,12 @@
 .tok-fn   { color: #7c3aed; }                   /* 5.5:1 */
 .tok-op   { color: #6b7280; }                   /* 4.6:1 */
 .tok-type { color: #0a78a0; }                   /* 4.8:1 */
+/* Markdown-only token types (inline emphasis + frontmatter/code spans). */
+.tok-bold { font-weight: 700; }
+.tok-em   { font-style: italic; }
+.tok-del  { text-decoration: line-through; }
+.tok-fm   { color: #6b7280; }
+.tok-code { color: #A31515; }
 
 
 /* Section, flex row with a dedicated drag handle in the padding gutter */
@@ -2276,7 +2291,8 @@
 
 /* Code block */
 .doc-dark .doc-render pre         { background: #0d1117; border-color: #21262d; }
-.doc-dark .doc-render pre code    { color: #c9d1d9; }
+.doc-dark .doc-render pre code    { color: #c9d1d9; background-image: linear-gradient(to right, #161b22 0, #161b22 2.9em, #21262d 2.9em, #21262d 2.96em, transparent 2.96em); }
+.doc-dark .doc-render pre code .code-line::before { color: #6e7681; }
 .doc-dark .doc-render pre [contenteditable] { color: #c9d1d9; }
 
 /* Math block */
