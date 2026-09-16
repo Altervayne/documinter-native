@@ -11,9 +11,8 @@ import {
 } from './paneTree'
 import type { PaneNode } from '../types'
 
-// A horizontal split of the two real panes, and a nested three-leaf tree, reused across the queries
-// below. Only two pane ids exist (wysiwyg + markdown), so the nested tree repeats wysiwyg to reach a
-// third leaf; the structural operations under test stay deterministic all the same.
+// Only two pane ids exist (wysiwyg + markdown), so the nested three-leaf tree repeats wysiwyg to
+// reach a third leaf.
 const twoLeaves: PaneNode = {
    kind: 'split', orientation: 'h', ratio: 0.5,
    children: [{ kind: 'leaf', paneId: 'wysiwyg' }, { kind: 'leaf', paneId: 'markdown' }],

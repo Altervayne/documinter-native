@@ -25,8 +25,7 @@ function section(id: string, blocks: Block[]): Section {
    return { id, title: id, collapsed: false, blocks }
 }
 
-// A synthetic height oracle: uniform section title height, per-block heights, per-list item heights,
-// and per-paragraph rendered lines.
+// A synthetic height oracle: title height, per-block, per-list-item, and per-paragraph line heights.
 function metricsFrom(spec: {
    headerHeight?:   number
    titleHeight?:    number
@@ -193,13 +192,11 @@ describe('paginate — paragraph splitting', () => {
          { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 },
          { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
       ]
-      // Held atomic: it uses blockHeight('P') (one whole unit) instead of its per-line channel, so it
-      // is never split, only placed or moved whole.
+      // Held atomic: it uses blockHeight('P') not its per-line channel, so it is never split.
       const metrics = metricsFrom({ titleHeight: 10, blockHeights: { P: 50 }, paragraphLines: { P: lines } })
       const pages = paginate(sections, [], 100, metrics, allParagraphIds(sections))
       expect(pages).toHaveLength(1)
       expect(pages[0].slices[0].blocks).toHaveLength(1)
-      // The model block is placed as-is, carrying no fragment tag and its full richText.
       expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
       expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(40) }])
    })
@@ -210,8 +207,8 @@ describe('paginate — paragraph splitting', () => {
       const pages = paginate(sections, [], 100, metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } }))
       expect(pages).toHaveLength(1)
       expect(pages[0].slices[0].blocks).toHaveLength(1)
-      // No split happened, so the ORIGINAL block is placed: no fragment tag, full richText. This is what
-      // keeps a whole paragraph rendering as an editable block instead of a read-only fragment.
+      // No split, so the ORIGINAL block is placed (no fragment tag): this keeps a whole paragraph an
+      // editable block, not a read-only fragment.
       expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
       expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(20) }])
    })
@@ -264,8 +261,8 @@ describe('paginate — paragraph splitting', () => {
    })
 
    it('rejects paragraph lines whose total no longer matches the model (an edit landed since measure)', () => {
-      // The measurement ended at char 40 but the model now holds 30 chars, so the lines predate the
-      // current text: the paragraph must stay whole until it is re-measured.
+      // The lines end at char 40 but the model now holds 30 chars, so they predate the current text:
+      // the paragraph stays whole until re-measured.
       const paragraph: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(30) }] }
       const sections = [section('S', [paragraph])]
       const staleLines: ParagraphLine[] = [{ height: 30, charEnd: 20 }, { height: 30, charEnd: 40 }]
@@ -276,12 +273,8 @@ describe('paginate — paragraph splitting', () => {
       expect(buildMetrics(heights, sections).paragraphLines('P')).toBeNull()
    })
 
-   // The editor (atomic set = the focused id, or none at rest) and the export (atomic set = none, always
-   // split) both paginate from the SAME measured lines. So a split-at-rest paragraph the editor shows
-   // across two pages must land the identical split in the export set, byte for byte. This pins the
-   // parity the PDF depended on: given the line data is present, exportPages splits exactly like the
-   // editor. (The remaining half of the bug was keeping that line data present at print time; see the
-   // reconcileParagraphLines retention tests below and the App-side print flush.)
+   // Editor at rest and export both paginate with an empty atomic set from the same measured lines, so
+   // a paragraph the editor splits across two pages must land the identical split in the export.
    it('splits a paragraph identically in the editor (at rest) and the export atomic sets', () => {
       const sections = [section('S', [paragraphBlock('P', 40)])]
       const lines: ParagraphLine[] = [
@@ -289,21 +282,18 @@ describe('paginate — paragraph splitting', () => {
          { height: 30, charEnd: 30 }, { height: 30, charEnd: 40 },
       ]
       const metrics = metricsFrom({ titleHeight: 10, blockHeights: {}, paragraphLines: { P: lines } })
-      // Editor at rest holds NO paragraph atomic (only a FOCUSED one would be, and none is here); export
-      // always holds none. Same empty set both times, so the two layouts must be identical.
+      // Same empty atomic set both times (nothing focused, export always empty), so the layouts match.
       const editorAtRest = paginate(sections, [], 100, metrics, new Set<string>())
       const exportLayout = paginate(sections, [], 100, metrics, new Set<string>())
       expect(shape(exportLayout)).toEqual(shape(editorAtRest))
-      // And it is a real two-page split, not a whole placement.
       expect(exportLayout).toHaveLength(2)
       expect(fragmentOf(exportLayout[0].slices[0].blocks[0])).toEqual({ charStart: 0, charEnd: 30, isTail: false })
       expect(fragmentOf(exportLayout[1].slices[0].blocks[0])).toEqual({ charStart: 30, charEnd: 40, isTail: true })
    })
 
    it('would keep the paragraph whole (no split) when its measured lines are missing', () => {
-      // The failure mode the retention fix guards against: if the lines are dropped from measuredHeights,
-      // paragraphLines is null and the paragraph is placed whole (atomic), which in the paged PDF clips
-      // its overflow. This documents WHY the lines must be retained through every re-measure.
+      // If the lines drop from measuredHeights, paragraphLines is null and the paragraph is placed whole,
+      // which clips its overflow in the paged PDF: the lines must survive every re-measure.
       const sections = [section('S', [paragraphBlock('P', 40)])]
       const metrics = metricsFrom({ titleHeight: 0, blockHeights: { P: 250 }, paragraphLines: {} })
       const pages = paginate(sections, [], 100, metrics, new Set<string>())
@@ -313,8 +303,7 @@ describe('paginate — paragraph splitting', () => {
 })
 
 describe('paginate — split block margin accounting', () => {
-   // A `p` block whose richText is `length` chars long (mirrors the helper in the paragraph-splitting
-   // block above; kept local so this describe block reads standalone).
+   // A `p` block whose richText is `length` chars long.
    function paragraphBlock(id: string, length: number): Block {
       return { id, type: 'p', richText: [{ text: 'x'.repeat(length) }] }
    }
@@ -322,11 +311,9 @@ describe('paginate — split block margin accounting', () => {
       return candidate?.paragraphFragment
    }
 
-   // The bug: a splittable paragraph's own bottom margin (blockHeight minus its line sum) was dropped
-   // from `used` whenever the paragraph landed WHOLE (not split), so a following block that should have
-   // been pushed off the page stayed put, overrunning the sheet by that margin. Here the paragraph's
-   // lines sum to 50 but its measured whole height is 60 (a 10px margin); a budget of 90 exactly fits
-   // 50 + 40, but only the margin-blind accounting would let NEXT stay on page 1.
+   // A whole-placed splittable paragraph must still spend its own bottom margin against the next block.
+   // Its lines sum to 50 but the measured whole height is 60 (a 10px margin); at budget 90, margin-blind
+   // accounting would wrongly keep NEXT on page 1.
    it('counts a whole-placed paragraph own margin against a following block', () => {
       const sections = [section('S', [paragraphBlock('P', 50), block('NEXT')])]
       const lines: ParagraphLine[] = [{ height: 50, charEnd: 50 }]
@@ -340,10 +327,8 @@ describe('paginate — split block margin accounting', () => {
       expect(isAutoPageId(pages[1].id)).toBe(true)
    })
 
-   // The margin-accounting fix must make a WHOLE-placed splittable paragraph spend its full blockHeight,
-   // exactly like the atomic branch: two paragraphs whose line sums both fit comfortably (30 + 30 = 60)
-   // still cannot share a page once their measured (margin-inclusive) heights are counted (40 + 30 = 70
-   // > the 65 budget), so the second is pushed to its own page.
+   // A whole-placed splittable paragraph spends its full blockHeight, like the atomic branch: line sums
+   // 30 + 30 = 60 fit, but the measured 40 + 30 = 70 > the 65 budget, so the second is pushed off.
    it('spends a whole-placed splittable paragraph full blockHeight, not just its line sum', () => {
       const sections = [section('S', [paragraphBlock('P1', 30), paragraphBlock('P2', 30)])]
       const linesP1: ParagraphLine[] = [{ height: 30, charEnd: 30 }]
@@ -355,14 +340,13 @@ describe('paginate — split block margin accounting', () => {
       expect(pages).toHaveLength(2)
       expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P1'])
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['P2'])
-      // Both placed whole (untagged), never split: the margin fix only changes `used` accounting, not
-      // whether a fitting paragraph gets tagged as a fragment.
+      // Both placed whole, never split: the margin fix changes `used` accounting, not fragment tagging.
       expect(fragmentOf(pages[0].slices[0].blocks[0])).toBeUndefined()
       expect(fragmentOf(pages[1].slices[0].blocks[0])).toBeUndefined()
    })
 
-   // The analogous list case: two items summing to 50 but a measured whole blockHeight of 60 (a 10px
-   // margin). A budget of 80 exactly fits 50 + 30, but only margin-blind accounting would let NEXT stay.
+   // The list analogue: items sum to 50 but the measured whole height is 60 (a 10px margin). At budget
+   // 80, margin-blind accounting would wrongly keep NEXT on page 1.
    it('counts a whole-placed list own margin against a following block', () => {
       const sections = [section('S', [listBlock('L', 2), block('NEXT')])]
       const metrics = metricsFrom({
@@ -386,8 +370,8 @@ describe('reconcileParagraphLines', () => {
    })
 
    it('carries the previous lines forward when a paragraph has no fresh measurement (split at rest)', () => {
-      // A split paragraph renders as read-only fragments with no measurable [data-rich], so no fresh
-      // lines this pass; its last whole-render lines must survive so the export still splits it.
+      // A split paragraph renders as fragments with no measurable [data-rich], so no fresh lines this
+      // pass; its last whole-render lines must survive so the export still splits it.
       const result = reconcileParagraphLines(['P'], new Map(), new Map([['P', linesA]]))
       expect(result.get('P')).toBe(linesA)
    })
@@ -398,8 +382,7 @@ describe('reconcileParagraphLines', () => {
    })
 
    it('does not drop lines on a transient zero-line measurement (treated as no fresh data, carried)', () => {
-      // The old code set nothing AND skipped the carry-forward when a whole render measured zero line
-      // boxes, silently wiping good data. An empty fresh entry must fall back to the carried lines.
+      // A transient zero-line measurement must fall back to the carried lines, not wipe them.
       const result = reconcileParagraphLines(['P'], new Map([['P', []]]), new Map([['P', linesA]]))
       expect(result.get('P')).toBe(linesA)
    })
@@ -448,11 +431,10 @@ describe('paginate — explicit breaks still win', () => {
 })
 
 describe('contentBoxWidthPx — width-parity guard', () => {
-   // The whole editor/export convergence rests on the offscreen export measurement wrapping text at the
-   // SAME width the paged sheet renders at. The real paged sheet is A4_*_WIDTH_PX wide (border-box) with
-   // the left/right margins applied as `.doc-render` padding, so its content box is sheetWidth minus the
-   // horizontal margins. contentBoxWidthPx is the ONE source both the measurement (exportLayout) and this
-   // formula read; if they ever drift, editor and export silently disagree at a seam. These pin them.
+   // Editor/export convergence rests on the offscreen measurement wrapping text at the SAME width the
+   // paged sheet renders at: the sheet is A4_*_WIDTH_PX (border-box) with margins as `.doc-render`
+   // padding, so its content box is sheetWidth minus the horizontal margins. contentBoxWidthPx is the
+   // ONE source both the measurement and this formula read; these pin them so they cannot drift.
 
    it('returns the a4-portrait sheet width minus the horizontal margins', () => {
       const margins = { top: 15, right: 25, bottom: 15, left: 30 }
@@ -542,7 +524,6 @@ describe('paginate — multi-section flow', () => {
 })
 
 describe('paginate — keep-with-next', () => {
-   // 1. A heading that fits alone at a page bottom is still moved when its body cannot follow it there.
    it('keeps a heading with its first block instead of orphaning it at a page bottom', () => {
       const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }, { height: 20, charEnd: 30 }]
@@ -556,7 +537,6 @@ describe('paginate — keep-with-next', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
    })
 
-   // 2. A section's own title is a keeper too: it must never be stranded from the section's first block.
    it('keeps a section title with its first block when the pair cannot fit under existing content', () => {
       const sections = [section('S1', [block('A')]), section('S2', [block('H', 'h3'), block('P', 'p')])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
@@ -572,7 +552,6 @@ describe('paginate — keep-with-next', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
    })
 
-   // 3. A run of consecutive headings keeps as one cluster with the first real atom under it.
    it('moves a chained heading cluster together with the first atom of its body', () => {
       const sections = [section('S', [block('F'), block('H3', 'h3'), block('H4', 'h4'), block('P', 'p')])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
@@ -586,7 +565,6 @@ describe('paginate — keep-with-next', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H3', 'H4', 'P'])
    })
 
-   // 4. When the companion is an atomic block taller than a page, a break cannot help, so none is taken.
    it('does not break for an unsatisfiable giant companion (leaves the heading where it sits)', () => {
       const sections = [section('S', [block('F'), block('H', 'h3'), block('BIG', 'table')])]
       const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 50, H: 20, BIG: 250 } })
@@ -598,7 +576,6 @@ describe('paginate — keep-with-next', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['BIG'])
    })
 
-   // 5. An explicit break pinned right after a heading wins: keep-with-next reserves nothing there.
    it('lets a forced break after a heading suppress keep-with-next', () => {
       const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }]
@@ -615,7 +592,6 @@ describe('paginate — keep-with-next', () => {
       expect(isAutoPageId(pages[1].id)).toBe(false)
    })
 
-   // 6. Title keep-with-next fires even when the title ALONE would have fit under existing content.
    it('breaks for a section title whose first block will not follow, though the title alone fits', () => {
       const sections = [section('S1', [block('A')]), section('S2', [block('B')])]
       const metrics = metricsFrom({ titleHeight: 30, blockHeights: { A: 40, B: 40 } })
@@ -628,7 +604,6 @@ describe('paginate — keep-with-next', () => {
       ])
    })
 
-   // 7. Editor at rest and export share the exact reservation, so a heading cluster lays out identically.
    it('lays out a heading cluster identically for the editor at rest and the export atomic set', () => {
       const sections = [section('S', [block('F'), block('H', 'h3'), block('P', 'p')])]
       const lines: ParagraphLine[] = [{ height: 20, charEnd: 10 }, { height: 20, charEnd: 20 }, { height: 20, charEnd: 30 }]
@@ -640,7 +615,6 @@ describe('paginate — keep-with-next', () => {
       expect(exportLayout[1].id).toBe(`${AUTO_PAGE_PREFIX}H`)
    })
 
-   // 8. Regression: a non-heading keeper reserves nothing, so plain atomic placement is byte-identical.
    it('leaves non-heading atomic placement byte-identical (no keep-with-next reservation)', () => {
       const sections = [section('S', [block('A'), block('B'), block('C')])]
       const metrics = metricsFrom({ titleHeight: 10, blockHeights: { A: 40, B: 40, C: 40 } })
@@ -661,8 +635,8 @@ describe('paginate — keep-together', () => {
       return held ? { ...base, keepTogether: true } : base
    }
 
-   // A held paragraph uses its whole `blockHeight` and never its per-line channel, even in the export
-   // atomic set (empty), so keepTogether alone holds it whole.
+   // A held paragraph uses its whole `blockHeight`, never its per-line channel, so keepTogether alone
+   // holds it whole even with an empty export atomic set.
    it('places a keepTogether paragraph whole instead of splitting it', () => {
       const sections = [section('S', [paragraph('P', 40, true)])]
       const lines: ParagraphLine[] = [
@@ -673,7 +647,6 @@ describe('paginate — keep-together', () => {
       const pages = paginate(sections, [], 100, metrics)
       expect(pages).toHaveLength(1)
       expect(pages[0].slices[0].blocks).toHaveLength(1)
-      // Placed as-is: no fragment tag, full richText.
       expect(pages[0].slices[0].blocks[0].paragraphFragment).toBeUndefined()
       expect(pages[0].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(40) }])
    })
@@ -713,8 +686,8 @@ describe('paginate — keep-together', () => {
    it('places a keepTogether list whole instead of splitting it at an item boundary', () => {
       const held: Block = { ...listBlock('L', 4), keepTogether: true }
       const sections = [section('S', [held])]
-      // The whole-list height is measured on the block itself (blockHeight), so a held list lands via the
-      // atomic path; its per-item heights (which would otherwise split it 3 / 1) are ignored.
+      // The whole-list height is measured on the block (blockHeight), so a held list lands via the
+      // atomic path; its per-item heights (which would split it 3 / 1) are ignored.
       const metrics = metricsFrom({ titleHeight: 10, blockHeights: { L: 60 }, listItems: { L: [30, 30, 30, 30] } })
       const pages = paginate(sections, [], 100, metrics)
       expect(pages).toHaveLength(1)
@@ -731,8 +704,8 @@ describe('paginate — keep-together', () => {
       expect(pages[1].slices[0].blocks[0].items?.length).toBe(1)
    })
 
-   // A held block that is a heading's companion must reserve its WHOLE height in keep-with-next: a held
-   // block can never be placed in pieces, so a first-line reservation would strand the heading.
+   // A held heading companion must reserve its WHOLE height in keep-with-next: it can never be placed in
+   // pieces, so a first-line reservation would strand the heading.
    it('reserves a keepTogether companion whole height in keep-with-next', () => {
       const held = paragraph('P', 30, true)
       const sections = [section('S', [block('F'), block('H', 'h3'), held])]
@@ -748,8 +721,8 @@ describe('paginate — keep-together', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['H', 'P'])
    })
 
-   // The contrast to the test above: the SAME layout with an unheld companion leaves the heading in place
-   // (H + its first two lines fit), proving the whole-height reservation is what moves the cluster.
+   // Contrast the test above: the SAME layout with an unheld companion leaves the heading in place (H +
+   // its first two lines fit), proving the whole-height reservation is what moves the cluster.
    it('leaves the heading in place when the same companion is not held (contrast)', () => {
       const unheld = paragraph('P', 30)
       const sections = [section('S', [block('F'), block('H', 'h3'), unheld])]
@@ -779,8 +752,8 @@ describe('findTooTallPageIds', () => {
       return { id, origin: 'continuation', slices: [{ section: section('S', []), blocks, isSectionStart: false, isSectionEnd: true }] }
    }
 
-   // A spanning paragraph renders as same-id fragments; each fragment carries the WHOLE paragraph height in
-   // blockById. It reflows on its own, so no fragment page is ever flagged (the every-page-warning bug).
+   // A spanning paragraph renders as same-id fragments, each carrying the WHOLE paragraph height in
+   // blockById. It reflows on its own, so no fragment page is ever flagged.
    it('never flags a splittable paragraph that spans several pages', () => {
       const fragment: Block = { id: 'P', type: 'p', paragraphFragment: { charStart: 0, charEnd: 20, isTail: false }, richText: [{ text: 'x'.repeat(20) }] }
       const pages = [soleBlockPage('page-a', [fragment]), soleBlockPage('page-b', [fragment]), soleBlockPage('page-c', [fragment])]
@@ -795,8 +768,8 @@ describe('findTooTallPageIds', () => {
       expect(tooTall.size).toBe(0)
    })
 
-   // The author pinned the paragraph whole with keepTogether: now it is atomic and CAN overflow one sheet,
-   // so a genuinely oversized held paragraph is the one case that still warrants the note.
+   // A keepTogether paragraph is atomic and CAN overflow one sheet, so a genuinely oversized held
+   // paragraph is the one case that still warrants the note.
    it('flags a keepTogether paragraph taller than the content box', () => {
       const held: Block = { id: 'P', type: 'p', keepTogether: true, richText: [{ text: 'x'.repeat(40) }] }
       const tooTall = findTooTallPageIds([soleBlockPage('page-a', [held])], heightsFor({ P: 260 }), CONTENT_BOX)
@@ -817,7 +790,6 @@ describe('findTooTallPageIds', () => {
       expect(tooTall.size).toBe(0)
    })
 
-   // An atomic block that fits the sheet is not flagged.
    it('does not flag an atomic block that fits', () => {
       const tooTall = findTooTallPageIds([soleBlockPage('page-a', [block('IMG', 'image')])], heightsFor({ IMG: 80 }), CONTENT_BOX)
       expect(tooTall.size).toBe(0)
@@ -831,8 +803,8 @@ describe('paginate — keep-with-next (manual flag)', () => {
    }
    const shortLines: ParagraphLine[] = [{ height: 10, charEnd: 5 }, { height: 10, charEnd: 10 }]
 
-   // 1. A short flagged paragraph fits under existing content, but its companion would not follow it there,
-   // so the pre-check moves the paragraph WHOLE (untagged) to a fresh page where the pair fits together.
+   // The paragraph fits under existing content, but its companion would not follow it there, so the
+   // pre-check moves the paragraph WHOLE (untagged) to a fresh page where the pair fits together.
    it('moves a flagged short paragraph whole to a fresh page so its companion can follow', () => {
       const sections = [section('S', [block('F'), keeperParagraph('P', 10), block('C')])]
       // page 1: F(60), remaining 40. P fits whole (20), but P(20) + firstAtom(C)=30 => 50 > 40, so the pair
@@ -848,8 +820,8 @@ describe('paginate — keep-with-next (manual flag)', () => {
       expect(pages[1].slices[0].blocks[0].richText).toEqual([{ text: 'x'.repeat(10) }])
    })
 
-   // 2. A flagged ATOMIC block (no line / item channel) reserves its companion through the atomic branch,
-   // not the pre-check: the same pinning result, but via `need = height + keepWith` in the atomic path.
+   // A flagged ATOMIC block (no line / item channel) reserves its companion through the atomic branch,
+   // not the pre-check: same pinning result, via `need = height + keepWith` in the atomic path.
    it('reserves a companion for a flagged atomic block through the atomic branch', () => {
       const flaggedTable: Block = { id: 'A', type: 'table', keepWithNext: true }
       const sections = [section('S', [block('F'), flaggedTable, block('C')])]
@@ -863,8 +835,8 @@ describe('paginate — keep-with-next (manual flag)', () => {
       expect(pages[1].slices[0].blocks.map(candidate => candidate.id)).toEqual(['A', 'C'])
    })
 
-   // 3. An explicit break pinned right after the flagged block wins: the call-site short-circuit sets
-   // keepWith to 0, so keep-with-next reserves nothing and the author break fires as written.
+   // An explicit break right after the flagged block wins: the call-site short-circuit sets keepWith to
+   // 0, so keep-with-next reserves nothing and the author break fires as written.
    it('is inert when an explicit break sits after the flagged block', () => {
       const sections = [section('S', [block('F'), keeperParagraph('P', 10), block('C')])]
       const forced = [{ id: 'brk', after: { sectionId: 'S', blockId: 'P' } }]
@@ -879,7 +851,7 @@ describe('paginate — keep-with-next (manual flag)', () => {
       expect(isAutoPageId(pages[1].id)).toBe(false)
    })
 
-   // 4. The flag on the flow's LAST block is inert: trailingKeepHeight past the end is 0, so keepWith is 0.
+   // The flag on the flow's LAST block is inert: trailingKeepHeight past the end is 0, so keepWith is 0.
    it('is inert on the last block of the flow (nothing follows to keep with)', () => {
       const sections = [section('S', [block('F'), keeperParagraph('P', 10)])]
       const metrics = metricsFrom({ titleHeight: 0, blockHeights: { F: 60, P: 20 }, paragraphLines: { P: shortLines } })
@@ -889,7 +861,7 @@ describe('paginate — keep-with-next (manual flag)', () => {
       expect(pages[0].slices[0].blocks.map(candidate => candidate.id)).toEqual(['F', 'P'])
    })
 
-   // 5. Regression: the SAME layout without the flag leaves the paragraph where it fits, so C alone spills.
+   // Without the flag the SAME layout leaves the paragraph where it fits, so C alone spills.
    it('leaves the same paragraph unaffected without the flag', () => {
       const plain: Block = { id: 'P', type: 'p', richText: [{ text: 'x'.repeat(10) }] }
       const sections = [section('S', [block('F'), plain, block('C')])]
@@ -902,8 +874,8 @@ describe('paginate — keep-with-next (manual flag)', () => {
       ])
    })
 
-   // 6. A flagged paragraph long enough to genuinely split still splits (best-effort): when the whole block
-   // plus its companion cannot fit ANY fresh page, the pre-check declines and the split loop runs as usual.
+   // A flagged paragraph long enough to genuinely split still splits: when the whole block plus its
+   // companion cannot fit ANY fresh page, the pre-check declines and the split loop runs as usual.
    it('still splits a flagged paragraph too tall to keep with its companion on one page', () => {
       const longLines: ParagraphLine[] = [
          { height: 30, charEnd: 10 }, { height: 30, charEnd: 20 }, { height: 30, charEnd: 30 },

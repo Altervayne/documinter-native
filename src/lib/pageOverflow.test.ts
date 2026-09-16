@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { computeOverflowCut, OVERFLOW_TOLERANCE_PX } from './pageOverflow'
 
 // ############################################################
-//  computeOverflowCut, the pure cut-point decision. The DOM layer (usePageOverflow) feeds it the
-//  ORDERED measured heights of a page's top-level blocks + the available content height; it returns
-//  where the page should be split (break after the last fitting block) or flags an un-splittable
-//  too-tall block. No DOM, no model, index math only.
+//  computeOverflowCut: the pure cut-point decision. Given a page's ORDERED block heights and the
+//  available content height, it returns where to split (after the last fitting block) or flags an
+//  un-splittable too-tall block. Index math only, no DOM.
 // ############################################################
 
 describe('computeOverflowCut', () => {

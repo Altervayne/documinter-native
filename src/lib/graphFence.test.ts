@@ -760,10 +760,9 @@ describe('Graph fence, scatter type (x/y point pairs)', () => {
       expect(reparsedFromMarkdown.graph).toEqual(spec)
    })
 
-   // Overlays live on `options.overlays`, which is shared, type-agnostic serialization (the SAME
-   // repeated `overlay=` token grammar every other graph type uses), the `series` index just
-   // resolves against `scatterPlot.series` at render time, so no scatter-specific fence work was
-   // needed for this. Verified end to end here regardless.
+   // Overlays live on `options.overlays`, shared type-agnostic serialization (the SAME repeated
+   // `overlay=` token grammar every other graph type uses); the `series` index resolves against
+   // `scatterPlot.series` at render time.
    it('round-trips mean / trend / reference overlays on a scatter spec', () => {
       const spec: GraphSpec = {
          type: 'scatter',

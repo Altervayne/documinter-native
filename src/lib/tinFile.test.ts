@@ -82,8 +82,8 @@ describe('serializeTin / parseTin', () => {
    })
 })
 
-// The gzip helpers lean on the Web Streams codec globals. They are expected in the Node 22 runner;
-// if a stripped environment lacks them, skip only these cases (never delete them) with a clear note.
+// The gzip helpers need the Web Streams codec globals; skip these cases where a stripped runtime
+// lacks them.
 const hasCompression = typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined'
 const gzipDescribe = hasCompression ? describe : describe.skip
 if (!hasCompression) {

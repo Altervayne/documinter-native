@@ -45,7 +45,7 @@ function assertInvariants(layout: DockLayout): void {
    }
 }
 
-// A convenient starting point: Structure alone in the left dock.
+// Structure alone in the left dock.
 function defaultLayout(): DockLayout {
    return createDefaultDockLayout('group-structure')
 }

@@ -83,7 +83,6 @@ describe('partitionIntoPages', () => {
    })
 
    it('splits mid-section at a break after a block inside the section', () => {
-      // break after 'b': page 1 ends after b, page 2 begins at c.
       const pages = partitionIntoPages(SECTIONS, [breakAfter('brk', 's1', 'b')])
       expect(shape(pages)).toEqual([
          { id: FIRST_PAGE_ID, blocks: ['a', 'b'] },

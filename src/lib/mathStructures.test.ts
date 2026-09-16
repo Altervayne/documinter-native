@@ -34,7 +34,6 @@ describe('buildMatrixLatex', () => {
       expect(latex).toContain('a & b')
       expect(latex).toContain('c & d')
       expect(latex).toContain(ROW_BREAK)
-      // One row break between two rows.
       expect(latex.split(ROW_BREAK).length - 1).toBe(1)
    })
 

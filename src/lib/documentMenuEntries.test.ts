@@ -8,12 +8,11 @@ import { ACCENT_PRESETS } from './constants'
 const t = translations.en
 
 // ==========================================================
-//  A label + order projection: the exact contract both surfaces (the top-bar Document dropdown and
-//  the document-background context menu) must render identically. Items collapse to their label,
-//  separators / headers to a stable tag, and the accent section (a nameless swatch grid, no
-//  per-color labels to compare) to a summary of its preset hexes + whether a custom tile is wired,
-//  icons, onSelect identity, and swatch "active" state are deliberately ignored, so two surfaces
-//  wiring DIFFERENT opener closures still project equal iff the shared builder kept order in lockstep.
+//  A label + order projection: the exact contract both surfaces (top-bar Document dropdown and
+//  document-background context menu) must render identically. Items collapse to their label,
+//  separators / headers to a stable tag, the accent section to its preset hexes + whether a custom
+//  tile is wired. Icons, onSelect identity, and swatch "active" state are ignored, so two surfaces
+//  wiring different opener closures still project equal iff the shared builder kept order in lockstep.
 // ==========================================================
 function project(entries: ContextMenuEntry[]): string[] {
    return entries.map(entry => {

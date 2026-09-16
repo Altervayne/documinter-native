@@ -10,8 +10,8 @@ import {
    type UndoHistory,
 } from './undoHistory'
 
-// A minimal snapshot tagged by a marker so tests can assert which slice was restored. The real slice
-// fields are irrelevant to the reducer, which treats a snapshot as an opaque value.
+// A snapshot tagged by a marker so tests can assert which slice was restored; the reducer treats a
+// snapshot as opaque.
 function snap(marker: string): DocSnapshot {
    return {
       meta:      { title: marker, fields: [] },

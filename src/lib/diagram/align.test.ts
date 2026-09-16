@@ -1,10 +1,6 @@
 /**
- * align.test.ts, unit coverage for the PURE multi-select geometry in `lib/diagram/align.ts`.
- *
- * Mirrors the `edit.test.ts` style (a `node` / `spec` / `box` factory + happy / no-op / threshold /
- * edge-case blocks per function): equal-spacing snap detection, marquee hit-test, align / distribute,
- * and the group-translate primitive are each proven here without a DOM, since the editor component is
- * thin glue over them.
+ * Pure multi-select geometry for the diagram editor: equal-spacing snap detection, marquee hit-test,
+ * align / distribute, and the group-translate primitive. All proven without a DOM.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -115,9 +111,9 @@ describe('computeSpacingSnaps', () => {
 
 describe('nodesInRect', () => {
    const nodes = [
-      node('inside',  { x: 20,  y: 20,  width: 40, height: 40 }),  // fully within the marquee
+      node('inside',  { x: 20,  y: 20,  width: 40, height: 40 }),
       node('partial', { x: 90,  y: 90,  width: 60, height: 60 }),  // straddles the marquee edge
-      node('outside', { x: 500, y: 500, width: 40, height: 40 }),  // clear of the marquee
+      node('outside', { x: 500, y: 500, width: 40, height: 40 }),
    ]
 
    it('grabs fully-inside and partially-overlapping nodes, misses the far one', () => {
@@ -193,7 +189,7 @@ describe('alignNodes', () => {
 
    it('leaves a non-selected node untouched', () => {
       const result = alignNodes(nodes, new Set(['a', 'c']), 'left')
-      expect(result.find(single => single.id === 'b')).toBe(nodes[1]) // same reference, unchanged
+      expect(result.find(single => single.id === 'b')).toBe(nodes[1])
       expect(result.find(single => single.id === 'a')!.x).toBe(0)
       expect(result.find(single => single.id === 'c')!.x).toBe(0)
    })
@@ -256,7 +252,7 @@ describe('distributeNodes', () => {
          node('d', { x: 999, y: 0, width: 100, height: 40 }),
       ]
       const result = distributeNodes(nodes, new Set(['a', 'b', 'c']), 'horizontal')
-      expect(result.find(single => single.id === 'd')).toBe(nodes[3]) // same reference
+      expect(result.find(single => single.id === 'd')).toBe(nodes[3])
    })
 
    it('is a no-op with fewer than three selected', () => {
@@ -279,7 +275,7 @@ describe('translateNodes', () => {
       const result = translateNodes(nodes, new Set(['a', 'c']), 15.6, -4.2)
       expect(result.find(single => single.id === 'a')).toMatchObject({ x: 56, y: 36 })
       expect(result.find(single => single.id === 'c')).toMatchObject({ x: 416, y: 36 })
-      expect(result.find(single => single.id === 'b')).toBe(nodes[1]) // untouched, same reference
+      expect(result.find(single => single.id === 'b')).toBe(nodes[1])
    })
 
    it('is an identity map (per node) with an empty selection', () => {

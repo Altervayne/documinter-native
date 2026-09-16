@@ -1,10 +1,7 @@
 /**
- * edit.test.ts, unit coverage for the PURE node-editor transforms in `lib/diagram/edit.ts`.
- *
- * These mirror the image-markup + graph edit-layer test suites: every transform is exercised for the
- * happy path, the no-op (absent id) path, and the geometric edge cases (resize flooring, handle
- * hit-test tolerance, pointer-to-unit mapping, delete-cascades-edges). The editor component is thin glue
- * over these, so proving them here proves the interaction math without a DOM.
+ * Pure node-editor transforms for the diagram editor: node/edge CRUD, drag/resize with min-size
+ * flooring, handle and port hit-testing, pointer-to-unit mapping, the view transform, and snapping.
+ * Delete cascades to incident edges. All proven without a DOM.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -143,7 +140,7 @@ describe('moveNode', () => {
       const base = spec([node('a', { x: 40, y: 40 }), node('b', { x: 200, y: 40 })])
       const next = moveNode(base, 'a', 15.6, -4.2)
       expect(findNode(next, 'a')).toMatchObject({ x: 56, y: 36, width: 120, height: 56 })
-      expect(findNode(next, 'b')).toMatchObject({ x: 200, y: 40 }) // untouched
+      expect(findNode(next, 'b')).toMatchObject({ x: 200, y: 40 })
    })
 
    it('no-ops an absent id', () => {

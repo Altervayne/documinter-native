@@ -199,8 +199,7 @@ describe('normalizePresentation', () => {
       expect(inRange?.watermark?.offsetX).toBe(-120)
       expect(inRange?.watermark?.offsetY).toBe(250)
 
-      // An old backup file, saved before offsetX/offsetY existed, has neither field, normalize
-      // must default them rather than carrying through `undefined`, so old docs stay safe.
+      // An old backup with neither offsetX/offsetY must default them, not carry through `undefined`.
       const preOffsetDoc = normalizePresentation({
          watermark: { src: 'data:img', rotation: 10, tileSize: 100, spacingX: 5, spacingY: 5, aspectRatio: 1 },
       })
@@ -385,10 +384,9 @@ describe('applyLinkedWatermarkSpacing', () => {
    })
 })
 
-// watermarkTransform is the SINGLE (non-tiled) case's shared transform builder, used by both the
-// editor render (WysiwygArea) and export.ts's renderWatermarkLayer, so both surfaces compose the
-// offset + rotation identically. The byte-identical guarantee lives here: offset 0,0 must degrade
-// to the bare pre-offset `rotate(...)` string, never emit an inert `translate(0px, 0px)`.
+// watermarkTransform is the shared (non-tiled) transform builder for both the editor render and
+// export, so they compose offset + rotation identically. Offset 0,0 must degrade to a bare
+// `rotate(...)`, never an inert `translate(0px, 0px)`, to stay byte-identical to the pre-offset output.
 describe('watermarkTransform', () => {
    it('degrades to a bare rotate() when both offsets are 0 (the default), byte-identical guarantee', () => {
       expect(watermarkTransform({ ...BASE_WATERMARK, rotation: 25, offsetX: 0, offsetY: 0 })).toBe('rotate(25deg)')
@@ -440,9 +438,6 @@ describe('resolveWatermarkPatternGeometry', () => {
       expect(geometry.imageY).toBe(15)
    })
    it('clamps out-of-range tileSize / spacing / aspectRatio before computing geometry', () => {
-      // tileSize clamps to WATERMARK_MAX_TILE_SIZE, aspectRatio clamps to WATERMARK_MAX_ASPECT_RATIO,
-      // so imageHeight = imageWidth / aspectRatio; spacingX clamps to WATERMARK_MIN_SPACING, spacingY
-      // clamps to WATERMARK_MAX_SPACING.
       const geometry = resolveWatermarkPatternGeometry({ ...BASE_WATERMARK, tileSize: 99999, spacingX: -10, spacingY: 99999, aspectRatio: 999 })
       expect(geometry.imageWidth).toBe(WATERMARK_MAX_TILE_SIZE)
       expect(geometry.imageHeight).toBe(WATERMARK_MAX_TILE_SIZE / WATERMARK_MAX_ASPECT_RATIO)

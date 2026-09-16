@@ -44,7 +44,7 @@ describe('pointerToNormalized', () => {
    })
 
    it('rounds to the model coordinate precision (4 dp)', () => {
-      // 350/1000 = 0.35 exactly; 133/1000 offset gives a clean fraction. Use an awkward pixel to force rounding.
+      // 333/1000 = 0.333, an awkward offset that forces the 4-dp rounding.
       const point = pointerToNormalized(100 + 333, 50, RECT)
       expect(point.x).toBe(0.333)
    })

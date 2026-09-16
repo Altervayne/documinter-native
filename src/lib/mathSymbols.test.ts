@@ -7,8 +7,8 @@ import {
 import type { MathSymbolCategoryKey } from './mathSymbols'
 import { translations } from './i18n'
 
-// The palette maps each category key to an i18n label string via this key template.
-// Keeping the map here (rather than importing the component) keeps this a pure-data test.
+// Map each category key to its i18n label key here, not imported from the component, to keep this
+// a pure-data test.
 const CATEGORY_LABEL_KEYS: Record<MathSymbolCategoryKey, keyof typeof translations.en> = {
    greek:            'blockMathCategoryGreek',
    operators:        'blockMathCategoryOperators',

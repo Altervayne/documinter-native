@@ -1,11 +1,9 @@
 /*
- * Unit coverage for the document paginator's PURE surface. What this file can honestly assert is limited
- * on purpose: jsdom has no layout engine, so every getBoundingClientRect / getClientRects returns zeros
- * and the measured heights that drive real pagination are meaningless here. The pagination itself (how a
- * measured document splits into sheets, which page trips the too-tall note) is therefore verified LIVE in
- * a real browser, not in vitest. What IS pure and worth pinning here: the signature that keys the memo
- * (identical inputs must share a key, height-affecting edits must not), and the early-return contract for
- * non-paged documents (an infinite or format-less document paginates to nothing without touching the DOM).
+ * Unit coverage for the document paginator's PURE surface. jsdom has no layout engine, so measured
+ * heights are meaningless here and the real split-into-sheets is verified LIVE in a browser. What IS
+ * pure and pinned here: the memo signature (identical inputs share a key, height-affecting edits do
+ * not) and the early-return for non-paged documents (infinite or format-less paginates to nothing
+ * without touching the DOM).
  */
 
 import { describe, expect, it } from 'vitest'

@@ -26,9 +26,8 @@ describe('Markdown freeform metadata', () => {
    })
 })
 
-// Markdown round-trips the lossless subset (everything except containers). Image src/alt and
-// caption/align/height all survive, verified against the serializer's comment-based attribute
-// emission, so the fixture keeps the image; only containers are excluded.
+// Everything except containers round-trips losslessly (image src/alt, caption, align, height all
+// survive), so the fixture keeps the image and drops only the containers.
 
 describe('Markdown round-trip (lossless subset)', () => {
    it('is identical after serialize → parse → serialize for the container-free fixture', () => {
@@ -40,8 +39,7 @@ describe('Markdown round-trip (lossless subset)', () => {
    })
 })
 
-// A minimal Markdown document wrapping a single block body, so targeted parse checks read like
-// the real serializer output (title + one section) without depending on the full fixture.
+// A minimal doc (title + one section) wrapping body lines, so parse checks skip the full fixture.
 function markdownDocument(...bodyLines: string[]): string {
    return [
       '# Doc',
@@ -87,20 +85,17 @@ describe('Markdown targeted parse', () => {
    })
 })
 
-// Containers have no Markdown representation, so they flatten by design : the
-// wrapper is dropped, inner blocks are promoted to top level, and the ratio is lost. This is a
-// stable contract, not a bug, the lossless JSON backup remains the format that preserves containers.
+// Containers have no Markdown form, so they flatten: wrapper and ratio dropped, inner blocks
+// promoted to top level. This is a stable contract, not a bug; the JSON backup preserves containers.
 describe('Markdown container flattening (by design)', () => {
    it('promotes a container\'s inner blocks to top level and drops the wrapper + ratio', () => {
       const fixture  = buildFixtureDocument()   // includes the two containers
       const reparsed = markdownToDocument(documentToMarkdown(fixture.sections, fixture.meta))
       const blocks   = reparsed.sections.flatMap(section => section.blocks)
 
-      // No container wrapper survives, and no block carries a ratio.
       expect(blocks.some(block => block.type === 'container')).toBe(false)
       expect(blocks.every(block => block.ratio === undefined)).toBe(true)
 
-      // The inner paragraphs now sit at top level.
       const paragraphTexts = blocks
          .filter(block => block.type === 'p')
          .map(block => (block.richText ?? []).map(run => run.text).join(''))
@@ -111,8 +106,7 @@ describe('Markdown container flattening (by design)', () => {
    })
 })
 
-// A math block serializes as a ```math fence carrying the raw LaTeX, exactly like a code fence.
-// The rendered MathML is never serialized; it is re-derived from the LaTeX on load.
+// MathML is never serialized; the ```math fence carries only raw LaTeX, re-derived on load.
 describe('Markdown math block', () => {
    it('parses a ```math fence into a math block, keeping the raw LaTeX', () => {
       const source = ['# Doc', '---', '', '## Section', '', '```math', 'E = mc^2', '```'].join('\n')
@@ -135,8 +129,8 @@ describe('Markdown math block', () => {
       expect(documentToMarkdown(reparsed.sections, reparsed.meta)).toBe(text1)
    })
 
-   // Markdown is the lossy portable format: the display scale is intentionally dropped so the
-   // `math` info string stays bare (GitHub disables native math rendering on any info suffix).
+   // The display scale is dropped so the `math` info string stays bare: GitHub disables native
+   // math rendering on any info suffix.
    it('never emits scale= even when the block carries a mathScale', () => {
       const meta: DocMeta = { title: 'Doc', fields: [] }
       const sections: Section[] = [{
@@ -159,8 +153,8 @@ describe('Markdown math block', () => {
 describe('Markdown, custom list markers degrade', () => {
    const meta: DocMeta = { title: 'Doc', fields: [] }
 
-   // Root decimal; item 2 owns a lower-alpha child sub-list, item 4 owns a dash child sub-list.
-   // The two sibling child sub-lists carry INDEPENDENT markers (childMarker per item).
+   // Item 2 owns a lower-alpha child sub-list, item 4 a dash child: sibling sub-lists carry
+   // independent markers (childMarker per item).
    function markedListSection(): Section[] {
       return [{
          id: '00000000-0000-4000-8000-00000000000b', title: 'Section', collapsed: false,

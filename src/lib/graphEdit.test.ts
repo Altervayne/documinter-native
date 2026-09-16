@@ -56,7 +56,7 @@ import {
 } from './graphEdit'
 import { FUNCTION_DEFAULT_X_MIN, FUNCTION_DEFAULT_X_MAX, FUNCTION_DEFAULT_SAMPLES, FUNCTION_MIN_SAMPLES, FUNCTION_MAX_SAMPLES } from './graph'
 
-// A `function`-type fixture, mirroring makeSpec() in spirit but for the equation-editing helpers.
+// A `function`-type fixture for the equation-editing helpers.
 function makeFunctionSpec(): GraphSpec {
    return {
       type: 'function',
@@ -72,7 +72,7 @@ function makeFunctionSpec(): GraphSpec {
    }
 }
 
-// A `scatter`-type fixture, mirroring makeFunctionSpec() in spirit but for the point-editing helpers.
+// A `scatter`-type fixture for the point-editing helpers.
 function makeScatterSpec(): GraphSpec {
    return {
       type: 'scatter',
@@ -87,7 +87,7 @@ function makeScatterSpec(): GraphSpec {
    }
 }
 
-// A `histogram`-type fixture, mirroring makeScatterSpec() in spirit but for the sample-editing helpers.
+// A `histogram`-type fixture for the sample-editing helpers.
 function makeHistogramSpec(): GraphSpec {
    return {
       type: 'histogram',
@@ -561,10 +561,8 @@ describe('logScaleWouldFallBackToLinear', () => {
       expect(logScaleWouldFallBackToLinear(withNegative)).toBe(true)
    })
 
-   // Reuses computeFunctionYDomain, the same expression-sampling pipeline renderFunctionPlot's own
-   // axis-mode decision runs, so this reflects exactly what the renderer does, with no separately
-   // maintained approximation that could drift and silently return the wrong verdict when a
-   // sampled curve dips to or through zero.
+   // Reuses computeFunctionYDomain, the same expression-sampling pipeline renderFunctionPlot's
+   // axis-mode decision runs, so the verdict here matches exactly what the renderer does.
    it('is false for a function chart whose sampled curve stays strictly positive', () => {
       const spec: GraphSpec = {
          type: 'function',
@@ -949,8 +947,7 @@ describe('moveEquation', () => {
 // # scatterPlot passthrough (withData/setType/setOption)
 // ##################################################
 // Every generic data/option transform carries `scatterPlot` through unchanged because
-// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, so this just locks
-// that behavior in with its own tests.
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`.
 
 describe('scatterPlot passthrough', () => {
    it('setOption preserves scatterPlot on a scatter-type spec', () => {
@@ -980,8 +977,7 @@ describe('scatterPlot passthrough', () => {
 // # histogramData passthrough (withData/setType/setOption)
 // ####################################################
 // Every generic data/option transform carries `histogramData` through unchanged because
-// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`, so this just locks
-// that behavior in with its own tests.
+// `withData`/`setType`/`setOption` rebuild the spec via `{ ...spec, ... }`.
 
 describe('histogramData passthrough', () => {
    it('setOption preserves histogramData on a histogram-type spec', () => {

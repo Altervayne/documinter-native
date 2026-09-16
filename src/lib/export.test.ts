@@ -666,14 +666,12 @@ describe('generateExportHTML, paged (A4) export', () => {
       expect(infinite).toContain('<div class="doc-card">')
    })
 
-   // Regression: the sheet stack's printed height used to be left to the browser's own summed-child
-   // layout, which could drift a hair short of a whole number of pages and leave an un-themed sliver
-   // of paper canvas below the LAST sheet (nothing painted it). The stack now declares its own height
-   // as an exact page-count multiple of a sheet's floored height and its own themed background, so that
-   // trailing sliver (whichever page it lands on) is always the document's sheet colour, not the browser
-   // default. The multiplier is max(100vh, sheetHeightPx), NOT plain 100vh: an interactive iframe print
-   // can resolve 100vh SHORTER than a real A4 sheet, and a plain N*100vh stack would then be shorter than
-   // its own min-height-floored children and clip the last sheet's fill + footer.
+   // Regression: the sheet stack's printed height used to be left to the browser's summed-child
+   // layout, which could drift a hair short of a whole page count and leave an un-themed sliver of
+   // paper canvas below the last sheet. The stack now declares its own height as an exact page-count
+   // multiple of a floored sheet height, themed with the sheet background. The multiplier is
+   // max(100vh, sheetHeightPx), not plain 100vh: an iframe print can resolve 100vh shorter than a real
+   // A4 sheet, and an N*100vh stack would then clip its min-height-floored children.
    it('pins the sheet stack print height to an exact page-count multiple of the sheet height, themed with the sheet background', () => {
       const singlePage = generateExportHTML(meta, sections, { theme: 'dark', accent: '#f97316', format: { kind: 'a4-portrait' } })
       // The stack's own print rule carries both the exact height (one sheet) and the dark theme's
