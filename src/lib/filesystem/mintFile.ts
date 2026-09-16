@@ -115,6 +115,7 @@ export function parseMint(text: string): ParsedMint | null {
          docAccent: raw.docAccent ?? '#2dcea8',
          presentation: raw.presentation,
          format:    raw.format,
+         updatedAt: raw.updatedAt,
       })
       return {
          id:            typeof raw.id === 'string' ? raw.id : null,

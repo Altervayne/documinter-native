@@ -44,6 +44,17 @@ export async function nextDocumentSortOrder(documentsStore: IDBObjectStore, fold
    return siblings.reduce((max, sibling) => Math.max(max, sibling.sortOrder), -1) + 1
 }
 
+/** The light record by id, normalized like listDocuments (legacy flat meta lifted to { title, fields }).
+ *  Null when the document is gone. The cheap read behind the open-tab external-change check. */
+export async function getDocumentRecord(id: string): Promise<BinderDocumentRecord | null> {
+   const database = await openDatabase()
+   const transaction = database.transaction(DOCUMENTS_STORE, 'readonly')
+   const record = await requestToPromise<BinderDocumentRecord | undefined>(
+      transaction.objectStore(DOCUMENTS_STORE).get(id),
+   )
+   return record ? migrateListRecord(record) : null
+}
+
 /** Null when the document is gone. */
 export async function getDocumentFolderId(id: string): Promise<string | null> {
    const database = await openDatabase()
@@ -122,6 +133,7 @@ async function readDocument(id: string): Promise<LoadedDocument | null> {
       docAccent: record.docAccent,
       presentation: content.presentation,
       format: content.format,
+      updatedAt: record.updatedAt,
    })
 }
 

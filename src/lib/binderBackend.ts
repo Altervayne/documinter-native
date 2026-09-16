@@ -10,7 +10,7 @@
 
 // -- Lib Imports --
 import {
-   saveDocument, loadDocument, listDocuments, getDocumentFolderId,
+   saveDocument, loadDocument, listDocuments, getDocumentFolderId, getDocumentRecord,
    deleteDocument, duplicateDocument, moveDocument, reorderDocuments,
    backfillSearchText,
 } from './binderDocuments'
@@ -51,6 +51,9 @@ export interface BinderBackend {
    loadDocument(id: string, options?: { touch?: boolean }): Promise<LoadedDocument | null>
    /** Light records only, filtered by folder + searched + sorted. No heavy content. */
    listDocuments(filter?: DocumentListFilter): Promise<BinderDocumentRecord[]>
+   /** The single light record by id, null when gone. The cheap read behind the open-tab external-change
+    *  check: it compares this record's updatedAt to the version a tab last synced to. */
+   getDocumentRecord(id: string): Promise<BinderDocumentRecord | null>
    getDocumentFolderId(id: string): Promise<string | null>
    deleteDocument(id: string): Promise<void>
    duplicateDocument(id: string): Promise<string>
@@ -102,6 +105,7 @@ export function createIndexedDbBackend(): BinderBackend {
       saveDocument,
       loadDocument,
       listDocuments,
+      getDocumentRecord,
       getDocumentFolderId,
       deleteDocument,
       duplicateDocument,

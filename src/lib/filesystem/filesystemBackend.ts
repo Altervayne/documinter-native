@@ -533,8 +533,12 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       const parsed = parseMint(text)
       if (!parsed) return null
       if (options?.touch !== false) await index.touchLastOpened(id, new Date().toISOString())
-      return parsed.loaded
+      // The file's own updatedAt is the truth; a legacy `.mint` carrying none falls back to the index row's.
+      const record = await index.getDocumentById(id)
+      return { ...parsed.loaded, updatedAt: parsed.updatedAt ?? record?.updatedAt ?? parsed.loaded.updatedAt }
    }
+
+   const getDocumentRecord = async (id: string): Promise<BinderDocumentRecord | null> => index.getDocumentById(id)
 
    const listDocuments = async (filter?: DocumentListFilter): Promise<BinderDocumentRecord[]> => {
       // The SQL side applies the folder scope + the free-text FTS match. The returned light records carry
@@ -924,6 +928,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
          docAccent:    document.docAccent,
          presentation: document.presentation,
          format:       document.format,
+         updatedAt:    document.updatedAt,
       })
       const mint = buildMintFile({
          id,
@@ -1274,7 +1279,6 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       } finally {
          reconciling = false
       }
-      console.info('[binder][watch] reconciled, notifying', listeners.size, 'listener(s)')
       notifyListeners()
       // A change that arrived mid-reconcile (our own re-id file rewrites included) gets one more pass.
       if (pendingReconcile) { pendingReconcile = false; void runReconcile() }
@@ -1287,22 +1291,18 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
 
    const handleWatchEvent = (event: WatchEvent): void => {
       const paths = Array.isArray(event.paths) ? event.paths : []
-      const muted = Date.now() < muteUntil
-      // Log every watch event and why it was acted on or skipped.
-      console.info('[binder][watch] event', JSON.stringify(event.type), paths, '| muted:', muted, '| listeners:', listeners.size)
       // Our own recent write: the in-app op already updated the index, so its file events are noise. This is
       // what keeps an ordinary save from triggering a rescan (and why the binder view need not be open, the
       // index stays fresh for external edits regardless). A rare external edit inside the window is caught by
       // the next event or the next Binder open.
-      if (muted) { console.info('[binder][watch] ignored (self-write / muted)'); return }
+      if (Date.now() < muteUntil) return
       // Ignore our own cache writes, or reconcile would loop on its own index writes. Match the
       // `.documinter/` segment (not a root prefix) so it survives OS path-normalization differences.
       const isCachePath = (path: string): boolean => {
          const normalized = path.replace(/\\/g, '/').toLowerCase()
          return normalized.includes(`/${DOCUMINTER_DIR.toLowerCase()}/`) || normalized.endsWith(`/${DOCUMINTER_DIR.toLowerCase()}`)
       }
-      if (paths.length > 0 && paths.every(isCachePath)) { console.info('[binder][watch] ignored (cache-only)'); return }
-      console.info('[binder][watch] scheduling reconcile')
+      if (paths.length > 0 && paths.every(isCachePath)) return
       scheduleReconcile()
    }
 
@@ -1313,7 +1313,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    const backend: BinderBackend = {
       // Documents (mutations wrapped so their own file writes do not wake the watcher).
       saveDocument: muteThen(saveDocument),
-      loadDocument, listDocuments, getDocumentFolderId,
+      loadDocument, listDocuments, getDocumentRecord, getDocumentFolderId,
       deleteDocument:    muteThen(deleteDocument),
       duplicateDocument: muteThen(duplicateDocument),
       moveDocument:      muteThen(moveDocument),
@@ -1357,8 +1357,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    // Start the live watcher now the index is in sync. Fire-and-forget: watch() is async but the backend
    // is usable at once; if it fails the app just runs without live external-edit reconciliation.
    void watch(rootPosix, handleWatchEvent, { recursive: true, delayMs: WATCH_DEBOUNCE_MS })
-      .then(stop => { unwatch = stop; console.info('[binder][watch] started on', rootPosix) })
-      .catch(error => console.error('[binder][watch] FAILED to start the filesystem watcher:', error))
+      .then(stop => { unwatch = stop })
+      .catch(error => console.error('[binder] failed to start the filesystem watcher:', error))
 
    return backend
 }

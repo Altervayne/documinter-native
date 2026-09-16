@@ -9,6 +9,7 @@ import { mkSection, isEmptyDocument } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { NameTakenError } from './lib/filesystem/filesystemBackend'
+import { classifyDiskChange } from './lib/native/diskConflict'
 import type { LoadedDocument, DocPresentation } from './lib/binderDocuments'
 import type { TinImportSummary } from './lib/binderBackup'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
@@ -54,6 +55,7 @@ import { MarkdownPanel } from './organisms/MarkdownPanel'
 import { WorkspaceLayout } from './organisms/WorkspaceLayout'
 import { Binder } from './organisms/Binder'
 import { ConfirmDialog } from './molecules/ConfirmDialog'
+import { DiskConflictDialog } from './molecules/DiskConflictDialog'
 import { TinImportDialog } from './molecules/TinImportDialog'
 import { SaveAsDialog } from './molecules/SaveAsDialog'
 import { PromptDialog } from './molecules/PromptDialog'
@@ -64,7 +66,7 @@ import { ToastContainer } from './atoms/ToastContainer'
 import { importMarkdownFile } from './lib/markdown'
 
 // -- Type Imports --
-import type { BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
+import type { BinderDocumentRecord, BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
 import type { DocPresentationExtras } from './lib/presentation'
 import type { DocFormat } from './lib/format'
 import { useWorkspaceState } from './hooks/useWorkspaceState'
@@ -121,6 +123,7 @@ function createBlankDocument(sectionTitle: string, pendingFolderId: string | nul
       documentId:            null,
       saveStatus:            'clean',
       pendingNewDocFolderId: pendingFolderId,
+      syncedUpdatedAt:       null,
    }
 }
 
@@ -140,6 +143,7 @@ function createDocumentFromTemplate(template: DocumentTemplate, sectionTitle: st
       documentId:            null,
       saveStatus:            'clean',
       pendingNewDocFolderId: pendingFolderId,
+      syncedUpdatedAt:       null,
    }
 }
 
@@ -157,6 +161,9 @@ function buildTabFromLoaded(loaded: LoadedDocument, documentId: string | null): 
       documentId,
       saveStatus:            'clean',
       pendingNewDocFolderId: null,
+      // A real load carries a non-empty ISO stamp; an empty one (a legacy autosave with no timestamp) means
+      // never-synced, so it maps to null.
+      syncedUpdatedAt:       loaded.updatedAt || null,
    }
 }
 
@@ -406,7 +413,7 @@ export default function App() {
                )
                clearLegacyAutosave()
                if (cancelled) return
-               applyRestoredTabs([buildTabFromLoaded({ ...legacy }, migratedId)], migratedId)
+               applyRestoredTabs([buildTabFromLoaded({ ...legacy, updatedAt: '' }, migratedId)], migratedId)
                return
             }
             // Load each persisted id in tab order, skipping any deleted since last session.
@@ -422,7 +429,7 @@ export default function App() {
             // IndexedDB unavailable / read failed. If legacy data exists, keep showing it in memory
             // as an unsaved document (the legacy key stays intact for a future retry).
             if (!cancelled && legacy && restore.documentIds.length === 0) {
-               applyRestoredTabs([buildTabFromLoaded({ ...legacy }, null)], null)
+               applyRestoredTabs([buildTabFromLoaded({ ...legacy, updatedAt: '' }, null)], null)
             }
          } finally {
             if (!cancelled) hasHydratedRef.current = true
@@ -472,10 +479,12 @@ export default function App() {
             { docTheme, docAccent, presentation, format },
             originatingTab?.documentId ?? undefined,
             originatingTab?.pendingNewDocFolderId ?? undefined,
-         ).then(savedId => {
+         ).then(async savedId => {
+            // Sync the tab to the version just written, so the watcher does not read this save as external.
+            const savedRecord = await backend.getDocumentRecord(savedId)
             setOpenDocuments(documents => documents.map(document =>
                document.tabKey === originatingTabKey
-                  ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null }
+                  ? { ...document, documentId: document.documentId ?? savedId, saveStatus: 'saved', pendingNewDocFolderId: null, syncedUpdatedAt: savedRecord?.updatedAt ?? document.syncedUpdatedAt }
                   : document))
          }).catch(error => {
             console.error('[autosave] saveDocument failed:', error)
@@ -523,21 +532,18 @@ export default function App() {
             flushTab.documentId ?? undefined,
             flushTab.pendingNewDocFolderId ?? undefined,
          )
-         // Native filename policy: a CREATE may bump the title to clear a stem collision, so the in-memory
-         // title can be stale. Re-read the saved title and fold it into the promotion update. Create only (an
-         // update never bumps); a no-op for the web backend.
-         let savedTitle: string | null = null
-         if (wasCreate) {
-            const saved = await backend.loadDocument(savedId, { touch: false })
-            savedTitle = saved?.meta.title ?? null
-         }
+         // Re-read the saved light record: it carries the disk updatedAt the tab must sync to (so the watcher
+         // never mistakes this save for an external change), and, on a CREATE, the possibly-bumped title (the
+         // native filename policy takes the next free title on a stem collision). An update never bumps.
+         const savedRecord = await backend.getDocumentRecord(savedId)
+         const savedTitle = wasCreate ? (savedRecord?.meta.title ?? null) : null
          setOpenDocuments(documents => documents.map(document => {
             if (document.tabKey !== flushTabKey) return document
             // Sync the possibly-bumped title only when the user has not edited it during the save round-trip.
             const meta = (savedTitle !== null && savedTitle !== document.meta.title && document.meta.title === flushTab.meta.title)
                ? { ...document.meta, title: savedTitle }
                : document.meta
-            return { ...document, documentId: document.documentId ?? savedId, meta, saveStatus: 'saved', pendingNewDocFolderId: null }
+            return { ...document, documentId: document.documentId ?? savedId, meta, saveStatus: 'saved', pendingNewDocFolderId: null, syncedUpdatedAt: savedRecord?.updatedAt ?? document.syncedUpdatedAt }
          }))
          return savedId
       } catch (error) {
@@ -550,6 +556,108 @@ export default function App() {
    }, [showToast, t, setTabSaveStatus, backend])
 
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
+
+   // ############################################
+   // # EXTERNAL DISK CHANGES (NATIVE BACKEND)   #
+   // ############################################
+   // The filesystem backend fires subscribe() when an Explorer edit / deletion reconciles. A document open in
+   // a tab is then reconciled against its on-disk record: a clean tab silently reloads, a deleted file turns
+   // the tab into an unsaved scratch (content kept), and a dirty tab raises a conflict the user resolves. The
+   // IndexedDB backend never fires subscribe, so this whole path is inert on the web.
+
+   // Tabs (by key) whose open document changed on disk while dirty, awaiting a keep-mine / load-disk choice.
+   // Resolved one at a time (the head); the multi-tab case is rare.
+   const [conflictQueue, setConflictQueue] = useState<string[]>([])
+
+   // Replace a bound tab's content with the disk version, programmatically: mark it clean and re-sync its disk
+   // stamp WITHOUT an undo entry (setOpenDocuments directly, never commitActiveEdit). When it is the active
+   // tab, the incoming content must not read as a user edit, so the next autosave cycle is skipped.
+   const reloadTabFromDisk = useCallback(async (tabKey: string, id: string) => {
+      const loaded = await backend.loadDocument(id, { touch: false })
+      if (!loaded) return
+      const target = openDocumentsRef.current.find(document => document.tabKey === tabKey && document.documentId === id)
+      if (!target) return   // closed or rebound during the load
+      if (activeTabKeyRef.current === tabKey) skipNextAutosaveRef.current = true
+      setOpenDocuments(documents => documents.map(document =>
+         document.tabKey === tabKey && document.documentId === id
+            ? { ...document, meta: loaded.meta, sections: loaded.sections, docTheme: loaded.docTheme, docAccent: loaded.docAccent, presentation: loaded.presentation, format: loaded.format, saveStatus: 'clean', syncedUpdatedAt: loaded.updatedAt }
+            : document))
+   }, [backend])
+
+   // Reconcile every bound tab against its on-disk record on an external change. Reads the light record per
+   // tab (no content unless a reload is needed), re-checks the tab is unchanged across the await, then applies
+   // the classified outcome.
+   const onExternalChange = useCallback(() => {
+      void (async () => {
+         const boundTabs = openDocumentsRef.current
+            .filter(document => document.documentId !== null)
+            .map(document => ({ tabKey: document.tabKey, id: document.documentId! }))
+         for (const { tabKey, id } of boundTabs) {
+            let diskRecord: BinderDocumentRecord | null
+            try { diskRecord = await backend.getDocumentRecord(id) }
+            catch { continue }
+            const tab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+            if (!tab || tab.documentId !== id) continue   // closed or rebound mid-pass
+            const outcome = classifyDiskChange(
+               { documentId: tab.documentId, syncedUpdatedAt: tab.syncedUpdatedAt, saveStatus: tab.saveStatus },
+               diskRecord,
+            )
+            if (outcome === 'deleted') {
+               // Keep the content, drop the binding: the tab becomes a never-saved scratch (red indicator via
+               // activeNeverSaved), and a later Save recreates the file. Content is untouched, so no autosave wakes.
+               setOpenDocuments(documents => documents.map(document =>
+                  document.tabKey === tabKey && document.documentId === id
+                     ? { ...document, documentId: null, syncedUpdatedAt: null, saveStatus: 'clean' }
+                     : document))
+               showToast(t.diskDeletedToast, { type: 'warning' })
+            } else if (outcome === 'reload') {
+               await reloadTabFromDisk(tabKey, id)
+               showToast(t.diskReloadedToast, { type: 'neutral' })
+            } else if (outcome === 'conflict') {
+               setConflictQueue(queue => queue.includes(tabKey) ? queue : [...queue, tabKey])
+            }
+         }
+      })()
+   }, [backend, showToast, t, reloadTabFromDisk])
+
+   // A second subscriber alongside the binder view's: the backend hands external changes to both. Inert on the
+   // IndexedDB backend (its subscribe never fires).
+   useEffect(() => backend.subscribe(onExternalChange), [backend, onExternalChange])
+
+   // Drop closed tabs from the conflict queue (a folder delete can close several open tabs at once), so the
+   // dialog never stalls on a head tab that no longer exists.
+   useEffect(() => {
+      setConflictQueue(queue => {
+         const live = queue.filter(key => openDocuments.some(document => document.tabKey === key))
+         return live.length === queue.length ? queue : live
+      })
+   }, [openDocuments])
+
+   // Resolve the head conflict. Keep-mine syncs the tab's stamp to the current disk version so the same change
+   // does not re-prompt (the unsaved edits overwrite disk on the next save). Load-disk reloads and discards
+   // them. Either way the tab leaves the queue.
+   const resolveConflictKeepMine = useCallback(async (tabKey: string) => {
+      const tab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (tab && tab.documentId !== null) {
+         const id = tab.documentId
+         try {
+            const record = await backend.getDocumentRecord(id)
+            if (record) {
+               setOpenDocuments(documents => documents.map(document =>
+                  document.tabKey === tabKey && document.documentId === id
+                     ? { ...document, syncedUpdatedAt: record.updatedAt }
+                     : document))
+            }
+         } catch { /* leave the stamp; a later change simply re-prompts */ }
+      }
+      setConflictQueue(queue => queue.filter(key => key !== tabKey))
+   }, [backend])
+
+   const resolveConflictLoadDisk = useCallback(async (tabKey: string) => {
+      const tab = openDocumentsRef.current.find(document => document.tabKey === tabKey)
+      if (tab && tab.documentId !== null) await reloadTabFromDisk(tabKey, tab.documentId)
+      setConflictQueue(queue => queue.filter(key => key !== tabKey))
+   }, [reloadTabFromDisk])
 
    // ###############
    // # TAB SYSTEM  #
@@ -862,6 +970,7 @@ export default function App() {
             documentId:            null,
             saveStatus:            'clean',
             pendingNewDocFolderId: sourceTab.pendingNewDocFolderId,
+            syncedUpdatedAt:       null,
          }
          setOpenDocuments(documents => [...documents, clonedTab])
          void activateTab(clonedTab.tabKey)
@@ -910,9 +1019,12 @@ export default function App() {
       if (!sourceDocumentId) return
       const copyId = await backend.duplicateDocument(sourceDocumentId)
       await backend.moveDocument(copyId, destinationFolderId)
+      // The tab now tracks the copy, so sync it to the copy's disk version (else the watcher would read the
+      // still-old synced stamp as an external change against the fresh record).
+      const copyRecord = await backend.getDocumentRecord(copyId)
       setOpenDocuments(documents => documents.map(document =>
          document.tabKey === dialog.sourceTabKey
-            ? { ...document, documentId: copyId }
+            ? { ...document, documentId: copyId, syncedUpdatedAt: copyRecord?.updatedAt ?? document.syncedUpdatedAt }
             : document))
       showToast(t.savedAsCopy, { type: 'success' })
    }, [saveAsDialog, persistNow, showToast, t, backend])
@@ -1138,6 +1250,7 @@ export default function App() {
          documentId:            null,   // not a binder record; stays scratch until an explicit Save binds it
          saveStatus:            'clean',
          pendingNewDocFolderId: null,
+         syncedUpdatedAt:       null,
       }
       setOpenDocuments(documents => [...documents, newTab])
       void activateTab(newTab.tabKey)
@@ -1450,6 +1563,19 @@ export default function App() {
                   onCancel={handleCancelSaveAs}
                />
             )}
+
+            {conflictQueue.length > 0 && (() => {
+               const conflictTab = openDocuments.find(document => document.tabKey === conflictQueue[0])
+               if (!conflictTab) return null
+               const tabKey = conflictTab.tabKey
+               return (
+                  <DiskConflictDialog
+                     title={conflictTab.meta.title || t.untitledDoc}
+                     onKeepMine={() => void resolveConflictKeepMine(tabKey)}
+                     onLoadDisk={() => void resolveConflictLoadDisk(tabKey)}
+                  />
+               )
+            })()}
 
             {saveAsTemplateOpen && (
                <PromptDialog

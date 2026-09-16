@@ -16,7 +16,8 @@ import type {
 
 export const RECORD_SCHEMA_VERSION = 4   // v4: field zones (position) + color on freeform meta
 
-/** Full editable document returned by loadDocument, DocState plus presentation. */
+/** Full editable document returned by loadDocument, DocState plus presentation. `updatedAt` is the disk
+ *  version this read reflects, so a tab can record which version it is in sync with in one round trip. */
 export interface LoadedDocument {
    meta:      DocMeta
    sections:  Section[]
@@ -24,6 +25,7 @@ export interface LoadedDocument {
    docAccent: string
    presentation?: DocPresentationExtras
    format?: DocFormat
+   updatedAt: string
 }
 
 // ####################
@@ -111,6 +113,9 @@ export interface LoadedDocumentInput {
    docAccent: string
    presentation?: DocPresentationExtras
    format?: DocFormat
+   // The disk version this document reflects. Absent for a builder with no timestamp on hand (a Tin
+   // record, a bare-meta assemble); each loadDocument site fills it from the record / parsed file.
+   updatedAt?: string
 }
 
 /** The read-time pipeline: migrate ids first (so page-break anchors resolve against the migrated block
@@ -126,6 +131,7 @@ export function assembleLoadedDocument(input: LoadedDocumentInput): LoadedDocume
       // Normalize defensively on read: clamp opacity, drop an empty-src watermark.
       presentation: normalizePresentation(input.presentation),
       format: normalizeFormat(migrateFormatBands(migrateFormatPageBreaks(input.format, migrated.sections))),
+      updatedAt: input.updatedAt ?? '',
    }
 }
 
