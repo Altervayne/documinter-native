@@ -14,7 +14,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { documentDir, join } from '@tauri-apps/api/path'
 
 // -- Icon Imports --
-import { FolderPlus, FolderOpen, FolderClock } from 'lucide-react'
+import { FolderPlus, FolderOpen, FolderClock, Languages } from 'lucide-react'
 
 // -- App Imports --
 import App from '../App'
@@ -279,7 +279,7 @@ function WelcomeFrame({ binder }: { binder: NativeBinder }) {
    return (
       <LangProvider lang={lang} setLang={setLang}>
          <div className="flex min-h-screen flex-col bg-bg text-text">
-            <WelcomeTitleBar lang={lang} setLang={setLang} />
+            <WelcomeTitleBar />
             <div className="flex-1 overflow-y-auto">
                {binder.phase === 'welcome' && <WelcomeContent binder={binder} />}
             </div>
@@ -288,34 +288,40 @@ function WelcomeFrame({ binder }: { binder: NativeBinder }) {
    )
 }
 
-/** The empty middle is the drag handle; data-tauri-drag-region sits only there so the toggle and controls
- *  stay clickable. */
-function WelcomeTitleBar({ lang, setLang }: { lang: Lang; setLang: (language: Lang) => void }) {
+/** Drag region + window controls only. The language switch moved into the Welcome body, where a lost
+ *  non-English user actually looks; the caption divider is dropped since nothing sits left of it here. */
+function WelcomeTitleBar() {
    return (
-      <div className="shrink-0 flex items-center gap-1 p-1 px-3">
-         <LanguageToggle lang={lang} setLang={setLang} />
+      // min-h matches the main HeaderMenuBar's height (its logo h-7 + p-1 padding); without the old
+      // language toggle nothing else gives the bar its height, so it would otherwise collapse thin.
+      <div className="shrink-0 flex items-center gap-1 p-1 px-3 min-h-[2.25rem]">
          <div data-tauri-drag-region className="flex-1 self-stretch" />
-         <WindowControls />
+         <WindowControls dividerLeft={false} />
       </div>
    )
 }
 
-/** EN / FR segment; the app avoids <select> for small option sets. */
-function LanguageToggle({ lang, setLang }: { lang: Lang; setLang: (language: Lang) => void }) {
+const LANGUAGE_NAMES: Record<Lang, string> = { en: 'English', fr: 'Français' }
+
+/** A globe-marked language switch showing full language names, so its purpose reads even to someone who
+ *  cannot read the current UI language. Reads lang / setLang from context. */
+function LanguageSelector() {
+   const { lang, setLang } = useLang()
    const languages: Lang[] = ['en', 'fr']
    return (
-      <div className="flex overflow-hidden rounded border border-border text-xs">
+      <div className="flex items-center gap-1 rounded-full border border-border bg-raised py-1 pl-2.5 pr-1">
+         <Languages size={15} className="text-muted" />
          {languages.map(code => (
             <button
                key={code}
                type="button"
                onClick={() => setLang(code)}
                className={
-                  'px-2 py-0.5 uppercase transition-colors cursor-pointer ' +
+                  'rounded-full px-3 py-0.5 text-xs transition-colors cursor-pointer ' +
                   (code === lang ? 'bg-accent text-bg font-semibold' : 'text-muted hover:bg-el hover:text-text')
                }
             >
-               {code}
+               {LANGUAGE_NAMES[code]}
             </button>
          ))}
       </div>
@@ -331,12 +337,15 @@ function WelcomeContent({ binder }: { binder: NativeBinder }) {
    const { t } = useLang()
 
    return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-8 px-6 py-12">
+      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-8 px-6 pb-12 pt-6">
+
+         <div className="flex w-full justify-end">
+            <LanguageSelector />
+         </div>
 
          <div className="flex flex-col items-center gap-3 text-center">
             <LogoColor className="h-16 w-auto" />
             <h1 className="text-3xl font-semibold tracking-tight">Documinter</h1>
-            <p className="max-w-md text-sm text-muted">{t.welcomeTagline}</p>
          </div>
 
          <div className="w-full rounded-lg border border-border bg-raised p-5 text-sm leading-relaxed text-muted">

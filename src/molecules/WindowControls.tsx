@@ -16,7 +16,10 @@ import { Minus, Square, Copy, X } from 'lucide-react'
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
 
-export function WindowControls() {
+/** `dividerLeft` draws the separator between the caption buttons and whatever sits to their left. The
+ *  main header has menus there so it wants the divider; the Welcome bar's left is empty, so it passes
+ *  false to drop a line that would otherwise strand. */
+export function WindowControls({ dividerLeft = true }: { dividerLeft?: boolean }) {
    const { t } = useLang()
    const [maximized, setMaximized] = useState(false)
 
@@ -56,7 +59,7 @@ export function WindowControls() {
    // Negative margins cancel the header padding so the row reaches the window edge like real caption
    // buttons. Not a drag region, these are interactive controls.
    return (
-      <div className="flex items-stretch self-stretch -my-1 -mr-3 ml-1 border-l border-border">
+      <div className={'flex items-stretch self-stretch -my-1 -mr-3 ml-1' + (dividerLeft ? ' border-l border-border' : '')}>
          <button
             type="button"
             onClick={handleMinimize}
