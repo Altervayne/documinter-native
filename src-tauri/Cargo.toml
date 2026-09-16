@@ -27,6 +27,7 @@ tauri-plugin-fs = { version = "2", features = ["watch"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 tauri-plugin-persisted-scope = "2"
+tauri-plugin-single-instance = "2"
 
 # WebView2 direct-to-file PDF. Versions match what Tauri already resolves (webview2-com 0.38.2, windows
 # 0.61.3), so no duplicate copy enters the tree. Windows-only, the sole target where PrintToPdf exists.

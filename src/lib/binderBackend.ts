@@ -55,6 +55,10 @@ export interface BinderBackend {
     *  check: it compares this record's updatedAt to the version a tab last synced to. */
    getDocumentRecord(id: string): Promise<BinderDocumentRecord | null>
    getDocumentFolderId(id: string): Promise<string | null>
+   /** The document id stored at a Binder-relative path, or null. Native-only: it backs the `.mint`
+    *  file-association open (a launched file's path -> its document). The IndexedDB backend has no paths
+    *  and omits it. */
+   resolveDocumentByRelativePath?(relativePath: string): Promise<string | null>
    deleteDocument(id: string): Promise<void>
    duplicateDocument(id: string): Promise<string>
    moveDocument(id: string, targetFolderId: string): Promise<void>

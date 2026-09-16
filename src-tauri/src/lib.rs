@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+use tauri::{Emitter, Manager};
 use tauri_plugin_fs::FsExt;
 
 // ####################
@@ -82,6 +84,49 @@ fn read_text_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
   std::fs::read(&path).map_err(|error| error.to_string())
+}
+
+// ####################
+// # LAUNCH FILE (.mint association)
+// ####################
+// Double-clicking a .mint in the OS launches Documinter with the file path as an argument. The path is
+// captured here (from argv on a cold start, or from a second instance's argv via single-instance) and
+// drained once by the frontend, which resolves the file's Binder and opens the document.
+
+// The pending launch path: set from argv, drained once by take_launch_file. Behind a Mutex so it can be
+// shared managed state the single-instance callback also writes.
+#[derive(Default)]
+struct LaunchFile(Mutex<Option<String>>);
+
+// The first argument naming a .mint file, or None. args[0] is the executable, so it is skipped.
+fn first_mint_argument(args: &[String]) -> Option<String> {
+  args
+    .iter()
+    .skip(1)
+    .find(|argument| argument.to_lowercase().ends_with(".mint"))
+    .cloned()
+}
+
+// Drain the pending launch path (returns it, then clears it). The frontend calls this once on mount to
+// pick up a cold-start file.
+#[tauri::command]
+fn take_launch_file(state: tauri::State<'_, LaunchFile>) -> Option<String> {
+  state.0.lock().ok().and_then(|mut slot| slot.take())
+}
+
+// The Binder root for a file: the nearest ancestor directory that holds a `.documinter/` folder, or None
+// for a loose file outside any Binder. std::fs (ungated), same trust model as the dialog paths above: the
+// OS handed us this path from a user double-click.
+#[tauri::command]
+fn resolve_binder_root(file_path: String) -> Option<String> {
+  let mut current = std::path::Path::new(&file_path).parent();
+  while let Some(directory) = current {
+    if directory.join(".documinter").is_dir() {
+      return Some(directory.to_string_lossy().into_owned());
+    }
+    current = directory.parent();
+  }
+  None
 }
 
 // ####################
@@ -265,6 +310,22 @@ async fn print_html_to_pdf(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    // Single-instance MUST be first: a second launch (a .mint double-clicked while running) focuses the
+    // open window and forwards its argv here instead of spawning a duplicate. The callback stores the
+    // launched file + notifies the frontend, which opens it.
+    .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+      if let Some(path) = first_mint_argument(&argv) {
+        if let Some(state) = app.try_state::<LaunchFile>() {
+          if let Ok(mut slot) = state.0.lock() {
+            *slot = Some(path.clone());
+          }
+        }
+        let _ = app.emit("launch-open-file", path);
+      }
+      if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_focus();
+      }
+    }))
     // Opens external links in the OS default handler instead of the webview.
     .plugin(tauri_plugin_opener::init())
     // Filesystem access for the Binder folder, with the native change watcher.
@@ -274,6 +335,19 @@ pub fn run() {
     .plugin(tauri_plugin_sql::Builder::default().build())
     // Persists the runtime-granted Binder-folder scope across restarts.
     .plugin(tauri_plugin_persisted_scope::init())
+    // The pending .mint launch path, drained by take_launch_file.
+    .manage(LaunchFile::default())
+    // Capture a cold-start .mint argument (a double-click that launched this instance) before the
+    // frontend mounts, so its take_launch_file call finds it.
+    .setup(|app| {
+      let args: Vec<String> = std::env::args().collect();
+      if let Some(path) = first_mint_argument(&args) {
+        if let Ok(mut slot) = app.state::<LaunchFile>().0.lock() {
+          *slot = Some(path);
+        }
+      }
+      Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
       allow_binder_directory,
       create_binder_directory,
@@ -282,6 +356,8 @@ pub fn run() {
       write_binary_file,
       read_text_file,
       read_binary_file,
+      take_launch_file,
+      resolve_binder_root,
       print_html_to_pdf
     ])
     .run(tauri::generate_context!())

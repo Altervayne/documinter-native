@@ -1314,6 +1314,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       // Documents (mutations wrapped so their own file writes do not wake the watcher).
       saveDocument: muteThen(saveDocument),
       loadDocument, listDocuments, getDocumentRecord, getDocumentFolderId,
+      // Backs the `.mint` file-association open: a launched file's Binder-relative path -> its id.
+      resolveDocumentByRelativePath: (relativePath) => index.getIdByPath(relativePath),
       deleteDocument:    muteThen(deleteDocument),
       duplicateDocument: muteThen(duplicateDocument),
       moveDocument:      muteThen(moveDocument),

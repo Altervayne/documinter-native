@@ -11,6 +11,13 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import type { KnownBinder } from '../lib/native/binderRegistry'
 
+/** A document to open from the OS `.mint` association: one already inside the open Binder (by root +
+ *  absolute path), or a loose file outside any Binder (opened as a scratch tab). Set by the host once
+ *  the right Binder is mounted, consumed by App. */
+export type PendingLaunchOpen =
+   | { kind: 'binder-doc'; binderRoot: string; filePath: string }
+   | { kind: 'loose';      filePath: string }
+
 export interface NativeBinderControls {
    /** The open Binder's absolute path (its id) and display name. */
    activePath: string
@@ -24,6 +31,9 @@ export interface NativeBinderControls {
    switchBinder(path: string): Promise<void>
    openBinder(): Promise<void>
    createBinder(name: string, parentDir?: string): Promise<void>
+   /** A launched `.mint` waiting to open in this Binder, or null. App opens it then calls consume. */
+   pendingLaunchOpen: PendingLaunchOpen | null
+   consumeLaunchOpen(): void
 }
 
 const NativeBinderContext = createContext<NativeBinderControls | null>(null)

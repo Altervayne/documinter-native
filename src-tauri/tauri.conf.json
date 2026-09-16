@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Documinter",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "identifier": "com.altervayne.documinter",
   "build": {
     "frontendDist": "../dist",
@@ -35,6 +35,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["mint"],
+        "name": "Documint",
+        "description": "Documint",
+        "role": "Editor"
+      }
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"

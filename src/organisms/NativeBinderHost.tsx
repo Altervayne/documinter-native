@@ -6,7 +6,7 @@
  */
 
 // -- React Imports --
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // -- Tauri Imports --
 import { invoke } from '@tauri-apps/api/core'
@@ -21,7 +21,7 @@ import App from '../App'
 import { ToastProvider } from '../contexts/ToastContext'
 import { BinderBackendProvider } from '../contexts/BinderBackendContext'
 import { LangProvider, useLang } from '../contexts/LangContext'
-import { NativeBinderProvider, type NativeBinderControls } from '../contexts/NativeBinderContext'
+import { NativeBinderProvider, type NativeBinderControls, type PendingLaunchOpen } from '../contexts/NativeBinderContext'
 import { WindowControls } from '../molecules/WindowControls'
 import { LogoColor } from '../atoms/Logo'
 import { createFilesystemBackend } from '../lib/filesystem/filesystemBackend'
@@ -32,6 +32,7 @@ import {
    rememberBinder, setActivePath, binderNameFromPath,
    type KnownBinder,
 } from '../lib/native/binderRegistry'
+import { takePendingLaunchFile, onLaunchFile, resolveBinderRoot } from '../lib/native/launchFile'
 
 import type { BinderBackend } from '../lib/binderBackend'
 
@@ -52,9 +53,11 @@ interface NativeBinder {
    notice:     BinderNotice | null
    error:      string | null
    busy:       boolean
+   pendingLaunchOpen: PendingLaunchOpen | null
    createBinder(name: string, parentDir?: string): Promise<void>
    openBinder(): Promise<void>
    switchBinder(path: string): Promise<void>
+   consumeLaunchOpen(): void
 }
 
 /** Owns the active-Binder state + the create / open / switch / launch-restore flows. Errors surface as
@@ -67,6 +70,7 @@ function useNativeBinder(): NativeBinder {
    const [notice, setNotice]               = useState<BinderNotice | null>(null)
    const [error, setError]                 = useState<string | null>(null)
    const [busy, setBusy]                   = useState(false)
+   const [pendingLaunchOpen, setPendingLaunchOpen] = useState<PendingLaunchOpen | null>(null)
 
    // Re-open the last-active Binder on launch; a missing folder falls back to Welcome. StrictMode
    // double-invokes this in dev, so a backend opened by a torn-down run is disposed in cleanup.
@@ -157,20 +161,70 @@ function useNativeBinder(): NativeBinder {
       }
    }
 
-   const switchBinder = async (path: string): Promise<void> => {
+   // Grant + open a Binder at a known path (a recent pick, or a launched `.mint`'s resolved root). The
+   // grant is idempotent, so a persisted-scope path re-grants harmlessly; a launched Binder never opened
+   // before still gets its scope. Returns whether it opened, for the launch flow.
+   const openBinderAtPath = async (path: string): Promise<boolean> => {
       setBusy(true)
       setError(null)
       try {
+         await invoke('allow_binder_directory', { path })
          const nextBackend = await createFilesystemBackend(path)
          finishOpen(nextBackend, path)
+         return true
       } catch (failure) {
          setError(String(failure))
+         return false
       } finally {
          setBusy(false)
       }
    }
 
-   return { phase, backend, activePath, known, notice, error, busy, createBinder, openBinder, switchBinder }
+   const switchBinder = async (path: string): Promise<void> => { await openBinderAtPath(path) }
+
+   // Latest values for the launch effect, which runs once yet must see the current active Binder + the
+   // current openBinderAtPath (both change across renders).
+   const activePathRef      = useRef(activePath)
+   const openBinderAtPathRef = useRef(openBinderAtPath)
+   activePathRef.current      = activePath
+   openBinderAtPathRef.current = openBinderAtPath
+
+   // Open the OS-launched `.mint`: resolve its Binder, adopt that Binder when it differs from the active
+   // one (remounting App), then publish the pending open App consumes. A loose file (no Binder) publishes
+   // a loose open against whatever Binder is active, or waits on the Welcome screen until one opens. The
+   // cold-start drain is intentionally unguarded so StrictMode's remount does not discard it (the second
+   // run drains null); the live event listener is torn down on unmount.
+   useEffect(() => {
+      let active = true
+
+      const handleLaunchPath = async (filePath: string): Promise<void> => {
+         const root = await resolveBinderRoot(filePath)
+         if (root !== null) {
+            if (root !== activePathRef.current) {
+               const opened = await openBinderAtPathRef.current(root)
+               if (!opened) return
+            }
+            setPendingLaunchOpen({ kind: 'binder-doc', binderRoot: root, filePath })
+         } else {
+            setPendingLaunchOpen({ kind: 'loose', filePath })
+         }
+      }
+
+      void (async () => {
+         const pending = await takePendingLaunchFile()
+         if (pending !== null) await handleLaunchPath(pending)
+      })()
+
+      const unsubscribe = onLaunchFile(filePath => { if (active) void handleLaunchPath(filePath) })
+      return () => { active = false; unsubscribe() }
+   }, [])
+
+   const consumeLaunchOpen = (): void => setPendingLaunchOpen(null)
+
+   return {
+      phase, backend, activePath, known, notice, error, busy, pendingLaunchOpen,
+      createBinder, openBinder, switchBinder, consumeLaunchOpen,
+   }
 }
 
 // ####################
@@ -195,6 +249,8 @@ export function NativeBinderHost() {
          switchBinder: binder.switchBinder,
          openBinder:   binder.openBinder,
          createBinder: binder.createBinder,
+         pendingLaunchOpen: binder.pendingLaunchOpen,
+         consumeLaunchOpen: binder.consumeLaunchOpen,
       }
       return (
          <BinderBackendProvider key={binder.activePath} backend={binder.backend}>

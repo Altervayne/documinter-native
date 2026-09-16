@@ -9,7 +9,9 @@ import { mkSection, isEmptyDocument } from './lib/document'
 import { translations, type Lang } from './lib/i18n'
 import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { NameTakenError } from './lib/filesystem/filesystemBackend'
+import { parseMint } from './lib/filesystem/mintFile'
 import { classifyDiskChange } from './lib/native/diskConflict'
+import { binderRelativePath, readLaunchFileText } from './lib/native/launchFile'
 import type { LoadedDocument, DocPresentation } from './lib/binderDocuments'
 import type { TinImportSummary } from './lib/binderBackup'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
@@ -30,6 +32,7 @@ import { DocumentMutationsContext } from './contexts/DocumentMutationsContext'
 import { LangProvider } from './contexts/LangContext'
 import { useToast } from './contexts/ToastContext'
 import { useBinderBackend } from './contexts/BinderBackendContext'
+import { useNativeBinderControls, type PendingLaunchOpen } from './contexts/NativeBinderContext'
 
 // -- Component Imports --
 import { HeaderMenuBar } from './organisms/HeaderMenuBar'
@@ -174,6 +177,9 @@ export default function App() {
    // The active persistence backend: every save / load / list goes through it, so the storage engine can
    // be swapped without touching the handlers below.
    const backend = useBinderBackend()
+
+   // Native only: the Binder-switcher controls + a pending `.mint` launch to open. Null on the web.
+   const nativeBinder = useNativeBinderControls()
 
    // Starts blank; the real set hydrates asynchronously on mount (see the hydration effect). Documents are
    // a list of open tabs, exactly one active; its content and identity drive the app.
@@ -905,6 +911,50 @@ export default function App() {
          showToast(t.binderOpenFailed, { type: 'error' })
       }
    }, [activateTab, showToast, t, backend])
+
+   // Open a `.mint` by absolute path as a scratch tab (documentId null, "never saved"): a launched file
+   // that sits outside any Binder, or one inside a Binder the index has not caught up to. Its bytes are
+   // parsed like any Open; a Save-As later files it into the Binder.
+   const openLooseFile = useCallback(async (filePath: string) => {
+      try {
+         const parsed = parseMint(await readLaunchFileText(filePath))
+         if (!parsed) { showToast(t.binderOpenFailed, { type: 'error' }); return }
+         const looseTab = buildTabFromLoaded(parsed.loaded, null)
+         setOpenDocuments(documents => [...documents, looseTab])
+         void activateTab(looseTab.tabKey)
+         setBinderOpen(false)
+         showToast(t.binderDocumentOpened, { type: 'success' })
+      } catch {
+         showToast(t.binderOpenFailed, { type: 'error' })
+      }
+   }, [activateTab, showToast, t])
+
+   // Consume a launched `.mint` (set by the native host once the right Binder is mounted): open its tab
+   // if the Binder indexes it, otherwise fall back to a loose scratch tab. The ref makes it fire once per
+   // launch, since the host's controls object (and this effect's deps) change on every render.
+   const handledLaunchRef = useRef<PendingLaunchOpen | null>(null)
+   useEffect(() => {
+      const pending = nativeBinder?.pendingLaunchOpen ?? null
+      if (pending === null || handledLaunchRef.current === pending) return
+      handledLaunchRef.current = pending
+      let cancelled = false
+      void (async () => {
+         try {
+            if (pending.kind === 'binder-doc') {
+               const relativePath = binderRelativePath(pending.binderRoot, pending.filePath)
+               const id = relativePath !== null && backend.resolveDocumentByRelativePath
+                  ? await backend.resolveDocumentByRelativePath(relativePath)
+                  : null
+               if (cancelled) return
+               if (id !== null) { await handleOpenDocument(id); return }
+            }
+            await openLooseFile(pending.filePath)
+         } finally {
+            if (!cancelled) nativeBinder?.consumeLaunchOpen()
+         }
+      })()
+      return () => { cancelled = true }
+   }, [nativeBinder, backend, handleOpenDocument, openLooseFile])
 
    // The one New-document entry point: a dialog offering Blank or a template with accent / theme / format
    // overrides. Opened from the header, File menu, and the binder's empty-state CTA (which seeds its folder).
