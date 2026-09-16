@@ -60,15 +60,11 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     // Filesystem access for the Binder folder, with the native change watcher.
     .plugin(tauri_plugin_fs::init())
-    // Native Open / Save-As / message dialogs.
     .plugin(tauri_plugin_dialog::init())
     // SQLite for the rebuildable `.documinter/index.sqlite` search cache.
     .plugin(tauri_plugin_sql::Builder::default().build())
     // Persists the runtime-granted Binder-folder scope across restarts.
     .plugin(tauri_plugin_persisted_scope::init())
-    // App commands. allow_binder_directory grants an existing Binder folder to the fs scope at runtime;
-    // create_binder_directory creates a new one (via std::fs, ungated) and grants it; set_path_hidden
-    // hides the `.documinter/` cache on Windows.
     .invoke_handler(tauri::generate_handler![allow_binder_directory, create_binder_directory, set_path_hidden])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
