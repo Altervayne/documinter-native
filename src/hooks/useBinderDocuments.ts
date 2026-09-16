@@ -140,7 +140,7 @@ export function useBinderDocuments(filter: DocumentListFilter, dataVersion: numb
       try {
          const loaded = await backend.loadDocument(id, { touch: false })
          if (!loaded) { showToast(t.binderActionFailed, { type: 'error' }); return }
-         exportMarkdownFile(loaded.sections, loaded.meta)
+         await exportMarkdownFile(loaded.sections, loaded.meta)
          showToast(t.markdownExported, { type: 'success' })
       } catch {
          showToast(t.binderActionFailed, { type: 'error' })

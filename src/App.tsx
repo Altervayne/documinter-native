@@ -65,6 +65,9 @@ import { ToastContainer } from './atoms/ToastContainer'
 // -- Markdown Imports --
 import { importMarkdownFile } from './lib/markdown'
 
+// -- Platform Imports --
+import { openBinaryFile } from './lib/platform/fileTransfer'
+
 // -- Type Imports --
 import type { BinderDocumentRecord, BinderFolderRecord, DocMeta, DocState, Mode, OpenDocument, SaveStatus, Section } from './types'
 import type { DocPresentationExtras } from './lib/presentation'
@@ -780,22 +783,16 @@ export default function App() {
 
    // File -> Open Tin...: pick a `.tin`, gunzip, parse. A corrupt gzip or non-Tin errors out with no writes;
    // a valid one opens the merge / replace dialog, targeting the folder the binder is currently showing.
-   const handleOpenTin = useCallback(() => {
-      const input  = document.createElement('input')
-      input.type   = 'file'
-      input.accept = '.tin'
-      input.onchange = async () => {
-         const file = input.files?.[0]
-         if (!file) return
-         try {
-            const tin = parseTin(await gunzipToString(await file.arrayBuffer()))
-            if (!tin) { showToast(t.tinInvalid, { type: 'error' }); return }
-            setTinModeRequest({ tin, targetFolderId: binderCurrentFolderIdRef.current })
-         } catch {
-            showToast(t.tinInvalid, { type: 'error' })
-         }
+   const handleOpenTin = useCallback(async () => {
+      const picked = await openBinaryFile({ filters: [{ name: 'Documinter Tin', extensions: ['tin'] }] })
+      if (!picked) return
+      try {
+         const tin = parseTin(await gunzipToString(picked.bytes))
+         if (!tin) { showToast(t.tinInvalid, { type: 'error' }); return }
+         setTinModeRequest({ tin, targetFolderId: binderCurrentFolderIdRef.current })
+      } catch {
+         showToast(t.tinInvalid, { type: 'error' })
       }
-      input.click()
    }, [showToast, t])
 
    // A `.tin` dropped onto the binder body (routed by useBinderFileImport): same mode dialog, with the
@@ -1258,11 +1255,11 @@ export default function App() {
 
    // Import a Markdown file, parse it, open it in a new tab. Opening a file lands in the editor,
    // so leave binder mode if it was open.
-   const handleImportMarkdown = useCallback((file: File): Promise<void> => {
-      return importMarkdownFile(file).then(({ sections: newSections, meta: newMeta }) => {
-         openLoadedInNewTab(newMeta, newSections)
-         setBinderOpen(false)
-      })
+   const handleImportMarkdown = useCallback((source: string): Promise<void> => {
+      const { sections: newSections, meta: newMeta } = importMarkdownFile(source)
+      openLoadedInNewTab(newMeta, newSections)
+      setBinderOpen(false)
+      return Promise.resolve()
    }, [openLoadedInNewTab])
 
    const handleMetaChange = useCallback((patch: Partial<DocMeta>) => {

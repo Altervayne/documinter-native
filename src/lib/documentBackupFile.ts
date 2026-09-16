@@ -5,6 +5,7 @@
  */
 
 import { slugify } from './text'
+import { saveTextFile, openTextFile } from './platform/fileTransfer'
 import { migrateIds, migrateFormatPageBreaks, migrateFormatBands } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
@@ -42,9 +43,9 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
    }
 }
 
-/** Download the document as a .documinter.json file. `format` is written only when it diverges from
- *  the default, so a document that never touched Page Setup keeps a byte-clean backup. */
-export function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): void {
+/** Save the document as a .documinter.json file. `format` is written only when it diverges from the
+ *  default, so a document that never touched Page Setup keeps a byte-clean backup. */
+export async function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): Promise<void> {
    const backup: DocumentBackup = {
       meta, sections,
       docTheme: presentation.docTheme,
@@ -52,33 +53,21 @@ export function downloadJSON(meta: DocMeta, sections: Section[], presentation: D
       ...(presentation.presentation ? { presentation: presentation.presentation } : {}),
       ...(presentation.format && !isDefaultFormat(presentation.format) ? { format: presentation.format } : {}),
    }
-   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' })
-   const url = URL.createObjectURL(blob)
-   const anchor = document.createElement('a')
-   anchor.href = url
-   anchor.download = slugify(meta.title) + '.documinter.json'
-   anchor.click()
-   URL.revokeObjectURL(url)
+   await saveTextFile({
+      suggestedName: slugify(meta.title) + '.documinter.json',
+      contents:      JSON.stringify(backup, null, 2),
+      filters:       [{ name: 'Documinter backup', extensions: ['json'] }],
+   })
 }
 
-/** Open a file picker for .json files and parse the selected file as a document backup. */
-export function loadJSONFile(
+/** Pick a .json file and parse it as a document backup. Cancel is a no-op; an invalid file calls onError. */
+export async function loadJSONFile(
    onLoad: (state: DocState, presentation: DocPresentation) => void,
    onError: (msg: string) => void,
-): void {
-   const input = document.createElement('input')
-   input.type = 'file'
-   input.accept = '.json'
-   input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = (event) => {
-         const parsed = parseDocumentBackup(event.target?.result as string)
-         if (!parsed) { onError('Invalid Documinter JSON file.'); return }
-         onLoad(parsed.state, parsed.presentation)
-      }
-      reader.readAsText(file)
-   }
-   input.click()
+): Promise<void> {
+   const picked = await openTextFile({ filters: [{ name: 'Documinter backup', extensions: ['json'] }] })
+   if (!picked) return
+   const parsed = parseDocumentBackup(picked.text)
+   if (!parsed) { onError('Invalid Documinter JSON file.'); return }
+   onLoad(parsed.state, parsed.presentation)
 }

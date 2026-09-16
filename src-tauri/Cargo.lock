@@ -69,6 +69,8 @@ dependencies = [
  "tauri-plugin-persisted-scope",
  "tauri-plugin-sql",
  "tokio",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

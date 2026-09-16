@@ -88,15 +88,15 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
       }
    }, [onChanged, showToast, t, backend])
 
-   // Download a template as a portable `.documinter-template.json` file.
-   const handleExport = useCallback((template: DocumentTemplate) => {
-      downloadTemplate(template)
+   // Save a template as a portable `.documinter-template.json` file.
+   const handleExport = useCallback(async (template: DocumentTemplate) => {
+      await downloadTemplate(template)
       showToast(t.templateExported, { type: 'success' })
    }, [showToast, t])
 
    // Import a template file: pick it, capture it as a fresh stored template (new id + timestamps).
    const handleImport = useCallback(() => {
-      loadTemplateFile(
+      void loadTemplateFile(
          parsed => {
             const template = captureTemplate(parsed.name, parsed.chrome, crypto.randomUUID(), Date.now())
             backend.saveTemplate(template)
@@ -104,7 +104,7 @@ export function useTemplates(dataVersion: number, onChanged: () => void) {
                .catch(() => showToast(t.binderActionFailed, { type: 'error' }))
          },
          () => showToast(t.templateImportInvalid, { type: 'error' }),
-      )
+      ).catch(() => showToast(t.templateImportInvalid, { type: 'error' }))
    }, [onChanged, showToast, t, backend])
 
    const templates = [...BUILT_IN_TEMPLATES, ...stored]

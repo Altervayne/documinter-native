@@ -7,6 +7,7 @@ import { diagramSpecToFence, fenceToDiagramSpec } from './diagramFence'
 import { imageMarkupSpecToFence, fenceToImageMarkupSpec } from './imageMarkupFence'
 import { imageBlockToMarkupSpec, markupSpecToImageBlock } from './imageMarkupBlock'
 import { slugify } from './text'
+import { saveTextFile } from './platform/fileTransfer'
 import { sanitizeCalloutHex } from './calloutColor'
 
 // #############
@@ -995,23 +996,17 @@ export function markdownToDocument(source: string): { sections: Section[], meta:
 // # PUBLIC API, IMPORTMARKDOWNFILE / EXPORTMARKDOWNFILE #
 // ########################################################
 
-/** Read a .md File and parse it via markdownToDocument. */
-export async function importMarkdownFile(
-   file: File,
-): Promise<{ sections: Section[], meta: DocMeta }> {
-   const source = await file.text()
+/** Parse Markdown source text into a document. The picked file is read to text by the transfer seam,
+ *  so this takes the text directly rather than a File. */
+export function importMarkdownFile(source: string): { sections: Section[], meta: DocMeta } {
    return markdownToDocument(source)
 }
 
-/** Trigger a browser download of the document as a .md file, named from the title via slugify. */
-export function exportMarkdownFile(sections: Section[], meta: DocMeta): void {
-   const content  = documentToMarkdown(sections, meta)
-   const filename = `${slugify(meta.title) || 'document'}.md`
-   const blob     = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-   const url      = URL.createObjectURL(blob)
-   const anchor   = document.createElement('a')
-   anchor.href     = url
-   anchor.download = filename
-   anchor.click()
-   URL.revokeObjectURL(url)
+/** Save the document as a .md file, named from the title via slugify. */
+export async function exportMarkdownFile(sections: Section[], meta: DocMeta): Promise<void> {
+   await saveTextFile({
+      suggestedName: `${slugify(meta.title) || 'document'}.md`,
+      contents:      documentToMarkdown(sections, meta),
+      filters:       [{ name: 'Markdown document', extensions: ['md'] }],
+   })
 }

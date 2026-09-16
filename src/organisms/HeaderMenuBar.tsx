@@ -27,6 +27,7 @@ import { parseDocumentBackup } from '../lib/documentBackupFile'
 import type { DocPresentation } from '../lib/binderDocuments'
 import { DEFAULT_DOC_ACCENT } from '../lib/documentTemplate'
 import { importMarkdownFile } from '../lib/markdown'
+import { openTextFile } from '../lib/platform/fileTransfer'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 
@@ -57,7 +58,7 @@ function detectOpenFormat(fileName: string, text: string): OpenFormat {
 }
 
 // Everything detectOpenFormat can route; shared by Open (new tab) and Import (new binder record).
-const OPEN_FILE_ACCEPT = '.json,.documint,.md,.markdown,.txt'
+const OPEN_FILE_FILTERS = [{ name: 'Documinter document', extensions: ['json', 'documint', 'md', 'markdown', 'txt'] }]
 
 // #########################
 // # SAVE STATUS INDICATOR #
@@ -153,7 +154,7 @@ interface HeaderMenuBarProps {
    /** Add a section to the active document, the Document menu's "Add section" entry. */
    onAddSection:     () => void
    onToggleBinder:   () => void
-   onImportMarkdownFile: (file: File) => Promise<void>
+   onImportMarkdownFile: (source: string) => Promise<void>
    /** Notifies the binder (File -> Import... just added a record behind its back) so its list
     *  picks up the new card without waiting on an unrelated action to refresh it. Binder mode only. */
    onDocumentImported: () => void
@@ -284,61 +285,47 @@ export function HeaderMenuBar({
 
    // Unified Open: one picker, format-detected and handed to the matching loader (JSON backup / Markdown).
    // Both paths land in the editor (leaving binder mode); the toast reflects the detected format.
-   function handleOpen() {
-      const input  = document.createElement('input')
-      input.type   = 'file'
-      input.accept = OPEN_FILE_ACCEPT
-      input.onchange = async () => {
-         const file = input.files?.[0]
-         if (!file) return
-         try {
-            const text   = await file.text()
-            const format = detectOpenFormat(file.name, text)
-            if (format === 'backup') {
-               const parsed = parseDocumentBackup(text)
-               if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
-               onLoad(parsed.state, parsed.presentation)
-               showToast(t.jsonBackupImported, { type: 'success' })
-            } else {
-               await onImportMarkdownFile(file)
-               showToast(t.markdownImported, { type: 'success' })
-            }
-         } catch {
-            showToast(t.importFailed, { type: 'error' })
+   async function handleOpen() {
+      const picked = await openTextFile({ filters: OPEN_FILE_FILTERS })
+      if (!picked) return
+      try {
+         const format = detectOpenFormat(picked.name, picked.text)
+         if (format === 'backup') {
+            const parsed = parseDocumentBackup(picked.text)
+            if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
+            onLoad(parsed.state, parsed.presentation)
+            showToast(t.jsonBackupImported, { type: 'success' })
+         } else {
+            await onImportMarkdownFile(picked.text)
+            showToast(t.markdownImported, { type: 'success' })
          }
+      } catch {
+         showToast(t.importFailed, { type: 'error' })
       }
-      input.click()
    }
 
    // Binder Import: the same picker + detection as handleOpen, but the loaded document becomes a new
    // binder record (saveDocument, no existingId) in the root instead of a tab. Never touches the open
    // tabs or leaves binder mode; the caller bumps the binder list so the card shows up right away.
-   function handleImport() {
-      const input  = document.createElement('input')
-      input.type   = 'file'
-      input.accept = OPEN_FILE_ACCEPT
-      input.onchange = async () => {
-         const file = input.files?.[0]
-         if (!file) return
-         try {
-            const text   = await file.text()
-            const format = detectOpenFormat(file.name, text)
-            if (format === 'backup') {
-               const parsed = parseDocumentBackup(text)
-               if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
-               await backend.saveDocument(parsed.state, parsed.presentation)
-            } else {
-               const loaded = await importMarkdownFile(file)
-               const state: DocState = { meta: loaded.meta, sections: loaded.sections }
-               await backend.saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
-            }
-            onDocumentImported()
-            showToast(t.binderImportSuccess, { type: 'success' })
-         } catch {
-            showToast(t.importFailed, { type: 'error' })
+   async function handleImport() {
+      const picked = await openTextFile({ filters: OPEN_FILE_FILTERS })
+      if (!picked) return
+      try {
+         const format = detectOpenFormat(picked.name, picked.text)
+         if (format === 'backup') {
+            const parsed = parseDocumentBackup(picked.text)
+            if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
+            await backend.saveDocument(parsed.state, parsed.presentation)
+         } else {
+            const loaded = importMarkdownFile(picked.text)
+            const state: DocState = { meta: loaded.meta, sections: loaded.sections }
+            await backend.saveDocument(state, { docTheme: 'light', docAccent: DEFAULT_DOC_ACCENT })
          }
+         onDocumentImported()
+         showToast(t.binderImportSuccess, { type: 'success' })
+      } catch {
+         showToast(t.importFailed, { type: 'error' })
       }
-      input.click()
    }
 
    function handlePreviewClick() {

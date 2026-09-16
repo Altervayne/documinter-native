@@ -6,7 +6,9 @@ import type { DocMeta, Section } from '../types'
 import type { DocPresentationExtras } from '../lib/presentation'
 import type { DocFormat } from '../lib/format'
 import { generateExportHTML, type ExportOptions } from '../lib/export'
-import { downloadHTML, printDocument, computeDocumentPages } from '../lib/exportLayout'
+import { downloadHTML, printDocument, computeDocumentPages, buildPagedExportHtml } from '../lib/exportLayout'
+import { savePdf } from '../lib/platform/fileTransfer'
+import { slugify } from '../lib/text'
 import { exportMarkdownFile } from '../lib/markdown'
 import { downloadJSON } from '../lib/documentBackupFile'
 import { ensureTemmlReady } from '../lib/math'
@@ -86,25 +88,32 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       })
    }
 
-   // PDF: the browser print dialog over the same rendered export HTML (paged documents only). Awaits
-   // Temml so equations lay out before the print engine sees the page.
+   // PDF: on native Windows, a save dialog then a WebView2 render straight to the file; everywhere else
+   // (and on any native failure) the browser print dialog over the same export HTML. Awaits Temml so
+   // equations lay out before either path renders. Paged documents only.
    async function handlePdf() {
       await ensureTemmlReady()
-      await printDocument(meta, sections, opts)
+      const html = await buildPagedExportHtml(meta, sections, opts)
+      await savePdf({
+         suggestedName: slugify(meta.title) + '.pdf',
+         html,
+         landscape:     docFormat?.kind === 'a4-landscape',
+         fallback:      () => printDocument(meta, sections, opts),
+      })
       onClose()
    }
 
-   // Markdown: pure serialize + download, no async asset to await.
-   function handleMarkdownDownload() {
-      exportMarkdownFile(sections, meta)
+   // Markdown: pure serialize, then the save dialog.
+   async function handleMarkdownDownload() {
+      await exportMarkdownFile(sections, meta)
       showToast(t.markdownExported, { type: 'success' })
       onClose()
    }
 
    // JSON: the lossless, reopenable archive. Snapshots the DOCUMENT's real theme / accent / presentation
    // / format (defaultTheme / defaultAccent), NOT the HTML-export overrides above.
-   function handleJsonDownload() {
-      downloadJSON(meta, sections, {
+   async function handleJsonDownload() {
+      await downloadJSON(meta, sections, {
          docTheme:  defaultTheme,
          docAccent: defaultAccent,
          presentation,

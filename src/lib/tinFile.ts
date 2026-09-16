@@ -8,6 +8,7 @@
 
 // -- Lib Imports --
 import { slugify } from './text'
+import { saveBinaryFile } from './platform/fileTransfer'
 
 // -- Type Imports --
 import type { DocMeta, Section } from '../types'
@@ -133,18 +134,13 @@ export function tinDownloadName(baseName: string, exportedAt: string): string {
    return `${slugify(baseName)}-${date}.tin`
 }
 
-/** Serialize + gzip a manifest and hand it to the browser as a download. The Blob + anchor idiom
- *  mirrors downloadJSON in documentBackupFile. Scratch tabs never saved to the binder are not stored
+/** Serialize + gzip a manifest and save it. Scratch tabs never saved to the binder are not stored
  *  records, so they are never in a Tin: save open documents first to include them. */
 export async function downloadTin(tin: TinFile, fileName: string): Promise<void> {
-   const bytes  = await gzipString(serializeTin(tin))
-   // Copy into a fresh ArrayBuffer-backed view: the gzip bytes are typed over ArrayBufferLike, which
-   // may be a SharedArrayBuffer, and BlobPart rejects that. The copy is negligible next to the gzip.
-   const blob   = new Blob([new Uint8Array(bytes)], { type: 'application/gzip' })
-   const url    = URL.createObjectURL(blob)
-   const anchor = document.createElement('a')
-   anchor.href     = url
-   anchor.download = fileName
-   anchor.click()
-   URL.revokeObjectURL(url)
+   const bytes = await gzipString(serializeTin(tin))
+   await saveBinaryFile({
+      suggestedName: fileName,
+      bytes,
+      filters:       [{ name: 'Documinter Tin', extensions: ['tin'] }],
+   })
 }

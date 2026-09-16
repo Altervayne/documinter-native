@@ -13,6 +13,7 @@ import type { DocFormat } from './format'
 
 // -- Lib Imports --
 import { slugify } from './text'
+import { saveTextFile, openTextFile } from './platform/fileTransfer'
 import { normalizePresentation } from './presentation'
 import { normalizeFormat } from './format'
 import type { DocumentTemplate } from './documentTemplate'
@@ -75,35 +76,23 @@ export function parseTemplateBackup(text: string): { name: string; chrome: Templ
    }
 }
 
-/** Trigger a browser download of the template as a `<slug>.documinter-template.json` file. */
-export function downloadTemplate(template: DocumentTemplate): void {
-   const blob = new Blob([serializeTemplate(template)], { type: 'application/json;charset=utf-8' })
-   const url = URL.createObjectURL(blob)
-   const anchor = document.createElement('a')
-   anchor.href = url
-   anchor.download = slugify(template.name || 'template') + '.documinter-template.json'
-   anchor.click()
-   URL.revokeObjectURL(url)
+/** Save the template as a `<slug>.documinter-template.json` file. */
+export async function downloadTemplate(template: DocumentTemplate): Promise<void> {
+   await saveTextFile({
+      suggestedName: slugify(template.name || 'template') + '.documinter-template.json',
+      contents:      serializeTemplate(template),
+      filters:       [{ name: 'Documinter template', extensions: ['json'] }],
+   })
 }
 
-/** Open a file picker for `.json` files and parse the selected file as a template export. */
-export function loadTemplateFile(
+/** Pick a `.json` file and parse it as a template export. Cancel is a no-op; an invalid file calls onError. */
+export async function loadTemplateFile(
    onLoad: (parsed: { name: string; chrome: TemplateChrome }) => void,
    onError: () => void,
-): void {
-   const input = document.createElement('input')
-   input.type = 'file'
-   input.accept = '.json'
-   input.onchange = () => {
-      const file = input.files?.[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = event => {
-         const parsed = parseTemplateBackup(event.target?.result as string)
-         if (!parsed) { onError(); return }
-         onLoad(parsed)
-      }
-      reader.readAsText(file)
-   }
-   input.click()
+): Promise<void> {
+   const picked = await openTextFile({ filters: [{ name: 'Documinter template', extensions: ['json'] }] })
+   if (!picked) return
+   const parsed = parseTemplateBackup(picked.text)
+   if (!parsed) { onError(); return }
+   onLoad(parsed)
 }

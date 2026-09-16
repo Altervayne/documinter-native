@@ -20,6 +20,7 @@ import { generateExportHTML, renderBlocksToDocHtml, type ExportOptions } from '.
 import { measureHeightsFromContainer } from './domMeasure'
 import { paginateDocument, contentBoxWidthPx, EMPTY_HEIGHTS } from './pageLayout'
 import { slugify } from './text'
+import { saveTextFile } from './platform/fileTransfer'
 import {
    A4_PORTRAIT_WIDTH_PX, A4_LANDSCAPE_WIDTH_PX, millimetresToPx, type Page,
 } from './pageModel'
@@ -375,17 +376,29 @@ export async function downloadHTML(meta: DocMeta, sections: Section[], opts: Exp
    const finalOpts = pages.length > 0 ? { ...opts, pagedLayout: pages } : opts
    const html = generateExportHTML(meta, sections, finalOpts)
 
-   const slug = slugify(meta.title)
-   const anchor = document.createElement('a')
-   anchor.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-   anchor.download = slug + '.html'
-   anchor.click()
-   URL.revokeObjectURL(anchor.href)
+   await saveTextFile({
+      suggestedName: slugify(meta.title) + '.html',
+      contents:      html,
+      filters:       [{ name: 'HTML document', extensions: ['html'] }],
+   })
 }
 
 // ##########
 // # PRINT  #
 // ##########
+
+/** The paged export HTML string for the document: self-measures the layout (paged only, falling back to
+ *  generateExportHTML's forced-break partition for an infinite document), then bakes those pages into the
+ *  export. The exact HTML printDocument renders, obtainable without opening the print dialog, so a native
+ *  renderer can feed it to a real PDF writer. */
+export async function buildPagedExportHtml(meta: DocMeta, sections: Section[], opts: ExportOptions = DEFAULTS): Promise<string> {
+   let pages: Page[] = []
+   try {
+      pages = (await computeDocumentPages(meta, sections, opts)).pages
+   } catch { pages = [] }
+   const finalOpts = pages.length > 0 ? { ...opts, pagedLayout: pages } : opts
+   return generateExportHTML(meta, sections, finalOpts)
+}
 
 /** Resolve `frameDocument.fonts.ready` (best effort), so the print engine lays out the final page with
  *  the real fonts rather than a fallback-font first pass. */
