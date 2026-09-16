@@ -1133,6 +1133,13 @@ export default function App() {
    const [focusedParagraphId, setFocusedParagraphId] = useState<string | null>(null)
    useEffect(() => { setFocusedParagraphId(null) }, [activeTabKey])
 
+   // The block whose editor window (diagram / graph / image / ...) is open, lifted from WysiwygArea's
+   // single-mode PopAWindow. Like focusedParagraphId it FREEZES pagination while set: an edit that changes
+   // the block's height (a diagram that stops overflowing its page) would otherwise reflow the pages and
+   // remount the block, unmounting the inline editor window mid-edit. The layout settles when it closes.
+   const [editingBlockId, setEditingBlockId] = useState<string | null>(null)
+   useEffect(() => { setEditingBlockId(null) }, [activeTabKey])
+
    // The offscreen measure pass's HEIGHTS, refreshed on a typing pause below. Heights are the only thing that
    // needs the DOM; pagination is pure arithmetic, so the canvas paginates from these cached heights
    // SYNCHRONOUSLY every render. Per-block, id-keyed, width-stable: after a structural edit surviving blocks
@@ -1162,8 +1169,9 @@ export default function App() {
    let documentPages: DocumentPages
    if (!pagedDocument) {
       documentPages = EMPTY_DOCUMENT_PAGES
-   } else if (focusedParagraphId) {
-      // Hold the layout steady while a paragraph is typed (its length is not in the model until blur).
+   } else if (focusedParagraphId || editingBlockId) {
+      // Hold the layout steady while a paragraph is typed (its length is not in the model until blur), or
+      // while a block editor window is open (a reflow would remount the block and close the window).
       documentPages = lastDocumentPagesRef.current
    } else {
       documentPages = paginateDocument(sections, format, measuredHeights)
@@ -1176,15 +1184,15 @@ export default function App() {
    // would read a half-typed paragraph; the blur re-runs this. A superseded run is cancelled so a stale
    // promise never overwrites fresher heights.
    useEffect(() => {
-      if (!pagedDocument) return          // infinite: nothing to measure, keep the empty heights
-      if (focusedParagraphId) return      // hold the heights steady while a paragraph is being edited
+      if (!pagedDocument) return                    // infinite: nothing to measure, keep the empty heights
+      if (focusedParagraphId || editingBlockId) return   // hold heights steady while editing a paragraph or a block
       let cancelled = false
       const timer = window.setTimeout(() => {
          void computeDocumentPages(meta, sections, { theme: docTheme, accent: docAccent, lang, presentation, format })
             .then(result => { if (!cancelled) setMeasuredHeights(result.heights) })
       }, PAGINATION_DEBOUNCE_MS)
       return () => { cancelled = true; clearTimeout(timer) }
-   }, [pagedDocument, focusedParagraphId, meta, sections, docTheme, docAccent, lang, presentation, format])
+   }, [pagedDocument, focusedParagraphId, editingBlockId, meta, sections, docTheme, docAccent, lang, presentation, format])
 
    // Export dialog: lifted here (not local to HeaderMenuBar) so the header's File -> Export... / Ctrl+E path
    // and the document background context menu's "Export..." item open the same modal instance.
@@ -1573,6 +1581,7 @@ export default function App() {
                               tooTallPageIds={documentPages.tooTallPageIds}
                               focusedParagraphId={focusedParagraphId}
                               onParagraphFocusChange={setFocusedParagraphId}
+                              onBlockEditorOpenChange={setEditingBlockId}
                            />
                         ),
                         markdown: (

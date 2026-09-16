@@ -13,7 +13,7 @@ import { useDocumentMutations } from '../../contexts/DocumentMutationsContext'
 import { DocumentHandlesProvider } from '../../contexts/DocumentHandlesContext'
 import { DocumentTablesProvider, LinkableTablesProvider } from '../../contexts/DocumentTablesContext'
 import { DocThemeProvider } from '../../contexts/DocThemeContext'
-import { PopAWindowProvider } from 'react-pop-a-window'
+import { PopAWindowProvider, usePopAWindow } from 'react-pop-a-window'
 import { ParagraphFocusProvider } from '../../contexts/ParagraphFocusContext'
 import { PageBreaksContext, type PageBreaksApi } from '../../contexts/PageBreaksContext'
 import { useLang } from '../../contexts/LangContext'
@@ -128,9 +128,21 @@ interface WysiwygAreaProps {
    focusedParagraphId?: string | null
    /** A fragment press sets the focused paragraph, a blur clears it. */
    onParagraphFocusChange?: (blockId: string | null) => void
+   /** The block whose editor window is open (or null), lifted from the single-mode PopAWindow so App can
+    *  freeze pagination while it is open, a reflow would remount the block and close the window. */
+   onBlockEditorOpenChange?: (blockId: string | null) => void
    /** Overwrite the active document's chrome with a dragged template's, keeping its content (the
     *  Templates panel drop-to-apply gesture). */
    onApplyTemplate?: (template: DocumentTemplate) => void
+}
+
+/** Reports the single-mode PopAWindow's currently open block id up to App. Must live INSIDE the provider
+ *  to read usePopAWindow; renders nothing. App freezes pagination while a block editor is open, since a
+ *  reflow (e.g. a diagram edit that stops overflowing a page) would remount the block and close it. */
+function BlockEditorOpenReporter({ onChange }: { onChange?: (blockId: string | null) => void }) {
+   const { topId } = usePopAWindow()
+   useEffect(() => { onChange?.(topId ?? null) }, [topId, onChange])
+   return null
 }
 
 export function WysiwygArea({
@@ -140,6 +152,7 @@ export function WysiwygArea({
    previewMode, onSetMode,
    pages = [], tooTallPageIds = EMPTY_TOO_TALL_PAGE_IDS,
    focusedParagraphId = null, onParagraphFocusChange,
+   onBlockEditorOpenChange,
    onApplyTemplate,
 }: WysiwygAreaProps) {
    const { t } = useLang()
@@ -1158,6 +1171,7 @@ export function WysiwygArea({
        <LinkableTablesProvider tables={linkableTables}>
        <DocThemeProvider theme={docTheme}>
         <PopAWindowProvider mode="single" resetKey={activeTabKey}>
+         <BlockEditorOpenReporter onChange={onBlockEditorOpenChange} />
          <ParagraphFocusProvider value={paragraphFocusValue}>
          <PageBreaksContext.Provider value={pageBreaksApi}>
          <div className="flex flex-col h-full min-h-0 w-full">
