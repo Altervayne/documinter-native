@@ -79,9 +79,18 @@ export function CodeLangPicker({ value, onChange }: { value: CodeLang; onChange:
             ref={triggerRef}
             data-code-lang-trigger
             onClick={toggle}
+            // Doc-theme tokens (currentColor + --doc-accent), so the trigger follows the DOCUMENT theme
+            // like the callout style picker, not the app chrome. The portaled popover keeps app tokens.
             className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors cursor-pointer ${
-               isOpen ? 'border-accent/50 bg-accent/10 text-accent' : 'border-border text-muted hover:text-text'
+               isOpen ? 'font-medium' : 'border-current/25 hover:border-current/50'
             }`}
+            style={isOpen
+               ? {
+                    color:       'var(--doc-accent, var(--color-accent))',
+                    borderColor: 'var(--doc-accent, var(--color-accent))',
+                    background:  'color-mix(in srgb, var(--doc-accent, var(--color-accent)) 10%, transparent)',
+                 }
+               : undefined}
          >
             <LangBadge lang={value} />
             <span>{LANG_LABELS[value]}</span>
