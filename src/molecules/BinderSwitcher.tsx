@@ -8,7 +8,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 // -- Icon Imports --
-import { Library, ChevronDown, FolderOpen, FolderPlus, FolderClock, Check, ArrowLeft } from 'lucide-react'
+import { Library, ChevronDown, FolderOpen, FolderPlus, FolderClock, Check, ArrowLeft, Trash2 } from 'lucide-react'
+
+// -- Component Imports --
+import { DeleteBinderDialog } from './DeleteBinderDialog'
 
 // -- Context Imports --
 import { useLang } from '../contexts/LangContext'
@@ -34,6 +37,7 @@ export function BinderSwitcher() {
    const [creating, setCreating]   = useState(false)
    const [name, setName]           = useState('')
    const [alignRight, setAlignRight] = useState(false)
+   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null)
    const containerRef = useRef<HTMLDivElement>(null)
 
    useEffect(() => {
@@ -80,6 +84,13 @@ export function BinderSwitcher() {
       const trimmed = name.trim()
       if (controls === null || controls.busy || trimmed === '') return
       void controls.createBinder(trimmed)
+      closeMenu()
+   }
+
+   function confirmDelete() {
+      if (controls === null || deleteTarget === null) return
+      void controls.deleteBinder(deleteTarget.path)
+      setDeleteTarget(null)
       closeMenu()
    }
 
@@ -137,7 +148,19 @@ export function BinderSwitcher() {
                   // ==== List view ====
                   <>
                      <div className="px-3 py-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{t.binderMenuCurrent}</div>
+                        <div className="flex items-center justify-between">
+                           <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{t.binderMenuCurrent}</div>
+                           <button
+                              type="button"
+                              onClick={() => setDeleteTarget({ path: controls.activePath, name: controls.activeName })}
+                              disabled={controls.busy}
+                              title={t.deleteBinderAction}
+                              aria-label={t.deleteBinderAction}
+                              className="text-muted transition-colors hover:text-[var(--callout-danger-accent)] disabled:opacity-40 cursor-pointer"
+                           >
+                              <Trash2 size={13} />
+                           </button>
+                        </div>
                         <div className="mt-0.5 flex items-center gap-1.5 text-sm font-medium text-text">
                            <Check size={13} className="shrink-0 text-accent" />
                            <span className="truncate">{controls.activeName}</span>
@@ -150,18 +173,29 @@ export function BinderSwitcher() {
                            <MenuSeparator />
                            <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{t.binderMenuOthers}</div>
                            {others.map(entry => (
-                              <button
-                                 key={entry.path}
-                                 onClick={() => handleSwitch(entry.path)}
-                                 disabled={controls.busy}
-                                 className="flex w-full flex-col items-start px-3 py-1.5 text-left transition-colors cursor-pointer hover:bg-border/50 disabled:opacity-40"
-                              >
-                                 <span className="flex items-center gap-2 text-sm text-text">
-                                    <FolderClock size={13} className="shrink-0 text-muted" />
-                                    <span className="truncate">{entry.name}</span>
-                                 </span>
-                                 <span className="w-full truncate pl-[21px] text-[11px] text-muted" title={entry.path}>{entry.path}</span>
-                              </button>
+                              <div key={entry.path} className="group flex items-stretch transition-colors hover:bg-border/50">
+                                 <button
+                                    onClick={() => handleSwitch(entry.path)}
+                                    disabled={controls.busy}
+                                    className="flex min-w-0 flex-1 flex-col items-start px-3 py-1.5 text-left cursor-pointer disabled:opacity-40"
+                                 >
+                                    <span className="flex items-center gap-2 text-sm text-text">
+                                       <FolderClock size={13} className="shrink-0 text-muted" />
+                                       <span className="truncate">{entry.name}</span>
+                                    </span>
+                                    <span className="w-full truncate pl-[21px] text-[11px] text-muted" title={entry.path}>{entry.path}</span>
+                                 </button>
+                                 <button
+                                    type="button"
+                                    onClick={() => setDeleteTarget({ path: entry.path, name: entry.name })}
+                                    disabled={controls.busy}
+                                    title={t.deleteBinderAction}
+                                    aria-label={t.deleteBinderAction}
+                                    className="flex items-center px-2.5 text-muted opacity-0 transition-opacity hover:text-[var(--callout-danger-accent)] group-hover:opacity-100 disabled:opacity-40 cursor-pointer"
+                                 >
+                                    <Trash2 size={13} />
+                                 </button>
+                              </div>
                            ))}
                         </>
                      )}
@@ -176,6 +210,16 @@ export function BinderSwitcher() {
                   </>
                )}
             </div>
+         )}
+
+         {deleteTarget !== null && (
+            <DeleteBinderDialog
+               binderName={deleteTarget.name}
+               binderPath={deleteTarget.path}
+               busy={controls.busy}
+               onConfirm={confirmDelete}
+               onCancel={() => setDeleteTarget(null)}
+            />
          )}
       </div>
    )

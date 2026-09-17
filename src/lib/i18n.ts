@@ -744,6 +744,13 @@ export const translations = {
       binderMenuOpen:    'Open a folder...',
       binderMenuCreate:  'New Binder...',
       binderMenuCancel:  'Cancel',
+      // Delete Binder (severe, native)
+      deleteBinderAction:       'Delete Binder',
+      deleteBinderTitle:        'Delete Binder',
+      deleteBinderWarning:      'This permanently deletes the Binder "{name}" and everything in it from your disk. This cannot be undone.',
+      deleteBinderConfirmLabel: 'Type {name} to confirm',
+      deleteBinderConfirm:      'Delete forever',
+      deleteBinderCancel:       'Cancel',
       // Toolbar menus
       menuFile:            'File',
       menuView:            'View',
@@ -1675,6 +1682,13 @@ export const translations = {
       binderMenuOpen:    'Ouvrir un dossier...',
       binderMenuCreate:  'Nouveau classeur...',
       binderMenuCancel:  'Annuler',
+      // Delete Binder (severe, native)
+      deleteBinderAction:       'Supprimer le classeur',
+      deleteBinderTitle:        'Supprimer le classeur',
+      deleteBinderWarning:      'Cette action supprime définitivement le classeur "{name}" et tout son contenu de votre disque. Elle est irréversible.',
+      deleteBinderConfirmLabel: 'Tapez {name} pour confirmer',
+      deleteBinderConfirm:      'Supprimer définitivement',
+      deleteBinderCancel:       'Annuler',
       // Toolbar menus
       menuFile:            'Fichier',
       menuView:            'Vue',

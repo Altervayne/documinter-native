@@ -936,17 +936,30 @@ export default function App() {
       if (pending === null || handledLaunchRef.current === pending) return
       handledLaunchRef.current = pending
       let cancelled = false
+      // A cold launch starts App with one empty scratch tab. If that is all that is open, replace it with
+      // the launched document rather than leaving a stray blank tab beside it.
+      const startTabs = openDocumentsRef.current
+      const blankTabKey = startTabs.length === 1 && startTabs[0].documentId === null && isEmptyDocument(startTabs[0])
+         ? startTabs[0].tabKey
+         : null
       void (async () => {
          try {
+            let opened = false
             if (pending.kind === 'binder-doc') {
                const relativePath = binderRelativePath(pending.binderRoot, pending.filePath)
                const id = relativePath !== null && backend.resolveDocumentByRelativePath
                   ? await backend.resolveDocumentByRelativePath(relativePath)
                   : null
                if (cancelled) return
-               if (id !== null) { await handleOpenDocument(id); return }
+               if (id !== null) { await handleOpenDocument(id); opened = true }
             }
-            await openLooseFile(pending.filePath)
+            if (!opened) await openLooseFile(pending.filePath)
+            // Drop the initial blank, but only once a real tab has actually landed (guarded on length).
+            if (blankTabKey !== null) {
+               setOpenDocuments(documents => documents.length > 1
+                  ? documents.filter(document => document.tabKey !== blankTabKey)
+                  : documents)
+            }
          } finally {
             if (!cancelled) nativeBinder?.consumeLaunchOpen()
          }

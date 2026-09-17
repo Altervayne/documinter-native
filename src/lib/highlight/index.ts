@@ -17,8 +17,8 @@ import { markdown } from './languages/markdown'
 import { plain } from './languages/plain'
 
 const LANGUAGES = {
-   windev, js: javascript, ts: typescript, python, rust, c, sql,
-   bash, json, yaml, html, xml, css, markdown, plain,
+   js: javascript, ts: typescript, python, rust, c, sql,
+   bash, json, yaml, html, xml, css, markdown, windev, plain,
 }
 
 /** Highlight a code block, wrapping each source line so long lines wrap (with a hanging indent) rather
@@ -28,8 +28,9 @@ export function highlight(code: string, lang: CodeLang = 'windev'): string {
    return tokenize(code, language.rules, true)
 }
 
+// Order here drives the picker list. W-Langage is the default new-block language (see CodeBlock) but a
+// niche one for most users, so it sits near the bottom rather than leading the list.
 export const LANG_LABELS: Record<CodeLang, string> = {
-   windev:   'W-Langage',
    js:       'JavaScript',
    ts:       'TypeScript',
    python:   'Python',
@@ -43,5 +44,6 @@ export const LANG_LABELS: Record<CodeLang, string> = {
    xml:      'XML',
    css:      'CSS',
    markdown: 'Markdown',
+   windev:   'W-Langage',
    plain:    'Plaintext',
 }

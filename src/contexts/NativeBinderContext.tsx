@@ -31,6 +31,7 @@ export interface NativeBinderControls {
    switchBinder(path: string): Promise<void>
    openBinder(): Promise<void>
    createBinder(name: string, parentDir?: string): Promise<void>
+   deleteBinder(path: string): Promise<void>
    /** A launched `.mint` waiting to open in this Binder, or null. App opens it then calls consume. */
    pendingLaunchOpen: PendingLaunchOpen | null
    consumeLaunchOpen(): void

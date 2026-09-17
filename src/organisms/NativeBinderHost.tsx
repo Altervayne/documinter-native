@@ -11,10 +11,11 @@ import { useEffect, useRef, useState } from 'react'
 // -- Tauri Imports --
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { documentDir, join } from '@tauri-apps/api/path'
+import { exists } from '@tauri-apps/plugin-fs'
+import { documentDir, join, sep } from '@tauri-apps/api/path'
 
 // -- Icon Imports --
-import { FolderPlus, FolderOpen, FolderClock, Languages } from 'lucide-react'
+import { FolderPlus, FolderOpen, FolderClock, Languages, Trash2 } from 'lucide-react'
 
 // -- App Imports --
 import App from '../App'
@@ -23,13 +24,14 @@ import { BinderBackendProvider } from '../contexts/BinderBackendContext'
 import { LangProvider, useLang } from '../contexts/LangContext'
 import { NativeBinderProvider, type NativeBinderControls, type PendingLaunchOpen } from '../contexts/NativeBinderContext'
 import { WindowControls } from '../molecules/WindowControls'
+import { DeleteBinderDialog } from '../molecules/DeleteBinderDialog'
 import { LogoColor } from '../atoms/Logo'
 import { createFilesystemBackend } from '../lib/filesystem/filesystemBackend'
 import { slugify } from '../lib/text'
 import type { Lang } from '../lib/i18n'
 import {
    readBinderRegistry, writeBinderRegistry,
-   rememberBinder, setActivePath, binderNameFromPath,
+   rememberBinder, setActivePath, forgetBinder, binderNameFromPath,
    type KnownBinder,
 } from '../lib/native/binderRegistry'
 import { takePendingLaunchFile, onLaunchFile, resolveBinderRoot } from '../lib/native/launchFile'
@@ -57,6 +59,7 @@ interface NativeBinder {
    createBinder(name: string, parentDir?: string): Promise<void>
    openBinder(): Promise<void>
    switchBinder(path: string): Promise<void>
+   deleteBinder(path: string): Promise<void>
    consumeLaunchOpen(): void
 }
 
@@ -189,6 +192,78 @@ function useNativeBinder(): NativeBinder {
    activePathRef.current      = activePath
    openBinderAtPathRef.current = openBinderAtPath
 
+   const backendRef = useRef(backend)
+   backendRef.current = backend
+
+   // Remove a Binder from the app: drop it from the registry, and if it is the one open, dispose its
+   // backend and fall back to Welcome. Reads refs so the external-deletion watcher (a captured effect) sees
+   // the live active path + backend. Shared by the in-app delete and the external evict.
+   const evictBinderState = (path: string): void => {
+      const wasActive = activePathRef.current === path
+      const updated = forgetBinder(readBinderRegistry(), path)
+      writeBinderRegistry(updated)
+      setKnown(updated.known)
+      if (wasActive) {
+         const previous = backendRef.current
+         setBackend(null)
+         setActivePathState(null)
+         setNotice(null)
+         setPhase('welcome')
+         if (previous) void previous.dispose().catch(() => { /* the folder is already gone; nothing to close cleanly */ })
+      }
+   }
+   const evictBinderStateRef = useRef(evictBinderState)
+   evictBinderStateRef.current = evictBinderState
+
+   // Delete a Binder folder from disk (the name-typed confirmation happens in the UI). The ACTIVE Binder
+   // holds its index.sqlite + folder watch open, which LOCKS the folder against deletion, so we first drop
+   // to Welcome (App stops touching it) and dispose the backend to release those handles, THEN delete. A
+   // non-active Binder has no open handles and deletes directly. The registry entry is forgotten only on a
+   // successful delete, so a blocked / failed delete leaves the Binder recoverable in the list.
+   const deleteBinder = async (path: string): Promise<void> => {
+      setBusy(true)
+      setError(null)
+      try {
+         if (activePathRef.current === path) {
+            const previous = backendRef.current
+            setBackend(null)
+            setActivePathState(null)
+            setNotice(null)
+            setPhase('welcome')
+            if (previous) await previous.dispose()
+         }
+         await invoke('delete_binder_directory', { path })
+         const updated = forgetBinder(readBinderRegistry(), path)
+         writeBinderRegistry(updated)
+         setKnown(updated.known)
+      } catch (failure) {
+         setError(String(failure))
+      } finally {
+         setBusy(false)
+      }
+   }
+
+   // Quietly evict the active Binder if its folder vanishes from disk (deleted in a file manager). Checks on
+   // window focus (the "deleted in Explorer, alt-tab back" flow) plus a slow interval backstop, so a gone
+   // folder never lingers or crashes a later access. No notice: the Binder is simply gone.
+   useEffect(() => {
+      if (activePath === null) return
+      let cancelled = false
+      const check = async (): Promise<void> => {
+         try {
+            if (!(await exists(activePath)) && !cancelled) evictBinderStateRef.current(activePath)
+         } catch { /* a transient stat error is not proof the folder is gone; ignore */ }
+      }
+      const onFocus = (): void => { void check() }
+      window.addEventListener('focus', onFocus)
+      const interval = window.setInterval(() => { void check() }, 5000)
+      return () => {
+         cancelled = true
+         window.removeEventListener('focus', onFocus)
+         clearInterval(interval)
+      }
+   }, [activePath])
+
    // Open the OS-launched `.mint`: resolve its Binder, adopt that Binder when it differs from the active
    // one (remounting App), then publish the pending open App consumes. A loose file (no Binder) publishes
    // a loose open against whatever Binder is active, or waits on the Welcome screen until one opens. The
@@ -223,7 +298,7 @@ function useNativeBinder(): NativeBinder {
 
    return {
       phase, backend, activePath, known, notice, error, busy, pendingLaunchOpen,
-      createBinder, openBinder, switchBinder, consumeLaunchOpen,
+      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen,
    }
 }
 
@@ -249,6 +324,7 @@ export function NativeBinderHost() {
          switchBinder: binder.switchBinder,
          openBinder:   binder.openBinder,
          createBinder: binder.createBinder,
+         deleteBinder: binder.deleteBinder,
          pendingLaunchOpen: binder.pendingLaunchOpen,
          consumeLaunchOpen: binder.consumeLaunchOpen,
       }
@@ -393,6 +469,13 @@ function CreateBinderCard({ binder }: { binder: NativeBinder }) {
    const trimmed = name.trim()
    const folderName = trimmed === '' ? '' : slugify(trimmed)
 
+   // The OS path separator ('\\' on Windows, '/' elsewhere), so the preview matches the real created path.
+   // previewLocation is the full intended path, used verbatim as the tooltip since the field truncates.
+   const separator = sep()
+   const previewLocation = parent === null
+      ? null
+      : folderName === '' ? parent : `${parent}${separator}${folderName}`
+
    const handleChangeLocation = async () => {
       const picked = await open({ directory: true })
       if (typeof picked === 'string') setParent(picked)
@@ -433,8 +516,8 @@ function CreateBinderCard({ binder }: { binder: NativeBinder }) {
                {t.welcomeLocationChange}
             </button>
          </div>
-         <div className="mb-4 truncate rounded border border-border bg-el px-2 py-1.5 text-xs text-muted" title={parent ?? ''}>
-            {parent ?? '...'}{folderName !== '' && <span className="text-text">/{folderName}</span>}
+         <div className="mb-4 truncate rounded border border-border bg-el px-2 py-1.5 text-xs text-muted" title={previewLocation ?? undefined}>
+            {parent ?? '...'}{folderName !== '' && <span className="text-text">{separator}{folderName}</span>}
          </div>
 
          <button
@@ -471,9 +554,10 @@ function OpenBinderCard({ binder }: { binder: NativeBinder }) {
    )
 }
 
-/** Recent Binders: one click reopens a known folder. */
+/** Recent Binders: one click reopens a known folder; the trash on hover deletes it (with confirmation). */
 function RecentBinders({ binder }: { binder: NativeBinder }) {
    const { t } = useLang()
+   const [deleteTarget, setDeleteTarget] = useState<{ path: string; name: string } | null>(null)
    return (
       <div className="w-full">
          <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted">
@@ -482,19 +566,38 @@ function RecentBinders({ binder }: { binder: NativeBinder }) {
          </div>
          <ul className="flex flex-col gap-1">
             {binder.known.map(entry => (
-               <li key={entry.path}>
+               <li key={entry.path} className="group flex items-stretch overflow-hidden rounded border border-border bg-raised transition-colors hover:bg-el">
                   <button
                      type="button"
                      onClick={() => void binder.switchBinder(entry.path)}
                      disabled={binder.busy}
-                     className="flex w-full flex-col items-start rounded border border-border bg-raised px-3 py-2 text-left transition-colors hover:bg-el disabled:opacity-50 cursor-pointer"
+                     className="flex min-w-0 flex-1 flex-col items-start px-3 py-2 text-left disabled:opacity-50 cursor-pointer"
                   >
                      <span className="text-sm font-medium text-text">{entry.name}</span>
                      <span className="w-full truncate text-xs text-muted" title={entry.path}>{entry.path}</span>
                   </button>
+                  <button
+                     type="button"
+                     onClick={() => setDeleteTarget({ path: entry.path, name: entry.name })}
+                     disabled={binder.busy}
+                     title={t.deleteBinderAction}
+                     aria-label={t.deleteBinderAction}
+                     className="flex items-center px-3 text-muted opacity-0 transition-opacity hover:text-[var(--callout-danger-accent)] group-hover:opacity-100 disabled:opacity-40 cursor-pointer"
+                  >
+                     <Trash2 size={14} />
+                  </button>
                </li>
             ))}
          </ul>
+         {deleteTarget !== null && (
+            <DeleteBinderDialog
+               binderName={deleteTarget.name}
+               binderPath={deleteTarget.path}
+               busy={binder.busy}
+               onConfirm={() => { void binder.deleteBinder(deleteTarget.path); setDeleteTarget(null) }}
+               onCancel={() => setDeleteTarget(null)}
+            />
+         )}
       </div>
    )
 }

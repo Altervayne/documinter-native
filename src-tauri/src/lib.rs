@@ -29,6 +29,32 @@ async fn create_binder_directory(app: tauri::AppHandle, path: String) -> Result<
     .map_err(|error| error.to_string())
 }
 
+// Delete a Binder folder and everything under it (the user-confirmed "delete this Binder" action). std::fs
+// (ungated), same trust model as create: the user drove it through a name-typed confirmation. The scope
+// grant is left as-is; a stale grant to a now-gone folder is harmless.
+//
+// The frontend disposes the active Binder's backend (closing its index.sqlite + folder watch) BEFORE this
+// runs, so the folder is unlocked. On Windows a just-closed handle can still linger a few ms, so retry with
+// a short backoff; NotFound (already gone) counts as success. Sync, so the backoff sleep never blocks the
+// async runtime.
+#[tauri::command]
+fn delete_binder_directory(path: String) -> Result<(), String> {
+  let mut last_error = String::new();
+  for attempt in 0..5 {
+    match std::fs::remove_dir_all(&path) {
+      Ok(()) => return Ok(()),
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+      Err(error) => {
+        last_error = error.to_string();
+        if attempt < 4 {
+          std::thread::sleep(std::time::Duration::from_millis(80));
+        }
+      }
+    }
+  }
+  Err(last_error)
+}
+
 // ####################
 // # HIDE THE CACHE FOLDER
 // ####################
@@ -351,6 +377,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       allow_binder_directory,
       create_binder_directory,
+      delete_binder_directory,
       set_path_hidden,
       write_text_file,
       write_binary_file,
