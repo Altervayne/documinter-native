@@ -11,10 +11,11 @@ import { readAutosave, clearLegacyAutosave } from './lib/autosaveStorage'
 import { NameTakenError } from './lib/filesystem/filesystemBackend'
 import { parseMint } from './lib/filesystem/mintFile'
 import { classifyDiskChange } from './lib/native/diskConflict'
-import { binderRelativePath, readLaunchFileText } from './lib/native/launchFile'
+import { binderRelativePath, readLaunchFileText, readLaunchFileBytes } from './lib/native/launchFile'
 import type { LoadedDocument, DocPresentation } from './lib/documentRecord'
 import type { TinImportSummary } from './lib/tinMapping'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
+import { ROOT_FOLDER_ID } from './lib/binderConstants'
 import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
 import {
    emptyHistory, recordEdit, applyUndo, applyRedo, canUndo, canRedo,
@@ -927,15 +928,37 @@ export default function App() {
       }
    }, [activateTab, showToast, t])
 
-   // Consume a launched `.mint` (set by the native host once the right Binder is mounted): open its tab
-   // if the Binder indexes it, otherwise fall back to a loose scratch tab. The ref makes it fire once per
-   // launch, since the host's controls object (and this effect's deps) change on every render.
+   // Import a launched `.tin` into the open Binder: read its gzip bytes, parse, and raise the same
+   // merge / replace dialog as File -> Open Tin, targeting the Binder root. A newly created Binder is
+   // empty, so "Merge" restores the Tin whole; an existing Binder gets the usual choice.
+   const openLaunchedTin = useCallback(async (filePath: string) => {
+      try {
+         const tin = parseTin(await gunzipToString(await readLaunchFileBytes(filePath)))
+         if (!tin) { showToast(t.tinInvalid, { type: 'error' }); return }
+         setTinModeRequest({ tin, targetFolderId: ROOT_FOLDER_ID })
+      } catch {
+         showToast(t.tinInvalid, { type: 'error' })
+      }
+   }, [showToast, t])
+
+   // Consume a launched file (set by the native host once a Binder is mounted): a `.tin` raises the import
+   // dialog, a `.mint` opens its tab if the Binder indexes it, otherwise a loose scratch tab. The ref makes
+   // it fire once per launch, since the host's controls object (and this effect's deps) change per render.
    const handledLaunchRef = useRef<PendingLaunchOpen | null>(null)
    useEffect(() => {
       const pending = nativeBinder?.pendingLaunchOpen ?? null
       if (pending === null || handledLaunchRef.current === pending) return
       handledLaunchRef.current = pending
       let cancelled = false
+
+      // A `.tin` imports rather than opening a tab, so it skips the blank-tab handling below.
+      if (pending.kind === 'tin') {
+         void (async () => {
+            try { await openLaunchedTin(pending.filePath) }
+            finally { if (!cancelled) nativeBinder?.consumeLaunchOpen() }
+         })()
+         return () => { cancelled = true }
+      }
       // A cold launch starts App with one empty scratch tab. If that is all that is open, replace it with
       // the launched document rather than leaving a stray blank tab beside it.
       const startTabs = openDocumentsRef.current
@@ -965,7 +988,7 @@ export default function App() {
          }
       })()
       return () => { cancelled = true }
-   }, [nativeBinder, backend, handleOpenDocument, openLooseFile])
+   }, [nativeBinder, backend, handleOpenDocument, openLooseFile, openLaunchedTin])
 
    // The one New-document entry point: a dialog offering Blank or a template with accent / theme / format
    // overrides. Opened from the header, File menu, and the binder's empty-state CTA (which seeds its folder).

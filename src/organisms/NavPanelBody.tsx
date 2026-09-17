@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 // -- Component / Hook Imports --
 import { useLang } from '../contexts/LangContext'
+import { useToast } from '../contexts/ToastContext'
 import { getAnchoredBlocks } from '../hooks/useLinkMode'
 
 // -- Lib Imports --
@@ -126,6 +127,7 @@ interface NavSectionProps {
  *  seeds `nav` from the zero-config derivation; "Reset" clears it back to that default. */
 function NavSection({ nav, sections, onChange }: NavSectionProps) {
    const { t } = useLang()
+   const { showToast } = useToast()
    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
    // The working, reconciled entry list: the exact list the export consumes (before resolution).
@@ -182,7 +184,8 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
    function addAnchorLink(): void {
       const firstAnchor = anchoredBlocks[0]?.block
       const handle = firstAnchor?.handle
-      if (!handle) return
+      // No block carries an anchor yet, so there is nothing to link to: say so rather than no-op silently.
+      if (!handle) { showToast(t.presentationNavNoAnchorsHint, { type: 'warning' }); return }
       // Seed the label from the block's content preview, falling back to the raw handle.
       const label = blkPreview(firstAnchor).trim() || handle
       const entry: NavCustomEntry = { kind: 'custom', id: crypto.randomUUID(), label, target: { type: 'anchor', handle } }
@@ -377,8 +380,6 @@ function NavSection({ nav, sections, onChange }: NavSectionProps) {
                type="button"
                className="presentation-btn"
                onClick={addAnchorLink}
-               disabled={anchoredBlocks.length === 0}
-               title={anchoredBlocks.length === 0 ? t.presentationNavNoAnchorsHint : undefined}
             >
                <Hash size={13} />{t.presentationNavAddAnchorLink}
             </button>

@@ -113,23 +113,27 @@ fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
 }
 
 // ####################
-// # LAUNCH FILE (.mint association)
+// # LAUNCH FILE (.mint / .tin association)
 // ####################
-// Double-clicking a .mint in the OS launches Documinter with the file path as an argument. The path is
-// captured here (from argv on a cold start, or from a second instance's argv via single-instance) and
-// drained once by the frontend, which resolves the file's Binder and opens the document.
+// Double-clicking a .mint document or a .tin bundle in the OS launches Documinter with the file path as
+// an argument. The path is captured here (from argv on a cold start, or from a second instance's argv via
+// single-instance) and drained once by the frontend, which decides by extension what to do with it.
 
 // The pending launch path: set from argv, drained once by take_launch_file. Behind a Mutex so it can be
 // shared managed state the single-instance callback also writes.
 #[derive(Default)]
 struct LaunchFile(Mutex<Option<String>>);
 
-// The first argument naming a .mint file, or None. args[0] is the executable, so it is skipped.
-fn first_mint_argument(args: &[String]) -> Option<String> {
+// The first argument naming a launchable file (a .mint document or a .tin bundle), or None. args[0] is
+// the executable, so it is skipped.
+fn first_launch_argument(args: &[String]) -> Option<String> {
   args
     .iter()
     .skip(1)
-    .find(|argument| argument.to_lowercase().ends_with(".mint"))
+    .find(|argument| {
+      let lower = argument.to_lowercase();
+      lower.ends_with(".mint") || lower.ends_with(".tin")
+    })
     .cloned()
 }
 
@@ -336,11 +340,11 @@ async fn print_html_to_pdf(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
-    // Single-instance MUST be first: a second launch (a .mint double-clicked while running) focuses the
-    // open window and forwards its argv here instead of spawning a duplicate. The callback stores the
-    // launched file + notifies the frontend, which opens it.
+    // Single-instance MUST be first: a second launch (a .mint or .tin double-clicked while running)
+    // focuses the open window and forwards its argv here instead of spawning a duplicate. The callback
+    // stores the launched file + notifies the frontend, which opens it.
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-      if let Some(path) = first_mint_argument(&argv) {
+      if let Some(path) = first_launch_argument(&argv) {
         if let Some(state) = app.try_state::<LaunchFile>() {
           if let Ok(mut slot) = state.0.lock() {
             *slot = Some(path.clone());
@@ -361,13 +365,13 @@ pub fn run() {
     .plugin(tauri_plugin_sql::Builder::default().build())
     // Persists the runtime-granted Binder-folder scope across restarts.
     .plugin(tauri_plugin_persisted_scope::init())
-    // The pending .mint launch path, drained by take_launch_file.
+    // The pending launch path (.mint or .tin), drained by take_launch_file.
     .manage(LaunchFile::default())
-    // Capture a cold-start .mint argument (a double-click that launched this instance) before the
+    // Capture a cold-start launch argument (a double-click that launched this instance) before the
     // frontend mounts, so its take_launch_file call finds it.
     .setup(|app| {
       let args: Vec<String> = std::env::args().collect();
-      if let Some(path) = first_mint_argument(&args) {
+      if let Some(path) = first_launch_argument(&args) {
         if let Ok(mut slot) = app.state::<LaunchFile>().0.lock() {
           *slot = Some(path);
         }

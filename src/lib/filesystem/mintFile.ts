@@ -58,7 +58,7 @@ export interface ParsedMint {
 /** The identity + state fields a caller assembles a MintFile from. schemaVersion defaults to
  *  RECORD_SCHEMA_VERSION so the backend never hand-picks it. presentation / format / lastOpenedAt are
  *  carried verbatim; the default-format write-guard is applied at serialize time, not here (mirrors how
- *  downloadJSON guards format at the serialize call site, not in the record builder). */
+ *  downloadMint guards format at the serialize call site, not in the record builder). */
 export interface BuildMintFileParams {
    id:            string
    meta:          DocMeta
@@ -75,7 +75,7 @@ export interface BuildMintFileParams {
 
 /**
  * Serialize a MintFile to pretty (2-space) JSON, the on-disk text. Same conditional write-guards as
- * downloadJSON so an untouched document stays byte-clean: `presentation` is written only when present,
+ * downloadMint so an untouched document stays byte-clean: `presentation` is written only when present,
  * `format` only when present AND diverging from the default (isDefaultFormat), and `lastOpenedAt` only
  * when set. So a never-Page-Setup, never-opened document carries neither presentation, format, nor
  * lastOpenedAt.

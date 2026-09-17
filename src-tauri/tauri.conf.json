@@ -48,6 +48,12 @@
         "name": "Documint",
         "description": "Documint",
         "role": "Editor"
+      },
+      {
+        "ext": ["tin"],
+        "name": "Documinter Tin",
+        "description": "Documinter Tin",
+        "role": "Editor"
       }
     ],
     "android": {

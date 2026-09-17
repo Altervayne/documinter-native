@@ -75,7 +75,7 @@ describe('serializeMint write-guards', () => {
       expect(text).not.toContain('"format"')
       expect(text).not.toContain('"presentation"')
       expect(text).not.toContain('"lastOpenedAt"')
-      // Two-space pretty JSON, like downloadJSON.
+      // Two-space pretty JSON, like downloadMint.
       expect(text).toContain('\n  "id": "doc-2"')
    })
 

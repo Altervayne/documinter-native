@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { parseDocumentBackup } from './documentBackupFile'
 import { INFINITE_WIDTH_WIDE_PX, resolveInfiniteWidthPx } from './format'
 
-// parseDocumentBackup is the pure half of the JSON backup round-trip (downloadJSON's counterpart is
-// DOM-only, a Blob/anchor download); these tests pin how a stored `format` field is restored on
-// import, mirroring the presentation round-trip already covered elsewhere.
+// parseDocumentBackup is the pure half of the document-file round-trip (downloadMint's counterpart is
+// I/O only, a save dialog); these tests pin how a stored `format` field is restored on import,
+// mirroring the presentation round-trip already covered elsewhere.
 describe('parseDocumentBackup, format persistence', () => {
    const baseBackup = { meta: { title: 'Doc', fields: [] }, sections: [] }
 

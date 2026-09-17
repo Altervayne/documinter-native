@@ -49,7 +49,7 @@ type OpenFormat = 'backup' | 'markdown'
 
 function detectOpenFormat(fileName: string, text: string): OpenFormat {
    const lowerName = fileName.toLowerCase()
-   if (lowerName.endsWith('.json') || lowerName.endsWith('.documint')) return 'backup'
+   if (lowerName.endsWith('.mint') || lowerName.endsWith('.json')) return 'backup'
    if (lowerName.endsWith('.md') || lowerName.endsWith('.markdown')) return 'markdown'
    // Ambiguous / unknown extension (.txt, none, or anything else): sniff the content.
    const trimmed = text.trimStart()
@@ -57,8 +57,9 @@ function detectOpenFormat(fileName: string, text: string): OpenFormat {
    return 'markdown'
 }
 
-// Everything detectOpenFormat can route; shared by Open (new tab) and Import (new binder record).
-const OPEN_FILE_FILTERS = [{ name: 'Documinter document', extensions: ['json', 'documint', 'md', 'markdown', 'txt'] }]
+// Everything detectOpenFormat can route; shared by Open (new tab) and Import (new binder record). A
+// `.mint` is the native document; `.json` still loads a legacy web-era backup.
+const OPEN_FILE_FILTERS = [{ name: 'Documinter document', extensions: ['mint', 'json', 'md', 'markdown', 'txt'] }]
 
 // #########################
 // # SAVE STATUS INDICATOR #
@@ -294,7 +295,7 @@ export function HeaderMenuBar({
             const parsed = parseDocumentBackup(picked.text)
             if (!parsed) { showToast(t.importFailed, { type: 'error' }); return }
             onLoad(parsed.state, parsed.presentation)
-            showToast(t.jsonBackupImported, { type: 'success' })
+            showToast(t.documentImported, { type: 'success' })
          } else {
             await onImportMarkdownFile(picked.text)
             showToast(t.markdownImported, { type: 'success' })

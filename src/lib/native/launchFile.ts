@@ -1,10 +1,12 @@
 /**
- * launchFile.ts, the native `.mint` file-association bridge.
+ * launchFile.ts, the native `.mint` / `.tin` file-association bridge.
  *
- * The OS launches (or re-focuses) Documinter with a double-clicked `.mint` path. This module drains that
- * path from Rust: `takePendingLaunchFile` for the cold-start file captured before the frontend mounted,
- * `onLaunchFile` for a second double-click routed to the already-running window through single-instance.
- * `resolveBinderRoot` finds the file's Binder, and `binderRelativePath` maps it to the index's stored key.
+ * The OS launches (or re-focuses) Documinter with a double-clicked `.mint` document or `.tin` bundle path.
+ * This module drains that path from Rust: `takePendingLaunchFile` for the cold-start file captured before
+ * the frontend mounted, `onLaunchFile` for a second double-click routed to the already-running window
+ * through single-instance. The frontend decides by extension what to do: a `.mint` resolves its Binder
+ * (`resolveBinderRoot` + `binderRelativePath`) and opens as a document; a `.tin` reads its gzip bytes
+ * (`readLaunchFileBytes`) and imports.
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -24,6 +26,13 @@ export async function resolveBinderRoot(filePath: string): Promise<string | null
  *  the same ungated Rust reader as the dialog opens. */
 export async function readLaunchFileText(filePath: string): Promise<string> {
    return invoke<string>('read_text_file', { path: filePath })
+}
+
+/** The raw bytes at an absolute path, for a launched `.tin` bundle (gzip, so it must be read as binary,
+ *  not text). Uses the same ungated Rust reader as the binary dialog opens. */
+export async function readLaunchFileBytes(filePath: string): Promise<Uint8Array> {
+   const bytes = await invoke<number[]>('read_binary_file', { path: filePath })
+   return Uint8Array.from(bytes)
 }
 
 /** Subscribe to a second launch's file (single-instance forwards it to the running window). Returns an

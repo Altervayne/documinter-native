@@ -25,8 +25,9 @@ interface UseBinderFileImportOptions {
 /**
  * Native HTML5 file-drop import for the whole binder body, separate from dnd-kit's pointer card dragging
  * so the two never collide. A dropped file is routed by content: a template export becomes a stored
- * template, a document backup a new document in the current folder, anything else is skipped. Both kinds
- * are `.json`, so routing is by marker, not extension.
+ * template, a document file a new document in the current folder, anything else is skipped. A document
+ * is a `.mint` (or a legacy `.json` backup), and template exports are `.json`, so routing is by marker,
+ * not extension.
  */
 export function useBinderFileImport({ currentFolderId, onImported, onTinDropped }: UseBinderFileImportOptions) {
    const { showToast } = useToast()
@@ -69,7 +70,10 @@ export function useBinderFileImport({ currentFolderId, onImported, onTinDropped 
          return
       }
 
-      const files = dropped.filter(file => file.name.toLowerCase().endsWith('.json'))
+      const files = dropped.filter(file => {
+         const name = file.name.toLowerCase()
+         return name.endsWith('.mint') || name.endsWith('.json')
+      })
       if (files.length === 0) { showToast(t.binderImportInvalid, { type: 'error' }); return }
 
       let documentsImported = 0

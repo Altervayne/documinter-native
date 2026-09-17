@@ -15,7 +15,7 @@ import { exists } from '@tauri-apps/plugin-fs'
 import { documentDir, join, sep } from '@tauri-apps/api/path'
 
 // -- Icon Imports --
-import { FolderPlus, FolderOpen, FolderClock, Languages, Trash2 } from 'lucide-react'
+import { FolderPlus, FolderOpen, FolderClock, Languages, Trash2, PackageOpen, X } from 'lucide-react'
 
 // -- App Imports --
 import App from '../App'
@@ -56,11 +56,15 @@ interface NativeBinder {
    error:      string | null
    busy:       boolean
    pendingLaunchOpen: PendingLaunchOpen | null
+   /** A launched `.tin` is waiting for a Binder to import into (the Welcome screen shows the prompt). */
+   hasPendingTin: boolean
    createBinder(name: string, parentDir?: string): Promise<void>
    openBinder(): Promise<void>
    switchBinder(path: string): Promise<void>
    deleteBinder(path: string): Promise<void>
    consumeLaunchOpen(): void
+   /** Drop a pending launched `.tin` without importing it (the user chose to ignore it). */
+   dismissPendingTin(): void
 }
 
 /** Owns the active-Binder state + the create / open / switch / launch-restore flows. Errors surface as
@@ -74,6 +78,9 @@ function useNativeBinder(): NativeBinder {
    const [error, setError]                 = useState<string | null>(null)
    const [busy, setBusy]                   = useState(false)
    const [pendingLaunchOpen, setPendingLaunchOpen] = useState<PendingLaunchOpen | null>(null)
+   // A launched `.tin` path held until a Binder is active to import it into: published as a pending open
+   // by the effect below once activePath is set (whether from launch-restore, create, or open).
+   const [pendingTinPath, setPendingTinPath] = useState<string | null>(null)
 
    // Re-open the last-active Binder on launch; a missing folder falls back to Welcome. StrictMode
    // double-invokes this in dev, so a backend opened by a torn-down run is disposed in cleanup.
@@ -264,15 +271,20 @@ function useNativeBinder(): NativeBinder {
       }
    }, [activePath])
 
-   // Open the OS-launched `.mint`: resolve its Binder, adopt that Binder when it differs from the active
-   // one (remounting App), then publish the pending open App consumes. A loose file (no Binder) publishes
-   // a loose open against whatever Binder is active, or waits on the Welcome screen until one opens. The
-   // cold-start drain is intentionally unguarded so StrictMode's remount does not discard it (the second
-   // run drains null); the live event listener is torn down on unmount.
+   // Open the OS-launched file. A `.tin` is held (pendingTinPath) until a Binder is active, then imported.
+   // A `.mint` resolves its Binder, adopts it when it differs from the active one (remounting App), then
+   // publishes the pending open App consumes; a loose `.mint` (no Binder) publishes a loose open against
+   // whatever Binder is active, or waits on the Welcome screen until one opens. The cold-start drain is
+   // intentionally unguarded so StrictMode's remount does not discard it (the second run drains null); the
+   // live event listener is torn down on unmount.
    useEffect(() => {
       let active = true
 
       const handleLaunchPath = async (filePath: string): Promise<void> => {
+         if (filePath.toLowerCase().endsWith('.tin')) {
+            setPendingTinPath(filePath)
+            return
+         }
          const root = await resolveBinderRoot(filePath)
          if (root !== null) {
             if (root !== activePathRef.current) {
@@ -294,11 +306,23 @@ function useNativeBinder(): NativeBinder {
       return () => { active = false; unsubscribe() }
    }, [])
 
+   // Once a Binder is active (from launch-restore, create, or open), hand a waiting `.tin` down to App as a
+   // pending import. Held separately from the launch effect so it fires no matter how the Binder opened,
+   // and so a cold-start Binder restore does not race the launch drain.
+   useEffect(() => {
+      if (activePath !== null && pendingTinPath !== null) {
+         setPendingLaunchOpen({ kind: 'tin', filePath: pendingTinPath })
+         setPendingTinPath(null)
+      }
+   }, [activePath, pendingTinPath])
+
    const consumeLaunchOpen = (): void => setPendingLaunchOpen(null)
+   const dismissPendingTin = (): void => setPendingTinPath(null)
 
    return {
       phase, backend, activePath, known, notice, error, busy, pendingLaunchOpen,
-      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen,
+      hasPendingTin: pendingTinPath !== null,
+      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen, dismissPendingTin,
    }
 }
 
@@ -434,6 +458,22 @@ function WelcomeContent({ binder }: { binder: NativeBinder }) {
             <p className="w-full rounded border border-border bg-raised px-4 py-2 text-center text-sm text-muted">
                {t.welcomeNoticeMissingFolder}
             </p>
+         )}
+
+         {binder.hasPendingTin && (
+            <div className="flex w-full items-start gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-text">
+               <PackageOpen size={18} className="mt-0.5 shrink-0 text-accent" />
+               <p className="flex-1 leading-relaxed">{t.welcomeTinPending}</p>
+               <button
+                  type="button"
+                  onClick={binder.dismissPendingTin}
+                  title={t.welcomeTinDismiss}
+                  aria-label={t.welcomeTinDismiss}
+                  className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-text cursor-pointer"
+               >
+                  <X size={15} />
+               </button>
+            </div>
          )}
 
          <div className="grid w-full gap-4 sm:grid-cols-2">

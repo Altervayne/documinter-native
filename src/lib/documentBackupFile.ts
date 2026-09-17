@@ -1,11 +1,12 @@
 /*
- * Manual .documinter.json backup download + load. Pure file I/O over the editable DocState plus
- * per-document presentation, no binder store. parseDocumentBackup runs id migration so older backups
- * still load.
+ * Standalone document file save + load, outside any binder. downloadMint writes the active document as
+ * a `.mint` file the user can drop anywhere; parseDocumentBackup reads one back, and still accepts a
+ * legacy `.documinter.json` from the web era (same JSON payload, older extension). Pure file I/O over
+ * the editable DocState plus per-document presentation, with id migration so older files still load.
  */
 
 import { slugify } from './text'
-import { saveTextFile, openTextFile } from './platform/fileTransfer'
+import { saveTextFile } from './platform/fileTransfer'
 import { migrateIds, migrateFormatPageBreaks, migrateFormatBands } from './documentMigration'
 import { normalizePresentation, type DocPresentationExtras } from './presentation'
 import { normalizeFormat, isDefaultFormat, type DocFormat } from './format'
@@ -43,9 +44,11 @@ export function parseDocumentBackup(text: string): { state: DocState; presentati
    }
 }
 
-/** Save the document as a .documinter.json file. `format` is written only when it diverges from the
- *  default, so a document that never touched Page Setup keeps a byte-clean backup. */
-export async function downloadJSON(meta: DocMeta, sections: Section[], presentation: DocPresentation): Promise<void> {
+/** Save the document as a standalone `.mint` file. This is a content-fidelity copy (no binder identity
+ *  or timestamps): a fresh copy dropped into a binder gets its own id on ingest, and opened on its own
+ *  it lands as an unsaved document. `format` is written only when it diverges from the default, so a
+ *  document that never touched Page Setup stays byte-clean. */
+export async function downloadMint(meta: DocMeta, sections: Section[], presentation: DocPresentation): Promise<void> {
    const backup: DocumentBackup = {
       meta, sections,
       docTheme: presentation.docTheme,
@@ -54,20 +57,8 @@ export async function downloadJSON(meta: DocMeta, sections: Section[], presentat
       ...(presentation.format && !isDefaultFormat(presentation.format) ? { format: presentation.format } : {}),
    }
    await saveTextFile({
-      suggestedName: slugify(meta.title) + '.documinter.json',
+      suggestedName: slugify(meta.title) + '.mint',
       contents:      JSON.stringify(backup, null, 2),
-      filters:       [{ name: 'Documinter backup', extensions: ['json'] }],
+      filters:       [{ name: 'Documinter document', extensions: ['mint'] }],
    })
-}
-
-/** Pick a .json file and parse it as a document backup. Cancel is a no-op; an invalid file calls onError. */
-export async function loadJSONFile(
-   onLoad: (state: DocState, presentation: DocPresentation) => void,
-   onError: (msg: string) => void,
-): Promise<void> {
-   const picked = await openTextFile({ filters: [{ name: 'Documinter backup', extensions: ['json'] }] })
-   if (!picked) return
-   const parsed = parseDocumentBackup(picked.text)
-   if (!parsed) { onError('Invalid Documinter JSON file.'); return }
-   onLoad(parsed.state, parsed.presentation)
 }

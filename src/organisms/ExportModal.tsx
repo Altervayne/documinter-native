@@ -10,7 +10,7 @@ import { downloadHTML, printDocument, computeDocumentPages, buildPagedExportHtml
 import { savePdf } from '../lib/platform/fileTransfer'
 import { slugify } from '../lib/text'
 import { exportMarkdownFile } from '../lib/markdown'
-import { downloadJSON } from '../lib/documentBackupFile'
+import { downloadMint } from '../lib/documentBackupFile'
 import { ensureTemmlReady } from '../lib/math'
 import type { Lang } from '../lib/i18n'
 import { useLang } from '../contexts/LangContext'
@@ -21,7 +21,7 @@ import { ACCENT_PRESETS, accentPresetName } from '../lib/constants'
 // # TYPES #
 // #########
 
-type ExportFormat = 'html' | 'pdf' | 'markdown' | 'json'
+type ExportFormat = 'html' | 'pdf' | 'markdown' | 'mint'
 
 interface ExportModalProps {
    meta: DocMeta
@@ -43,10 +43,10 @@ interface ExportModalProps {
 // # COMPONENT #
 // #############
 
-/** Format-aware Export dialog; the format selector (HTML / PDF / Markdown / JSON) drives which options
+/** Format-aware Export dialog; the format selector (HTML / PDF / Markdown / Mint) drives which options
  *  and actions show. Each reuses the document's own serializers. HTML and PDF await ensureTemmlReady()
- *  first because Temml renders math to MathML and loads asynchronously; the others need no await. JSON
- *  is a lossless snapshot of the document's state, the counterpart to Open. */
+ *  first because Temml renders math to MathML and loads asynchronously; the others need no await. Mint
+ *  is the native document file, a full-fidelity copy that reopens here, the counterpart to Open. */
 export function ExportModal({ meta, sections, defaultTheme, defaultAccent, presentation, format: docFormat, lang, onClose, onOpenPresentation }: ExportModalProps) {
    const [format, setFormat] = useState<ExportFormat>('html')
    const [theme, setTheme]   = useState<'light' | 'dark'>(defaultTheme)
@@ -110,10 +110,10 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
       onClose()
    }
 
-   // JSON: the lossless, reopenable archive. Snapshots the DOCUMENT's real theme / accent / presentation
-   // / format (defaultTheme / defaultAccent), NOT the HTML-export overrides above.
-   async function handleJsonDownload() {
-      await downloadJSON(meta, sections, {
+   // Mint: the native, reopenable document file. Snapshots the DOCUMENT's real theme / accent /
+   // presentation / format (defaultTheme / defaultAccent), NOT the HTML-export overrides above.
+   async function handleMintDownload() {
+      await downloadMint(meta, sections, {
          docTheme:  defaultTheme,
          docAccent: defaultAccent,
          presentation,
@@ -135,7 +135,7 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
    type FormatOption = { value: ExportFormat; label: string; tooltip: string; disabled?: boolean }
    const FORMAT_ROWS: FormatOption[][] = [
       [
-         { value: 'json',     label: t.exportFormatJson,     tooltip: t.exportFormatJsonTooltip },
+         { value: 'mint',     label: t.exportFormatMint,     tooltip: t.exportFormatMintTooltip },
          { value: 'markdown', label: t.exportFormatMarkdown, tooltip: t.exportFormatMarkdownTooltip },
       ],
       [
@@ -261,9 +261,9 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                </>
             )}
 
-            {/* JSON: the lossless, reopenable archive, no styling options (it snapshots the doc as-is). */}
-            {format === 'json' && (
-               <p className="text-xs text-muted leading-relaxed">{t.exportJsonDescription}</p>
+            {/* Mint: the native, reopenable document file, no styling options (it snapshots the doc as-is). */}
+            {format === 'mint' && (
+               <p className="text-xs text-muted leading-relaxed">{t.exportMintDescription}</p>
             )}
 
             <div className="flex gap-2 pt-1">
@@ -287,8 +287,8 @@ export function ExportModal({ meta, sections, defaultTheme, defaultAccent, prese
                      <Download size={13} />{t.download}
                   </Button>
                )}
-               {format === 'json' && (
-                  <Button variant="primary" className="flex-1" onClick={handleJsonDownload}>
+               {format === 'mint' && (
+                  <Button variant="primary" className="flex-1" onClick={handleMintDownload}>
                      <Download size={13} />{t.download}
                   </Button>
                )}
