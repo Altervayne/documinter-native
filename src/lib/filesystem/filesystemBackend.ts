@@ -77,15 +77,23 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       return clean === '' ? rootPosix : `${rootPosix}/${clean}`
    }
 
+   // Set the Windows hidden attribute on a Binder system folder (a dot-prefix does not hide it there, the
+   // way it does on Unix). Fire-and-forget: a failure just leaves the folder visible, and the Rust command
+   // is a no-op off Windows.
+   const hideSystemFolder = (relativePosix: string): void => {
+      void invoke('set_path_hidden', { path: absolutePath(relativePosix) }).catch(() => {})
+   }
+
    // The Binder root must already exist (create is the caller's job, via the Rust create command). Guard
    // it before the recursive mkdir below, which would otherwise resurrect a folder deleted since it was
    // last opened, masking the missing-folder fallback on launch-restore.
    if (!(await exists(rootPosix))) throw new Error(`Binder folder not found: ${binderRoot}`)
 
    await mkdir(absolutePath(DOCUMINTER_DIR), { recursive: true })
-   // Hide the cache folder on Windows (dot-prefix already hides it elsewhere). Fire-and-forget: a failure
-   // just leaves it visible, it does not block opening the Binder.
-   void invoke('set_path_hidden', { path: absolutePath(DOCUMINTER_DIR) }).catch(() => {})
+   // Hide the system folders on Windows. The cache folder always exists; the templates folder is hidden too
+   // whenever it is present, which also retroactively hides it in Binders created before this.
+   hideSystemFolder(DOCUMINTER_DIR)
+   if (await exists(absolutePath(TEMPLATES_DIR))) hideSystemFolder(TEMPLATES_DIR)
    const index = await DocumentIndex.open(absolutePath(joinRelative(DOCUMINTER_DIR, INDEX_FILE)))
 
    // ====
@@ -852,7 +860,9 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    }
 
    const saveTemplate = async (template: DocumentTemplate): Promise<void> => {
+      const templatesExisted = await exists(absolutePath(TEMPLATES_DIR))
       await mkdir(absolutePath(TEMPLATES_DIR), { recursive: true })
+      if (!templatesExisted) hideSystemFolder(TEMPLATES_DIR)   // hide it the moment it is first created
       const entries  = await readTemplateEntries()
       const existing = entries.find(entry => entry.template.id === template.id)
 
@@ -1213,6 +1223,8 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       for (const entry of await readDir(absolutePath(IMPORT_STAGING_DIR))) {
          await rename(stagingPath(entry.name), absolutePath(entry.name))
       }
+      // A moved-in `.templates` needs its hidden flag set fresh: a rename does not carry the attribute.
+      if (await exists(absolutePath(TEMPLATES_DIR))) hideSystemFolder(TEMPLATES_DIR)
 
       // -- 4. Drop the scaffolding, then rebuild the index from the collected rows (verbatim ids +
       //       sortOrders, no rescan). A crash before this leaves a stale index that the open-time

@@ -51,8 +51,14 @@
       },
       {
         "ext": ["tin"],
-        "name": "Documinter Tin",
+        "name": "DocuminterTin",
         "description": "Documinter Tin",
+        "role": "Editor"
+      },
+      {
+        "ext": ["mintplate"],
+        "name": "DocumintTemplate",
+        "description": "Documint Template",
         "role": "Editor"
       }
     ],

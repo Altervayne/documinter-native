@@ -56,15 +56,16 @@ interface NativeBinder {
    error:      string | null
    busy:       boolean
    pendingLaunchOpen: PendingLaunchOpen | null
-   /** A launched `.tin` is waiting for a Binder to import into (the Welcome screen shows the prompt). */
-   hasPendingTin: boolean
+   /** A launched `.tin` / `.mintplate` waiting for a Binder to import into (the Welcome screen prompts),
+    *  or null when nothing is waiting. */
+   pendingImportKind: 'tin' | 'template' | null
    createBinder(name: string, parentDir?: string): Promise<void>
    openBinder(): Promise<void>
    switchBinder(path: string): Promise<void>
    deleteBinder(path: string): Promise<void>
    consumeLaunchOpen(): void
-   /** Drop a pending launched `.tin` without importing it (the user chose to ignore it). */
-   dismissPendingTin(): void
+   /** Drop a pending launched import without acting on it (the user chose to ignore the file). */
+   dismissPendingImport(): void
 }
 
 /** Owns the active-Binder state + the create / open / switch / launch-restore flows. Errors surface as
@@ -78,9 +79,9 @@ function useNativeBinder(): NativeBinder {
    const [error, setError]                 = useState<string | null>(null)
    const [busy, setBusy]                   = useState(false)
    const [pendingLaunchOpen, setPendingLaunchOpen] = useState<PendingLaunchOpen | null>(null)
-   // A launched `.tin` path held until a Binder is active to import it into: published as a pending open
-   // by the effect below once activePath is set (whether from launch-restore, create, or open).
-   const [pendingTinPath, setPendingTinPath] = useState<string | null>(null)
+   // A launched `.tin` / `.mintplate` held until a Binder is active to import into: published as a pending
+   // open by the effect below once activePath is set (whether from launch-restore, create, or open).
+   const [pendingImport, setPendingImport] = useState<{ kind: 'tin' | 'template'; filePath: string } | null>(null)
 
    // Re-open the last-active Binder on launch; a missing folder falls back to Welcome. StrictMode
    // double-invokes this in dev, so a backend opened by a torn-down run is disposed in cleanup.
@@ -271,20 +272,19 @@ function useNativeBinder(): NativeBinder {
       }
    }, [activePath])
 
-   // Open the OS-launched file. A `.tin` is held (pendingTinPath) until a Binder is active, then imported.
-   // A `.mint` resolves its Binder, adopts it when it differs from the active one (remounting App), then
-   // publishes the pending open App consumes; a loose `.mint` (no Binder) publishes a loose open against
-   // whatever Binder is active, or waits on the Welcome screen until one opens. The cold-start drain is
-   // intentionally unguarded so StrictMode's remount does not discard it (the second run drains null); the
-   // live event listener is torn down on unmount.
+   // Open the OS-launched file. A `.tin` / `.mintplate` is held (pendingImport) until a Binder is active,
+   // then imported. A `.mint` resolves its Binder, adopts it when it differs from the active one (remounting
+   // App), then publishes the pending open App consumes; a loose `.mint` (no Binder) publishes a loose open
+   // against whatever Binder is active, or waits on the Welcome screen until one opens. The cold-start drain
+   // is intentionally unguarded so StrictMode's remount does not discard it (the second run drains null);
+   // the live event listener is torn down on unmount.
    useEffect(() => {
       let active = true
 
       const handleLaunchPath = async (filePath: string): Promise<void> => {
-         if (filePath.toLowerCase().endsWith('.tin')) {
-            setPendingTinPath(filePath)
-            return
-         }
+         const lower = filePath.toLowerCase()
+         if (lower.endsWith('.tin'))       { setPendingImport({ kind: 'tin',      filePath }); return }
+         if (lower.endsWith('.mintplate')) { setPendingImport({ kind: 'template', filePath }); return }
          const root = await resolveBinderRoot(filePath)
          if (root !== null) {
             if (root !== activePathRef.current) {
@@ -306,23 +306,23 @@ function useNativeBinder(): NativeBinder {
       return () => { active = false; unsubscribe() }
    }, [])
 
-   // Once a Binder is active (from launch-restore, create, or open), hand a waiting `.tin` down to App as a
-   // pending import. Held separately from the launch effect so it fires no matter how the Binder opened,
-   // and so a cold-start Binder restore does not race the launch drain.
+   // Once a Binder is active (from launch-restore, create, or open), hand a waiting `.tin` / `.mintplate`
+   // down to App as a pending import. Held separately from the launch effect so it fires no matter how the
+   // Binder opened, and so a cold-start Binder restore does not race the launch drain.
    useEffect(() => {
-      if (activePath !== null && pendingTinPath !== null) {
-         setPendingLaunchOpen({ kind: 'tin', filePath: pendingTinPath })
-         setPendingTinPath(null)
+      if (activePath !== null && pendingImport !== null) {
+         setPendingLaunchOpen({ kind: pendingImport.kind, filePath: pendingImport.filePath })
+         setPendingImport(null)
       }
-   }, [activePath, pendingTinPath])
+   }, [activePath, pendingImport])
 
-   const consumeLaunchOpen = (): void => setPendingLaunchOpen(null)
-   const dismissPendingTin = (): void => setPendingTinPath(null)
+   const consumeLaunchOpen   = (): void => setPendingLaunchOpen(null)
+   const dismissPendingImport = (): void => setPendingImport(null)
 
    return {
       phase, backend, activePath, known, notice, error, busy, pendingLaunchOpen,
-      hasPendingTin: pendingTinPath !== null,
-      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen, dismissPendingTin,
+      pendingImportKind: pendingImport?.kind ?? null,
+      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen, dismissPendingImport,
    }
 }
 
@@ -460,15 +460,17 @@ function WelcomeContent({ binder }: { binder: NativeBinder }) {
             </p>
          )}
 
-         {binder.hasPendingTin && (
+         {binder.pendingImportKind !== null && (
             <div className="flex w-full items-start gap-3 rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-text">
                <PackageOpen size={18} className="mt-0.5 shrink-0 text-accent" />
-               <p className="flex-1 leading-relaxed">{t.welcomeTinPending}</p>
+               <p className="flex-1 leading-relaxed">
+                  {binder.pendingImportKind === 'tin' ? t.welcomeTinPending : t.welcomeTemplatePending}
+               </p>
                <button
                   type="button"
-                  onClick={binder.dismissPendingTin}
-                  title={t.welcomeTinDismiss}
-                  aria-label={t.welcomeTinDismiss}
+                  onClick={binder.dismissPendingImport}
+                  title={t.welcomeImportDismiss}
+                  aria-label={t.welcomeImportDismiss}
                   className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-text cursor-pointer"
                >
                   <X size={15} />

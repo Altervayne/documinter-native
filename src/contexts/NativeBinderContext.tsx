@@ -13,12 +13,14 @@ import type { KnownBinder } from '../lib/native/binderRegistry'
 
 /** Something to act on from the OS file association, set by the host once a Binder is mounted, consumed by
  *  App: a `.mint` document already inside the open Binder (by root + absolute path), a loose `.mint`
- *  outside any Binder (opened as a scratch tab), or a `.tin` bundle to import into the open Binder (the
- *  merge / replace dialog, targeting the root). */
+ *  outside any Binder (opened as a scratch tab), a `.tin` bundle to import into the open Binder (the merge
+ *  / replace dialog, targeting the root), or a `.mintplate` template to import into the open Binder's
+ *  templates. */
 export type PendingLaunchOpen =
    | { kind: 'binder-doc'; binderRoot: string; filePath: string }
    | { kind: 'loose';      filePath: string }
    | { kind: 'tin';        filePath: string }
+   | { kind: 'template';   filePath: string }
 
 export interface NativeBinderControls {
    /** The open Binder's absolute path (its id) and display name. */

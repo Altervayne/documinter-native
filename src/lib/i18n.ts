@@ -738,7 +738,8 @@ export const translations = {
       welcomeBusyOpening:     'Opening...',
       welcomeNoticeMissingFolder: 'The last Binder folder could not be opened. It may have been moved or deleted.',
       welcomeTinPending:      'A Tin is ready to import. Create a new Binder from it, or open an existing one to import into.',
-      welcomeTinDismiss:      'Ignore this Tin',
+      welcomeTemplatePending: 'A template is ready to import. Open or create a Binder to import it into.',
+      welcomeImportDismiss:   'Ignore this file',
       // Header Binder-switcher (native)
       binderMenuSwitch:  'Switch Binder',
       binderMenuCurrent: 'Current Binder',
@@ -1678,7 +1679,8 @@ export const translations = {
       welcomeBusyOpening:     'Ouverture...',
       welcomeNoticeMissingFolder: 'Le dernier dossier de classeur n\'a pas pu être ouvert. Il a peut-être été déplacé ou supprimé.',
       welcomeTinPending:      'Une Boîte est prête à être importée. Créez un nouveau classeur à partir d\'elle, ou ouvrez-en un existant pour l\'y importer.',
-      welcomeTinDismiss:      'Ignorer cette Boîte',
+      welcomeTemplatePending: 'Un modèle est prêt à être importé. Ouvrez ou créez un classeur pour l\'y importer.',
+      welcomeImportDismiss:   'Ignorer ce fichier',
       // Header Binder-switcher (native)
       binderMenuSwitch:  'Changer de classeur',
       binderMenuCurrent: 'Classeur actuel',

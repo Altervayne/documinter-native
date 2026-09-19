@@ -16,6 +16,7 @@ import type { LoadedDocument, DocPresentation } from './lib/documentRecord'
 import type { TinImportSummary } from './lib/tinMapping'
 import { parseTin, gunzipToString, downloadTin, tinDownloadName, type TinFile } from './lib/tinFile'
 import { ROOT_FOLDER_ID } from './lib/binderConstants'
+import { parseTemplateFile } from './lib/filesystem/templateFile'
 import { instantiateTemplate, captureTemplate, applyTemplateChrome, type DocumentTemplate } from './lib/documentTemplate'
 import {
    emptyHistory, recordEdit, applyUndo, applyRedo, canUndo, canRedo,
@@ -941,6 +942,21 @@ export default function App() {
       }
    }, [showToast, t])
 
+   // Import a launched `.mintplate` into the open Binder's templates: parse the file, then save it as a
+   // FRESH template (new id + timestamps) so a copy never overwrites an existing template that shares its
+   // id. A refresh token nudge re-reads the binder lists so the new template shows at once.
+   const openLaunchedTemplate = useCallback(async (filePath: string) => {
+      try {
+         const parsed = parseTemplateFile(await readLaunchFileText(filePath))
+         if (!parsed) { showToast(t.binderImportInvalid, { type: 'error' }); return }
+         await backend.saveTemplate(captureTemplate(parsed.name, parsed, crypto.randomUUID(), Date.now()))
+         setBinderRefreshToken(token => token + 1)
+         showToast(t.templateImported, { type: 'success' })
+      } catch {
+         showToast(t.binderImportInvalid, { type: 'error' })
+      }
+   }, [showToast, t, backend])
+
    // Consume a launched file (set by the native host once a Binder is mounted): a `.tin` raises the import
    // dialog, a `.mint` opens its tab if the Binder indexes it, otherwise a loose scratch tab. The ref makes
    // it fire once per launch, since the host's controls object (and this effect's deps) change per render.
@@ -951,10 +967,12 @@ export default function App() {
       handledLaunchRef.current = pending
       let cancelled = false
 
-      // A `.tin` imports rather than opening a tab, so it skips the blank-tab handling below.
-      if (pending.kind === 'tin') {
+      // A `.tin` / `.mintplate` imports rather than opening a tab, so it skips the blank-tab handling below.
+      if (pending.kind === 'tin' || pending.kind === 'template') {
+         const runImport = pending.kind === 'tin' ? openLaunchedTin : openLaunchedTemplate
+         const importPath = pending.filePath
          void (async () => {
-            try { await openLaunchedTin(pending.filePath) }
+            try { await runImport(importPath) }
             finally { if (!cancelled) nativeBinder?.consumeLaunchOpen() }
          })()
          return () => { cancelled = true }
@@ -988,7 +1006,7 @@ export default function App() {
          }
       })()
       return () => { cancelled = true }
-   }, [nativeBinder, backend, handleOpenDocument, openLooseFile, openLaunchedTin])
+   }, [nativeBinder, backend, handleOpenDocument, openLooseFile, openLaunchedTin, openLaunchedTemplate])
 
    // The one New-document entry point: a dialog offering Blank or a template with accent / theme / format
    // overrides. Opened from the header, File menu, and the binder's empty-state CTA (which seeds its folder).

@@ -124,15 +124,16 @@ fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
 #[derive(Default)]
 struct LaunchFile(Mutex<Option<String>>);
 
-// The first argument naming a launchable file (a .mint document or a .tin bundle), or None. args[0] is
-// the executable, so it is skipped.
+// The first argument naming a launchable file (a .mint document, a .tin bundle, or a .mintplate
+// template), or None. args[0] is the executable, so it is skipped. `.mintplate` is checked before the
+// `.mint` suffix would matter, but ends_with is exact so "x.mintplate" never matches ".mint" anyway.
 fn first_launch_argument(args: &[String]) -> Option<String> {
   args
     .iter()
     .skip(1)
     .find(|argument| {
       let lower = argument.to_lowercase();
-      lower.ends_with(".mint") || lower.ends_with(".tin")
+      lower.ends_with(".mint") || lower.ends_with(".tin") || lower.ends_with(".mintplate")
     })
     .cloned()
 }
