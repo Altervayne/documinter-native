@@ -960,7 +960,7 @@ export function ImageMarkupEditor({ block, patch, readOnly }: ImageMarkupEditorP
                title={t.imageMarkupWindowTitle}
                icon={<Pencil size={15} />}
                anchorRect={anchorRect}
-               onClose={editorWindow.close}
+               onClose={() => editorWindow.close()}
             >
                {editorBody}
             </BlockEditorWindow>

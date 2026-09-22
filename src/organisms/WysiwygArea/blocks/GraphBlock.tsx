@@ -893,7 +893,7 @@ export function GraphBlock({ block, patch, onInsertBlockAfter, readOnly }: Graph
                title={t.graphWindowTitle}
                icon={<BarChart3 size={15} />}
                anchorRect={anchorRect}
-               onClose={editorWindow.close}
+               onClose={() => editorWindow.close()}
             >
                {editorBody}
             </BlockEditorWindow>
