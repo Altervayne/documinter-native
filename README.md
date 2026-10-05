@@ -82,7 +82,13 @@ a real A4 PDF.
   <img src="src/assets/binder-select-screenshot.png" alt="The Binder picker, where a working folder is chosen or created" width="900" />
 </p>
 
-> _To add: the editor with its dock panels, a code block, and a paged export._
+<p align="center">
+  <img src="src/assets/binder-view-screenshot.png" alt="A Binder's All Documents view, with a document card showing its page preview, fields and sections" width="900" />
+</p>
+
+<p align="center">
+  <img src="src/assets/documint-screenshot.png" alt="The editor, with the Structure panel docked on the left and a document showing a TypeScript code block, a checklist and a warning callout" width="900" />
+</p>
 
 ## Tech stack
 
