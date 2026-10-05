@@ -568,6 +568,16 @@ export default function App() {
 
    const handleManualSave = useCallback(() => { void persistNow() }, [persistNow])
 
+   // Native only: a Binder switch unmounts App and its autosave cleanup only clears the timer, so the host
+   // awaits this flush first. False (a failed save, already toasted by persistNow) cancels the switch.
+   const registerSwitchFlush = nativeBinder?.registerSwitchFlush
+   useEffect(() => registerSwitchFlush?.(async () => {
+      const activeTab = openDocumentsRef.current.find(document => document.tabKey === activeTabKeyRef.current)
+      if (!activeTab || activeTab.documentId === null) return true
+      if (activeTab.saveStatus !== 'dirty' && activeTab.saveStatus !== 'saving') return true
+      return (await persistNow()) !== null
+   }), [registerSwitchFlush, persistNow])
+
    // ############################################
    // # EXTERNAL DISK CHANGES (NATIVE BACKEND)   #
    // ############################################

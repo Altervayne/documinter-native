@@ -181,3 +181,17 @@ export function joinRelative(dir: string, name: string): string {
 export function relativePathForDocument(folderId: string, fileName: string): string {
    return joinRelative(relativeDirForFolderId(folderId), fileName)
 }
+
+// #################
+// # BINDER ROOTS #
+// #################
+
+/** Whether two absolute Binder roots name the same folder: separators unified to '/', trailing slashes
+ *  dropped, and letter case ignored when `ignoreCase` is set (the host sets it on Windows). */
+export function isSameBinderPath(first: string, second: string, ignoreCase: boolean): boolean {
+   const normalize = (path: string): string => {
+      const unified = path.replace(/\\/g, '/').replace(/\/+$/, '')
+      return ignoreCase ? unified.toLowerCase() : unified
+   }
+   return normalize(first) === normalize(second)
+}

@@ -1266,6 +1266,9 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    let reconcileTimer: ReturnType<typeof setTimeout> | null = null
    let reconciling = false
    let pendingReconcile = false
+   // Set first thing in dispose: a late watcher event or a watch() that resolves afterwards must not touch
+   // the closed index.
+   let disposed = false
 
    // Every in-app write opens a mute window so a save / move / mkdir is not mistaken for an external edit.
    const mute = (): void => { muteUntil = Date.now() + MUTE_MS }
@@ -1279,6 +1282,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    }
 
    const runReconcile = async (): Promise<void> => {
+      if (disposed) return
       if (reconciling) { pendingReconcile = true; return }
       reconciling = true
       try {
@@ -1294,6 +1298,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    }
 
    const scheduleReconcile = (): void => {
+      if (disposed) return
       if (reconcileTimer !== null) clearTimeout(reconcileTimer)
       reconcileTimer = setTimeout(() => { reconcileTimer = null; void runReconcile() }, COALESCE_MS)
    }
@@ -1354,6 +1359,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
       subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
 
       dispose: async () => {
+         disposed = true
          if (reconcileTimer !== null) clearTimeout(reconcileTimer)
          if (unwatch) { try { unwatch() } catch { /* the watch is already gone */ } }
          await index.close()
@@ -1365,7 +1371,7 @@ export async function createFilesystemBackend(binderRoot: string): Promise<Binde
    // Start the live watcher now the index is in sync. Fire-and-forget: watch() is async but the backend
    // is usable at once; if it fails the app just runs without live external-edit reconciliation.
    void watch(rootPosix, handleWatchEvent, { recursive: true, delayMs: WATCH_DEBOUNCE_MS })
-      .then(stop => { unwatch = stop })
+      .then(stop => { if (disposed) stop(); else unwatch = stop })
       .catch(error => console.error('[binder] failed to start the filesystem watcher:', error))
 
    return backend

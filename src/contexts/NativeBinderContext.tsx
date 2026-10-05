@@ -36,6 +36,9 @@ export interface NativeBinderControls {
    openBinder(): Promise<void>
    createBinder(name: string, parentDir?: string): Promise<void>
    deleteBinder(path: string): Promise<void>
+   /** App hands in a flush that saves its active document (true when nothing is left unsaved); every
+    *  switch awaits it first and is cancelled on false. Returns the unregister. */
+   registerSwitchFlush(flush: () => Promise<boolean>): () => void
    /** A launched `.mint` waiting to open in this Binder, or null. App opens it then calls consume. */
    pendingLaunchOpen: PendingLaunchOpen | null
    consumeLaunchOpen(): void

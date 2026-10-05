@@ -79,9 +79,10 @@ export class DocumentIndex {
       return new DocumentIndex(database)
    }
 
-   /** Close the underlying connection pool. */
+   /** Close the underlying connection pool. Pass this pool's own `sqlite:` key: with no name plugin-sql
+    *  closes EVERY open pool, including the Binder being switched to. */
    async close(): Promise<void> {
-      await this.database.close()
+      await this.database.close(this.database.path)
    }
 
    /** Wipe the cached data (documents + their FTS rows + folders) for a full rebuild from the files. The

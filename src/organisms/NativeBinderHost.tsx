@@ -27,6 +27,7 @@ import { WindowControls } from '../molecules/WindowControls'
 import { DeleteBinderDialog } from '../molecules/DeleteBinderDialog'
 import { LogoColor } from '../atoms/Logo'
 import { createFilesystemBackend } from '../lib/filesystem/filesystemBackend'
+import { isSameBinderPath } from '../lib/filesystem/binderPaths'
 import { slugify } from '../lib/text'
 import type { Lang } from '../lib/i18n'
 import {
@@ -63,6 +64,7 @@ interface NativeBinder {
    openBinder(): Promise<void>
    switchBinder(path: string): Promise<void>
    deleteBinder(path: string): Promise<void>
+   registerSwitchFlush(flush: () => Promise<boolean>): () => void
    consumeLaunchOpen(): void
    /** Drop a pending launched import without acting on it (the user chose to ignore the file). */
    dismissPendingImport(): void
@@ -143,6 +145,8 @@ function useNativeBinder(): NativeBinder {
       try {
          const base   = parentDir ?? await join(await documentDir(), 'Documinter')
          const target = await join(base, slugify(name))
+         if (isActiveBinder(target)) return
+         if (!(await flushBeforeSwitch())) return
          // Rust creates the folder (its std::fs is not gated by the fs scope) then grants it, so we never
          // hit the scoped mkdir on a path not yet in scope.
          await invoke('create_binder_directory', { path: target })
@@ -162,6 +166,8 @@ function useNativeBinder(): NativeBinder {
          // A cancelled dialog returns null; a directory pick is a single string.
          const picked = await open({ directory: true })
          if (typeof picked !== 'string') return
+         if (isActiveBinder(picked)) return
+         if (!(await flushBeforeSwitch())) return
          await invoke('allow_binder_directory', { path: picked })
          const nextBackend = await createFilesystemBackend(picked)
          finishOpen(nextBackend, picked)
@@ -179,6 +185,8 @@ function useNativeBinder(): NativeBinder {
       setBusy(true)
       setError(null)
       try {
+         if (isActiveBinder(path)) return true
+         if (!(await flushBeforeSwitch())) return false
          await invoke('allow_binder_directory', { path })
          const nextBackend = await createFilesystemBackend(path)
          finishOpen(nextBackend, path)
@@ -202,6 +210,20 @@ function useNativeBinder(): NativeBinder {
 
    const backendRef = useRef(backend)
    backendRef.current = backend
+
+   // Re-opening the active Binder would load a pool under its own key, then dispose the old backend and
+   // close that key: never re-open it, the switch is a no-op.
+   const isActiveBinder = (path: string): boolean =>
+      activePathRef.current !== null && isSameBinderPath(path, activePathRef.current, sep() === '\\')
+
+   // App registers a flush that saves its active document; a switch unmounts App, which would drop an edit
+   // still in the autosave debounce. A failed save (already toasted by App) cancels the switch.
+   const switchFlushRef = useRef<(() => Promise<boolean>) | null>(null)
+   const flushBeforeSwitch = async (): Promise<boolean> => switchFlushRef.current ? switchFlushRef.current() : true
+   const registerSwitchFlush = (flush: () => Promise<boolean>): (() => void) => {
+      switchFlushRef.current = flush
+      return () => { if (switchFlushRef.current === flush) switchFlushRef.current = null }
+   }
 
    // Remove a Binder from the app: drop it from the registry, and if it is the one open, dispose its
    // backend and fall back to Welcome. Reads refs so the external-deletion watcher (a captured effect) sees
@@ -322,7 +344,7 @@ function useNativeBinder(): NativeBinder {
    return {
       phase, backend, activePath, known, notice, error, busy, pendingLaunchOpen,
       pendingImportKind: pendingImport?.kind ?? null,
-      createBinder, openBinder, switchBinder, deleteBinder, consumeLaunchOpen, dismissPendingImport,
+      createBinder, openBinder, switchBinder, deleteBinder, registerSwitchFlush, consumeLaunchOpen, dismissPendingImport,
    }
 }
 
@@ -349,6 +371,7 @@ export function NativeBinderHost() {
          openBinder:   binder.openBinder,
          createBinder: binder.createBinder,
          deleteBinder: binder.deleteBinder,
+         registerSwitchFlush: binder.registerSwitchFlush,
          pendingLaunchOpen: binder.pendingLaunchOpen,
          consumeLaunchOpen: binder.consumeLaunchOpen,
       }
