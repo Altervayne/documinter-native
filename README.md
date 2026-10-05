@@ -78,8 +78,11 @@ a real A4 PDF.
 
 ## Screenshots
 
-> _To add: the Welcome / Binder picker, the editor with its dock panels, a code block, and a
-> paged export._
+<p align="center">
+  <img src="src/assets/binder-select-screenshot.png" alt="The Binder picker, where a working folder is chosen or created" width="900" />
+</p>
+
+> _To add: the editor with its dock panels, a code block, and a paged export._
 
 ## Tech stack
 
